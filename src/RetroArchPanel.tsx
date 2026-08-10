@@ -15,17 +15,20 @@ import { useCallback, useEffect, useState } from "react";
 import {
   type Core,
   canUninstallRetroArch,
+  emulatorBuilds,
   getSettings,
   listCores,
   realCores,
   setSettings,
   uninstallRetroArch,
+  type EmulatorBuild,
   type PluginSettings,
   type RetroArchStatus,
 } from "./backend";
 import { AchievementsPanel } from "./AchievementsPanel";
 import { CoreInstallPanel } from "./CoreInstallPanel";
 import { DANGER_CLASS, DANGER_CSS } from "./danger";
+import { EmulatorVersionModal } from "./EmulatorVersionModal";
 import { InstallRetroArchPanel } from "./InstallRetroArchPanel";
 import { callWithRetry } from "./timeout";
 
@@ -126,6 +129,33 @@ export function RetroArchPanel({ status, onRefresh, reloadKey = 0 }: Props) {
       .then(setRemovable)
       .catch(() => setRemovable(null));
   }, [status.found, status.kind]);
+
+  /*
+   * Which build is installed, and whether a newer one is waiting.
+   *
+   * Read from the same endpoint the Emulators tab uses, under the reserved id
+   * `retroarch` -- RetroArch is not in the catalog, but it is a Flathub app
+   * installed the same way, so it is the same three operations on a different id.
+   *
+   * Absent for a native package or a loose AppImage, which is correct: neither
+   * can be moved to another build from here. Keyed on `kind` as well as `found`
+   * so reinstalling as a flatpak makes the section appear.
+   */
+  const [build, setBuild] = useState<EmulatorBuild | null>(null);
+  const loadBuild = useCallback(() => {
+    if (!status.found) {
+      setBuild(null);
+      return;
+    }
+    callWithRetry(emulatorBuilds)
+      .then((rows) => setBuild(rows.find((row) => row.id === "retroarch") ?? null))
+      .catch((error) => {
+        console.error("[deckyemu] could not read the RetroArch build", error);
+        setBuild(null);
+      });
+  }, [status.found]);
+
+  useEffect(loadBuild, [loadBuild, status.kind]);
 
   const uninstall = useCallback(async () => {
     setRemoving(true);
@@ -297,6 +327,56 @@ export function RetroArchPanel({ status, onRefresh, reloadKey = 0 }: Props) {
               onChange={(value) => void patch({ emulator_fullscreen: value })}
             />
           </PanelSectionRow>
+        </PanelSection>
+      )}
+
+      {/* Above achievements and well above removal: this is maintenance you may
+          actually want, and a version that broke something is the reason people
+          reach for uninstall when they did not need to.
+
+          Only for a user-scope flatpak. `reason` is non-empty for a system-wide
+          one, and there is no row at all for a native package or an AppImage,
+          because neither can be moved to a different build from here. Said out
+          loud rather than left as a missing section -- the same rule the uninstall
+          above follows. */}
+      {status.found && build && (
+        <PanelSection title="RetroArch version">
+          <PanelSectionRow>
+            <Field
+              label={build.held ? "Held at this build" : "Installed build"}
+              description={
+                build.reason
+                  ? build.reason
+                  : build.held
+                    ? `${build.build} — updates will not move it until you release the hold.`
+                    : build.update_available
+                      ? `${build.build} — a newer build is available.`
+                      : `${build.build} — this is the newest build on Flathub.`
+              }
+            />
+          </PanelSectionRow>
+
+          {!build.reason && (
+            <PanelSectionRow>
+              <ButtonItem
+                layout="below"
+                onClick={() =>
+                  showModal(
+                    <EmulatorVersionModal
+                      emulator={build}
+                      onChanged={() => {
+                        loadBuild();
+                        onRefresh();
+                      }}
+                    />,
+                  )
+                }
+                description="Update, go back to an earlier build, or hold the one you have."
+              >
+                {build.update_available ? "Update or change version" : "Change version"}
+              </ButtonItem>
+            </PanelSectionRow>
+          )}
         </PanelSection>
       )}
 

@@ -33,6 +33,7 @@ sys.path.insert(0, REPO_ROOT)
 
 import decky  # noqa: E402
 import emu_install  # noqa: E402
+import emulator_catalog  # noqa: E402
 import main  # noqa: E402
 
 section("changing an emulator's build -- what is refused, and what holds")
@@ -89,6 +90,27 @@ for bad in ("", "abc", "$(id)", "d8644a97df3d"):
 
 # Nothing above should have reached the point of reporting progress.
 check("a refused request emits nothing", emitted, [])
+
+
+# ------------------------------------------------------- RetroArch's reserved id
+
+# RetroArch is not in the catalog -- cores run inside it rather than beside it --
+# but it is a Flathub app installed the same way, so the same endpoints serve it
+# under a reserved id rather than a parallel set that would drift.
+_entry, _app, _error = run(plugin._flatpak_entry("retroarch"))
+# Not installed in the suite's temp home, so it stops at the scope check rather
+# than the catalog lookup. That it gets that far is the point.
+check("the reserved id resolves rather than being unknown",
+      "not in the catalog" in _error, False)
+check("and it is recognised as not installed here", "not installed" in _error, True)
+
+check("the id is reserved so a definition cannot take it",
+      "retroarch" in emulator_catalog.RESERVED_IDS, True)
+# The guard that enforces it lives in reload_imported, alongside the bundled-id
+# check -- an imported definition claiming this id would otherwise be handed
+# RetroArch's update and rollback requests.
+check("and no bundled entry uses it either",
+      any(entry["id"] == "retroarch" for entry in emulator_catalog.BUNDLED), False)
 
 
 # --------------------------------------------------- rollback holds the build

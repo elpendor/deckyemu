@@ -108,6 +108,15 @@ BUNDLED = tuple(module.ENTRY for module in _MODULES)
 #: tuple and quietly stop seeing anything the user added.
 CATALOG = BUNDLED
 
+#: Ids that are not in the catalog but are spoken for anyway.
+#:
+#: `retroarch` names RetroArch to the endpoints that change an installed flatpak's
+#: build, which take a catalog id and are reused for it -- so a definition
+#: claiming that id would be handed RetroArch's requests. Reserved rather than
+#: worked around, because "an imported emulator called retroarch" is a confusing
+#: thing to allow whatever the plumbing does with it.
+RESERVED_IDS = frozenset({"retroarch"})
+
 #: Why the last reload rejected the definitions it rejected, for the panel to
 #: show. A file that fails to load has to say so somewhere the user looks; the
 #: alternative is an emulator that simply never appears.
@@ -129,10 +138,10 @@ def reload_imported():
     known = [label for label, _full, _short in platforms.NO_LIBRETRO_PLATFORMS]
     entries, problems = _imported.load(known)
 
-    bundled_ids = {entry["id"] for entry in BUNDLED}
+    taken = {entry["id"] for entry in BUNDLED} | RESERVED_IDS
     kept = []
     for entry in entries:
-        if entry["id"] in bundled_ids:
+        if entry["id"] in taken:
             problems.append(
                 "%s was not loaded: %r is already a built-in emulator."
                 % (entry.get("source_file", entry["id"]), entry["id"])

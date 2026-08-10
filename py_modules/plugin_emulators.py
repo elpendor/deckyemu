@@ -30,6 +30,7 @@ import installer
 import launchers
 import platforms
 import ps3_games
+import ra_detect
 import store
 
 
@@ -38,6 +39,25 @@ def _read_text(path, limit):
     with open(path, "r", encoding="utf-8", errors="replace") as handle:
         text = handle.read(limit + 1)
     return None if len(text) > limit else text
+
+
+#: RetroArch shaped as a catalog entry, for the endpoints that change an
+#: installed flatpak's build.
+#:
+#: It is not in the catalog and should not be -- cores run inside it rather than
+#: beside it, and it has its own tab, its own installer and its own uninstall
+#: rules. But it is a Flathub app installed exactly the way the catalog's flatpaks
+#: are, so "update it", "go back" and "hold it there" are the same three
+#: operations on a different id. One implementation, reached with this, beats a
+#: parallel set of retroarch_* endpoints that would drift from it -- which is the
+#: lesson `emulators.LAUNCH_HINTS` already taught this project once.
+#: Annotated, or the literal's value type is inferred narrowly enough that
+#: `entry["source"]["id"]` stops type-checking where a catalog entry does not.
+_RETROARCH_ENTRY: dict = {
+    "id": "retroarch",
+    "name": "RetroArch",
+    "source": {"kind": "flatpak", "id": ra_detect.FLATPAK_ID},
+}
 
 
 class Emulators(plugin_base.PluginContext):
@@ -335,7 +355,12 @@ class Emulators(plugin_base.PluginContext):
         held = await self._run(emu_install.flatpak_held)
 
         rows = []
-        for entry in emulator_catalog.CATALOG:
+        # RetroArch first, and included even though it is not in the catalog: it
+        # is installed from Flathub exactly as these are, and its own tab has no
+        # other way to say a newer build exists. The RetroArch tab picks it out by
+        # id; the Emulators tab has no row with that id, so it simply never
+        # matches there.
+        for entry in (_RETROARCH_ENTRY,) + tuple(emulator_catalog.CATALOG):
             source = entry.get("source") or {}
             if source.get("kind") != "flatpak":
                 continue
@@ -373,7 +398,7 @@ class Emulators(plugin_base.PluginContext):
         Costs a network round trip, so it is asked for when somebody opens the
         list rather than for every row of the tab.
         """
-        entry = emulator_catalog.find(entry_id)
+        entry = _RETROARCH_ENTRY if entry_id == "retroarch" else emulator_catalog.find(entry_id)
         if not entry:
             return {"ok": False, "error": "That emulator is not in the catalog.", "builds": []}
         source = entry.get("source") or {}
@@ -461,8 +486,16 @@ class Emulators(plugin_base.PluginContext):
         }
 
     async def _flatpak_entry(self, entry_id):
-        """(entry, app_id, error) for an installed user-scope flatpak emulator."""
-        entry = emulator_catalog.find(entry_id)
+        """(entry, app_id, error) for an installed user-scope flatpak emulator.
+
+        `retroarch` is accepted as well as a catalog id. RetroArch is not in the
+        catalog -- it is the thing cores run inside rather than one of them -- but
+        it is a Flathub app installed the same way, so updating it, going back and
+        holding it are the same three operations on a different id. Shaped as a
+        catalog entry here so there is one implementation rather than a parallel
+        set of RetroArch endpoints that would drift from it.
+        """
+        entry = _RETROARCH_ENTRY if entry_id == "retroarch" else emulator_catalog.find(entry_id)
         if not entry:
             return None, "", "That emulator is not in the catalog."
         source = entry.get("source") or {}
