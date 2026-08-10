@@ -4,12 +4,13 @@ Two channels, and the split is not arbitrary.
 
 **Flatpak is preferred wherever Flathub carries the emulator.** `--user` scope
 needs no password, which is the only reason installing RetroArch from the panel
-works at all, and the same argument applies here. It also hands updates to
-flatpak, so this plugin never has to track a version, compare a tag or offer an
-"update available" badge for eleven separate projects.
+works at all, and the same argument applies here. It also means this plugin never
+tracks a version of its own: updating, going back to a past build and pinning one
+are all questions flatpak already answers about its own installs, so they are
+asked rather than reimplemented.
 
-**GitHub releases are the fallback**, for Azahar and Vita3K, which publish no
-flatpak. It is deliberately not the default: an AppImage is a file this plugin
+**GitHub releases are the fallback**, for RPCS3, Azahar and Vita3K, which publish
+no flatpak. It is deliberately not the default: an AppImage is a file this plugin
 then owns forever, and browser-downloaded AppImages arriving without an execute
 bit is already the single most common way a registered emulator silently does
 nothing (see `emulators.ensure_executable`).
@@ -26,6 +27,7 @@ wrong architecture fails at exec time with nothing that names the cause.
 import os
 import re
 import shutil
+import subprocess
 
 import decky
 
@@ -103,6 +105,193 @@ _APP_ID_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]*(\.[A-Za-z][A-Za-z0-9_-]*)+$")
 
 def _valid_app_id(app_id):
     return bool(_APP_ID_RE.match(app_id or ""))
+
+
+#: An OSTree commit. Checked before it reaches a command line, for the same
+#: reason `_valid_app_id` is: both arrive from the frontend.
+_COMMIT_RE = re.compile(r"^[0-9a-f]{64}$")
+
+
+def valid_commit(commit):
+    return bool(_COMMIT_RE.match(commit or ""))
+
+
+def flatpak_update_argv(app_id):
+    """Update one user-scope flatpak to the newest build on its remote."""
+    flatpak = flatpak_binary()
+    if not flatpak or not _valid_app_id(app_id):
+        return []
+    return [flatpak, "update", "--user", "-y", "--noninteractive", app_id]
+
+
+def flatpak_downgrade_argv(app_id, commit):
+    """Deploy one specific past build.
+
+    `flatpak update --commit=` is the documented way back, and it is an *update*
+    rather than a separate verb -- flatpak treats "move this app to that commit"
+    as one operation in both directions.
+
+    Refuses a commit that is not a bare hash. This value comes from the frontend,
+    which read it from `flatpak_history`, and a command line is the wrong place to
+    find out that something else arrived.
+    """
+    flatpak = flatpak_binary()
+    if not flatpak or not _valid_app_id(app_id) or not valid_commit(commit):
+        return []
+    return [
+        flatpak, "update", "--user", "-y", "--noninteractive",
+        "--commit=%s" % commit, app_id,
+    ]
+
+
+def flatpak_hold_argv(app_id, held):
+    """Pin an app at its current build, or release it.
+
+    Load-bearing rather than a nicety. Without a mask the next update -- ours, or
+    anything else on the device that runs one -- silently undoes a downgrade, so
+    somebody rolls back, plays fine, and finds the same game broken a week later
+    with nothing to connect it to. A version this plugin was asked to go back to
+    has to be a version it will not move again.
+    """
+    flatpak = flatpak_binary()
+    if not flatpak or not _valid_app_id(app_id):
+        return []
+    if held:
+        return [flatpak, "mask", "--user", app_id]
+    return [flatpak, "mask", "--user", "--remove", app_id]
+
+
+def _flatpak_lines(args, timeout=60):
+    """Run a read-only flatpak query and return its stdout lines.
+
+    Its own helper because every one of these is the same shape and the same three
+    failure modes -- no flatpak, a non-zero exit, a timeout -- none of which is
+    exceptional enough to raise over. An empty list means "could not tell", which
+    every caller has to treat as different from "nothing found".
+    """
+    flatpak = flatpak_binary()
+    if not flatpak:
+        return []
+    try:
+        done = subprocess.run(
+            [flatpak] + list(args),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            env=sysenv.clean_env(),
+            timeout=timeout,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return []
+    if done.returncode != 0:
+        return []
+    return done.stdout.decode("utf-8", errors="replace").splitlines()
+
+
+# The parsers are separate from the commands that produce their input, so the
+# suite can hold flatpak's real output against them without a device or a
+# subprocess. That is where the risk is: these formats are what they are, and a
+# parser written from the documentation is one that works until it meets the tool.
+
+
+def _parse_ids(lines):
+    """App ids out of a one-per-line listing."""
+    found = set()
+    for line in lines:
+        app_id = line.strip().split("\t")[0].strip()
+        if _valid_app_id(app_id):
+            found.add(app_id)
+    return found
+
+
+def _parse_commit(lines):
+    """The `Commit:` value out of `flatpak info`, or ''."""
+    for line in lines:
+        label, _, value = line.partition(":")
+        if label.strip().lower() == "commit":
+            candidate = value.strip()
+            # A truncated hash is what `--columns` prints and `--commit=` will
+            # not take, so half an answer is worse than none.
+            return candidate if valid_commit(candidate) else ""
+    return ""
+
+
+def _parse_history(lines, limit=12):
+    """`{commit, date, subject}` per build out of `remote-info --log`."""
+    builds = []
+    current = {}
+    for line in lines:
+        label, sep, value = line.partition(":")
+        if not sep:
+            continue
+        key = label.strip().lower()
+        value = value.strip()
+        if key == "commit":
+            # Every Commit line starts a record, including the first -- which
+            # describes the newest build rather than a past one, so the whole
+            # list is the menu and not its tail.
+            if current.get("commit"):
+                builds.append(current)
+            current = {"commit": value if valid_commit(value) else "", "date": "", "subject": ""}
+        elif key in ("date", "subject") and current:
+            current[key] = value
+    if current.get("commit"):
+        builds.append(current)
+
+    return [build for build in builds if build["commit"]][:limit]
+
+
+def flatpak_updates():
+    """App ids with a newer build waiting, as a set.
+
+    One command for every app rather than one per app. `remote-info` costs about
+    two seconds each -- which is flatpak's own startup, not the network -- so
+    asking per emulator would be fourteen seconds to draw one tab.
+
+    Compares commits, not version strings, and that distinction is not academic:
+    RetroArch was observed offering an update whose `Version:` was character for
+    character the one already installed. Anything keyed on the version would have
+    called that up to date. flatpak does the comparing here, which is the reason
+    to ask it rather than work it out.
+
+    Runtimes and extensions come back in the same listing. Callers intersect with
+    ids they already know, so this is deliberately not "things to update".
+    """
+    return _parse_ids(
+        _flatpak_lines(
+            ["remote-ls", "--user", "--updates", "flathub", "--columns=application"]
+        )
+    )
+
+
+def flatpak_held():
+    """App ids pinned against updates, as a set."""
+    return _parse_ids(_flatpak_lines(["mask", "--user"]))
+
+
+def flatpak_installed_commit(app_id):
+    """The commit currently deployed for `app_id`, or ''."""
+    if not _valid_app_id(app_id):
+        return ""
+    return _parse_commit(_flatpak_lines(["info", "--user", app_id]))
+
+
+def flatpak_history(app_id, limit=12):
+    """Past builds available on the remote, newest first.
+
+    The remote keeps this, which is what makes going back possible at all --
+    including to a build this device never had, since the local copy of an old one
+    is pruned as soon as it is replaced.
+
+    The date and subject are the point. A list of hashes is not something anybody
+    can choose from with a controller; "2026-07-26 -- Install metainfo to
+    share/metainfo" is.
+    """
+    if not _valid_app_id(app_id):
+        return []
+    return _parse_history(
+        _flatpak_lines(["remote-info", "--user", "--log", "flathub", app_id], timeout=90),
+        limit=limit,
+    )
 
 
 def flatpak_installed(app_id):
