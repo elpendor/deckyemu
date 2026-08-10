@@ -9,6 +9,7 @@ do when one of them does not work.
 
 **Contents** — [Before you start](#before-you-start) ·
 [1. Get a game onto the Deck](#1-get-a-game-onto-the-deck) ·
+[Skipping the code next time](#skipping-the-code-next-time) ·
 [2. Get something to run it](#2-get-something-to-run-it) ·
 [3. Add the game to Steam](#3-add-the-game-to-steam) ·
 [Everyday tasks](#everyday-tasks) ·
@@ -64,6 +65,28 @@ Some things worth knowing:
 Everything lands in `~/deckyemu/transfer`, whatever it is. Each received file gets
 an **Add** button that drops straight into step 3 with the name and artwork
 already worked out.
+
+### Skipping the code next time
+
+By default the address, the token and the six-digit code are all new every
+session, so nothing outlives one transfer and a saved link is worthless the next
+day. That is the safe default, and it means typing the code every time.
+
+Turn on **Remember trusted devices** and the address stays the same instead. Your
+laptop or phone can bookmark the upload page and come straight back to it with
+nothing to type at all — no address, no code. For a device you send games from
+regularly, this is the single biggest thing you can do to make it painless.
+
+The trade-off is worth understanding, which is why it is a choice rather than the
+default: it changes what the link *is*. A bookmark stops being a one-off and
+becomes a standing key that works whenever the server is running. That is the
+right deal for your own laptop and the wrong one for a house guest who scanned
+the QR code once.
+
+**Reset link** appears while it is on and invalidates every bookmark at once. It
+is all or nothing, because the link is the credential — there is no per-device
+list to prune. It is refused while a transfer is running, so it cannot cut off an
+upload halfway.
 
 ## 2. Get something to run it
 
@@ -167,6 +190,7 @@ survive the change.
 | A game starts in a window | The emulator's fullscreen switch is wrong, or it uses a setting rather than a flag |
 | An emulator closes immediately | For a hand-supplied AppImage, the execute bit is usually missing; re-saving it in the editor repairs that |
 | A game will not boot and the system needs firmware | Check **BIOS and firmware** — a missing file looks exactly like a game failing |
+| A bookmarked transfer link stopped working | Either **Remember trusted devices** is off, so every session issues a new one, or **Reset link** was pressed — which invalidates all of them at once |
 | A ROM stayed in `transfer/` after adding | Something was unaccounted for: a disc a playlist names, or a different dump of the same name already filed |
 | The cover is wrong | **Wrong game? Pick artwork** on the add panel, or the pencil on an added game |
 | A collection is left holding nothing | **Settings → Collections** tidies stale ones |
