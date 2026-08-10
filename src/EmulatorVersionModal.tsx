@@ -7,7 +7,7 @@ import {
   ToggleField,
 } from "@decky/ui";
 import { addEventListener, removeEventListener, toaster } from "@decky/api";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   emulatorBuildList,
@@ -18,7 +18,6 @@ import {
   type PastBuild,
 } from "./backend";
 import { buildDate } from "./buildDate";
-import { DANGER_CLASS, DANGER_CSS } from "./danger";
 import { ProgressBar } from "./TransferModal";
 
 interface Props {
@@ -47,6 +46,10 @@ export function EmulatorVersionModal({ closeModal, emulator, onChanged }: Props)
   const [status, setStatus] = useState("");
   const [percent, setPercent] = useState(0);
   const [error, setError] = useState("");
+  // Which action is in flight, for the message at the end of it. A ref rather
+  // than state because the done handler must not re-subscribe every time this
+  // changes, and nothing renders from it.
+  const action = useRef<"update" | "switch">("update");
 
   const loadBuilds = useCallback(async () => {
     setListError("");
@@ -83,13 +86,26 @@ export function EmulatorVersionModal({ closeModal, emulator, onChanged }: Props)
         return;
       }
       /*
-       * A non-empty message on success is the one outcome worth a toast: the
-       * build moved but could not be pinned, so an update will move it again.
-       * Silence there would be the whole trap this feature exists to avoid.
+       * A non-empty message on success means the build moved but could not be
+       * pinned, so an update will move it again. That is the one thing here worth
+       * interrupting somebody over -- silence would be the whole trap this
+       * feature exists to avoid.
+       *
+       * Otherwise the wording follows what was actually asked for. "Updated" and
+       * "now on the newest build" are wrong for a build chosen from the list,
+       * which may be older *or* newer than the one that was installed.
        */
       toaster.toast({
-        title: message ? `${emulator.name} moved, but is not held` : `${emulator.name} updated`,
-        body: message || "It is now on the newest build.",
+        title: message
+          ? `${emulator.name} moved, but is not held`
+          : action.current === "update"
+            ? `${emulator.name} updated`
+            : `${emulator.name} changed build`,
+        body:
+          message ||
+          (action.current === "update"
+            ? "It is now on the newest build."
+            : "It is on the build you chose, and held there."),
       });
       void loadBuilds();
       onChanged();
@@ -110,7 +126,12 @@ export function EmulatorVersionModal({ closeModal, emulator, onChanged }: Props)
   }, [emulator.id, emulator.name, loadBuilds, onChanged]);
 
   const start = useCallback(
-    async (what: string, call: () => Promise<{ ok: boolean; error?: string }>) => {
+    async (
+      what: string,
+      kind: "update" | "switch",
+      call: () => Promise<{ ok: boolean; error?: string }>,
+    ) => {
+      action.current = kind;
       setBusy(what);
       setError("");
       setPercent(0);
@@ -158,9 +179,22 @@ export function EmulatorVersionModal({ closeModal, emulator, onChanged }: Props)
 
   const running = Boolean(busy);
 
+  /*
+   * Whether the newest published build is the one installed, read from the list
+   * rather than from the `emulator` prop.
+   *
+   * The prop is a snapshot the tab behind this dialog took before it opened, and
+   * it does not change while the dialog is up. So after choosing an older build,
+   * "This is the newest build on Flathub" would still be sitting there — describing
+   * the state from two operations ago. The list is reloaded after every change, and
+   * its first entry is the newest, so `current` on it is always the live answer.
+   *
+   * Falls back to the prop only until the list arrives.
+   */
+  const onNewest = builds?.length ? Boolean(builds[0].current) : !emulator.update_available;
+
   return (
     <ModalRoot closeModal={closeModal}>
-      <style>{DANGER_CSS}</style>
       <h1 style={{ marginBottom: 0 }}>{emulator.name}</h1>
       <div style={{ opacity: 0.7, fontSize: "13px", marginBottom: "12px" }}>
         {emulator.build ? `Build ${emulator.build}` : "Build unknown"}
@@ -184,17 +218,17 @@ export function EmulatorVersionModal({ closeModal, emulator, onChanged }: Props)
         </>
       )}
 
-      {!running && emulator.update_available && (
+      {!running && !onNewest && (
         <PanelSectionRow>
           <DialogButton
-            onClick={() => void start("Updating", () => updateEmulator(emulator.id))}
+            onClick={() => void start("Updating", "update", () => updateEmulator(emulator.id))}
           >
             Update to the newest build
           </DialogButton>
         </PanelSectionRow>
       )}
 
-      {!running && !emulator.update_available && (
+      {!running && onNewest && (
         <PanelSectionRow>
           <Field description="This is the newest build on Flathub." />
         </PanelSectionRow>
@@ -208,30 +242,51 @@ export function EmulatorVersionModal({ closeModal, emulator, onChanged }: Props)
         disabled={running}
       />
 
-      <Field label="Earlier builds" />
+      {/*
+        "Other builds", not "Earlier builds", and the button says neither "go
+        back" nor "downgrade". The list is every published build except the one
+        installed, and flatpak's log is newest-first, so when the installed build
+        is a few behind, entries *above* it are newer. Any wording implying a
+        direction is wrong for half the rows.
+      */}
+      <div style={{ marginTop: "14px", marginBottom: "2px", fontWeight: 500 }}>Other builds</div>
       {builds === null && <Field description="Reading the build history..." />}
       {listError && <Field description={listError} />}
       {builds !== null && builds.length === 0 && !listError && (
-        <Field description="No earlier builds are published for this emulator." />
+        <Field description="Flathub publishes no other build of this emulator." />
       )}
 
       {/* Scrolled by the dialog itself rather than a nested region: a scroll area
           holding only text has nothing focusable in it, so a controller cannot
           enter one. Each row here has a button, which is what makes the list
-          reachable at all. */}
+          reachable at all.
+
+          Spacing rather than a border between rows: 12px of padding and a gap
+          wide enough that the date, the subject and the button read as one row.
+          At 6px they ran together into a wall of text that could not be scanned
+          for the date, which is the only thing anybody is choosing on. */}
       {(builds ?? [])
         .filter((build) => !build.current)
-        .map((build) => (
+        .map((build, index) => (
           <Focusable
             key={build.commit}
-            style={{ display: "flex", alignItems: "center", gap: "8px", paddingBottom: "6px" }}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "14px",
+              padding: "12px 0",
+              // Between rows only, so the list does not open with a stray line
+              // directly under its own heading.
+              borderTop: index === 0 ? "none" : "1px solid rgba(255, 255, 255, 0.08)",
+            }}
           >
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: "14px" }}>{buildDate(build.date)}</div>
+              <div style={{ fontSize: "15px", lineHeight: 1.25 }}>{buildDate(build.date)}</div>
               <div
                 style={{
                   fontSize: "12px",
                   opacity: 0.6,
+                  marginTop: "3px",
                   overflow: "hidden",
                   textOverflow: "ellipsis",
                   whiteSpace: "nowrap",
@@ -240,21 +295,29 @@ export function EmulatorVersionModal({ closeModal, emulator, onChanged }: Props)
                 {build.subject || build.commit.slice(0, 12)}
               </div>
             </div>
-            <div className={DANGER_CLASS} style={{ display: "flex" }}>
-              <DialogButton
-                disabled={running}
-                style={{ minWidth: "auto", width: "auto", padding: "6px 12px" }}
-                onClick={() =>
-                  void start("Going back", () => rollbackEmulator(emulator.id, build.commit))
-                }
-              >
-                Go back
-              </DialogButton>
-            </div>
+            {/* Not styled as destructive. Nothing is destroyed -- save data and
+                configuration are untouched and the move is repeatable -- and red
+                on every row would make the list look dangerous to read. */}
+            <DialogButton
+              disabled={running}
+              style={{
+                minWidth: "auto",
+                width: "auto",
+                padding: "8px 14px",
+                flexShrink: 0,
+              }}
+              onClick={() =>
+                void start("Switching", "switch", () => rollbackEmulator(emulator.id, build.commit))
+              }
+            >
+              Use this build
+            </DialogButton>
           </Focusable>
         ))}
 
-      <Field description="Going back also holds the version, so an update cannot undo it. Save data is not touched." />
+      <div style={{ marginTop: "14px" }}>
+        <Field description="Choosing a build also holds it, so an update cannot move it again. Save data and configuration are not touched." />
+      </div>
     </ModalRoot>
   );
 }
