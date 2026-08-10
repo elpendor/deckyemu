@@ -6,12 +6,15 @@ import {
   showModal,
 } from "@decky/ui";
 import { toaster } from "@decky/api";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
-import { clearLibrary } from "./backend";
+import { clearLibrary, listAdded, type AddedGame } from "./backend";
 import { removeAppsFromCollection, removeShortcut } from "./steam";
+import { AddedGamesModal } from "./AddedGamesModal";
+import { clearWarning, shouldConfirmClear } from "./clearWarning";
 import { DANGER_CLASS, DANGER_CSS } from "./danger";
 import { OrphanModal } from "./OrphanModal";
+import { callWithRetry } from "./timeout";
 import { humanSize } from "./TransferModal";
 
 interface Props {
@@ -27,6 +30,22 @@ interface Props {
  */
 export function LibraryPanel({ onRefresh }: Props) {
   const [clearing, setClearing] = useState(false);
+  // null while unread and after a failed read, which is not the same as 0 --
+  // nothing here may treat "could not ask" as "there is nothing there".
+  const [games, setGames] = useState<AddedGame[] | null>(null);
+
+  const loadGames = useCallback(async () => {
+    try {
+      setGames(await callWithRetry(listAdded));
+    } catch (error) {
+      console.error("[deckyemu] could not list added games", error);
+      setGames(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadGames();
+  }, [loadGames]);
 
   /**
    * Undo everything this plugin has added: shortcuts, collections and launchers.
@@ -71,6 +90,9 @@ export function LibraryPanel({ onRefresh }: Props) {
               (cleared.freed ? `, ${humanSize(cleared.freed)} freed.` : ".")
             : "No games were tracked by DeckyEmu.",
       });
+      // The row above still shows the old count until this runs, and it sits
+      // directly over the button that was just pressed.
+      void loadGames();
       onRefresh();
     } catch (error) {
       console.error("[deckyemu] could not clear the library", error);
@@ -81,18 +103,41 @@ export function LibraryPanel({ onRefresh }: Props) {
     } finally {
       setClearing(false);
     }
-  }, [onRefresh]);
+  }, [onRefresh, loadGames]);
 
-  const confirmClearEverything = useCallback(() => {
+  /*
+   * Counted at the moment of asking, not from whatever the tab read on mount.
+   *
+   * The confirmation sentence is the whole of the protection here -- there is no
+   * undo and no checkbox -- so a number in it has to be the number that is about
+   * to go. The list can have changed since this tab loaded: the games modal
+   * above removes games, and it is the obvious thing to have just been using.
+   *
+   * A failed read falls back to the wording with no count rather than guessing
+   * one. Vague and true beats specific and wrong on a dialog that deletes games.
+   */
+  const confirmClearEverything = useCallback(async () => {
+    let count: number | null = null;
+    try {
+      const current = await callWithRetry(listAdded);
+      setGames(current);
+      count = current.length;
+    } catch (error) {
+      console.error("[deckyemu] could not count games before clearing", error);
+    }
+
+    if (!shouldConfirmClear(count)) {
+      toaster.toast({
+        title: "Nothing to remove",
+        body: "No games are tracked by DeckyEmu.",
+      });
+      return;
+    }
+
     showModal(
       <ConfirmModal
         strTitle="Remove every DeckyEmu game?"
-        strDescription={
-          "This deletes every Steam shortcut this plugin added, its launcher scripts, any collection it created that ends up empty, " +
-          "and every game it put on this Deck — the ROMs it filed and the games it unpacked into emulators. " +
-          "Playing any of them again means sending the files from another machine again. " +
-          "Save data is kept, collections holding games you added yourself are kept, and ROMs you keep somewhere of your own are not touched."
-        }
+        strDescription={clearWarning(count)}
         strOKButtonText="Remove everything"
         bDestructiveWarning
         onOK={() => void clearEverything()}
@@ -107,6 +152,45 @@ export function LibraryPanel({ onRefresh }: Props) {
       {/* Untitled: the sidebar already says "Library", and a PanelSection title
           that repeats its tab prints the heading twice. */}
       <PanelSection>
+        {/* First, and above the two controls that act on the library, because
+            this is the one that shows what they would be acting on. The count
+            was only in the Quick Access panel, so the tab holding
+            "remove everything" was the one place you could not see what
+            everything meant.
+
+            Rendered whether or not the count has arrived, rather than appearing
+            when it does -- a row that materialises reflows the two buttons under
+            it, and those buttons are the reason anyone is on this tab. */}
+        <PanelSectionRow>
+          <ButtonItem
+            layout="below"
+            disabled={games !== null && games.length === 0}
+            onClick={() =>
+              showModal(
+                <AddedGamesModal
+                  onChanged={() => {
+                    void loadGames();
+                    onRefresh();
+                  }}
+                />,
+              )
+            }
+            description={
+              games === null
+                ? "Rename a game, change what runs it, replace its artwork, or remove it."
+                : games.length === 0
+                  ? "Games added from the Quick Access panel appear here."
+                  : "Rename a game, change what runs it, replace its artwork, or remove it."
+            }
+          >
+            {games === null
+              ? "Added games"
+              : games.length === 0
+                ? "No games added yet"
+                : `Added games (${games.length})`}
+          </ButtonItem>
+        </PanelSectionRow>
+
         <PanelSectionRow>
           <ButtonItem
             layout="below"
@@ -121,7 +205,7 @@ export function LibraryPanel({ onRefresh }: Props) {
           <div className={DANGER_CLASS}>
             <ButtonItem
               layout="below"
-              onClick={confirmClearEverything}
+              onClick={() => void confirmClearEverything()}
               disabled={clearing}
               description="Deletes every shortcut, launcher and empty collection this plugin created, and every ROM and unpacked game it put on this Deck."
             >
