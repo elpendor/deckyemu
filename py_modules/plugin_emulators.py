@@ -316,61 +316,280 @@ class Emulators(plugin_base.PluginContext):
         return {"ok": True, "started": True}
 
 
-    async def _install_emulator_flatpak(self, entry, steps):
-        env = self._subprocess_env()
+    # ------------------------------------------------------- versions and builds
+
+    async def emulator_builds(self):
+        """Which installed emulators can move to a different build, and where they are.
+
+        One flatpak query for what is pending and one for what is held, however
+        many emulators there are -- `remote-info` costs about two seconds a call,
+        so per emulator would be fourteen seconds to draw a tab.
+
+        Only flatpak entries answer for now. An AppImage can be updated by
+        downloading again, but knowing whether it is worth downloading needs a
+        release tag recorded at install time, and installs made before that
+        existed have none -- so reporting one as "up to date" would be a guess.
+        Absent from this list means "not offered", which is the honest state.
+        """
+        pending = await self._run(emu_install.flatpak_updates)
+        held = await self._run(emu_install.flatpak_held)
+
+        rows = []
+        for entry in emulator_catalog.CATALOG:
+            source = entry.get("source") or {}
+            if source.get("kind") != "flatpak":
+                continue
+            app_id = source.get("id", "")
+            if not await self._run(emu_install.flatpak_installed, app_id):
+                continue
+
+            scope = await self._run(emu_install.flatpak_scope, app_id)
+            commit = await self._run(emu_install.flatpak_installed_commit, app_id)
+            rows.append({
+                "id": entry["id"],
+                "name": entry["name"],
+                "app_id": app_id,
+                # Shown rather than the full hash, which is 64 characters of
+                # nothing anybody can read. The full value stays server-side and
+                # in `emulator_build_list`, which is what a rollback quotes back.
+                "build": commit[:12],
+                "update_available": app_id in pending,
+                "held": app_id in held,
+                # A system-scope install is root-owned and the plugin cannot
+                # answer a password prompt, so the row says why instead of
+                # showing a button that can only fail -- the same rule
+                # `can_uninstall_retroarch` follows.
+                "reason": (
+                    "" if scope == "user"
+                    else "Installed system-wide, so changing its version needs a password "
+                         "this plugin cannot give."
+                ),
+            })
+        return rows
+
+    async def emulator_build_list(self, entry_id: str):
+        """Past builds of one emulator, newest first, for going back to.
+
+        Costs a network round trip, so it is asked for when somebody opens the
+        list rather than for every row of the tab.
+        """
+        entry = emulator_catalog.find(entry_id)
+        if not entry:
+            return {"ok": False, "error": "That emulator is not in the catalog.", "builds": []}
+        source = entry.get("source") or {}
+        if source.get("kind") != "flatpak":
+            return {
+                "ok": False,
+                "error": "%s is not installed from Flathub, so its past builds are not "
+                         "listed here." % entry["name"],
+                "builds": [],
+            }
+
+        builds = await self._run(emu_install.flatpak_history, source["id"])
+        if not builds:
+            return {
+                "ok": False,
+                "error": "No build history came back for %s. It needs the network."
+                         % entry["name"],
+                "builds": [],
+            }
+        current = await self._run(emu_install.flatpak_installed_commit, source["id"])
+        for build in builds:
+            build["current"] = build["commit"] == current
+        return {"ok": True, "builds": builds}
+
+    async def update_emulator(self, entry_id: str):
+        """Move an emulator to the newest build on its remote. Streams progress."""
+        entry, app_id, error = await self._flatpak_entry(entry_id)
+        if error:
+            return {"ok": False, "error": error}
+
+        argv = await self._run(emu_install.flatpak_update_argv, app_id)
+        if not argv:
+            return {"ok": False, "error": "flatpak is not available on this system."}
+
+        self._detach(
+            self._change_emulator_build(entry, [argv], "Updating"),
+            "emulator_install_done", entry["id"],
+        )
+        return {"ok": True, "started": True}
+
+    async def rollback_emulator(self, entry_id: str, commit: str):
+        """Put an emulator back on a past build, and hold it there.
+
+        Held as part of the same action rather than as a second button, because a
+        downgrade that is not held is undone by the next update -- and the person
+        it is undone for has no way to connect a game that broke a week later to
+        an update they did not ask for. Releasing the hold is its own control, so
+        the state is visible and reversible; it is being *silently* moved that is
+        the problem.
+        """
+        entry, app_id, error = await self._flatpak_entry(entry_id)
+        if error:
+            return {"ok": False, "error": error}
+        # Pure, so not worth an executor round trip.
+        if not emu_install.valid_commit(commit):
+            return {"ok": False, "error": "That is not a build this can move to."}
+
+        argv = await self._run(emu_install.flatpak_downgrade_argv, app_id, commit)
+        if not argv:
+            return {"ok": False, "error": "flatpak is not available on this system."}
+
+        self._detach(
+            # Held after the move, not before: masking first can stop flatpak
+            # deploying the very commit it was asked for, and a hold on a version
+            # that was never reached is the worst of both outcomes.
+            self._change_emulator_build(entry, [argv], "Going back", hold_after=True),
+            "emulator_install_done", entry["id"],
+        )
+        return {"ok": True, "started": True}
+
+    async def hold_emulator(self, entry_id: str, held: bool = True):
+        """Pin an emulator at its current build, or let it move again."""
+        entry, app_id, error = await self._flatpak_entry(entry_id)
+        if error:
+            return {"ok": False, "error": error}
+
+        ok, reason = await self._run(emu_install.flatpak_hold, app_id, bool(held))
+        if not ok:
+            return {"ok": False, "error": reason}
+        # Read back rather than assumed: this is the state a row displays, and a
+        # mask that did not take would otherwise show as held forever.
+        return {
+            "ok": True,
+            "held": app_id in await self._run(emu_install.flatpak_held),
+        }
+
+    async def _flatpak_entry(self, entry_id):
+        """(entry, app_id, error) for an installed user-scope flatpak emulator."""
+        entry = emulator_catalog.find(entry_id)
+        if not entry:
+            return None, "", "That emulator is not in the catalog."
+        source = entry.get("source") or {}
+        if source.get("kind") != "flatpak":
+            return None, "", (
+                "%s is not installed from Flathub, so its version cannot be changed "
+                "from here." % entry["name"]
+            )
+        app_id = source.get("id", "")
+        scope = await self._run(emu_install.flatpak_scope, app_id)
+        if scope == "system":
+            return None, "", (
+                "%s was installed system-wide, so changing its version needs a "
+                "password this plugin cannot give." % entry["name"]
+            )
+        if scope != "user":
+            return None, "", "%s is not installed." % entry["name"]
+        return entry, app_id, ""
+
+    async def _change_emulator_build(self, entry, steps, label, hold_after=False):
+        """Update or roll back, reporting on the same events an install uses.
+
+        Deliberately does not re-register the emulator afterwards. A flatpak's
+        launch command does not change with its version, so there is nothing to
+        rewrite -- and re-registering would overwrite launch arguments somebody
+        corrected by hand in the editor, which is a worse outcome than anything
+        this was asked to fix.
+        """
+        app_id = entry["source"]["id"]
         try:
-            for argv in steps:
-                decky.logger.info("Running: %s", " ".join(argv))
-                try:
-                    process = await asyncio.create_subprocess_exec(
-                        *argv,
-                        stdout=asyncio.subprocess.PIPE,
-                        stderr=asyncio.subprocess.STDOUT,
-                        env=env,
-                    )
-                except (OSError, NotImplementedError) as error:
-                    decky.logger.exception("Could not start %s", argv[0])
-                    await decky.emit(
-                        "emulator_install_done", entry["id"], False,
-                        "Could not run flatpak: %s" % error,
-                    )
-                    return
+            await decky.emit(
+                "emulator_install_progress", entry["id"], "%s %s" % (label, entry["name"]), -1
+            )
+            ok, reason = await self._stream_flatpak(
+                entry["id"], steps, must_succeed=("update",)
+            )
+            if not ok:
+                await decky.emit("emulator_install_done", entry["id"], False, reason)
+                return
 
-                # Same buffering as the RetroArch install: flatpak redraws its
-                # progress line with carriage returns, and a percentage split
-                # across two reads yields a nonsense number.
-                tail = []
-                buffer = ""
-                while True:
-                    chunk = await process.stdout.read(256)
-                    if not chunk:
-                        break
-                    buffer += chunk.decode("utf-8", errors="replace")
-                    segments = re.split(r"[\r\n]+", buffer)
-                    buffer = segments.pop()
-                    for segment in segments:
-                        text = segment.strip()
-                        if not text:
-                            continue
-                        decky.logger.info("flatpak: %s", text)
-                        tail.append(text)
-                        del tail[:-5]
-                        await decky.emit(
-                            "emulator_install_progress",
-                            entry["id"],
-                            text,
-                            self._parse_percent(text),
-                        )
-
-                code = await process.wait()
-                # remote-add is allowed to fail; the remote usually exists.
-                if code != 0 and "install" in argv:
-                    reason = " ".join(tail).strip() or "no output"
-                    await decky.emit(
-                        "emulator_install_done", entry["id"], False,
-                        "flatpak exited with code %d: %s" % (code, reason),
+            notice = ""
+            if hold_after:
+                # Reported, not assumed. An unheld rollback is undone by the next
+                # update, so "went back but could not hold it" is a different
+                # outcome from success and has to say so -- otherwise the version
+                # moves again later and nothing connects the two.
+                held, hold_error = await self._run(emu_install.flatpak_hold, app_id, True)
+                if not held:
+                    notice = (
+                        "Moved to that build, but it could not be held there, so an "
+                        "update may move it again: %s" % hold_error
                     )
-                    return
+
+            build = await self._run(emu_install.flatpak_installed_commit, app_id)
+            decky.logger.info("%s is now on %s", entry["id"], build[:12] or "an unknown build")
+            await decky.emit("emulator_install_done", entry["id"], True, notice)
+        except OSError as error:
+            decky.logger.exception("Changing the build of %s failed", entry["id"])
+            await decky.emit("emulator_install_done", entry["id"], False, str(error))
+
+    async def _stream_flatpak(self, entry_id, steps, must_succeed=("install",)):
+        """Run flatpak commands in order, streaming their output as progress.
+
+        Returns (ok, reason). Shared by installing, updating and going back to a
+        past build, which are the same operation to flatpak and differ here only
+        in which verb is allowed to fail: `remote-add` is expected to when the
+        remote already exists, while an `install` or `update` that fails is the
+        whole answer.
+
+        Progress goes out on `emulator_install_progress` for all three, because
+        the panel draws one bar and does not care which verb is filling it.
+        """
+        env = self._subprocess_env()
+        for argv in steps:
+            decky.logger.info("Running: %s", " ".join(argv))
+            try:
+                process = await asyncio.create_subprocess_exec(
+                    *argv,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.STDOUT,
+                    env=env,
+                )
+            except (OSError, NotImplementedError) as error:
+                decky.logger.exception("Could not start %s", argv[0])
+                return False, "Could not run flatpak: %s" % error
+
+            # flatpak redraws its progress line with carriage returns, and a
+            # percentage split across two reads yields a nonsense number, so
+            # whole segments are buffered before anything is parsed out of them.
+            tail = []
+            buffer = ""
+            while True:
+                chunk = await process.stdout.read(256)
+                if not chunk:
+                    break
+                buffer += chunk.decode("utf-8", errors="replace")
+                segments = re.split(r"[\r\n]+", buffer)
+                buffer = segments.pop()
+                for segment in segments:
+                    text = segment.strip()
+                    if not text:
+                        continue
+                    decky.logger.info("flatpak: %s", text)
+                    tail.append(text)
+                    del tail[:-5]
+                    await decky.emit(
+                        "emulator_install_progress",
+                        entry_id,
+                        text,
+                        self._parse_percent(text),
+                    )
+
+            code = await process.wait()
+            if code != 0 and any(verb in argv for verb in must_succeed):
+                # The last lines are where flatpak puts the reason; the exit code
+                # alone has cost a debugging round before.
+                reason = " ".join(tail).strip() or "no output"
+                return False, "flatpak exited with code %d: %s" % (code, reason)
+
+        return True, ""
+
+    async def _install_emulator_flatpak(self, entry, steps):
+        try:
+            ok, reason = await self._stream_flatpak(entry["id"], steps)
+            if not ok:
+                await decky.emit("emulator_install_done", entry["id"], False, reason)
+                return
 
             if not await self._run(emu_install.flatpak_installed, entry["source"]["id"]):
                 await decky.emit(

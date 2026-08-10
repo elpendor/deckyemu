@@ -240,6 +240,37 @@ def _parse_history(lines, limit=12):
     return [build for build in builds if build["commit"]][:limit]
 
 
+def flatpak_hold(app_id, held):
+    """Pin `app_id` at its current build, or release it. Returns (ok, message).
+
+    Run and waited for rather than streamed: masking is instantaneous, and a
+    progress bar for it would be a bar that appears and vanishes. The output is
+    kept because a mask that did not take must not read as one that did -- the
+    whole value of holding is that somebody can trust the version stopped moving.
+    """
+    argv = flatpak_hold_argv(app_id, held)
+    if not argv:
+        return False, "flatpak is not available on this system."
+    try:
+        done = subprocess.run(
+            argv,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            env=sysenv.clean_env(),
+            timeout=60,
+        )
+    except (OSError, subprocess.SubprocessError) as error:
+        return False, "Could not run flatpak: %s" % error
+
+    text = done.stdout.decode("utf-8", errors="replace").strip()
+    for line in text.splitlines():
+        decky.logger.info("flatpak: %s", line)
+    if done.returncode != 0:
+        lines = [line for line in text.splitlines() if line.strip()]
+        return False, lines[-1] if lines else "flatpak exited with %d" % done.returncode
+    return True, ""
+
+
 def flatpak_updates():
     """App ids with a newer build waiting, as a set.
 
