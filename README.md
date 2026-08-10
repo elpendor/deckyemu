@@ -35,7 +35,7 @@ registered by hand. Everything happens in Game Mode.
 [Building](#building) · [Developing against a Deck](#developing-against-a-deck) ·
 [Layout](#layout) ·
 [Steam's runtime](#steams-runtime-breaks-system-binaries) ·
-[Steam APIs](#notes-on-the-steam-apis-used)
+[Steam APIs](#notes-on-the-steam-apis-used) · [Thanks](#thanks)
 
 ## What it does
 
@@ -235,12 +235,8 @@ into `~/deckyemu/emulators`.
 
 Several emulators are not playable as they ship — a keyboard is bound instead of
 a controller, or they start in a window — so installing one also writes a
-controller configuration and turns fullscreen on. Where
-[EmuDeck](https://github.com/EmuDeck) or
-[RetroDECK](https://github.com/RetroDECK/RetroDECK) publish a tested
-configuration for the same emulator on the same hardware, that is the reference
-those values were taken from; each was then checked against what the emulator
-actually does with it on a Deck.
+controller configuration and turns fullscreen on. Those values are not guesses;
+where they came from is under [Thanks](#thanks).
 
 **Installing the emulator is not always enough to play.** Some systems need BIOS
 files, keys or firmware that are yours to dump and that this plugin will never
@@ -727,7 +723,29 @@ recording:
 - Collections are managed through the `collectionStore` global. Every call there
   is guarded, and failing to file a game into a collection never fails the add.
 
----
+## Thanks
+
+Parts of this were settled by reading other people's work instead of guessing,
+and each of these saved a round of it.
+
+- **[EmuDeck](https://github.com/EmuDeck)** and
+  **[RetroDECK](https://github.com/RetroDECK/RetroDECK)** publish controller
+  configurations tested on this hardware. Where one existed for an emulator in the
+  list above, that is what the values written on install were taken from, rather
+  than a reading of a button table — and a button table would have got several of
+  them wrong, because face buttons have to be matched by position and not by
+  letter. Both projects also cover far more systems than this one does.
+- **[TabMaster](https://github.com/Tormak9970/TabMaster)** for the Quick Access
+  header. It has a title class of its own, separate from the generic one, and
+  matching it is what stopped this plugin's name sitting off-centre against
+  decky's back arrow.
+- **[unifideck](https://github.com/mubaraknumann/unifideck)** for the reason the
+  update button works in Game Mode. Installing an update goes through decky's
+  global websocket, but the Quick Access panel is a popup window there, so the
+  global sits on its opener rather than on `window`. Reading their source is why
+  that worked here the first time it was tried: it behaves either way in Desktop
+  Mode, so a missing fallback shows up only in Game Mode, on a Deck, at the one
+  moment a user is trying to update.
 
 Built from the
 [Decky plugin template](https://github.com/SteamDeckHomebrew/decky-plugin-template);
