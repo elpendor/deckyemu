@@ -1,5 +1,6 @@
 import {
   ButtonItem,
+  DialogButton,
   Field,
   PanelSection,
   PanelSectionRow,
@@ -7,7 +8,7 @@ import {
 } from "@decky/ui";
 import { definePlugin, routerHook, useQuickAccessVisible } from "@decky/api";
 import { useCallback, useEffect, useState } from "react";
-import { FaGamepad } from "react-icons/fa";
+import { FaCog, FaGamepad } from "react-icons/fa";
 
 import {
   getStatus,
@@ -167,17 +168,27 @@ function Content() {
           />
         </PanelSectionRow>
 
-        {!canAddGames && (
-          <PanelSectionRow>
-            <Field description="Set up RetroArch and a core, or add a standalone emulator, to start adding games." />
-          </PanelSectionRow>
-        )}
+        {/* Kept as a full-width button only while there is nothing to play with.
+            Routine access to the settings page is the cog in the header now, and
+            a second control saying the same thing below it is just a row in the
+            way of adding a game.
 
-        <PanelSectionRow>
-          <ButtonItem layout="below" onClick={openManage}>
-            {canAddGames ? "Settings" : "Set up emulators"}
-          </ButtonItem>
-        </PanelSectionRow>
+            It stays for the not-ready state because there it is not "settings",
+            it is the only thing to do next -- and a first-time user who has just
+            found the plugin should not have to notice a 30px icon to get
+            started. */}
+        {!canAddGames && (
+          <>
+            <PanelSectionRow>
+              <Field description="Set up RetroArch and a core, or add a standalone emulator, to start adding games." />
+            </PanelSectionRow>
+            <PanelSectionRow>
+              <ButtonItem layout="below" onClick={openManage}>
+                Set up emulators
+              </ButtonItem>
+            </PanelSectionRow>
+          </>
+        )}
       </PanelSection>
 
       {canAddGames && <AddGamePanel status={status} onGameAdded={loadGames} />}
@@ -198,6 +209,51 @@ const GuardedManagePage = () => (
   </ErrorBoundary>
 );
 
+/**
+ * The plugin's row in the Quick Access header: its name, and a way to the
+ * settings page.
+ *
+ * quickAccessMenuClasses.Title, not staticClasses.Title. The generic title class
+ * carries its own padding and line height, which is why the name sat off-centre
+ * against decky's back arrow no matter what was done to it from the outside. The
+ * Quick Access header has a class of its own that matches the row.
+ *
+ * The button's numbers are all doing something. `minWidth: 0` because
+ * DialogButton is sized for a dialog footer and defaults far wider than a header
+ * row has to spare; the negative `marginTop` on the icon because a glyph in a
+ * button that short otherwise sits low against the text beside it. `marginRight:
+ * auto` on the name is what pushes the button to the right edge rather than
+ * leaving it next to the title.
+ */
+function TitleView() {
+  return (
+    <div
+      className={quickAccessMenuClasses.Title}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        padding: 0,
+        flex: "auto",
+        boxShadow: "none",
+      }}
+    >
+      <div style={{ marginRight: "auto" }}>DeckyEmu</div>
+      <DialogButton
+        style={{
+          marginLeft: "5px",
+          height: "28px",
+          width: "30px",
+          minWidth: 0,
+          padding: "10px 6px",
+        }}
+        onClick={() => openManagePage()}
+      >
+        <FaCog style={{ marginTop: "-4px", display: "block" }} />
+      </DialogButton>
+    </div>
+  );
+}
+
 export default definePlugin(() => {
   // Not exact: each tab has its own URL under this one (see `tabRoute`), and an
   // exact route leaves those unresolved, so tapping a tab navigates to nothing.
@@ -205,22 +261,7 @@ export default definePlugin(() => {
 
   return {
     name: "DeckyEmu",
-    /*
-     * quickAccessMenuClasses.Title, not staticClasses.Title.
-     *
-     * The generic title class carries its own padding and line height, which is
-     * why the name sat off-centre against decky's back arrow no matter what was
-     * done to it from the outside. The Quick Access header has a class of its own
-     * that matches the row; this is the shape TabMaster uses, which lines up.
-     */
-    titleView: (
-      <div
-        className={quickAccessMenuClasses.Title}
-        style={{ display: "flex", alignItems: "center", padding: 0, flex: "auto", boxShadow: "none" }}
-      >
-        <div style={{ marginRight: "auto" }}>DeckyEmu</div>
-      </div>
-    ),
+    titleView: <TitleView />,
     /*
      * Wrapped, because this renders inside decky's panel and a throw here
      * unmounts everything up to whatever boundary decky has -- taking the panel
