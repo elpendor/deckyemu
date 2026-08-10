@@ -15,6 +15,7 @@ registered by hand. Everything happens in Game Mode.
 
 **Getting games in** —
 [Sending files from another device](#sending-files-from-another-device) ·
+[Where a ROM ends up](#where-a-rom-ends-up) ·
 [Installing RetroArch and cores](#installing-retroarch-and-cores) ·
 [Installing an emulator](#installing-an-emulator) ·
 [Custom emulators](#custom-emulators) · [Editing a game](#editing-a-game)
@@ -122,7 +123,8 @@ Anything the plugin puts on your device that is yours to keep lives under
 
 | Folder | What is in it |
 | --- | --- |
-| `roms/` | ROMs. Files arrive here and are filed into `roms/<system>/` once added |
+| `transfer/` | The inbox. Everything sent from another device lands here, whatever it is |
+| `roms/` | The library. A ROM is moved to `roms/<system>/` when its game is added |
 | `emulators/` | Emulators installed from the Emulators tab that are not Flatpaks |
 | `firmware/` | BIOS files, keys and firmware you supply |
 
@@ -139,11 +141,13 @@ local network and offers two ways in, because the devices differ:
 - **A short address and a six-digit code**, for anything with a keyboard. A
   desktop cannot scan, and will not have a 22-character token typed into it.
 
-Files land in `~/deckyemu/roms` by default — its own folder, since uploads arrive
-unsorted and of unknown system. Each received file gets an **Add** button that
-drops straight into the add flow with the name and artwork already resolved.
-Adding a game also files its ROM into `roms/<system>/`, which is the first moment
-anything knows what the file was; its launcher is rewritten to follow.
+Files land in `~/deckyemu/transfer` by default — an inbox of its own, since
+uploads arrive unsorted and of unknown system. Each received file gets an **Add**
+button that drops straight into the add flow with the name and artwork already
+resolved. Adding a game moves its ROM out of the inbox and into
+`roms/<system>/`, which is the first moment anything knows what the file was, so
+the inbox empties itself as you use it. See
+[Where a ROM ends up](#where-a-rom-ends-up).
 
 One kind of file is not a ROM: a `.deckyemu.json` **emulator definition** gets an
 **Import** button instead. That is how an emulator this plugin does not ship gets
@@ -182,6 +186,44 @@ transfer is running.
   the server once idle.
 - It is plain HTTP on a local network: fine for moving ROMs around a house, not
   something to expose beyond one.
+
+## Where a ROM ends up
+
+Whether a ROM is moved when you add it, and whether it is deleted when you remove
+the game, both depend on one thing: where the file was when you picked it.
+
+**A file in the `transfer/` inbox is moved** into `~/deckyemu/roms/<system>/`. The
+system comes from the core or emulator you chose, which is the first point at
+which anything can know it — `.iso` alone is GameCube, PS2, PSP or Xbox. The move
+happens before the launcher is written, so nothing is ever left pointing at the
+old path.
+
+It moves the whole game or none of it. Companion files are found by name
+(`Game.cue` beside `Game.bin`) and by reading playlists, since a `.cue`, `.m3u` or
+`.gdi` names files that do not share its name. If a disc a playlist expects is
+missing, nothing is moved — an untidy inbox beats a game that will not start.
+
+Send the same ROM twice and the second copy is recognised as identical and
+discarded, with the game pointed at the one already filed. A *different* dump of
+the same name is never overwritten; it stays in the inbox and the row says so.
+
+**A file anywhere else is left exactly where it is.** An SD card, your home
+folder, a library some other tool laid out, even a subfolder inside `transfer/` —
+the launcher points at it in place and nothing is moved.
+
+That determines what removing a game can delete:
+
+| Where the ROM is | Moved when added | Deleted when the game is removed |
+| --- | --- | --- |
+| `transfer/` | Yes, into `roms/<system>/` | Yes |
+| `roms/<system>/` | Already filed | Yes |
+| `roms/` itself | No | No |
+| SD card, home, anywhere else | No | No |
+
+Only ROMs sitting one level under `~/deckyemu/roms` count as the plugin's, which
+is exactly the set it put there. Anything else is reported as not its to delete
+rather than quietly skipped. See also
+[Removing everything](#removing-everything).
 
 ## Installing RetroArch and cores
 
