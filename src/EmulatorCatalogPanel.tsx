@@ -19,11 +19,13 @@ import {
   FaFolderOpen,
   FaLink,
   FaEraser,
+  FaCodeBranch,
   FaTrash,
   FaWindowMaximize,
 } from "react-icons/fa";
 
 import {
+  emulatorBuilds,
   getStatus,
   installEmulator,
   listEmulatorCatalog,
@@ -34,7 +36,9 @@ import {
   removeImportedEmulator,
   uninstallEmulator,
   type CatalogEmulator,
+  type EmulatorBuild,
 } from "./backend";
+import { EmulatorVersionModal } from "./EmulatorVersionModal";
 import { InstallProgress } from "./InstallProgress";
 import { emulatorRowActions } from "./emulatorActions";
 import { byName } from "./order";
@@ -54,7 +58,7 @@ const MUTED = { fontSize: "12px", opacity: 0.6 };
  * The extension list is the interesting part -- it is derived from libretro's
  * metadata rather than typed, so showing it is what makes it checkable.
  */
-function describe(entry: CatalogEmulator): string {
+function describe(entry: CatalogEmulator, build?: EmulatorBuild): string {
   // A bring-your-own entry with nothing located yet: the plugin knows how to
   // run this emulator but will not obtain it, and the row would otherwise look
   // like an install that has not happened.
@@ -68,8 +72,19 @@ function describe(entry: CatalogEmulator): string {
   if (entry.present && !entry.registered) {
     return `${entry.system} · installed, but not set up for adding games yet`;
   }
+  // The version state goes here rather than only inside the dialog, because
+  // nothing would otherwise prompt anybody to open it. "Held" is the one that
+  // most needs saying: a pinned emulator stops receiving updates indefinitely,
+  // and an invisible pin is a trap rather than a feature.
+  const version = build?.held
+    ? "held at this build"
+    : build?.update_available
+      ? "update available"
+      : "";
+
   const extensions = entry.extensions.map((extension) => `.${extension}`).join(" ");
-  return extensions ? `${entry.system} · ${extensions}` : entry.system;
+  const parts = [entry.system, extensions, version].filter(Boolean);
+  return parts.join(" · ");
 }
 
 export function EmulatorCatalogPanel({ onChanged }: Props) {
@@ -82,12 +97,26 @@ export function EmulatorCatalogPanel({ onChanged }: Props) {
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
   const [homeDir, setHomeDir] = useState("");
+  // Which installed emulators can have their build changed, keyed by entry id.
+  // Two flatpak queries for all of them, so it is cheap enough to read here and
+  // saves the version dialog asking again for the row that opened it.
+  const [builds, setBuilds] = useState<Record<string, EmulatorBuild>>({});
 
   const load = useCallback(() => {
     callWithRetry(listEmulatorCatalog)
       .then(setEntries)
       .catch((loadError) => console.error("[deckyemu] could not read the catalog", loadError))
       .finally(() => setLoading(false));
+    // Separate call, and a failure here must not blank the catalog: not knowing
+    // whether an update is waiting is a missing button, while not knowing what
+    // is installed is an empty tab.
+    callWithRetry(emulatorBuilds)
+      .then((rows) =>
+        setBuilds(Object.fromEntries(rows.map((row) => [row.id, row]))),
+      )
+      .catch((buildError) =>
+        console.error("[deckyemu] could not read emulator builds", buildError),
+      );
   }, []);
 
   // Where the "locate" picker starts. Read from the backend rather than
@@ -438,7 +467,7 @@ export function EmulatorCatalogPanel({ onChanged }: Props) {
           ) : (
             <Field
               label={entry.name}
-              description={describe(entry)}
+              description={describe(entry, builds[entry.id])}
               childrenContainerWidth="min"
             >
               <div style={{ display: "flex", gap: "6px" }}>
@@ -452,6 +481,35 @@ export function EmulatorCatalogPanel({ onChanged }: Props) {
                     style={{ minWidth: "auto", width: "auto", padding: "6px 12px" }}
                   >
                     <FaLink />
+                  </DialogButton>
+                )}
+                {/* Only for an emulator whose build can actually be moved --
+                    a user-scope flatpak that is installed. Everything else is
+                    absent rather than disabled: an AppImage has no published
+                    history to choose from, and a system-scope flatpak would need
+                    a password this plugin cannot give.
+
+                    One button for four things (update, the list of earlier
+                    builds, the hold and its release) because this row already
+                    carries up to four of its own, and six small icons in a row
+                    cannot be hit with a thumbstick. */}
+                {builds[entry.id] && !builds[entry.id].reason && (
+                  <DialogButton
+                    disabled={Boolean(busyId)}
+                    onClick={() =>
+                      showModal(
+                        <EmulatorVersionModal
+                          emulator={builds[entry.id]}
+                          onChanged={() => {
+                            load();
+                            onChanged();
+                          }}
+                        />,
+                      )
+                    }
+                    style={{ minWidth: "auto", width: "auto", padding: "6px 12px" }}
+                  >
+                    <FaCodeBranch />
                   </DialogButton>
                 )}
                 {/* Registered installs only: opening the interface of an

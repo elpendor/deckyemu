@@ -128,6 +128,11 @@ emu_install.flatpak_installed_commit = _fake_commit
 emitted.clear()
 run(plugin._change_emulator_build(ENTRY, [["flatpak", "update"]], "Going back", hold_after=True))
 check("going back pins the build it moved to", _holds, [("net.pcsx2.PCSX2", True)])
+# Its own event, not the install one. A build change that reported on
+# emulator_install_done would make the catalog panel toast "PCSX2 installed"
+# after an update, and the modal watching for it would hear nothing.
+check("build changes report on their own event", emitted[-1][0], "emulator_build_done")
+check("and progress does too", emitted[0][0], "emulator_build_progress")
 check("and reports success", emitted[-1][1][1], True)
 # Empty message: nothing went wrong, so there is nothing to caveat.
 check("with no caveat when the hold took", emitted[-1][1][2], "")

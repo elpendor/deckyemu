@@ -410,7 +410,7 @@ class Emulators(plugin_base.PluginContext):
 
         self._detach(
             self._change_emulator_build(entry, [argv], "Updating"),
-            "emulator_install_done", entry["id"],
+            "emulator_build_done", entry["id"],
         )
         return {"ok": True, "started": True}
 
@@ -440,7 +440,7 @@ class Emulators(plugin_base.PluginContext):
             # deploying the very commit it was asked for, and a hold on a version
             # that was never reached is the worst of both outcomes.
             self._change_emulator_build(entry, [argv], "Going back", hold_after=True),
-            "emulator_install_done", entry["id"],
+            "emulator_build_done", entry["id"],
         )
         return {"ok": True, "started": True}
 
@@ -494,13 +494,13 @@ class Emulators(plugin_base.PluginContext):
         app_id = entry["source"]["id"]
         try:
             await decky.emit(
-                "emulator_install_progress", entry["id"], "%s %s" % (label, entry["name"]), -1
+                "emulator_build_progress", entry["id"], "%s %s" % (label, entry["name"]), -1
             )
             ok, reason = await self._stream_flatpak(
                 entry["id"], steps, must_succeed=("update",)
             )
             if not ok:
-                await decky.emit("emulator_install_done", entry["id"], False, reason)
+                await decky.emit("emulator_build_done", entry["id"], False, reason)
                 return
 
             notice = ""
@@ -518,10 +518,10 @@ class Emulators(plugin_base.PluginContext):
 
             build = await self._run(emu_install.flatpak_installed_commit, app_id)
             decky.logger.info("%s is now on %s", entry["id"], build[:12] or "an unknown build")
-            await decky.emit("emulator_install_done", entry["id"], True, notice)
+            await decky.emit("emulator_build_done", entry["id"], True, notice)
         except OSError as error:
             decky.logger.exception("Changing the build of %s failed", entry["id"])
-            await decky.emit("emulator_install_done", entry["id"], False, str(error))
+            await decky.emit("emulator_build_done", entry["id"], False, str(error))
 
     async def _stream_flatpak(self, entry_id, steps, must_succeed=("install",)):
         """Run flatpak commands in order, streaming their output as progress.

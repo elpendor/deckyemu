@@ -207,6 +207,76 @@ export const uninstallEmulator = callable<
   [entryId: string],
   { ok: boolean; error?: string }
 >("uninstall_emulator");
+
+/** One installed emulator whose version can be moved. */
+export interface EmulatorBuild {
+  id: string;
+  name: string;
+  app_id: string;
+  /** Short commit, for display. The full one is only ever quoted back from `builds`. */
+  build: string;
+  update_available: boolean;
+  /** Pinned, so no update will move it. */
+  held: boolean;
+  /** Non-empty when the version cannot be changed, and why. */
+  reason: string;
+}
+
+/**
+ * Installed emulators whose build can be changed, and where each one is.
+ *
+ * Flatpak entries only. An AppImage can be reinstalled, but knowing whether that
+ * is worth 200MB needs a release tag recorded at install time, and installs made
+ * before that existed have none — so absent from this list means "not offered"
+ * rather than "up to date".
+ *
+ * Two flatpak queries however many emulators there are, so this is cheap enough
+ * to call when the tab opens.
+ */
+export const emulatorBuilds = callable<[], EmulatorBuild[]>("emulator_builds");
+
+/** One past build of an emulator, as offered to go back to. */
+export interface PastBuild {
+  /** Full commit hash. Passed back verbatim to `rollbackEmulator`. */
+  commit: string;
+  /** `2026-07-26 20:53:49 +0000`, straight from flatpak. */
+  date: string;
+  /** The commit subject, which is what makes this choosable rather than a hash. */
+  subject: string;
+  current: boolean;
+}
+
+/** Costs a network round trip, so ask when the list is opened, not per row. */
+export const emulatorBuildList = callable<
+  [entryId: string],
+  { ok: boolean; error?: string; builds: PastBuild[] }
+>("emulator_build_list");
+
+/** Resolves once the update has *started*; watch the install events for the rest. */
+export const updateEmulator = callable<
+  [entryId: string],
+  { ok: boolean; started?: boolean; error?: string }
+>("update_emulator");
+
+/**
+ * Move an emulator back to a past build and pin it there.
+ *
+ * Pinning is part of the same action on purpose: an unpinned downgrade is undone
+ * by the next update, and nothing would connect a game breaking a week later to
+ * a version change nobody asked for. Watch the install events — and read the
+ * done event's message, which is non-empty when the move worked but the pin did
+ * not.
+ */
+export const rollbackEmulator = callable<
+  [entryId: string, commit: string],
+  { ok: boolean; started?: boolean; error?: string }
+>("rollback_emulator");
+
+/** Pin an emulator at its current build, or let it move again. */
+export const holdEmulator = callable<
+  [entryId: string, held: boolean],
+  { ok: boolean; held?: boolean; error?: string }
+>("hold_emulator");
 /**
  * Registers an emulator that is already on the device. Needed because installed
  * and registered come apart: Discover and the usual emulation setups install
