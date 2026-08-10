@@ -13,6 +13,11 @@ registered by hand. Everything happens in Game Mode.
 **Start here** — [What it does](#what-it-does) · [Requirements](#requirements) ·
 [Installing](#installing) · [Where things live](#where-things-live)
 
+New to it? [docs/getting-started.md](docs/getting-started.md) is the walkthrough —
+install to first game in three steps, then the everyday tasks and a
+symptom-by-symptom list for when one of them misbehaves. What follows here is the
+reference.
+
 **Getting games in** —
 [Sending files from another device](#sending-files-from-another-device) ·
 [Where a ROM ends up](#where-a-rom-ends-up) ·
