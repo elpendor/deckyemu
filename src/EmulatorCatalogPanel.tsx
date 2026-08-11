@@ -459,10 +459,20 @@ export function EmulatorCatalogPanel({ onChanged }: Props) {
         return (
         <PanelSectionRow key={entry.id}>
           {busyId === entry.id ? (
-            <InstallProgress
-              label={`Installing ${entry.name}`}
-              percent={percent}
-              status={status}
+            /* The same Field as every other row, with the bar in the
+               description. Replacing the row outright made the emulator's name
+               jump to a different size and lose its inset, so an installing row
+               read as a different kind of thing wedged into the list. */
+            <Field
+              label={entry.name}
+              description={
+                <InstallProgress
+                  inline
+                  label={`Installing ${entry.name}`}
+                  percent={percent}
+                  status={status}
+                />
+              }
             />
           ) : (
             <Field

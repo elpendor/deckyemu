@@ -21,7 +21,8 @@ import {
   type PastBuild,
 } from "./backend";
 import { buildDate } from "./buildDate";
-import { humanSize, ProgressBar } from "./TransferModal";
+import { InstallProgress } from "./InstallProgress";
+import { humanSize } from "./TransferModal";
 
 interface Props {
   closeModal?: () => void;
@@ -243,15 +244,22 @@ export function EmulatorVersionModal({ closeModal, emulator, onChanged }: Props)
         </PanelSectionRow>
       )}
 
+      {/* The install bar rather than a plain fraction, and the difference is not
+          cosmetic: a flatpak update prints no percentage at all -- it only does
+          that to a terminal, and this reads it through a pipe -- so a bar driven
+          by the number alone would sit at zero for the whole operation and read
+          as stalled. InstallProgress draws a travelling segment when there is no
+          number, and a real fill for an AppImage download, where Content-Length
+          makes one available. */}
       {running && (
-        <>
-          <PanelSectionRow>
-            <Field label={busy} description={status} />
-          </PanelSectionRow>
-          <div style={{ paddingBottom: "10px" }}>
-            <ProgressBar fraction={percent / 100} />
-          </div>
-        </>
+        <PanelSectionRow>
+          <Field
+            label={busy}
+            description={
+              <InstallProgress inline label={busy} percent={percent} status={status} />
+            }
+          />
+        </PanelSectionRow>
       )}
 
       {!running && !onNewest && (

@@ -21,6 +21,17 @@ interface Props {
   percent: number;
   /** The installer's own last line of output. */
   status: string;
+  /**
+   * Drawn as the description of a row that already names the thing.
+   *
+   * A list of `Field` rows has a rhythm Steam owns -- the label block, then the
+   * value -- and replacing one row with a block of hand-rolled markup breaks it:
+   * the name jumps to a different size and the row loses its inset, which reads
+   * as a different kind of thing appearing in the middle of the list. Inline
+   * keeps the row and puts the bar where the description goes, so only the
+   * right-hand side changes while something installs.
+   */
+  inline?: boolean;
 }
 
 /**
@@ -32,22 +43,26 @@ interface Props {
  * itself out, this owns its layout -- label above, bar full width, status
  * beneath.
  */
-export function InstallProgress({ label, percent, status }: Props) {
+export function InstallProgress({ label, percent, status, inline = false }: Props) {
   const indeterminate = percent <= 0;
 
   return (
-    <div style={{ width: "100%", padding: "4px 0" }}>
+    <div style={{ width: "100%", padding: inline ? "2px 0 0" : "4px 0" }}>
       <style>{PROGRESS_CSS}</style>
 
-      <div style={{ display: "flex", justifyContent: "space-between", fontSize: "14px" }}>
-        <span>{label}</span>
-        {!indeterminate && <span style={{ opacity: 0.7 }}>{percent}%</span>}
-      </div>
+      {/* Omitted inline: the row's own label already names the emulator, and
+          repeating it under itself is the thing that looked wrong. */}
+      {!inline && (
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: "14px" }}>
+          <span>{label}</span>
+          {!indeterminate && <span style={{ opacity: 0.7 }}>{percent}%</span>}
+        </div>
+      )}
 
       <div
         style={{
-          height: "6px",
-          margin: "8px 0 6px",
+          height: inline ? "4px" : "6px",
+          margin: inline ? "0 0 5px" : "8px 0 6px",
           borderRadius: "3px",
           background: "rgba(255, 255, 255, 0.15)",
           overflow: "hidden",
@@ -70,16 +85,30 @@ export function InstallProgress({ label, percent, status }: Props) {
 
       <div
         style={{
+          display: "flex",
+          justifyContent: "space-between",
+          gap: "8px",
           fontSize: "12px",
           opacity: 0.6,
-          // flatpak's lines are long; keep them to one line rather than
-          // reflowing the panel on every update.
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
         }}
       >
-        {status}
+        <span
+          style={{
+            // flatpak's lines are long; keep them to one line rather than
+            // reflowing the panel on every update.
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {/* Inline, the status line carries the label when there is no output
+              yet -- otherwise the row reads as a name over an empty bar and
+              says nothing about what is happening. */}
+          {status || (inline ? label : "")}
+        </span>
+        {/* Inline the percentage lives here rather than up beside a label there
+            is none of. */}
+        {inline && !indeterminate && <span style={{ flexShrink: 0 }}>{percent}%</span>}
       </div>
     </div>
   );
