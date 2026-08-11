@@ -31,7 +31,6 @@ import {
   listEmulatorCatalog,
   locateEmulator,
   prepareEmulatorGui,
-  recordEmulatorGui,
   registerEmulator,
   removeImportedEmulator,
   uninstallEmulator,
@@ -42,7 +41,7 @@ import { EmulatorVersionModal } from "./EmulatorVersionModal";
 import { InstallProgress } from "./InstallProgress";
 import { emulatorRowActions } from "./emulatorActions";
 import { byName } from "./order";
-import { createShortcut, launchApp, shortcutExists } from "./steam";
+import { openSetupShortcut, removeStaleSetupShortcuts } from "./setupShortcut";
 import { callWithRetry } from "./timeout";
 
 interface Props {
@@ -136,6 +135,22 @@ export function EmulatorCatalogPanel({ onChanged }: Props) {
   }, []);
 
   useEffect(load, [load]);
+
+  /*
+   * Clear out the per-emulator setup shortcuts an older build made.
+   *
+   * The backend hands them over once and forgets them in the same call, so from
+   * the second panel opening this does nothing. Here rather than at startup
+   * because only the frontend can delete a Steam shortcut.
+   */
+  useEffect(() => {
+    void (async () => {
+      const removed = await removeStaleSetupShortcuts();
+      if (removed > 0) {
+        console.log(`[deckyemu] removed ${removed} old setup shortcut(s)`);
+      }
+    })();
+  }, []);
 
   useEffect(() => {
     const onProgress = (_id: string, text: string, pct: number) => {
@@ -306,23 +321,18 @@ export function EmulatorCatalogPanel({ onChanged }: Props) {
             return;
           }
 
-          // Reuse the shortcut from last time. Steam keeps deleted shortcuts'
-          // ids in play, so an id we remember is only good if it still exists.
-          let appId = prepared.app_id ?? 0;
-          if (!appId || !shortcutExists(appId)) {
-            appId = await createShortcut({
-              title: prepared.title ?? entry.name,
-              exe: prepared.exe,
-              startDir: prepared.start_dir ?? "",
-              launchOptions: "",
-            });
-            await recordEmulatorGui(entry.id, appId);
-          }
-
-          if (!launchApp(appId)) {
+          const appId = await openSetupShortcut({
+            title: prepared.title ?? entry.name,
+            exe: prepared.exe,
+            start_dir: prepared.start_dir,
+            app_id: prepared.app_id,
+          });
+          if (!appId) {
             toaster.toast({
-              title: `${entry.name} is in your library`,
-              body: `Steam would not start it from here. Launch "${prepared.title}" from your library instead.`,
+              title: `Could not open ${entry.name}`,
+              // The shortcut is hidden, so "find it in your library" would send
+              // somebody looking somewhere it does not appear.
+              body: `Steam would not start it. "${prepared.title}" is in your hidden games if you want to run it yourself.`,
             });
             return;
           }

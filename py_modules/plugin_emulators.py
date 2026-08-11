@@ -1110,29 +1110,45 @@ class Emulators(plugin_base.PluginContext):
             await self._run(ps3_games.stage_packages, fileserver.default_dir())
 
         settings = await self._run(store.get_settings)
-        known = settings.get("emulator_gui_apps") or {}
         return {
             "ok": True,
-            # Named for what it does rather than after the emulator alone: this
-            # sits in the Steam library next to the games, where "RPCS3" on its
-            # own would read as a game somebody added.
-            "title": "%s (setup)" % entry["name"],
+            # One name for one shortcut. It used to be "<emulator> (setup)", one
+            # per emulator, which put a permanent library entry there for
+            # something opened once to install firmware. This is repointed at
+            # whichever emulator is being opened and hidden from the library, so
+            # the name only has to be findable if hiding fails.
+            "title": launchers.SETUP_SHORTCUT_TITLE,
             "exe": script,
             "start_dir": os.path.dirname(script),
-            "app_id": known.get(entry_id, 0),
+            "app_id": int(settings.get("setup_app_id") or 0),
         }
 
 
-    async def record_emulator_gui(self, entry_id: str, app_id: int):
-        """Remember the shortcut made for an emulator's interface."""
-        settings = await self._run(store.get_settings)
-        known = dict(settings.get("emulator_gui_apps") or {})
-        if app_id:
-            known[entry_id] = int(app_id)
-        else:
-            known.pop(entry_id, None)
-        await self._run(store.set_settings, {"emulator_gui_apps": known})
+    async def record_setup_shortcut(self, app_id: int):
+        """Remember the one shortcut used to open any emulator's own window."""
+        await self._run(store.set_settings, {"setup_app_id": int(app_id or 0)})
         return {"ok": True}
+
+
+    async def stale_setup_shortcuts(self):
+        """The per-emulator shortcuts an older build made, so they can go.
+
+        Returned once and forgotten in the same call: the frontend is the only
+        thing that can delete a Steam shortcut, so this hands over the ids and
+        clears the record. Anything that then fails to delete is a stray library
+        entry rather than a repeat offer, which is the better failure -- retrying
+        forever would mean re-deleting ids Steam has since given to something
+        else.
+        """
+        settings = await self._run(store.get_settings)
+        known = settings.get("emulator_gui_apps") or {}
+        if not isinstance(known, dict) or not known:
+            return {"app_ids": []}
+
+        app_ids = [int(value) for value in known.values() if value]
+        await self._run(store.set_settings, {"emulator_gui_apps": {}})
+        decky.logger.info("Handing back %d old setup shortcut(s) to remove", len(app_ids))
+        return {"app_ids": app_ids}
 
 
     async def suggest_launch_options(self, target: str):

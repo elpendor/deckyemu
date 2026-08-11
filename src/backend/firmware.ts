@@ -345,8 +345,28 @@ export const prepareEmulatorGui = callable<
     app_id?: number;
   }
 >("prepare_emulator_gui");
-export const recordEmulatorGui = callable<[entryId: string, appId: number], { ok: boolean }>(
-  "record_emulator_gui",
+/**
+ * Remember the one shortcut that opens any emulator's own window.
+ *
+ * One rather than one per emulator. gamescope composites nothing Steam did not
+ * launch, so a shortcut is the only route to an emulator's UI — but it is a door
+ * used once to install firmware and never again, and one permanent library entry
+ * per emulator is a poor trade for that. This one is repointed at whichever
+ * emulator is being opened, and hidden.
+ */
+export const recordSetupShortcut = callable<[appId: number], { ok: boolean }>(
+  "record_setup_shortcut",
+);
+/**
+ * The per-emulator shortcuts an older build left behind, handed over once.
+ *
+ * Only the frontend can delete a Steam shortcut, so the backend returns the ids
+ * and forgets them in the same call. Anything that fails to delete becomes a
+ * stray library entry rather than a repeat offer — retrying forever would mean
+ * re-deleting ids Steam has since reused for something else.
+ */
+export const staleSetupShortcuts = callable<[], { app_ids: number[] }>(
+  "stale_setup_shortcuts",
 );
 
 export const firmwareDir = callable<[], { path: string }>("firmware_dir");

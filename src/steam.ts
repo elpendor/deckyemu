@@ -481,6 +481,32 @@ export function launchApp(appId: number): boolean {
   }
 }
 
+/**
+ * Keep a shortcut out of the library without deleting it.
+ *
+ * For the setup shortcut, which exists only because gamescope composites nothing
+ * Steam did not launch. It has to be a real Steam entry to work at all, and
+ * nobody wants it on their shelf next to their games.
+ *
+ * Steam models hidden as a collection rather than a flag, which is why this goes
+ * through `collectionStore` rather than `SteamClient.Apps`. Returns whether it
+ * took: a failure here is untidy rather than broken -- the shortcut still works,
+ * it is just visible -- so the caller carries on either way.
+ */
+export function setAppHidden(appId: number, hidden: boolean): boolean {
+  try {
+    const store = collectionStore() as unknown as {
+      SetAppsAsHidden?: (appIds: number[], hidden: boolean) => void;
+    } | null;
+    if (typeof store?.SetAppsAsHidden !== "function") return false;
+    store.SetAppsAsHidden([appId], hidden);
+    return true;
+  } catch (error) {
+    console.error("[deckyemu] could not hide app", appId, error);
+    return false;
+  }
+}
+
 /** Point an adopted game's shortcut at its rebuilt launcher script. */
 export function repointShortcut(appId: number, exe: string): boolean {
   const apps = steamClient()?.Apps;

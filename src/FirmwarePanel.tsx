@@ -16,12 +16,11 @@ import {
   firmwareStatus,
   installFirmware,
   prepareFirmwareGui,
-  recordEmulatorGui,
   uninstallFirmware,
   type FirmwareReport,
   type FirmwareState,
 } from "./backend";
-import { createShortcut, launchApp, shortcutExists } from "./steam";
+import { openSetupShortcut } from "./setupShortcut";
 import { humanSize, TransferModal } from "./TransferModal";
 import { callWithRetry } from "./timeout";
 import { byName } from "./order";
@@ -175,25 +174,20 @@ export function FirmwarePanel({ reloadKey = 0 }: Props) {
             return;
           }
 
-          // The emulator's existing setup shortcut, whose script was just
-          // rewritten to carry the install argument. Steam keeps deleted
-          // shortcuts' ids in play, so a remembered one is only good if it
-          // still exists.
-          let appId = prepared.app_id ?? 0;
-          if (!appId || !shortcutExists(appId)) {
-            appId = await createShortcut({
-              title: prepared.title ?? emulatorName,
-              exe: prepared.exe,
-              startDir: prepared.start_dir ?? "",
-              launchOptions: "",
-            });
-            await recordEmulatorGui(entryId, appId);
-          }
-
-          if (!launchApp(appId)) {
+          // The one setup shortcut, repointed at the script that was just
+          // written to carry the install argument.
+          const appId = await openSetupShortcut({
+            title: prepared.title ?? emulatorName,
+            exe: prepared.exe,
+            start_dir: prepared.start_dir,
+            app_id: prepared.app_id,
+          });
+          if (!appId) {
             toaster.toast({
-              title: `${emulatorName} is in your library`,
-              body: `Steam would not start it from here. Launch "${prepared.title}" from your library instead.`,
+              title: `Could not open ${emulatorName}`,
+              // Hidden, so pointing at "your library" would send somebody
+              // looking where it does not appear.
+              body: `Steam would not start it. "${prepared.title}" is in your hidden games if you want to run it yourself.`,
             });
             return;
           }

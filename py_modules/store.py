@@ -51,6 +51,16 @@ DEFAULT_SETTINGS = {
     "platform_names": "short",
     # Apply each custom emulator's fullscreen switch when launching.
     "emulator_fullscreen": True,
+    # The one Steam shortcut used to open any emulator's own window.
+    #
+    # One rather than one per emulator, and hidden from the library. Several
+    # emulators will only do certain jobs through their own UI -- installing PS3
+    # firmware, importing Switch firmware -- and gamescope composites nothing
+    # Steam did not launch, so a shortcut is the only door. It is also a door
+    # used once and then never again, so N of them permanently in the library is
+    # a poor trade for something nobody looks at twice. This one is repointed at
+    # whichever emulator is being opened.
+    "setup_app_id": 0,
     # Keep the transfer address the same between sessions, so a trusted device can
     # bookmark it and skip both the address and the code.
     #

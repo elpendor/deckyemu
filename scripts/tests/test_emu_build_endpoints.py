@@ -243,6 +243,39 @@ check("and carries the reason", "no space left" in emitted[-1][1][2], True)
 # Pinning a build that was never deployed would hold the old one instead.
 check("and pins nothing", _holds, [])
 
+# --------------------------------------------------- the one setup shortcut
+
+section("the setup shortcut -- one, and the old ones handed back once")
+
+import store as _store  # noqa: E402
+
+# gamescope composites nothing Steam did not launch, so a shortcut is the only
+# route to an emulator's own window. It used to be one per emulator, kept
+# forever, for a door opened once to install firmware.
+_store.set_settings({"setup_app_id": 0, "emulator_gui_apps": {"rpcs3": 111, "ryujinx": 222}})
+
+_r = run(plugin.stale_setup_shortcuts())
+check("the old per-emulator shortcuts are handed over", sorted(_r["app_ids"]), [111, 222])
+# Forgotten in the same call. Only the frontend can delete a Steam shortcut, so
+# offering them again would mean re-deleting ids Steam has since reused for
+# something else -- which would remove somebody's game.
+_r = run(plugin.stale_setup_shortcuts())
+check("and only once", _r["app_ids"], [])
+
+run(plugin.record_setup_shortcut(4242))
+check("the one shortcut is recorded",
+      _store.get_settings().get("setup_app_id"), 4242)
+# Zero means "there is not one", which is what the frontend sends after Steam
+# refused to make it.
+run(plugin.record_setup_shortcut(0))
+check("and can be cleared", _store.get_settings().get("setup_app_id"), 0)
+
+# Nothing recorded is the normal state, not an error.
+_store.set_settings({"emulator_gui_apps": {}})
+check("with nothing to clean up, nothing comes back",
+      run(plugin.stale_setup_shortcuts())["app_ids"], [])
+
+
 emu_install.flatpak_hold = _real_hold
 emu_install.flatpak_installed_commit = _real_commit
 check("the module is handed back unpatched",

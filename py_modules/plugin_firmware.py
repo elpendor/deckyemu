@@ -407,13 +407,14 @@ class Firmware(plugin_base.PluginContext):
             return {"ok": False, "error": "Could not write launcher script: %s" % error}
 
         settings = await self._run(store.get_settings)
-        known = settings.get("emulator_gui_apps") or {}
         decky.logger.info("Opening %s to install %s", entry["name"], waiting[0])
         return {
             "ok": True,
-            "title": "%s (setup)" % entry["name"],
+            # The same one shortcut the Emulators tab uses, repointed. Two doors
+            # into the same emulator did not need two library entries.
+            "title": launchers.SETUP_SHORTCUT_TITLE,
             "exe": script,
             "start_dir": os.path.dirname(script),
-            "app_id": known.get(entry_id, 0),
+            "app_id": int(settings.get("setup_app_id") or 0),
             "file": waiting[0],
         }

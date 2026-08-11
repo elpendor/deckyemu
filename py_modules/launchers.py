@@ -342,6 +342,18 @@ def write_launcher(
     return path
 
 
+#: The name of the one Steam shortcut that opens an emulator's own window.
+#:
+#: Here because this module writes the launcher it points at. One shortcut
+#: rather than one per emulator: gamescope composites nothing Steam did not
+#: launch, so a shortcut is the only way to reach an emulator's UI -- but it is
+#: a door used once to install firmware and never again, and N permanent library
+#: entries is a poor trade for that. It is repointed at whichever emulator is
+#: being opened, and hidden from the library, so this name only has to be
+#: findable in the rare case where hiding did not take.
+SETUP_SHORTCUT_TITLE = "DeckyEmu setup"
+
+
 def write_gui_launcher(emulator, title, args=(), allow=(), errand=""):
     """Write (or overwrite) the launcher that opens an emulator's interface.
 
