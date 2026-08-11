@@ -41,7 +41,7 @@ import { EmulatorVersionModal } from "./EmulatorVersionModal";
 import { InstallProgress } from "./InstallProgress";
 import { emulatorRowActions } from "./emulatorActions";
 import { byName } from "./order";
-import { openSetupShortcut, removeStaleSetupShortcuts } from "./setupShortcut";
+import { openSetupShortcut } from "./setupShortcut";
 import { callWithRetry } from "./timeout";
 
 interface Props {
@@ -136,21 +136,6 @@ export function EmulatorCatalogPanel({ onChanged }: Props) {
 
   useEffect(load, [load]);
 
-  /*
-   * Clear out the per-emulator setup shortcuts an older build made.
-   *
-   * The backend hands them over once and forgets them in the same call, so from
-   * the second panel opening this does nothing. Here rather than at startup
-   * because only the frontend can delete a Steam shortcut.
-   */
-  useEffect(() => {
-    void (async () => {
-      const removed = await removeStaleSetupShortcuts();
-      if (removed > 0) {
-        console.log(`[deckyemu] removed ${removed} old setup shortcut(s)`);
-      }
-    })();
-  }, []);
 
   useEffect(() => {
     const onProgress = (_id: string, text: string, pct: number) => {
