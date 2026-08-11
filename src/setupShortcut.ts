@@ -1,5 +1,5 @@
-import { recordSetupShortcut, staleSetupShortcuts } from "./backend";
-import { createShortcut, launchApp, removeShortcut, repointShortcut, setAppHidden, shortcutExists } from "./steam";
+import { recordSetupShortcut } from "./backend";
+import { createShortcut, launchApp, repointShortcut, setAppHidden, shortcutExists } from "./steam";
 
 /**
  * The one Steam shortcut that opens an emulator's own window.
@@ -56,26 +56,4 @@ export async function openSetupShortcut(target: SetupTarget): Promise<number> {
   }
 
   return launchApp(appId) ? appId : 0;
-}
-
-/**
- * Delete the per-emulator shortcuts an older build left in the library.
- *
- * Handed over once by the backend, which forgets them as it returns them — so
- * this runs on a panel opening and does nothing at all from the second time on.
- */
-export async function removeStaleSetupShortcuts(): Promise<number> {
-  try {
-    const stale = await staleSetupShortcuts();
-    const ids = stale.app_ids ?? [];
-    for (const appId of ids) {
-      // No existence check: removing an id Steam no longer knows is a no-op,
-      // and skipping one it does know would leave the entry there forever.
-      removeShortcut(appId);
-    }
-    return ids.length;
-  } catch (error) {
-    console.error("[deckyemu] could not clear old setup shortcuts", error);
-    return 0;
-  }
 }

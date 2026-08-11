@@ -357,17 +357,6 @@ export const prepareEmulatorGui = callable<
 export const recordSetupShortcut = callable<[appId: number], { ok: boolean }>(
   "record_setup_shortcut",
 );
-/**
- * The per-emulator shortcuts an older build left behind, handed over once.
- *
- * Only the frontend can delete a Steam shortcut, so the backend returns the ids
- * and forgets them in the same call. Anything that fails to delete becomes a
- * stray library entry rather than a repeat offer — retrying forever would mean
- * re-deleting ids Steam has since reused for something else.
- */
-export const staleSetupShortcuts = callable<[], { app_ids: number[] }>(
-  "stale_setup_shortcuts",
-);
 
 export const firmwareDir = callable<[], { path: string }>("firmware_dir");
 export const firmwareStatus = callable<[], FirmwareReport>("firmware_status");

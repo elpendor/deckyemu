@@ -1130,27 +1130,6 @@ class Emulators(plugin_base.PluginContext):
         return {"ok": True}
 
 
-    async def stale_setup_shortcuts(self):
-        """The per-emulator shortcuts an older build made, so they can go.
-
-        Returned once and forgotten in the same call: the frontend is the only
-        thing that can delete a Steam shortcut, so this hands over the ids and
-        clears the record. Anything that then fails to delete is a stray library
-        entry rather than a repeat offer, which is the better failure -- retrying
-        forever would mean re-deleting ids Steam has since given to something
-        else.
-        """
-        settings = await self._run(store.get_settings)
-        known = settings.get("emulator_gui_apps") or {}
-        if not isinstance(known, dict) or not known:
-            return {"app_ids": []}
-
-        app_ids = [int(value) for value in known.values() if value]
-        await self._run(store.set_settings, {"emulator_gui_apps": {}})
-        decky.logger.info("Handing back %d old setup shortcut(s) to remove", len(app_ids))
-        return {"app_ids": app_ids}
-
-
     async def suggest_launch_options(self, target: str):
         """Likely rom arguments and fullscreen switch, offered as defaults.
 

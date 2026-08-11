@@ -21,7 +21,6 @@ import { AddedGamesPanel } from "./AddedGamesPanel";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { TransferStatusPanel } from "./TransferStatusPanel";
 import { ManagePage, MANAGE_ROUTE, openManagePage } from "./ManagePage";
-import { removeStaleSetupShortcuts } from "./setupShortcut";
 import { callWithRetry } from "./timeout";
 
 const EMPTY_STATUS: RetroArchStatus = {
@@ -107,27 +106,6 @@ function Content() {
     void loadStatus();
     loadGames();
   }, [visible, loadStatus, loadGames]);
-
-  /*
-   * Delete the per-emulator setup shortcuts an older build left behind.
-   *
-   * Here rather than on the Emulators tab, which is where it started: those
-   * shortcuts are in the library whether or not anybody opens that tab again,
-   * and this is the one component that mounts every time the panel does. Only
-   * the frontend can delete a Steam shortcut, so it cannot live in the backend
-   * at all.
-   *
-   * Costs one call per panel open and nothing after the first: the backend hands
-   * the ids over once and forgets them as it returns them.
-   */
-  useEffect(() => {
-    void (async () => {
-      const removed = await removeStaleSetupShortcuts();
-      if (removed > 0) {
-        console.log(`[deckyemu] removed ${removed} old setup shortcut(s)`);
-      }
-    })();
-  }, []);
 
   const openManage = useCallback(() => openManagePage(), []);
 
