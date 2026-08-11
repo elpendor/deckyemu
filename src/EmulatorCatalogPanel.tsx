@@ -93,6 +93,14 @@ export function EmulatorCatalogPanel({ onChanged }: Props) {
   // Which entry is installing, and how far along. Only one at a time: two
   // concurrent flatpak transactions block on each other's lock anyway.
   const [busyId, setBusyId] = useState("");
+  /*
+   * What the busy row is busy doing, e.g. "Removing PCSX2".
+   *
+   * Carried rather than hardcoded in the row, which said "Installing" whatever
+   * was actually happening -- so registering, opening or removing an emulator
+   * all claimed to be installing it if they got as far as drawing the bar.
+   */
+  const [busyLabel, setBusyLabel] = useState("");
   const [percent, setPercent] = useState(0);
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
@@ -169,6 +177,7 @@ export function EmulatorCatalogPanel({ onChanged }: Props) {
 
   const start = useCallback(async (entry: CatalogEmulator) => {
     setBusyId(entry.id);
+    setBusyLabel(`Installing ${entry.name}`);
     setError("");
     setPercent(0);
     setStatus("Starting...");
@@ -251,6 +260,7 @@ export function EmulatorCatalogPanel({ onChanged }: Props) {
   const register = useCallback(
     (entry: CatalogEmulator) => {
       setBusyId(entry.id);
+      setBusyLabel(`Setting up ${entry.name}`);
       setStatus(`Setting up ${entry.name}`);
       setPercent(-1);
       void (async () => {
@@ -285,6 +295,7 @@ export function EmulatorCatalogPanel({ onChanged }: Props) {
   const openGui = useCallback(
     (entry: CatalogEmulator) => {
       setBusyId(entry.id);
+      setBusyLabel(`Opening ${entry.name}`);
       setStatus(`Opening ${entry.name}`);
       setPercent(-1);
       void (async () => {
@@ -347,6 +358,7 @@ export function EmulatorCatalogPanel({ onChanged }: Props) {
         if (!picked?.path) return;
 
         setBusyId(entry.id);
+        setBusyLabel(`Setting up ${entry.name}`);
         setStatus(`Setting up ${entry.name}`);
         setPercent(-1);
         try {
@@ -392,14 +404,26 @@ export function EmulatorCatalogPanel({ onChanged }: Props) {
           bDestructiveWarning
           onOK={() => {
             void (async () => {
-              const result = await removeImportedEmulator(entry.id);
-              if (!result.ok) {
-                toaster.toast({ title: "Could not remove", body: result.error ?? "" });
-                return;
+              // The slowest of the three: this uninstalls the emulator before
+              // deleting the definition, so it carries a whole flatpak or
+              // AppImage removal behind one press.
+              setBusyId(entry.id);
+              setBusyLabel(`Removing ${entry.name}`);
+              setStatus(`Removing ${entry.name}`);
+              setPercent(-1);
+              try {
+                const result = await removeImportedEmulator(entry.id);
+                if (!result.ok) {
+                  toaster.toast({ title: "Could not remove", body: result.error ?? "" });
+                  return;
+                }
+                toaster.toast({ title: "Definition removed", body: entry.name });
+                load();
+                onChanged();
+              } finally {
+                setBusyId("");
+                setStatus("");
               }
-              toaster.toast({ title: "Definition removed", body: entry.name });
-              load();
-              onChanged();
             })();
           }}
         />,
@@ -418,17 +442,40 @@ export function EmulatorCatalogPanel({ onChanged }: Props) {
           bDestructiveWarning
           onOK={() => {
             void (async () => {
-              const result = await uninstallEmulator(entry.id);
-              if (!result.ok) {
-                toaster.toast({
-                  title: "Could not remove emulator",
-                  body: result.error ?? "",
-                });
-                return;
+              /*
+               * Busy for the same reason installing is, and one that is not
+               * cosmetic: without it the row looked idle for the seconds a
+               * flatpak uninstall takes and its buttons stayed live, so Remove
+               * could be pressed twice -- the second call failing with "not
+               * installed" and reporting an error for something that had just
+               * worked.
+               *
+               * No percentage, because flatpak reports none for a removal. The
+               * bar travels instead, which is what "working, no idea how long"
+               * looks like.
+               */
+              setBusyId(entry.id);
+              setBusyLabel(`Removing ${entry.name}`);
+              setStatus(`Removing ${entry.name}`);
+              setPercent(-1);
+              try {
+                const result = await uninstallEmulator(entry.id);
+                if (!result.ok) {
+                  toaster.toast({
+                    title: "Could not remove emulator",
+                    body: result.error ?? "",
+                  });
+                  return;
+                }
+                toaster.toast({ title: "Emulator removed", body: entry.name });
+                load();
+                onChanged();
+              } finally {
+                // Cleared here rather than by an event: a removal is awaited
+                // rather than streamed, so nothing else will ever clear it.
+                setBusyId("");
+                setStatus("");
               }
-              toaster.toast({ title: "Emulator removed", body: entry.name });
-              load();
-              onChanged();
             })();
           }}
         />,
@@ -468,7 +515,7 @@ export function EmulatorCatalogPanel({ onChanged }: Props) {
               description={
                 <InstallProgress
                   inline
-                  label={`Installing ${entry.name}`}
+                  label={busyLabel || `Working on ${entry.name}`}
                   percent={percent}
                   status={status}
                 />
