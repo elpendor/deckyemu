@@ -181,6 +181,71 @@ check("a shortened commit is refused rather than passed on",
       emu_install._parse_commit(["Commit: d8644a97df3d"]), "")
 
 
+# ------------------------------------------------- one build's own details
+
+# `flatpak remote-info --user flathub <id> --commit=<hash>`, verbatim from a
+# Deck. The two sizes are the reason this call exists: switching build re-fetches
+# the whole app, and 409MB is a different proposition on a handheld from what the
+# one-line subject suggests.
+#
+# The `?` between the number and the unit is real. flatpak writes a narrow
+# no-break space there and substitutes `?` when it runs without a UTF-8 locale --
+# which is how it runs from the plugin, since there is no login shell. Written
+# here as the byte flatpak actually produced rather than the one it meant to.
+DETAIL = """\
+
+RetroArch - Frontend for emulators, game engines and media players
+
+        ID: org.libretro.RetroArch
+       Ref: app/org.libretro.RetroArch/x86_64/stable
+      Arch: x86_64
+    Branch: stable
+   Version: 1.22.2
+   License: GPL-3.0
+Collection: org.flathub.Stable
+  Download: 409.0?MB
+ Installed: 768.4?MB
+   Runtime: org.kde.Platform/x86_64/6.11
+       Sdk: org.kde.Sdk/x86_64/6.11
+
+    Commit: d8644a97df3db3cdd46eff2f7aea7d429c40f7e1e7ed5788a191714cc29a74a8
+    Parent: e6aae903d4422a3f46603693cfe777e622ab18071c239ebe619b9480f59af46d
+   Subject: Install metainfo to share/metainfo (#351) (752e8acdc14a)
+      Date: 2026-07-26 20:53:49 +0000
+"""
+
+_detail = emu_install._parse_fields(DETAIL.splitlines())
+
+check("the download size is read", _detail.get("download"), "409.0 MB")
+check("and the installed size", _detail.get("installed"), "768.4 MB")
+check("the version is read", _detail.get("version"), "1.22.2")
+check("the subject comes through whole, not truncated",
+      _detail.get("subject"), "Install metainfo to share/metainfo (#351) (752e8acdc14a)")
+check("the commit is the full hash", _detail.get("commit"), COMMIT)
+check("the parent is kept separate from the commit",
+      _detail.get("parent", "").startswith("e6aae903"), True)
+check("the date is read", _detail.get("date"), "2026-07-26 20:53:49 +0000")
+
+# The same field with the character flatpak means to print, for a device whose
+# locale it is happy with. Both have to read the same on screen.
+check("a real no-break space is cleaned up the same way",
+      emu_install._clean_value("409.0 MB"), "409.0 MB")
+check("and a plain space is left alone", emu_install._clean_value(" 409.0 MB "), "409.0 MB")
+# Nothing non-printable may reach the panel: it renders whatever it is given.
+# Built with chr() rather than written as a literal: a control character typed
+# into source is a file that will not parse, which is how this line first went in.
+check("anything unprintable is dropped",
+      emu_install._clean_value("1.22.2" + chr(0) + chr(7)), "1.22.2")
+
+# The header repeats the app's name above the fields, and `Ref:`/`Arch:` are not
+# worth showing -- only the keys asked for come back.
+check("only the fields worth showing are returned",
+      sorted(_detail), ["commit", "date", "download", "installed", "license",
+                        "parent", "subject", "version"])
+check("nothing is read out of a listing with no fields",
+      emu_install._parse_fields(["", "RetroArch - a frontend", "   "]), {})
+
+
 if __name__ == "__main__":
     from harness import summary
 

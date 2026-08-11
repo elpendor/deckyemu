@@ -8,12 +8,15 @@ import {
 } from "@decky/ui";
 import { addEventListener, removeEventListener, toaster } from "@decky/api";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { FaChevronDown, FaChevronUp } from "react-icons/fa";
 
 import {
+  emulatorBuildDetails,
   emulatorBuildList,
   holdEmulator,
   rollbackEmulator,
   updateEmulator,
+  type BuildDetails,
   type EmulatorBuild,
   type PastBuild,
 } from "./backend";
@@ -50,6 +53,35 @@ export function EmulatorVersionModal({ closeModal, emulator, onChanged }: Props)
   // than state because the done handler must not re-subscribe every time this
   // changes, and nothing renders from it.
   const action = useRef<"update" | "switch">("update");
+  // Which build's details are open, and what came back. One at a time: each is a
+  // call of its own, and twelve of them to draw the dialog would be twenty
+  // seconds of nothing happening.
+  const [openBuild, setOpenBuild] = useState("");
+  const [details, setDetails] = useState<Record<string, BuildDetails | "failed">>({});
+
+  const toggleDetails = useCallback(
+    async (commit: string) => {
+      if (openBuild === commit) {
+        setOpenBuild("");
+        return;
+      }
+      setOpenBuild(commit);
+      // Cached per commit: a build's metadata cannot change under us, so
+      // reopening a row costs nothing after the first time.
+      if (details[commit]) return;
+      try {
+        const result = await emulatorBuildDetails(emulator.id, commit);
+        setDetails((current) => ({
+          ...current,
+          [commit]: result.ok ? result.details : "failed",
+        }));
+      } catch (detailError) {
+        console.error("[deckyemu] could not read build details", detailError);
+        setDetails((current) => ({ ...current, [commit]: "failed" }));
+      }
+    },
+    [details, emulator.id, openBuild],
+  );
 
   const loadBuilds = useCallback(async () => {
     setListError("");
@@ -267,53 +299,94 @@ export function EmulatorVersionModal({ closeModal, emulator, onChanged }: Props)
           for the date, which is the only thing anybody is choosing on. */}
       {(builds ?? [])
         .filter((build) => !build.current)
-        .map((build, index) => (
-          <Focusable
-            key={build.commit}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "14px",
-              padding: "12px 0",
-              // Between rows only, so the list does not open with a stray line
-              // directly under its own heading.
-              borderTop: index === 0 ? "none" : "1px solid rgba(255, 255, 255, 0.08)",
-            }}
-          >
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: "15px", lineHeight: 1.25 }}>{buildDate(build.date)}</div>
-              <div
-                style={{
-                  fontSize: "12px",
-                  opacity: 0.6,
-                  marginTop: "3px",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {build.subject || build.commit.slice(0, 12)}
-              </div>
-            </div>
-            {/* Not styled as destructive. Nothing is destroyed -- save data and
-                configuration are untouched and the move is repeatable -- and red
-                on every row would make the list look dangerous to read. */}
-            <DialogButton
-              disabled={running}
+        .map((build, index) => {
+          const open = openBuild === build.commit;
+          const detail = details[build.commit];
+          return (
+            <div
+              key={build.commit}
               style={{
-                minWidth: "auto",
-                width: "auto",
-                padding: "8px 14px",
-                flexShrink: 0,
+                padding: "12px 0",
+                // Between rows only, so the list does not open with a stray line
+                // directly under its own heading.
+                borderTop: index === 0 ? "none" : "1px solid rgba(255, 255, 255, 0.08)",
               }}
-              onClick={() =>
-                void start("Switching", "switch", () => rollbackEmulator(emulator.id, build.commit))
-              }
             >
-              Use this build
-            </DialogButton>
-          </Focusable>
-        ))}
+              <Focusable style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: "15px", lineHeight: 1.25 }}>{buildDate(build.date)}</div>
+                  <div
+                    style={{
+                      fontSize: "12px",
+                      opacity: 0.6,
+                      marginTop: "3px",
+                      // Truncated only while closed. Opening the row is what
+                      // shows the whole line, which is most of what "details"
+                      // turns out to mean -- a Flathub subject is the entire
+                      // changelog for a build.
+                      ...(open
+                        ? { whiteSpace: "normal" as const, overflowWrap: "anywhere" as const }
+                        : {
+                            overflow: "hidden" as const,
+                            textOverflow: "ellipsis" as const,
+                            whiteSpace: "nowrap" as const,
+                          }),
+                    }}
+                  >
+                    {build.subject || build.commit.slice(0, 12)}
+                  </div>
+                </div>
+
+                <DialogButton
+                  disabled={running}
+                  style={{ minWidth: "auto", width: "auto", padding: "8px 10px", flexShrink: 0 }}
+                  onClick={() => void toggleDetails(build.commit)}
+                >
+                  {open ? <FaChevronUp /> : <FaChevronDown />}
+                </DialogButton>
+
+                {/* Not styled as destructive. Nothing is destroyed -- save data
+                    and configuration are untouched and the move is repeatable --
+                    and red on every row would make the list look dangerous to
+                    read. */}
+                <DialogButton
+                  disabled={running}
+                  style={{ minWidth: "auto", width: "auto", padding: "8px 14px", flexShrink: 0 }}
+                  onClick={() =>
+                    void start("Switching", "switch", () =>
+                      rollbackEmulator(emulator.id, build.commit),
+                    )
+                  }
+                >
+                  Use this build
+                </DialogButton>
+              </Focusable>
+
+              {open && (
+                <div style={{ fontSize: "12px", opacity: 0.7, marginTop: "10px" }}>
+                  {detail === undefined && <div>Reading this build...</div>}
+                  {detail === "failed" && <div>Could not read this build. It needs the network.</div>}
+                  {detail && detail !== "failed" && (
+                    <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
+                      {/* Download first, and it is the reason this exists:
+                          switching re-fetches the whole app, and a few hundred
+                          megabytes is a decision on a handheld rather than a
+                          detail. */}
+                      {detail.download && <div>Download: {detail.download}</div>}
+                      {detail.version && <div>Version: {detail.version}</div>}
+                      {detail.date && <div>Published: {detail.date}</div>}
+                      {detail.commit && (
+                        <div style={{ overflowWrap: "anywhere" }}>
+                          Build: {detail.commit.slice(0, 12)}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
 
       <div style={{ marginTop: "14px" }}>
         <Field description="Choosing a build also holds it, so an update cannot move it again. Save data and configuration are not touched." />

@@ -423,6 +423,36 @@ class Emulators(plugin_base.PluginContext):
             build["current"] = build["commit"] == current
         return {"ok": True, "builds": builds}
 
+    async def emulator_build_details(self, entry_id: str, commit: str):
+        """What flatpak knows about one build, for the row that asked.
+
+        A call per build, made when somebody opens a row rather than for the
+        whole list -- twelve of these to draw a dialog would be twenty seconds.
+
+        There is no changelog behind this. A Flathub commit carries a one-line
+        subject describing a packaging change and nothing more, so what is worth
+        showing is the subject in full plus the facts the list has no room for --
+        and `download` above all, since switching build re-fetches the entire
+        app and that is a few hundred megabytes on a handheld.
+        """
+        entry = _RETROARCH_ENTRY if entry_id == "retroarch" else emulator_catalog.find(entry_id)
+        if not entry:
+            return {"ok": False, "error": "That emulator is not in the catalog.", "details": {}}
+        source = entry.get("source") or {}
+        if source.get("kind") != "flatpak":
+            return {"ok": False, "error": "That emulator has no Flathub builds.", "details": {}}
+        if not emu_install.valid_commit(commit):
+            return {"ok": False, "error": "That is not a build.", "details": {}}
+
+        details = await self._run(emu_install.flatpak_build_details, source["id"], commit)
+        if not details:
+            return {
+                "ok": False,
+                "error": "Could not read that build. It needs the network.",
+                "details": {},
+            }
+        return {"ok": True, "error": "", "details": details}
+
     async def update_emulator(self, entry_id: str):
         """Move an emulator to the newest build on its remote. Streams progress."""
         entry, app_id, error = await self._flatpak_entry(entry_id)

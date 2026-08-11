@@ -203,6 +203,61 @@ def _parse_ids(lines):
     return found
 
 
+#: Fields worth reading out of `remote-info` for one build. `download` is the
+#: one that changes a decision: switching build re-fetches the whole app, and
+#: 409MB is a different proposition on a handheld from a config tweak.
+_DETAIL_KEYS = ("version", "license", "download", "installed", "subject", "date",
+                "commit", "parent")
+
+
+def _clean_value(value):
+    """One field's value, with flatpak's formatting made safe to display.
+
+    Sizes are printed with a narrow no-break space between the number and the
+    unit, and flatpak substitutes `?` for it when it runs without a UTF-8 locale
+    -- which is how it runs from here, since the plugin does not inherit a login
+    shell. Both forms become a plain space, so "409.0?MB" and "409.0 MB"
+    read the same on screen.
+    """
+    value = re.sub(r"(?<=\d)(\?|[^\x20-\x7e])(?=[A-Za-z])", " ", value)
+    value = re.sub(r"[^\x20-\x7e]", "", value)
+    return re.sub(r"\s+", " ", value).strip()
+
+
+def _parse_fields(lines):
+    """`remote-info`'s labelled lines as a dict, for the fields worth showing.
+
+    First occurrence wins. The header repeats the app's name and description
+    above the fields, and a `Subject:` further down belongs to the build rather
+    than to anything above it.
+    """
+    found = {}
+    for line in lines:
+        label, sep, value = line.partition(":")
+        if not sep:
+            continue
+        key = label.strip().lower()
+        if key in _DETAIL_KEYS and key not in found:
+            found[key] = _clean_value(value)
+    return found
+
+
+def flatpak_build_details(app_id, commit):
+    """Everything flatpak knows about one build. Empty when it cannot be read.
+
+    Deliberately not part of `flatpak_history`: this is a call per build, and the
+    list is drawn before anybody has said which one they are interested in.
+    """
+    if not _valid_app_id(app_id) or not valid_commit(commit):
+        return {}
+    return _parse_fields(
+        _flatpak_lines(
+            ["remote-info", "--user", "flathub", app_id, "--commit=%s" % commit],
+            timeout=90,
+        )
+    )
+
+
 def _parse_commit(lines):
     """The `Commit:` value out of `flatpak info`, or ''."""
     for line in lines:

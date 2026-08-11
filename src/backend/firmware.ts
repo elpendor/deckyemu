@@ -252,6 +252,33 @@ export const emulatorBuildList = callable<
   { ok: boolean; error?: string; builds: PastBuild[] }
 >("emulator_build_list");
 
+/**
+ * What flatpak knows about one build.
+ *
+ * There is no changelog behind this — a Flathub commit carries a one-line
+ * subject describing a packaging change and nothing more. What it is for is
+ * `download`: switching build re-fetches the whole app, which is a few hundred
+ * megabytes, and the list has no room to say so.
+ *
+ * Sizes arrive formatted by flatpak (`409.0 MB`), not as numbers.
+ */
+export interface BuildDetails {
+  version?: string;
+  license?: string;
+  download?: string;
+  installed?: string;
+  subject?: string;
+  date?: string;
+  commit?: string;
+  parent?: string;
+}
+
+/** One call per build, made when a row is opened rather than for the whole list. */
+export const emulatorBuildDetails = callable<
+  [entryId: string, commit: string],
+  { ok: boolean; error?: string; details: BuildDetails }
+>("emulator_build_details");
+
 /** Resolves once the update has *started*; watch the install events for the rest. */
 export const updateEmulator = callable<
   [entryId: string],
