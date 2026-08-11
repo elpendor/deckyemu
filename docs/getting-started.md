@@ -167,6 +167,8 @@ the executable inside.
 | See what you have added | **Added games (n)** in the Quick Access panel |
 | Rename a game, or change its core or artwork | The pencil on its row in **Added games** |
 | Remove a game | The bin on its row — **this deletes the ROM** if the plugin filed it |
+| Update an emulator, or go back to an earlier build | **Settings → Emulators**, the branch button on its row |
+| Update RetroArch, or go back | **Settings → RetroArch → RetroArch version** |
 | Change how games are grouped | **Settings → Collections** |
 | Improve artwork | **Settings → Artwork**, which sets up a SteamGridDB key |
 | Turn on achievements | **Settings → RetroArch → Achievements** |
@@ -189,6 +191,8 @@ survive the change.
 | A game launches the emulator but no game | Its launch arguments are wrong. Edit them under **Custom emulators** |
 | A game starts in a window | The emulator's fullscreen switch is wrong, or it uses a setting rather than a flag |
 | An emulator closes immediately | For a hand-supplied AppImage, the execute bit is usually missing; re-saving it in the editor repairs that |
+| A game worked and stopped after an emulator update | Open that emulator's version dialog and pick an earlier build. Choosing one also holds it, so nothing moves it back |
+| An emulator you held updated anyway | The hold was released, or the emulator is not the one you held — a held row says *held* under its name |
 | A game will not boot and the system needs firmware | Check **BIOS and firmware** — a missing file looks exactly like a game failing |
 | A bookmarked transfer link stopped working | Either **Remember trusted devices** is off, so every session issues a new one, or **Reset link** was pressed — which invalidates all of them at once |
 | A ROM stayed in `transfer/` after adding | Something was unaccounted for: a disc a playlist names, or a different dump of the same name already filed |

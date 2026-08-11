@@ -23,6 +23,7 @@ reference.
 [Where a ROM ends up](#where-a-rom-ends-up) ·
 [Installing RetroArch and cores](#installing-retroarch-and-cores) ·
 [Installing an emulator](#installing-an-emulator) ·
+[Updating an emulator](#updating-an-emulator-or-going-back) ·
 [Custom emulators](#custom-emulators) · [Editing a game](#editing-a-game)
 
 **How the library looks** — [Collections](#collections) ·
@@ -337,6 +338,46 @@ author meant well. Read the file first; it is a few lines of plain text.
 
 See [docs/emulator-definitions.md](docs/emulator-definitions.md) for the format,
 a worked example, and what to check when one does not work.
+
+## Updating an emulator, or going back
+
+Anything installed from Flathub — most of the list above, and RetroArch itself —
+can be moved between published builds without leaving the panel.
+
+For an emulator, the branch button on its row under **Emulators**. For RetroArch,
+**RetroArch version** on its own tab. Both open the same dialog: which build is
+installed, an **Update** when a newer one is published, and every other build
+Flathub carries, listed by date. Each row opens to show the whole of its
+description, the version, and **how much it would download** — switching build
+re-fetches the entire application, which for RetroArch is around 400MB.
+
+Nothing updates on its own. An emulator moves when you ask it to.
+
+**Choosing a build also holds it there**, and that is the part worth
+understanding. Holding stops *anything* moving it, not only this plugin — any
+`flatpak update` on the device does, including whatever you press when you update
+your Deck from Desktop Mode. Without a hold the sequence is: a build breaks a
+game, you go back to one that works, you update your Deck a fortnight later, and
+the game breaks again with nothing connecting the two. The hold is what prevents
+that. It shows on the row as *held*, and is released from the same dialog
+whenever you want updates again.
+
+A held emulator receives no updates at all until you release it, security fixes
+included. That is the trade, and it is why the state is stated on the row rather
+than hidden in a dialog.
+
+Not offered for:
+
+| | Why |
+| --- | --- |
+| RPCS3, Azahar, Vita3K | Downloaded from the projects' own releases rather than Flathub, which publishes no build history to choose from |
+| A system-wide Flatpak | Root-owned, and the plugin has no way to answer a password prompt |
+| RetroArch from a package or an AppImage | Neither was installed from here and neither has builds to move between |
+
+There is no changelog behind any of this, and it would be misleading to imply
+otherwise: what each build carries is a one-line note about its *packaging* —
+"Restrict nvidia-cg-toolkit to x86_64" — not the emulator's own release notes.
+Those live on the project's own site.
 
 ## Custom emulators
 
