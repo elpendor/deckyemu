@@ -246,6 +246,67 @@ check("nothing is read out of a listing with no fields",
       emu_install._parse_fields(["", "RetroArch - a frontend", "   "]), {})
 
 
+
+# ------------------------------------------- AppImage builds and the record
+
+section("AppImage builds -- what was installed, and what else there is")
+
+import io as _io  # noqa: E402
+import os as _os  # noqa: E402
+
+_ID = "vita3k"
+_dir = emu_install.emulators_dir(_ID)
+
+# Nothing recorded yet, which is the state of every install made before the
+# record existed. "Unknown" has to be sayable, or the panel invents a build.
+check("an install with no record reads as unknown", emu_install.read_build_record(_ID), {})
+
+with _io.open(_os.path.join(_dir, "Vita3K-x86_64.AppImage"), "w") as _handle:
+    _handle.write("x")
+
+check("the AppImage is found", _os.path.basename(emu_install.installed_appimage(_ID)),
+      "Vita3K-x86_64.AppImage")
+
+emu_install.write_build_record(_ID, "v0.2.0", "Vita3K-x86_64.AppImage")
+check("the recorded tag is read back", emu_install.read_build_record(_ID).get("tag"), "v0.2.0")
+
+# The record starts with a dot, so it sorts before every AppImage name. Without
+# skipping it, this returns the metadata file as the binary to run -- and a
+# launcher pointing at a JSON file is a game that closes instantly.
+check("the record is not mistaken for the emulator",
+      _os.path.basename(emu_install.installed_appimage(_ID)), "Vita3K-x86_64.AppImage")
+
+# A corrupt record is not an install with no emulator.
+with _io.open(emu_install.build_record_path(_ID), "w") as _handle:
+    _handle.write("{not json")
+check("an unreadable record reads as unknown", emu_install.read_build_record(_ID), {})
+check("and the emulator is still found", bool(emu_install.installed_appimage(_ID)), True)
+
+# Replacing a build must not take the record with it: _remove_others sweeps the
+# folder, and the record describes the build being kept.
+emu_install.write_build_record(_ID, "v0.2.0", "Vita3K-x86_64.AppImage")
+emu_install._remove_others(_dir, keep="Vita3K-x86_64.AppImage")
+check("a cleanup keeps the record", emu_install.read_build_record(_ID).get("tag"), "v0.2.0")
+check("and keeps the build it was told to", bool(emu_install.installed_appimage(_ID)), True)
+
+# A previous build goes, as it must -- otherwise the folder grows by a couple of
+# hundred megabytes per update.
+with _io.open(_os.path.join(_dir, "Vita3K-old.AppImage"), "w") as _handle:
+    _handle.write("x")
+emu_install._remove_others(_dir, keep="Vita3K-x86_64.AppImage")
+check("but the previous build does not survive",
+      _os.path.exists(_os.path.join(_dir, "Vita3K-old.AppImage")), False)
+
+check("a bad id records nothing", emu_install.write_build_record("../etc", "v1", "x"), None)
+check("and reads back nothing", emu_install.read_build_record("../etc"), {})
+
+# Tags reach a download URL, so the same rule as commits applies.
+for _bad in ("", "-leading", "a" * 65, "v1 --system", "v1/../x", "$(id)"):
+    check("a bad tag is refused %r" % _bad, emu_install.valid_tag(_bad), False)
+for _good in ("v0.2.0", "1.22.2", "v2026.08.10-1", "release_5"):
+    check("a real tag is accepted %r" % _good, emu_install.valid_tag(_good), True)
+
+
 if __name__ == "__main__":
     from harness import summary
 

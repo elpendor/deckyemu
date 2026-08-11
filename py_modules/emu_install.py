@@ -24,6 +24,7 @@ asset pattern must be anchored rather than a substring match: installing the
 wrong architecture fails at exec time with nothing that names the cause.
 """
 
+import json
 import os
 import re
 import shutil
@@ -457,6 +458,78 @@ def resolve_release_asset(repo, pattern, host=""):
     return _resolve_asset(api, pattern, "%s on %s" % (repo, host) if host else repo)
 
 
+#: Releases rather than only the newest one, for choosing a build to go back to.
+GITHUB_RELEASES = "https://api.github.com/repos/%s/releases"
+SELF_HOSTED_RELEASES = "https://%s/api/v1/repos/%s/releases"
+
+#: A release tag on its way to becoming a folder-free download URL. Tags are the
+#: projects' own strings, so this is deliberately permissive about shape and
+#: strict about characters -- it arrives from the frontend like a commit does.
+_TAG_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$")
+
+
+def valid_tag(tag):
+    return bool(_TAG_RE.match(tag or ""))
+
+
+def resolve_release_list(repo, pattern, host="", limit=12):
+    """Recent releases carrying an asset that matches, newest first.
+
+    Returns (builds, error). Each build is {tag, name, url, size, published}.
+
+    Separate from `resolve_release_asset` because the questions differ: that one
+    asks "what should I install", which is always the newest, while this one asks
+    "what else is there", which is only ever asked once somebody has decided to
+    move. Releases without a matching asset are skipped rather than listed as
+    unavailable -- an aarch64-only release is not a build this device can choose.
+    """
+    if not re.match(r"^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$", repo or ""):
+        return [], "Not a valid repository name."
+    if host and not _HOST_RE.match(host):
+        return [], "Not a valid host name."
+
+    api = SELF_HOSTED_RELEASES % (host, repo) if host else GITHUB_RELEASES % repo
+    label = "%s on %s" % (repo, host) if host else repo
+    payload = net.get_json(api)
+    if not isinstance(payload, list):
+        return [], (
+            "No releases came back for %s. The project may have moved off GitHub."
+            % label
+        )
+
+    try:
+        matcher = re.compile(pattern)
+    except re.error as error:
+        return [], "Bad asset pattern: %s" % error
+
+    builds = []
+    for release in payload:
+        if not isinstance(release, dict) or release.get("draft"):
+            continue
+        tag = release.get("tag_name") or ""
+        if not valid_tag(tag):
+            continue
+        for asset in release.get("assets") or []:
+            name = asset.get("name") or ""
+            url = asset.get("browser_download_url")
+            if not url or not matcher.match(name):
+                continue
+            builds.append({
+                "tag": tag,
+                "name": name,
+                "url": url,
+                "size": asset.get("size") or 0,
+                "published": (release.get("published_at") or "")[:10],
+                "prerelease": bool(release.get("prerelease")),
+            })
+            break
+        if len(builds) >= limit:
+            break
+    if not builds:
+        return [], "No release of %s carries a download this device can use." % label
+    return builds, ""
+
+
 def resolve_github_asset(repo, pattern):
     """`resolve_release_asset` against GitHub. Kept for the bundled entries."""
     return resolve_release_asset(repo, pattern)
@@ -534,6 +607,11 @@ def install_appimage(entry, asset, on_progress=None):
     # means the folder grows by a couple of hundred megabytes per update.
     _remove_others(target_dir, keep=asset["name"])
 
+    # After the cleanup, or it would be swept away with the old build. Written
+    # even when the tag is empty: "installed, build unknown" is a different state
+    # from "not installed", and only a record can tell them apart.
+    write_build_record(entry["id"], asset.get("tag", ""), asset["name"])
+
     decky.logger.info("Installed %s to %s", entry["id"], path)
     return path, ""
 
@@ -544,7 +622,10 @@ def _remove_others(directory, keep):
     except OSError:
         return
     for name in names:
-        if name == keep:
+        # The record describes the build being kept, so it survives too. It is
+        # rewritten immediately after this either way; deleting it here would
+        # only widen the window where an interrupted install looks unknown.
+        if name in (keep, BUILD_RECORD):
             continue
         try:
             os.remove(os.path.join(directory, name))
@@ -606,6 +687,49 @@ def install_tool(name, asset, on_progress=None):
     return path, ""
 
 
+#: What was installed, written beside the AppImage it describes.
+#:
+#: In the emulator's own folder rather than the settings directory so it travels
+#: with the install: decky owns the settings directory and clears it on
+#: uninstall, and an emulator whose build became unknown because the plugin was
+#: reinstalled is exactly the case this exists to avoid.
+BUILD_RECORD = ".build.json"
+
+
+def build_record_path(entry_id):
+    return os.path.join(emulators_dir(entry_id, create=False), BUILD_RECORD)
+
+
+def read_build_record(entry_id):
+    """{tag, asset} for an installed AppImage, or {} when it is not known.
+
+    Empty is a real answer and not an error. Anything installed before this was
+    recorded has no record, and reporting that honestly is what stops the panel
+    claiming a build it cannot actually identify.
+    """
+    if not emulator_catalog.is_safe_id(entry_id):
+        return {}
+    try:
+        with open(build_record_path(entry_id), "r", encoding="utf-8") as handle:
+            record = json.load(handle)
+    except (OSError, ValueError):
+        return {}
+    return record if isinstance(record, dict) else {}
+
+
+def write_build_record(entry_id, tag, asset_name):
+    """Record which release an AppImage came from. Best effort."""
+    if not emulator_catalog.is_safe_id(entry_id):
+        return
+    try:
+        with open(build_record_path(entry_id), "w", encoding="utf-8") as handle:
+            json.dump({"tag": tag or "", "asset": asset_name or ""}, handle, indent=2)
+    except OSError as error:
+        # Not fatal: the emulator is installed and runs. What is lost is the
+        # ability to say which build it is, which degrades to "unknown".
+        decky.logger.warning("Could not record the build of %s: %s", entry_id, error)
+
+
 def installed_appimage(entry_id):
     """The AppImage installed for `entry_id`, or ''."""
     if not emulator_catalog.is_safe_id(entry_id):
@@ -615,6 +739,11 @@ def installed_appimage(entry_id):
     directory = emulators_dir(entry_id, create=False)
     try:
         for name in sorted(os.listdir(directory)):
+            # The build record lives in here too, and sorts first because it
+            # starts with a dot -- so without this every emulator would report
+            # its metadata file as the binary to run.
+            if name == BUILD_RECORD:
+                continue
             path = os.path.join(directory, name)
             if os.path.isfile(path):
                 return path
