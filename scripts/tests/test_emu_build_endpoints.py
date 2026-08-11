@@ -10,9 +10,9 @@ build it moved to.
 
 The refusals are the point. Every one of them exists because the alternative is
 a button that can only fail -- a system-scope flatpak cannot be changed without
-a password the plugin has no way to give, and an AppImage has no commit history
-to choose from. `can_uninstall_retroarch` established the rule these follow:
-report the reason, never show a dead control.
+a password the plugin has no way to give, and an AppImage emulator that is not
+installed has nothing to move. `can_uninstall_retroarch` established the rule
+these follow: report the reason, never show a dead control.
 
 The hold is the other half. A downgrade that is not pinned is undone by the next
 update, and the person it happens to has no way to connect a game that broke a
@@ -64,16 +64,12 @@ _r = run(plugin.update_emulator("no-such-emulator"))
 check("an unknown emulator is refused", _r["ok"], False)
 check("and named as not in the catalog", "not in the catalog" in _r["error"], True)
 
-# Azahar is a github AppImage entry, so it has no Flathub build history and no
-# commit to move to. Saying so beats offering a control that cannot work.
+# Azahar is a github AppImage entry. It has no Flathub history, but it does have
+# releases -- so it is served by the AppImage path rather than refused. Not
+# installed in the suite's temp home, so it stops there.
 _r = run(plugin.update_emulator("azahar"))
-check("an AppImage emulator is refused for updates", _r["ok"], False)
-check("and the reason names Flathub", "Flathub" in _r["error"], True)
-
-_r = run(plugin.emulator_build_list("azahar"))
-check("an AppImage emulator lists no builds", _r["builds"], [])
-check("and says why rather than returning an empty list quietly",
-      "Flathub" in _r["error"], True)
+check("an AppImage emulator that is not installed is refused", _r["ok"], False)
+check("and the reason says so", "not installed" in _r["error"], True)
 
 # Not installed at all -- the suite's home is a temp directory with no flatpaks.
 _r = run(plugin.update_emulator("dolphin"))
@@ -90,6 +86,57 @@ for bad in ("", "abc", "$(id)", "d8644a97df3d"):
 
 # Nothing above should have reached the point of reporting progress.
 check("a refused request emits nothing", emitted, [])
+
+
+# ------------------------------------------ an AppImage emulator's release list
+
+# Stubbed, and that is not only for determinism: this file runs under --offline,
+# and `emulator_build_list` on a github entry reaches the network. An earlier
+# version of this check called it for real and the offline suite quietly started
+# fetching Azahar's releases from GitHub.
+_real_releases = emu_install.resolve_release_list
+_real_record = emu_install.read_build_record
+
+_RELEASES = [
+    {"tag": "2126.0", "name": "azahar.AppImage", "url": "https://x/1",
+     "size": 103164408, "published": "2026-08-10", "prerelease": False},
+    {"tag": "2126.0-rc5", "name": "azahar.AppImage", "url": "https://x/2",
+     "size": 103176696, "published": "2026-07-28", "prerelease": True},
+    {"tag": "2125.1.3", "name": "azahar.AppImage", "url": "https://x/3",
+     "size": 101644792, "published": "2026-06-29", "prerelease": False},
+]
+
+
+def _fake_releases(repo, pattern, host="", limit=12):
+    return list(_RELEASES), ""
+
+
+emu_install.resolve_release_list = _fake_releases
+emu_install.read_build_record = lambda entry_id: {"tag": "2125.1.3"}
+
+_r = run(plugin.emulator_build_list("azahar"))
+check("releases are listed as builds", _r["ok"], True)
+check("newest first", _r["builds"][0]["commit"], "2126.0")
+# Shaped like the flatpak builds so one dialog renders both: the tag stands in
+# for the commit and the publish date for the commit date.
+check("the tag stands in for a commit", _r["builds"][2]["commit"], "2125.1.3")
+check("the publish date is the date", _r["builds"][0]["date"], "2026-08-10")
+# The size is known from the listing here, with no second call -- unlike the
+# flatpak side, where it costs a request per build.
+check("the download size comes with the list", _r["builds"][0]["size"], 103164408)
+check("a prerelease says so", _r["builds"][1]["prerelease"], True)
+check("the installed build is marked from the record", _r["builds"][2]["current"], True)
+check("and only that one is", [b["current"] for b in _r["builds"]], [False, False, True])
+
+# An install predating the record cannot be matched to a release. Marking one
+# "current" on a guess would hide which build is actually in use.
+emu_install.read_build_record = lambda entry_id: {}
+_r = run(plugin.emulator_build_list("azahar"))
+check("with nothing recorded, no build claims to be the installed one",
+      any(b["current"] for b in _r["builds"]), False)
+
+emu_install.resolve_release_list = _real_releases
+emu_install.read_build_record = _real_record
 
 
 # ------------------------------------------------------- RetroArch's reserved id
@@ -199,8 +246,9 @@ check("and pins nothing", _holds, [])
 emu_install.flatpak_hold = _real_hold
 emu_install.flatpak_installed_commit = _real_commit
 check("the module is handed back unpatched",
-      (emu_install.flatpak_hold, emu_install.flatpak_installed_commit),
-      (_real_hold, _real_commit))
+      (emu_install.flatpak_hold, emu_install.flatpak_installed_commit,
+       emu_install.resolve_release_list, emu_install.read_build_record),
+      (_real_hold, _real_commit, _real_releases, _real_record))
 
 plugin.loop.close()
 

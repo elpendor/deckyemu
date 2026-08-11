@@ -21,7 +21,7 @@ import {
   type PastBuild,
 } from "./backend";
 import { buildDate } from "./buildDate";
-import { ProgressBar } from "./TransferModal";
+import { humanSize, ProgressBar } from "./TransferModal";
 
 interface Props {
   closeModal?: () => void;
@@ -229,7 +229,11 @@ export function EmulatorVersionModal({ closeModal, emulator, onChanged }: Props)
     <ModalRoot closeModal={closeModal}>
       <h1 style={{ marginBottom: 0 }}>{emulator.name}</h1>
       <div style={{ opacity: 0.7, fontSize: "13px", marginBottom: "12px" }}>
-        {emulator.build ? `Build ${emulator.build}` : "Build unknown"}
+        {emulator.build
+          ? `Build ${emulator.build}`
+          : emulator.channel === "github"
+            ? "Installed before builds were recorded"
+            : "Build unknown"}
         {held ? " · held" : ""}
       </div>
 
@@ -262,17 +266,30 @@ export function EmulatorVersionModal({ closeModal, emulator, onChanged }: Props)
 
       {!running && onNewest && (
         <PanelSectionRow>
-          <Field description="This is the newest build on Flathub." />
+          <Field
+            description={
+              emulator.channel === "flatpak"
+                ? "This is the newest build on Flathub."
+                : "This is the newest release the project publishes."
+            }
+          />
         </PanelSectionRow>
       )}
 
-      <ToggleField
-        label="Hold this version"
-        description="Stops updates moving it. Turn this on when a build works and you would rather it stayed."
-        checked={held}
-        onChange={(next) => void toggleHold(next)}
-        disabled={running}
-      />
+      {/* Only for a Flathub app. An AppImage this plugin downloaded is one
+          only this plugin updates -- there is no Discover and no `flatpak
+          update` that knows the file exists -- so there is nothing for a hold
+          to protect against, and offering one would imply a threat that is not
+          there. */}
+      {emulator.channel === "flatpak" && (
+        <ToggleField
+          label="Hold this version"
+          description="Stops anything moving it, including an update run from Desktop Mode. Turn this on when a build works and you would rather it stayed."
+          checked={held}
+          onChange={(next) => void toggleHold(next)}
+          disabled={running}
+        />
+      )}
 
       {/*
         "Other builds", not "Earlier builds", and the button says neither "go
@@ -285,7 +302,13 @@ export function EmulatorVersionModal({ closeModal, emulator, onChanged }: Props)
       {builds === null && <Field description="Reading the build history..." />}
       {listError && <Field description={listError} />}
       {builds !== null && builds.length === 0 && !listError && (
-        <Field description="Flathub publishes no other build of this emulator." />
+        <Field
+          description={
+            emulator.channel === "flatpak"
+              ? "Flathub publishes no other build of this emulator."
+              : "The project publishes no other release this device can use."
+          }
+        />
       )}
 
       {/* Scrolled by the dialog itself rather than a nested region: a scroll area
@@ -362,7 +385,19 @@ export function EmulatorVersionModal({ closeModal, emulator, onChanged }: Props)
                 </DialogButton>
               </Focusable>
 
-              {open && (
+              {open && build.size ? (
+                /* A release listing carries the size already, so opening a row
+                   here needs no second call -- unlike a flatpak build, where the
+                   size costs a request each. */
+                <div style={{ fontSize: "12px", opacity: 0.7, marginTop: "10px" }}>
+                  <div>Download: {humanSize(build.size)}</div>
+                  {build.prerelease && (
+                    <div style={{ marginTop: "3px" }}>
+                      Marked by the project as a pre-release.
+                    </div>
+                  )}
+                </div>
+              ) : open ? (
                 <div style={{ fontSize: "12px", opacity: 0.7, marginTop: "10px" }}>
                   {detail === undefined && <div>Reading this build...</div>}
                   {detail === "failed" && <div>Could not read this build. It needs the network.</div>}
@@ -383,13 +418,19 @@ export function EmulatorVersionModal({ closeModal, emulator, onChanged }: Props)
                     </div>
                   )}
                 </div>
-              )}
+              ) : null}
             </div>
           );
         })}
 
       <div style={{ marginTop: "14px" }}>
-        <Field description="Choosing a build also holds it, so an update cannot move it again. Save data and configuration are not touched." />
+        <Field
+          description={
+            emulator.channel === "flatpak"
+              ? "Choosing a build also holds it, so an update cannot move it again. Save data and configuration are not touched."
+              : "Choosing a build downloads it over the one installed. Save data and configuration are not touched, and nothing else on the device updates this emulator."
+          }
+        />
       </div>
     </ModalRoot>
   );

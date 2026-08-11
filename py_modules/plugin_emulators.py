@@ -362,6 +362,36 @@ class Emulators(plugin_base.PluginContext):
         # matches there.
         for entry in (_RETROARCH_ENTRY,) + tuple(emulator_catalog.CATALOG):
             source = entry.get("source") or {}
+
+            if source.get("kind") == "github":
+                # Whether a newer release exists is a network call per emulator,
+                # and this runs when a tab opens. So the row says which build is
+                # installed and the dialog finds out what else there is -- the
+                # same division the flatpak side uses for its build list.
+                path = await self._run(emu_install.installed_appimage, entry["id"])
+                if not path:
+                    continue
+                record = await self._run(emu_install.read_build_record, entry["id"])
+                rows.append({
+                    "id": entry["id"],
+                    "name": entry["name"],
+                    "app_id": "",
+                    "channel": "github",
+                    # Empty for anything installed before the record existed.
+                    # Reported as unknown rather than guessed from the filename,
+                    # which for two of these three identifies nothing.
+                    "build": record.get("tag", ""),
+                    # Not knowable without asking the network, and saying "no"
+                    # here would be a claim rather than an answer.
+                    "update_available": False,
+                    # Nothing outside this plugin updates an AppImage it
+                    # downloaded, so there is nothing for a hold to protect
+                    # against and none is offered.
+                    "held": False,
+                    "reason": "",
+                })
+                continue
+
             if source.get("kind") != "flatpak":
                 continue
             app_id = source.get("id", "")
@@ -374,6 +404,7 @@ class Emulators(plugin_base.PluginContext):
                 "id": entry["id"],
                 "name": entry["name"],
                 "app_id": app_id,
+                "channel": "flatpak",
                 # Shown rather than the full hash, which is 64 characters of
                 # nothing anybody can read. The full value stays server-side and
                 # in `emulator_build_list`, which is what a rollback quotes back.
@@ -402,6 +433,40 @@ class Emulators(plugin_base.PluginContext):
         if not entry:
             return {"ok": False, "error": "That emulator is not in the catalog.", "builds": []}
         source = entry.get("source") or {}
+
+        if source.get("kind") == "github":
+            releases, error = await self._run(
+                emu_install.resolve_release_list,
+                source["repo"], source["asset"], source.get("host", ""),
+            )
+            if error:
+                return {"ok": False, "error": error, "builds": []}
+            record = await self._run(emu_install.read_build_record, entry["id"])
+            installed = record.get("tag", "")
+            return {
+                "ok": True,
+                "error": "",
+                # Shaped like the flatpak builds so one dialog renders both. The
+                # tag stands in for the commit, `published` for the date, and the
+                # download size is known here without a second call -- the release
+                # listing carries it.
+                "builds": [
+                    {
+                        "commit": release["tag"],
+                        "date": release["published"],
+                        "subject": release["name"],
+                        "size": release["size"],
+                        "prerelease": release["prerelease"],
+                        # False for every row when nothing was recorded, which is
+                        # honest: an install predating the record cannot be
+                        # matched to a release, and marking one "current" on a
+                        # guess would hide the build actually in use.
+                        "current": bool(installed) and release["tag"] == installed,
+                    }
+                    for release in releases
+                ],
+            }
+
         if source.get("kind") != "flatpak":
             return {
                 "ok": False,
@@ -455,6 +520,12 @@ class Emulators(plugin_base.PluginContext):
 
     async def update_emulator(self, entry_id: str):
         """Move an emulator to the newest build on its remote. Streams progress."""
+        appimage = self._appimage_entry(entry_id)
+        if appimage:
+            # An empty tag means "whatever is newest", which is what the install
+            # path already resolves.
+            return await self._start_appimage_build(appimage, "")
+
         entry, app_id, error = await self._flatpak_entry(entry_id)
         if error:
             return {"ok": False, "error": error}
@@ -479,6 +550,14 @@ class Emulators(plugin_base.PluginContext):
         the state is visible and reversible; it is being *silently* moved that is
         the problem.
         """
+        appimage = self._appimage_entry(entry_id)
+        if appimage:
+            # `commit` carries a release tag here. One parameter for "which
+            # build", because from the panel's side it is one question.
+            if not emu_install.valid_tag(commit):
+                return {"ok": False, "error": "That is not a build this can move to."}
+            return await self._start_appimage_build(appimage, commit)
+
         entry, app_id, error = await self._flatpak_entry(entry_id)
         if error:
             return {"ok": False, "error": error}
@@ -514,6 +593,114 @@ class Emulators(plugin_base.PluginContext):
             "ok": True,
             "held": app_id in await self._run(emu_install.flatpak_held),
         }
+
+    @staticmethod
+    def _appimage_entry(entry_id):
+        """The catalog entry when this emulator is an AppImage, else None.
+
+        `retroarch` is never one: it is the reserved id for the Flathub app, and
+        an AppImage RetroArch is one this plugin did not install and will not
+        move.
+        """
+        if entry_id == "retroarch":
+            return None
+        entry = emulator_catalog.find(entry_id)
+        if not entry or (entry.get("source") or {}).get("kind") != "github":
+            return None
+        return entry
+
+    async def _start_appimage_build(self, entry, tag):
+        """Download a specific release of an AppImage emulator, or the newest.
+
+        Nothing is held afterwards, unlike the flatpak path, and nothing needs to
+        be: an AppImage this plugin downloaded is one only this plugin updates.
+        There is no Discover, no `flatpak update`, nothing else on the device that
+        knows the file exists -- so a build stays where it was put until somebody
+        asks for another.
+        """
+        if not await self._run(emu_install.installed_appimage, entry["id"]):
+            return {"ok": False, "error": "%s is not installed." % entry["name"]}
+
+        self._detach(
+            self._change_appimage_build(entry, tag),
+            "emulator_build_done", entry["id"],
+        )
+        return {"ok": True, "started": True}
+
+    async def _change_appimage_build(self, entry, tag):
+        """Resolve a release, download it over the old one, and re-register.
+
+        Re-registered afterwards, which the flatpak path deliberately does not
+        do -- and the difference is not an inconsistency. A flatpak's launch
+        command is the same whatever version is deployed; an AppImage's is a path
+        to a file whose name carries the version, so a build change that did not
+        rewrite the registration would leave every game pointing at a binary that
+        is no longer there.
+        """
+        source = entry["source"]
+        try:
+            await decky.emit(
+                "emulator_build_progress", entry["id"],
+                "Looking up %s" % (tag or "the newest release"), -1,
+            )
+
+            if tag:
+                releases, error = await self._run(
+                    emu_install.resolve_release_list,
+                    source["repo"], source["asset"], source.get("host", ""),
+                )
+                asset = None
+                if not error:
+                    match = next((r for r in releases if r["tag"] == tag), None)
+                    if match is None:
+                        error = "That build is no longer published."
+                    else:
+                        asset = {"name": match["name"], "url": match["url"],
+                                 "tag": match["tag"], "size": match["size"]}
+            else:
+                asset, error = await self._run(
+                    emu_install.resolve_release_asset,
+                    source["repo"], source["asset"], source.get("host", ""),
+                )
+
+            if error or not asset:
+                await decky.emit("emulator_build_done", entry["id"], False,
+                                 error or "No download was found.")
+                return
+
+            loop = self.loop
+            last = [-1]
+
+            def on_progress(done, total):
+                if not total:
+                    return
+                percent = int(done * 100 / total)
+                # One event per whole percent, as the install does: a 90MB
+                # download at 256KB a chunk is ~360 callbacks and the panel
+                # cannot use that many.
+                if percent == last[0]:
+                    return
+                last[0] = percent
+                asyncio.run_coroutine_threadsafe(
+                    decky.emit(
+                        "emulator_build_progress", entry["id"],
+                        "Downloading %s" % asset["name"], percent,
+                    ),
+                    loop,
+                )
+
+            path, error = await self._run(
+                emu_install.install_appimage, entry, asset, on_progress
+            )
+            if error:
+                await decky.emit("emulator_build_done", entry["id"], False, error)
+                return
+
+            notice = await self._register_installed_emulator(entry, path)
+            await decky.emit("emulator_build_done", entry["id"], True, notice)
+        except OSError as error:
+            decky.logger.exception("Changing the build of %s failed", entry["id"])
+            await decky.emit("emulator_build_done", entry["id"], False, str(error))
 
     async def _flatpak_entry(self, entry_id):
         """(entry, app_id, error) for an installed user-scope flatpak emulator.

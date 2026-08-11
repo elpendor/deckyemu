@@ -213,7 +213,15 @@ export interface EmulatorBuild {
   id: string;
   name: string;
   app_id: string;
-  /** Short commit, for display. The full one is only ever quoted back from `builds`. */
+  /**
+   * How it was installed. `flatpak` can be held; `github` cannot and does not
+   * need to be — nothing outside this plugin updates an AppImage it downloaded.
+   */
+  channel: "flatpak" | "github";
+  /**
+   * Short commit, or a release tag. Empty for an AppImage installed before the
+   * build was recorded, which reads as unknown rather than being guessed.
+   */
   build: string;
   update_available: boolean;
   /** Pinned, so no update will move it. */
@@ -237,13 +245,17 @@ export const emulatorBuilds = callable<[], EmulatorBuild[]>("emulator_builds");
 
 /** One past build of an emulator, as offered to go back to. */
 export interface PastBuild {
-  /** Full commit hash. Passed back verbatim to `rollbackEmulator`. */
+  /** Full commit hash, or a release tag. Passed back verbatim to `rollbackEmulator`. */
   commit: string;
-  /** `2026-07-26 20:53:49 +0000`, straight from flatpak. */
+  /** `2026-07-26 20:53:49 +0000` from flatpak, or `2026-08-10` from a release. */
   date: string;
-  /** The commit subject, which is what makes this choosable rather than a hash. */
+  /** The commit subject or the asset's filename — what makes this choosable. */
   subject: string;
   current: boolean;
+  /** Bytes, for a release. Absent for a flatpak build, which costs a call each. */
+  size?: number;
+  /** A release the project marked as not final. */
+  prerelease?: boolean;
 }
 
 /** Costs a network round trip, so ask when the list is opened, not per row. */
