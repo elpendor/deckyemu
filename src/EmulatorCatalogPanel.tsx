@@ -20,9 +20,12 @@ import {
   FaLink,
   FaEraser,
   FaCodeBranch,
+  FaQuestion,
   FaTrash,
   FaWindowMaximize,
 } from "react-icons/fa";
+
+import { EmulatorLegendModal } from "./EmulatorLegendModal";
 
 import {
   emulatorBuilds,
@@ -69,7 +72,10 @@ function describe(entry: CatalogEmulator, build?: EmulatorBuild): string {
   // that way has no extensions and never shows up when adding a game. Saying so
   // is the only clue the user gets about why their ROM matches nothing.
   if (entry.present && !entry.registered) {
-    return `${entry.system} · installed, but not set up for adding games yet`;
+    // Names the button as well as the state. Saying only what is wrong leaves
+    // the fix to be inferred from a chain icon sitting next to it, which is the
+    // one row where the thing to do is not obvious from the row.
+    return `${entry.system} · installed elsewhere · press the link button to set it up`;
   }
   // The version state goes here rather than only inside the dialog, because
   // nothing would otherwise prompt anybody to open it. "Held" is the one that
@@ -480,11 +486,31 @@ export function EmulatorCatalogPanel({ onChanged }: Props) {
   );
 
   return (
-    // Untitled: this is the Emulators tab's primary content, and
-    // SidebarNavigation already renders the tab's own heading above it.
+    // Untitled section: SidebarNavigation already renders the tab's heading
+    // above it. The name goes on the intro row instead, which had to exist
+    // anyway -- and is needed there, because "Custom emulators" further down is
+    // labelled, which left the larger list above it looking like the unnamed
+    // preamble to it rather than the main thing on the tab.
     <PanelSection>
       <PanelSectionRow>
-        <Field description="For the systems RetroArch does not cover. The system, file types and launch arguments are all set up for you." />
+        <Field
+          label="Ready-made emulators"
+          description="For the systems RetroArch does not cover. The system, file types and launch arguments are all set up for you."
+          childrenContainerWidth="min"
+        >
+          {/* Every button in the rows below is an icon on its own. On a desktop
+              these would be tooltips; Game Mode has no pointer to hover with, so
+              the meanings need a place a thumbstick can reach. Here, next to the
+              heading, rather than a legend row per section -- one press for all
+              of them, and no permanent block of text explaining buttons to
+              somebody who already knows them. */}
+          <DialogButton
+            onClick={() => showModal(<EmulatorLegendModal />)}
+            style={{ minWidth: "auto", width: "auto", padding: "6px 12px" }}
+          >
+            <FaQuestion />
+          </DialogButton>
+        </Field>
       </PanelSectionRow>
 
       {loading && (
