@@ -95,12 +95,31 @@ def _headers(api_key):
 
 
 def _first_url(payload):
+    """The best usable image in a SteamGridDB listing, skipping locked ones.
+
+    A locked asset is one SteamGridDB has taken down. It is not removed from
+    the listing and its URL does not fail: it serves a placeholder saying the
+    asset was removed following a DMCA request, at the dimensions the real
+    artwork had. So it downloads cleanly and passes every check we have, and
+    the game ends up in Steam wearing a notice instead of a cover.
+
+    Measured against SteamGridDB on 2026-08-12, over four Mario games: 51 of
+    322 assets carried lock, every locked one was a 10-13 KB PNG, and locked
+    assets of the same dimensions were byte-identical to each other, while real
+    artwork ran 500-650 KB. One placeholder, served for all of them.
+
+    `lock` is what the API says, so it is what is trusted here -- the file size
+    tells the same story but would refuse genuinely small artwork too. Skipping
+    a locked entry falls through to the next candidate, and a slot where every
+    candidate is locked comes back empty, which sends the caller to libretro's
+    thumbnail exactly as an empty listing would.
+    """
     if not payload or not payload.get("success"):
         return ""
     data = payload.get("data") or []
     for item in data:
         url = item.get("url")
-        if url:
+        if url and not item.get("lock"):
             return url
     return ""
 

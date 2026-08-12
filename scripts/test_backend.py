@@ -670,6 +670,33 @@ check(
 )
 check("a slot with no artwork is absent rather than empty", "header" in _slots, False)
 check("no key means no requests at all", sgdb.art_urls("", 1234), {})
+
+
+# A taken-down asset is not removed from the listing and its URL works: it
+# serves a placeholder saying the asset was removed following a DMCA request,
+# at the dimensions the real artwork had. Nothing downstream can tell -- it is a
+# valid PNG of the right shape -- so the game goes into Steam wearing a notice
+# instead of a cover. Real, and reported: Super Mario 3D World's highest-scoring
+# 600x900 grid is locked.
+def _locked_get_json(url, headers=None):
+    if "600x900" in url:
+        # Locked first, as SteamGridDB orders it -- by score, and a takedown does
+        # not change an asset's score. Taking the first url gets the notice.
+        return {"success": True, "data": [
+            {"url": "http://x/dmca-notice.png", "lock": True, "width": 600, "height": 900},
+            {"url": "http://x/real-cover.png", "lock": False},
+        ]}
+    if "460x215" in url:
+        # Every candidate locked. The slot has to come back empty rather than
+        # settle for a notice, so the caller falls back to libretro's thumbnail.
+        return {"success": True, "data": [{"url": "http://x/also-locked.png", "lock": True}]}
+    return {"success": True, "data": []}
+
+
+sgdb.net.get_json = _locked_get_json
+_locked = sgdb.art_urls(SAMPLE_KEY, 1234)
+check("a locked asset is passed over for the next one", _locked.get("capsule"), "http://x/real-cover.png")
+check("a slot with nothing but locked assets is absent", "header" in _locked, False)
 sgdb.net.get_json = _sgdb_real_get_json
 
 section("SteamGridDB matching -- the wrong game is worse than no artwork")
