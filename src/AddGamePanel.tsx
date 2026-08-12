@@ -45,7 +45,13 @@ import {
 } from "./backend";
 import { addToCollection, applyArtwork, createShortcut, removeShortcut } from "./steam";
 import { getDraft, resetDraft, subscribeDraft, updateDraft } from "./romDraft";
-import { lookupArtwork, selectPackagedGame, selectRom, type Console } from "./addFlow";
+import {
+  LOOKUP_FAILED,
+  lookupArtwork,
+  selectPackagedGame,
+  selectRom,
+  type Console,
+} from "./addFlow";
 import { coreOptions as buildCoreOptions } from "./corePicker";
 import { ArtPickerModal } from "./ArtPickerModal";
 import { openManagePage } from "./ManagePage";
@@ -956,20 +962,21 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
         </PanelSectionRow>
       )}
 
-      {/* The way back to a ROM whose artwork was resolved under conditions that
-          have since changed -- a key added, a core swapped, a name corrected by
-          hand. The automatic re-lookup covers the common case, but it depends on
-          having seen the state before the change, and nothing that depends on
-          remembering should be the only way to do something. Mirrors the
-          editor modal's "Re-fetch name and artwork" for games already added. */}
-      {romPath && !looking && (
+      {/* Only after the lookup itself failed, which is the one state nothing
+          else here answers. Changing the core re-runs it, a key arriving
+          re-runs it, and a name that came out wrong is better fixed in the art
+          picker's search box, where the candidates are visible. What none of
+          those cover is a lookup that never finished: the reply was lost, so
+          there is nothing to correct and nothing to choose between -- just the
+          same request, worth making again. */}
+      {romPath && !looking && error === LOOKUP_FAILED && (
         <PanelSectionRow>
           <ButtonItem
             layout="below"
             onClick={() => void lookupArtwork(romPath, coreId, title)}
             disabled={adding || !coreId}
           >
-            Look up name and artwork again
+            Try the lookup again
           </ButtonItem>
         </PanelSectionRow>
       )}

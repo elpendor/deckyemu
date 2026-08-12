@@ -43,6 +43,15 @@ export const SYSTEM_NAME: Record<Console, string> = {
 };
 
 /**
+ * What the draft's error says when the lookup itself did not complete.
+ *
+ * Exported so the panel can recognise this one failure rather than guess at it
+ * from the absence of a result -- "no artwork" is also the state of a ROM whose
+ * core has not been chosen yet, and those two want different offers.
+ */
+export const LOOKUP_FAILED = "Lookup failed. You can still set a name manually and add the game.";
+
+/**
  * Look up name and artwork for a ROM/core pair, writing into the draft.
  *
  * `title` overrides the name taken from the filename. Only PS3 games need it so
@@ -67,7 +76,7 @@ export async function lookupArtwork(
       // A PS3 game's name comes from its PARAM.SFO, not from the lookup, so a
       // failed lookup must not drop it back to "EBOOT".
       ...(title ? { title } : {}),
-      error: "Lookup failed. You can still set a name manually and add the game.",
+      error: LOOKUP_FAILED,
     });
   }
 }
