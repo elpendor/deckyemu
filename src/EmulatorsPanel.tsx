@@ -16,28 +16,12 @@ import { EmulatorCatalogPanel } from "./EmulatorCatalogPanel";
 import { EmulatorEditorModal } from "./EmulatorEditorModal";
 import { FirmwarePanel } from "./FirmwarePanel";
 import { byName } from "./order";
+import { registeredDescription } from "./registeredEmulator";
 import { callWithRetry } from "./timeout";
 
 interface Props {
   /** Re-read status/cores after a change, so new emulators become selectable. */
   onChanged: () => void;
-}
-
-/**
- * What system an emulator runs, for display.
- *
- * `databases` is empty for the systems libretro has no entry for -- Switch, Wii U,
- * PS3 -- and those store their label directly instead. Reading only `databases`
- * reported "No system set" for a Switch emulator with Nintendo Switch selected,
- * which reads like the setting failed to save.
- */
-function systemLabel(emulator: CustomEmulator): string {
-  return (
-    emulator.databases[0] ||
-    emulator.platform_full ||
-    emulator.platform ||
-    "No system set"
-  );
 }
 
 export function EmulatorsPanel({ onChanged }: Props) {
@@ -104,14 +88,26 @@ export function EmulatorsPanel({ onChanged }: Props) {
       <EmulatorCatalogPanel onChanged={afterChange} />
       <FirmwarePanel reloadKey={changes} />
 
+      {/* Not "Custom": installing anything from the list above registers it
+          here too, so most of these are not custom at all. What the list
+          actually holds is everything wired up for adding games, however it got
+          there -- and where each one's details can be changed. */}
       <PanelSection
-        title={`Custom emulators${emulators.length ? ` (${emulators.length})` : ""}`}
+        title={`All registered emulators${emulators.length ? ` (${emulators.length})` : ""}`}
       >
-        {emulators.length === 0 && (
-          <PanelSectionRow>
-            <Field description="Anything the list above does not cover. Point the plugin at a Flatpak or an executable and tell it which system it runs; artwork then works the same as for cores." />
-          </PanelSectionRow>
-        )}
+        {/* Always, not only when the list is empty. It used to explain itself
+            only while it had nothing in it, so the moment it had contents it
+            stopped saying what it was -- which is exactly when somebody asks
+            why an emulator is in two lists at once. */}
+        <PanelSectionRow>
+          <Field
+            description={
+              emulators.length === 0
+                ? "Everything set up for adding games appears here. Nothing is yet: install one above, or point the plugin at a Flatpak or executable of your own and tell it which system it runs."
+                : "Everything set up for adding games, whether it came from the list above or you added it by hand. Edit one to change its system, file types or launch arguments."
+            }
+          />
+        </PanelSectionRow>
 
         {/* By name, like every other list of emulators here. The stored order
             is the order they were registered in, which means the list reshuffles
@@ -120,9 +116,7 @@ export function EmulatorsPanel({ onChanged }: Props) {
           <PanelSectionRow key={emulator.id}>
             <Field
               label={emulator.name}
-              description={`${systemLabel(emulator)} · ${emulator.extensions
-                .map((extension) => `.${extension}`)
-                .join(" ")}`}
+              description={registeredDescription(emulator)}
               childrenContainerWidth="min"
             >
               <div style={{ display: "flex", gap: "6px" }}>

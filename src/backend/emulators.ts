@@ -33,6 +33,12 @@ export interface CustomEmulator {
   platform_full: string;
   /** Switch appended when "launch fullscreen" is on; differs per emulator. */
   fullscreen_args: string;
+  /**
+   * Whether this was registered by installing a catalog entry rather than
+   * described by hand. Derived by the backend from `catalog_recipe`; it is what
+   * lets a registered row explain why it also appears in the catalog list.
+   */
+  from_catalog: boolean;
 }
 
 export interface SystemOption {

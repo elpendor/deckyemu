@@ -495,7 +495,11 @@ export function EmulatorCatalogPanel({ onChanged }: Props) {
       <PanelSectionRow>
         <Field
           label="Ready-made emulators"
-          description="For the systems RetroArch does not cover. The system, file types and launch arguments are all set up for you."
+          // Ends by pointing down the page. Somebody looking for an emulator
+          // that is not here has no reason to expect a second list further
+          // down, and finding it by accident is how the two came to look like
+          // rival lists rather than one leading into the other.
+          description="For the systems RetroArch does not cover. The system, file types and launch arguments are all set up for you. Installing one also registers it below. Not here? Add your own there."
           childrenContainerWidth="min"
         >
           {/* Every button in the rows below is an icon on its own. On a desktop

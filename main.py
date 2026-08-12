@@ -1900,7 +1900,22 @@ class Plugin(
     # ------------------------------------------------------- custom emulators
 
     async def list_emulators(self):
-        return await self._refresh_emulators()
+        """Registered emulators, each marked with where its definition came from.
+
+        Derived rather than stored. `catalog_recipe` is written by `to_emulator`
+        when a catalog install is registered, and `emulators.save` carries it
+        through every later edit, so its presence is what separates an emulator
+        that arrived by pressing Install from one described by hand.
+
+        Sent because the panel shows both together and the rows are otherwise
+        identical -- same name, same system -- with nothing to say why some of
+        them also appear in the catalog list above.
+
+        Copied rather than annotated in place: the list is `self._emulators`,
+        which the launcher and recipe-upgrade passes both read.
+        """
+        entries = await self._refresh_emulators()
+        return [dict(entry, from_catalog="catalog_recipe" in entry) for entry in entries]
 
     async def list_systems(self):
         """libretro system names an emulator can be mapped to, for artwork.
