@@ -5,18 +5,16 @@ sys.path that already holds decky_loader's own packages, so a common name can
 resolve to decky's module instead of this one. `updater.py` did, and only the
 feature that used it failed.
 
-Decky's loader installs a plugin by fetching a URL itself. That is fine for a
-public release, but a private repository's asset needs an Authorization header
-and decky has no token -- it would get a 404 and the update would appear to fail
-for no reason.
+Decky's loader installs a plugin by fetching a URL itself, and holds no
+credentials while it does. So the backend downloads the release, then offers the
+file to decky at `http://127.0.0.1:<port>/<token>/<name>`: decky fetches from
+loopback, has nothing to authenticate with, and installs exactly as it would
+from GitHub.
 
-So the backend downloads the release with the token it has, and then offers the
-file to decky at `http://127.0.0.1:<port>/<token>/<name>`. Decky fetches from
-loopback, needs no credentials, and installs exactly as it would from GitHub.
-
-The same path is used for public releases: one code path, and decky checks a
-digest we computed from bytes we already have rather than trusting the network
-twice.
+One path for every release, which is the point of it. Decky checks a digest
+computed from bytes already in hand rather than trusting the network twice, and
+a build aimed at a private repository keeps working -- that asset needs an
+Authorization header decky would never send, and 404s for it.
 
 Kept deliberately small:
 

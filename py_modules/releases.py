@@ -143,7 +143,8 @@ def fetch_releases(force=False, token=""):
         # net logs the reason; say something the user can act on.
         _cache["ok"] = False
         _cache["error"] = (
-            "GitHub did not answer. A private repository needs a token."
+            "GitHub did not answer. Check the connection; a private repository "
+            "also needs a token."
             if not token
             else "GitHub did not answer, or the token is not valid for this repository."
         )

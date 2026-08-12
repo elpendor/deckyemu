@@ -43,8 +43,9 @@ export const checkForUpdate = callable<[force: boolean], UpdateCheck>("check_for
 /**
  * Download the release here and offer it to decky on loopback.
  *
- * Decky fetches the URL itself and has no credentials, so a private repository's
- * asset would 404 for it. The returned URL is local and needs none.
+ * Decky fetches the URL itself and has no credentials. The returned URL is local
+ * and needs none, which also keeps a private repository's asset -- which decky
+ * would 404 on -- installable.
  */
 export const stageUpdate = callable<
   [],

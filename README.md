@@ -8,6 +8,10 @@ Works with RetroArch's libretro cores and with standalone emulators — Dolphin,
 PCSX2, Cemu, RPCS3 and so on, installable in one press from the plugin, or
 registered by hand. Everything happens in Game Mode.
 
+DeckyEmu ships no games, no BIOS files and no encryption keys, and downloads
+none of them. It installs emulators from their own publishers and points them at
+files you already have.
+
 ## Contents
 
 **Start here** — [What it does](#what-it-does) · [Requirements](#requirements) ·

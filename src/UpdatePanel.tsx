@@ -169,7 +169,9 @@ export function UpdatePanel() {
    * Hand the release to decky and let it take over.
    *
    * Staged locally first: decky downloads the URL itself and holds no
-   * credentials, so a private repository's asset would answer 404 for it.
+   * credentials, so what it installs is a digest-checked file served from
+   * loopback -- which also keeps a build aimed at a private repository working,
+   * since decky would 404 on that asset.
    */
   const install = useCallback(async () => {
     const release = update?.latest;
