@@ -20,7 +20,7 @@ import {
   toaster,
   useQuickAccessVisible,
 } from "@decky/api";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
   getSettings,
@@ -49,7 +49,7 @@ import { lookupArtwork, selectPackagedGame, selectRom, type Console } from "./ad
 import { coreOptions as buildCoreOptions } from "./corePicker";
 import { ArtPickerModal } from "./ArtPickerModal";
 import { openManagePage } from "./ManagePage";
-import { SGDB_PROMPT, shouldOfferSgdb } from "./sgdbPrompt";
+import { SGDB_PROMPT, sgdbKeyJustAppeared, shouldOfferSgdb } from "./sgdbPrompt";
 import { InstallProgress } from "./InstallProgress";
 import { PackagedGamesModal } from "./PackagedGamesModal";
 import { TransferModal } from "./TransferModal";
@@ -309,23 +309,26 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
   /*
    * Look the artwork up again when a key appears mid-flow.
    *
-   * The row below sends people to the settings page while a ROM is still in the
+   * The prompt sends people to the settings page while a ROM is still in the
    * draft, and what was found for it was found without a key. Without this,
    * following that advice and coming straight back adds the game with the same
    * single image it was already showing -- which reads as the key not working.
    *
-   * Only the unset -> set transition fires it. The first load establishes what
-   * the state was rather than acting on it, so opening the panel with a key
-   * already stored looks up nothing.
+   * The memory of the previous state is in `sgdbPrompt`, at module scope,
+   * because this component does not survive the trip to the settings page.
+   *
+   * Ordered so nothing is consumed that cannot be acted on: while a lookup is
+   * already running this returns before asking, and runs again when `looking`
+   * goes false. With no ROM the transition is consumed and dropped, which is
+   * right -- the next ROM picked is looked up with the key anyway.
    */
-  const hadSgdbKey = useRef<boolean | null>(null);
   useEffect(() => {
-    if (!settings) return;
-    const previous = hadSgdbKey.current;
-    hadSgdbKey.current = settings.sgdb_api_key_set;
-    if (previous !== false || !settings.sgdb_api_key_set) return;
-    if (!romPath || !coreId || looking) return;
-    void lookupArtwork(romPath, coreId);
+    if (!settings || looking) return;
+    if (!sgdbKeyJustAppeared(settings)) return;
+    if (!romPath || !coreId) return;
+    // Read at call time rather than through a dependency, so editing the name
+    // does not re-run this on every keystroke.
+    void lookupArtwork(romPath, coreId, getDraft().title);
   }, [settings, romPath, coreId, looking]);
 
   const onCoreChange = useCallback(
@@ -949,6 +952,24 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
         <PanelSectionRow>
           <ButtonItem layout="below" onClick={openArtPicker} disabled={adding}>
             {resolved?.art?.capsule ? "Wrong game? Pick artwork" : "Find artwork manually"}
+          </ButtonItem>
+        </PanelSectionRow>
+      )}
+
+      {/* The way back to a ROM whose artwork was resolved under conditions that
+          have since changed -- a key added, a core swapped, a name corrected by
+          hand. The automatic re-lookup covers the common case, but it depends on
+          having seen the state before the change, and nothing that depends on
+          remembering should be the only way to do something. Mirrors the
+          editor modal's "Re-fetch name and artwork" for games already added. */}
+      {romPath && !looking && (
+        <PanelSectionRow>
+          <ButtonItem
+            layout="below"
+            onClick={() => void lookupArtwork(romPath, coreId, title)}
+            disabled={adding || !coreId}
+          >
+            Look up name and artwork again
           </ButtonItem>
         </PanelSectionRow>
       )}
