@@ -41,9 +41,15 @@ export const MANAGE_ROUTE = "/deckyemu/manage";
  */
 const tabRoute = (tab: string) => `${MANAGE_ROUTE}/${tab}`;
 
-/** Navigate to the setup page. */
-export function openManagePage() {
-  Navigation.Navigate(MANAGE_ROUTE);
+/**
+ * Navigate to the setup page, optionally straight to one tab.
+ *
+ * Naming a tab works for the same reason the tabs work at all: the selection is
+ * the URL, so arriving at a tab's route selects it. Bare `MANAGE_ROUTE` matches
+ * no page and falls back to the first, which is the wanted default.
+ */
+export function openManagePage(tab?: "artwork") {
+  Navigation.Navigate(tab ? tabRoute(tab) : MANAGE_ROUTE);
   Navigation.CloseSideMenus();
 }
 

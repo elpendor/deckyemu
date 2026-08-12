@@ -12,8 +12,15 @@ import {
   type DropdownOption,
   type SingleDropdownOption,
 } from "@decky/ui";
-import { addEventListener, removeEventListener, FileSelectionType, openFilePicker, toaster } from "@decky/api";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  addEventListener,
+  removeEventListener,
+  FileSelectionType,
+  openFilePicker,
+  toaster,
+  useQuickAccessVisible,
+} from "@decky/api";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   getSettings,
@@ -41,6 +48,8 @@ import { getDraft, resetDraft, subscribeDraft, updateDraft } from "./romDraft";
 import { lookupArtwork, selectPackagedGame, selectRom, type Console } from "./addFlow";
 import { coreOptions as buildCoreOptions } from "./corePicker";
 import { ArtPickerModal } from "./ArtPickerModal";
+import { openManagePage } from "./ManagePage";
+import { SGDB_PROMPT, shouldOfferSgdb } from "./sgdbPrompt";
 import { InstallProgress } from "./InstallProgress";
 import { PackagedGamesModal } from "./PackagedGamesModal";
 import { TransferModal } from "./TransferModal";
@@ -89,9 +98,15 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
     return unsubscribe;
   }, []);
 
+  // Re-read on every open, not once on mount. The SteamGridDB row below sends
+  // people to the settings page to fix exactly what it is complaining about, and
+  // it has to be gone when they come back -- otherwise the fix looks like it did
+  // not take. The same applies to anything else changed over there.
+  const visible = useQuickAccessVisible();
+
   useEffect(() => {
     getSettings().then(setLocalSettings).catch(() => undefined);
-  }, []);
+  }, [visible]);
 
   // Re-asked whenever the emulator changes, because the answer is about the
   // emulator and not the game. Cleared first so a stale warning from the last
@@ -290,6 +305,28 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
     () => buildCoreOptions(visibleCores),
     [visibleCores],
   );
+
+  /*
+   * Look the artwork up again when a key appears mid-flow.
+   *
+   * The row below sends people to the settings page while a ROM is still in the
+   * draft, and what was found for it was found without a key. Without this,
+   * following that advice and coming straight back adds the game with the same
+   * single image it was already showing -- which reads as the key not working.
+   *
+   * Only the unset -> set transition fires it. The first load establishes what
+   * the state was rather than acting on it, so opening the panel with a key
+   * already stored looks up nothing.
+   */
+  const hadSgdbKey = useRef<boolean | null>(null);
+  useEffect(() => {
+    if (!settings) return;
+    const previous = hadSgdbKey.current;
+    hadSgdbKey.current = settings.sgdb_api_key_set;
+    if (previous !== false || !settings.sgdb_api_key_set) return;
+    if (!romPath || !coreId || looking) return;
+    void lookupArtwork(romPath, coreId);
+  }, [settings, romPath, coreId, looking]);
 
   const onCoreChange = useCallback(
     (option: SingleDropdownOption) => {
@@ -846,6 +883,24 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
             )}
           </Field>
         </PanelSectionRow>
+      )}
+
+      {/* Under the artwork row, because that is what it is about, and only once
+          artwork has been looked up -- before then there is nothing on screen for
+          it to be a remark on. It disappears by itself the moment a key exists;
+          there is no dismissal, because the row asks for one thing and having
+          done it is the only signal needed. See sgdbPrompt.ts. */}
+      {resolved && !looking && shouldOfferSgdb(settings) && (
+        <>
+          <PanelSectionRow>
+            <Field label={SGDB_PROMPT.label} description={SGDB_PROMPT.description} />
+          </PanelSectionRow>
+          <PanelSectionRow>
+            <ButtonItem layout="below" onClick={() => openManagePage("artwork")}>
+              {SGDB_PROMPT.action}
+            </ButtonItem>
+          </PanelSectionRow>
+        </>
       )}
 
       {error && (
