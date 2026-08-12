@@ -1,0 +1,296 @@
+import {
+  DialogButton,
+  Dropdown,
+  Focusable,
+  ModalRoot,
+  Spinner,
+  TextField,
+  type SingleDropdownOption,
+} from "@decky/ui";
+import { FileSelectionType, openFilePicker, toaster } from "@decky/api";
+import { useCallback, useEffect, useMemo, useState } from "react";
+
+import {
+  listSystems,
+  saveEmulator,
+  suggestLaunchOptions,
+  type CustomEmulator,
+  type SystemOption,
+} from "./backend";
+
+interface Props {
+  /** An existing emulator to edit, or undefined to add a new one. */
+  emulator?: CustomEmulator;
+  onSaved: () => void;
+  closeModal?: () => void;
+}
+
+const KIND_OPTIONS: SingleDropdownOption[] = [
+  { data: "flatpak", label: "Flatpak" },
+  { data: "path", label: "Executable or AppImage" },
+];
+
+const FIELD_GAP = { display: "flex", flexDirection: "column" as const, gap: "4px" };
+
+function Label({ children, hint }: { children: string; hint?: string }) {
+  return (
+    <div>
+      <div style={{ fontSize: "14px", fontWeight: 500 }}>{children}</div>
+      {hint && <div style={{ fontSize: "12px", opacity: 0.6 }}>{hint}</div>}
+    </div>
+  );
+}
+
+/**
+ * Add or edit a standalone emulator.
+ *
+ * The system field is the one that matters beyond launching: artwork lookup and
+ * the SteamGridDB release-era check both key on the libretro system name, so
+ * setting it makes a custom emulator get boxart and collection grouping exactly
+ * like a libretro core does. Leaving it unset still launches games, but artwork
+ * then depends entirely on SteamGridDB matching the title by name.
+ */
+export function EmulatorEditorModal({ emulator, onSaved, closeModal }: Props) {
+  const [name, setName] = useState(emulator?.name ?? "");
+  const [kind, setKind] = useState<"flatpak" | "path">(emulator?.kind ?? "flatpak");
+  const [target, setTarget] = useState(emulator?.target ?? "");
+  const [args, setArgs] = useState(emulator?.args ?? "{rom}");
+  const [extensions, setExtensions] = useState((emulator?.extensions ?? []).join(", "));
+  // Systems with no libretro database are identified by a synthetic id, so the
+  // selection is tracked by id rather than by database name.
+  const [systemId, setSystemId] = useState(
+    emulator?.databases?.[0] || (emulator?.platform ? `~${emulator.platform}` : ""),
+  );
+  const [fullscreenArgs, setFullscreenArgs] = useState(emulator?.fullscreen_args ?? "");
+  const [systems, setSystems] = useState<SystemOption[] | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    listSystems()
+      .then(setSystems)
+      .catch(() => setSystems([]));
+  }, []);
+
+  /**
+   * One list, ordered by the full "Manufacturer - System" name.
+   *
+   * Short names are what collections use, but they make a poor picker: they
+   * scatter one manufacturer's systems across the alphabet (3DS, GBA, N64,
+   * SNES, Switch, Wii) and only some carry the maker's name. The full names sort
+   * every Nintendo system together. Whether libretro has artwork for a system is
+   * a consequence of the choice rather than part of its name, so that stays in
+   * the hint below.
+   */
+  const systemOptions: SingleDropdownOption[] = useMemo(
+    () => [
+      { data: "", label: "None" },
+      ...(systems ?? []).map((system) => ({ data: system.id, label: system.label })),
+    ],
+    [systems],
+  );
+
+  const selectedSystem = (systems ?? []).find((entry) => entry.id === systemId);
+
+  /**
+   * Fill in the launch recipe for a recognised emulator.
+   *
+   * Both fields are set together: a fullscreen flag placed before a positional
+   * ROM path can swallow it, so some emulators need an explicit -g as well.
+   * Only replaces values the user has not customised.
+   */
+  const applySuggestions = useCallback(
+    (targetPath: string) => {
+      if (!targetPath.trim()) return;
+      suggestLaunchOptions(targetPath)
+        .then((result) => {
+          if (result.args && (!args.trim() || args.trim() === "{rom}")) {
+            setArgs(result.args);
+          }
+          if (result.fullscreen_args && !fullscreenArgs.trim()) {
+            setFullscreenArgs(result.fullscreen_args);
+          }
+        })
+        .catch(() => undefined);
+    },
+    [args, fullscreenArgs],
+  );
+
+  const suggestForTarget = useCallback(() => applySuggestions(target), [applySuggestions, target]);
+
+  const browse = useCallback(async () => {
+    try {
+      const picked = await openFilePicker(
+        FileSelectionType.FILE,
+        "/usr/bin",
+        true,
+        true,
+        undefined,
+        undefined,
+        false,
+        true,
+      );
+      const path = picked?.realpath || picked?.path || "";
+      if (path) {
+        setTarget(path);
+        applySuggestions(path);
+      }
+    } catch (pickError) {
+      if (!String(pickError ?? "").toLowerCase().includes("cancel")) {
+        console.error("[retroarch] emulator picker failed", pickError);
+      }
+    }
+  }, [applySuggestions]);
+
+  const save = useCallback(async () => {
+    setSaving(true);
+    setError("");
+    try {
+      const result = await saveEmulator({
+        id: emulator?.id,
+        name,
+        kind,
+        target,
+        args,
+        extensions,
+        fullscreen_args: fullscreenArgs,
+        databases: selectedSystem?.database ? [selectedSystem.database] : [],
+        // Only needed when libretro has no database to derive a label from.
+        platform: selectedSystem && !selectedSystem.libretro ? selectedSystem.short : "",
+        platform_full: selectedSystem && !selectedSystem.libretro ? selectedSystem.full : "",
+      });
+      if (!result.ok) {
+        setError(result.error ?? "Could not save that emulator.");
+        return;
+      }
+      if (result.notice) {
+        toaster.toast({ title: name || "Emulator saved", body: result.notice });
+      }
+      onSaved();
+      closeModal?.();
+    } catch (saveError) {
+      console.error("[retroarch] could not save emulator", saveError);
+      setError("Could not save that emulator.");
+    } finally {
+      setSaving(false);
+    }
+  }, [
+    emulator?.id,
+    name,
+    kind,
+    target,
+    args,
+    extensions,
+    fullscreenArgs,
+    selectedSystem,
+    onSaved,
+    closeModal,
+  ]);
+
+  return (
+    <ModalRoot closeModal={closeModal} bAllowFullSize>
+      <div style={{ fontSize: "20px", fontWeight: 600, marginBottom: "12px" }}>
+        {emulator ? `Edit ${emulator.name}` : "Add an emulator"}
+      </div>
+
+      <Focusable style={{ ...FIELD_GAP, gap: "14px", maxHeight: "58vh", overflowY: "auto" }}>
+        <div style={FIELD_GAP}>
+          <Label hint="Shown when choosing how to run a ROM.">Name</Label>
+          <TextField value={name} onChange={(event) => setName(event.target.value)} />
+        </div>
+
+        <div style={FIELD_GAP}>
+          <Label>How it is installed</Label>
+          <Dropdown
+            rgOptions={KIND_OPTIONS}
+            selectedOption={kind}
+            onChange={(option) => setKind(option.data as "flatpak" | "path")}
+          />
+        </div>
+
+        <div style={FIELD_GAP}>
+          <Label
+            hint={
+              kind === "flatpak"
+                ? "Application id, e.g. org.DolphinEmu.dolphin-emu"
+                : "Full path to the binary or AppImage"
+            }
+          >
+            {kind === "flatpak" ? "Flatpak application id" : "Executable"}
+          </Label>
+          <TextField
+            value={target}
+            onChange={(event) => setTarget(event.target.value)}
+            onBlur={suggestForTarget}
+          />
+          {kind === "path" && (
+            <DialogButton onClick={browse} style={{ width: "auto", minWidth: "140px" }}>
+              Browse...
+            </DialogButton>
+          )}
+        </div>
+
+        <div style={FIELD_GAP}>
+          <Label hint="Comma separated, e.g. iso, rvz, gcm, wbfs">File extensions</Label>
+          <TextField
+            value={extensions}
+            onChange={(event) => setExtensions(event.target.value)}
+          />
+        </div>
+
+        <div style={FIELD_GAP}>
+          <Label
+            hint={
+              !selectedSystem
+                ? "Determines the boxart source and the collection name. Pick the system this emulator runs."
+                : selectedSystem.libretro
+                  ? `Collections will call it "${selectedSystem.short}". Boxart from libretro thumbnails, or SteamGridDB if a key is set.`
+                  : `Collections will call it "${selectedSystem.short}". libretro has no thumbnails for this system, so boxart comes from SteamGridDB — a key is recommended.`
+            }
+          >
+            System
+          </Label>
+          {systems === null ? (
+            <Spinner style={{ height: "20px" }} />
+          ) : (
+            <Dropdown
+              rgOptions={systemOptions}
+              selectedOption={systemId}
+              onChange={(option) => setSystemId(String(option.data))}
+            />
+          )}
+        </div>
+
+        <div style={FIELD_GAP}>
+          <Label hint="{rom} is replaced with the ROM path. Leave as-is unless the emulator needs flags.">
+            Arguments
+          </Label>
+          <TextField value={args} onChange={(event) => setArgs(event.target.value)} />
+        </div>
+
+        <div style={FIELD_GAP}>
+          <Label hint="Added when 'Launch fullscreen' is on in Settings. Every emulator uses a different switch, so this is per-emulator — e.g. -f, -fullscreen, --no-gui.">
+            Fullscreen switch
+          </Label>
+          <TextField
+            value={fullscreenArgs}
+            onChange={(event) => setFullscreenArgs(event.target.value)}
+          />
+        </div>
+      </Focusable>
+
+      {error && (
+        <div style={{ color: "#e35d5d", fontSize: "13px", marginTop: "10px" }}>{error}</div>
+      )}
+
+      <Focusable style={{ display: "flex", gap: "8px", marginTop: "16px" }}>
+        <DialogButton onClick={save} disabled={saving}>
+          {saving ? "Saving..." : "Save"}
+        </DialogButton>
+        <DialogButton onClick={() => closeModal?.()} disabled={saving}>
+          Cancel
+        </DialogButton>
+      </Focusable>
+    </ModalRoot>
+  );
+}

@@ -1,0 +1,11 @@
+# Keep LF in the working tree on every platform.
+#
+# The shell scripts here run on Linux (the Deck) or through Git Bash, and both
+# choke on CRLF -- a script checked out with CRLF fails with a confusing
+# "\r: command not found". The generated launcher scripts are written with
+# explicit LF for the same reason.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.zip binary

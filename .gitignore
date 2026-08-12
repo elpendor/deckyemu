@@ -1,0 +1,65 @@
+lib-cov
+*.seed
+*.log
+*.csv
+*.dat
+*.out
+*.pid
+*.gz
+*.swp
+
+pids
+logs
+results
+tmp
+
+# Coverage reports
+coverage
+
+# API keys and secrets
+.env
+
+# Dependency directory
+node_modules
+bower_components
+.pnpm-store
+
+# Editors
+.idea
+*.iml
+
+# OS metadata
+.DS_Store
+Thumbs.db
+
+# Ignore built ts files
+dist/
+
+__pycache__/
+
+/.yalc
+yalc.lock
+
+# Editor-local, all of it. The template's .vscode tasks were removed: they
+# implemented a deploy path this project does not use -- decky plugin build,
+# which would Docker-build a backend that no longer exists -- and they piped a
+# sudo password over ssh, which is not a pattern to ship as though sanctioned.
+.vscode/
+
+# Ignore output folder
+
+backend/out
+
+# Make sure to ignore any instance of the loader's decky_plugin.py
+decky_plugin.py
+
+# Ignore decky CLI for building plugins
+out
+out/*
+cli/
+cli/*
+cli/decky
+
+# A runtime cache that decky writes under its own data dir; a copy here is a
+# stale 260KB of somebody else metadata that nothing reads.
+installer/

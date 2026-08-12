@@ -1,0 +1,16 @@
+{
+  "name": "DeckyEmu",
+  "author": "Pendor",
+  "flags": [],
+  "api_version": 1,
+  "publish": {
+    "tags": [
+      "emulation",
+      "retroarch",
+      "library",
+      "boxart"
+    ],
+    "description": "Add emulated games to your Steam library with proper names and boxart. RetroArch cores plus your own standalone emulators.",
+    "image": "https://opengraph.githubassets.com/1/elpendor/deckyemu"
+  }
+}

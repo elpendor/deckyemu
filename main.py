@@ -1,0 +1,2228 @@
+import asyncio
+import functools
+import glob
+import hashlib
+import json
+import os
+import re
+from typing import Optional
+
+import decky
+
+import cheevos
+import devreset
+import emu_config
+import emu_firmware
+import emu_install
+import emulator_catalog
+import emulators
+import fileserver
+import installer
+import handoff
+import launchers
+import libretro_meta
+import net
+import platforms
+import ps3_games
+import ps4_games
+import plugin_accounts
+import plugin_audit
+import plugin_emulators
+import plugin_firmware
+import plugin_packages
+import ra_cores
+import ra_detect
+import releases
+import romshelf
+import sgdb
+import store
+import sysenv
+import vita_games
+import vita_release
+import xbox_disc
+
+ROM_EXTENSION_BLOCKLIST = {"srm", "state", "sav", "png", "jpg", "cfg", "txt", "xml"}
+
+
+def _check_own_modules():
+    """Warn if one of our modules was shadowed by decky's.
+
+    py_modules is appended to a sys.path that already contains decky_loader's own
+    packages, so a generic name can resolve to decky's module instead of ours --
+    silently, and only for the parts that use it. `updater.py` did exactly that:
+    everything loaded, and one feature failed with "module 'decky_loader.updater'
+    has no attribute 'check'". Cheap to check, and it names the problem outright.
+    """
+    here = os.path.dirname(os.path.abspath(__file__))
+    # Every project module this file imports. The list had drifted -- eight
+    # modules added since it was written were not in it, and a guard that covers
+    # some of the names is a guard that reports nothing for the rest.
+    for module in (
+        cheevos, devreset, emu_config, emu_firmware, emu_install, emulator_catalog,
+        emulators, fileserver, handoff, installer, launchers, libretro_meta, net,
+        platforms, plugin_accounts, plugin_audit, plugin_emulators, plugin_firmware,
+        plugin_packages,
+        ps3_games,
+        ps4_games, ra_cores, ra_detect, releases, romshelf, sgdb, store, sysenv,
+        vita_games, vita_release, xbox_disc,
+    ):
+        path = getattr(module, "__file__", "") or ""
+        if not os.path.abspath(path).startswith(here):
+            decky.logger.error(
+                "Module %r is %s, not ours -- the name collides with something decky "
+                "already imported. Rename it.", module.__name__, path or "built in",
+            )
+
+# Where package.json and CI's build.json live. A module constant rather than an
+# expression inside the reader, so a test can point it somewhere harmless instead
+# of writing a build stamp into the working tree.
+PLUGIN_ROOT = os.path.dirname(os.path.abspath(__file__))
+
+
+class Plugin(
+    plugin_accounts.Accounts,
+    plugin_audit.Audit,
+    plugin_emulators.Emulators,
+    plugin_firmware.Firmware,
+    plugin_packages.PackagedGames,
+):
+    async def _main(self):
+        self.loop = asyncio.get_event_loop()
+        self._install = None
+        self._cores = []
+        self._emulators = []
+        decky.logger.info("DeckyEmu starting")
+        _check_own_modules()
+
+        # Ordered, and each one on its own.
+        #
+        # The catalog is loaded first because everything after it reads it: an
+        # imported emulator has to be in it by the time launchers are upgraded
+        # and the library is backfilled, or a game added against one looks like
+        # a game whose emulator vanished.
+        #
+        # Caught individually because these are independent, and all but the
+        # first two are one-time migrations of data already on the device. A
+        # single `await` chain made every one of them a single point of failure
+        # for the whole of startup: one unreadable launcher, one imported
+        # definition that no longer parses, one config file with the wrong owner,
+        # and the steps after it never ran -- on this start or any later one,
+        # because nothing about the state that broke it would change. Reported
+        # per step, and startup continues, so a failure costs the one thing that
+        # failed rather than the plugin.
+        for label, step in (
+            ("load imported emulator definitions",
+             lambda: self._run(emulator_catalog.reload_imported)),
+            ("detect RetroArch and scan cores", self.refresh_retroarch),
+            ("backfill the library", self._backfill_library),
+            ("adopt the menu shortcut", self._adopt_menu_combo),
+            ("upgrade launchers", self._upgrade_launchers),
+            ("upgrade emulator recipes", self._upgrade_emulator_recipes),
+            ("upgrade emulator setups", self._upgrade_emulator_setups),
+        ):
+            try:
+                await step()
+            except Exception:
+                # Not CancelledError, which is a BaseException and so not caught
+                # here: a cancelled startup is decky shutting the plugin down,
+                # and it must be allowed to.
+                decky.logger.exception("Startup: could not %s -- carrying on", label)
+
+    async def _adopt_menu_combo(self):
+        """Give games added before the menu shortcut existed a way into the menu.
+
+        A default only reaches a game when its launcher is written, and nothing
+        rewrites launchers on upgrade -- so an existing library would keep no
+        shortcut at all until the user happened to change some other launch
+        setting, which looks exactly like the feature not working.
+        """
+        if "menu_combo" in await self._run(store.stored_keys):
+            return
+
+        settings = await self._run(store.get_settings)
+        # Stored explicitly so this runs once, whether or not anything is rebuilt
+        # below -- and so turning it back off is not undone at the next startup.
+        combo = self._menu_combo(settings)
+        await self._run(store.set_settings, {"menu_combo": combo})
+
+        if not await self._run(store.get_library):
+            return
+        decky.logger.info("Adding the %s menu shortcut to existing launchers", combo)
+        await self.rebuild_launchers()
+
+    async def _upgrade_emulator_recipes(self):
+        """Carry a corrected launch recipe to an emulator already installed.
+
+        Launch arguments are written once, when the emulator is installed, so a
+        fix to them would otherwise reach nobody who already had it -- and
+        PCSX2's needed one, to stop its main window appearing for a second
+        before the game and to make quitting the game exit rather than drop back
+        to its game list.
+
+        Only touched when the stored arguments are still exactly what the
+        catalog last supplied. Anything edited in the emulator editor is the
+        user's and is left alone, which is the same rule `emu_config` uses.
+        """
+        changed = []
+        for emulator in await self._refresh_emulators():
+            entry = emulator_catalog.find(emulator.get("id", ""))
+            if not entry:
+                continue
+            recipe = entry.get("recipe", 1)
+            if emulator.get("catalog_recipe", 1) == recipe:
+                continue
+
+            stored = emulator.get("catalog_args")
+            if stored is not None and emulator.get("args") != stored:
+                # Edited here, so the recipe is no longer ours to change. The
+                # version is still recorded, or this would ask again forever.
+                decky.logger.info(
+                    "Leaving %s launch arguments alone; they were edited", emulator["id"]
+                )
+            else:
+                emulator["args"] = entry.get("args") or "{rom}"
+                emulator["fullscreen_args"] = entry.get("fullscreen_args") or ""
+                changed.append(emulator["id"])
+
+            # Refreshed unconditionally, unlike the arguments above: neither is
+            # editable in the emulator editor, so neither can be the user's.
+            # They are also the two that decide whether the emulator runs at
+            # all -- shadPS4's launches the wrong binary without `command` and
+            # renders on the CPU without `env` -- so a stale one is not a
+            # cosmetic difference.
+            previous = (emulator.get("command"), emulator.get("env") or {},
+                        emulator.get("installed_args"))
+            emulator["command"] = entry.get("command", "")
+            emulator["env"] = dict(entry.get("env") or {})
+            emulator["installed_args"] = entry.get("installed_args", "")
+            if previous != (emulator["command"], emulator["env"],
+                            emulator["installed_args"]):
+                changed.append(emulator["id"])
+
+            emulator["catalog_recipe"] = recipe
+            emulator["catalog_args"] = entry.get("args") or "{rom}"
+            emulator["catalog_fullscreen_args"] = entry.get("fullscreen_args") or ""
+            await self._run(emulators.save, emulator)
+
+        if changed:
+            # Every launcher already written bakes in the old argv, so the fix
+            # reaches nothing until they are rewritten.
+            decky.logger.info("Updated launch recipe for %s", ", ".join(changed))
+            await self._refresh_emulators()
+            await self.rebuild_launchers()
+
+    async def _upgrade_emulator_setups(self):
+        """Re-apply recommended settings an emulator installed earlier has missed.
+
+        Settings are written when an emulator is installed, and an emulator is
+        installed once -- so a *correction* to those settings would otherwise
+        only ever reach someone who had not installed it yet. The first Azahar
+        bindings were wrong, and the only route to the fixed ones was deleting a
+        hundred-megabyte AppImage and downloading it again.
+
+        Safe to run unattended because the rule in `emu_config` decides what may
+        be touched: anything the user set themselves is left alone, and only
+        values still at the emulator's own default or previously written by this
+        plugin are rewritten.
+        """
+        for entry in emulator_catalog.CATALOG:
+            if not entry.get("setup"):
+                continue
+            if not await self._run(emu_config.needs_setup, entry):
+                continue
+
+            if entry["source"]["kind"] == "flatpak":
+                present = await self._run(
+                    emu_install.flatpak_installed, entry["source"]["id"]
+                )
+            else:
+                present = bool(await self._run(emu_install.installed_appimage, entry["id"]))
+            if not present:
+                continue
+
+            decky.logger.info("Updating recommended settings for %s", entry["id"])
+            result = await self._run(emu_config.apply_setup, entry)
+            if not result.get("ok"):
+                decky.logger.warning(
+                    "Could not update %s settings: %s", entry["id"], result.get("error")
+                )
+
+    async def _upgrade_launchers(self):
+        """Rewrite launchers when the format they were written in is out of date.
+
+        A launcher is generated once and never revisited, so a fix to how they
+        are written reaches only games added afterwards. That is the failure
+        `_adopt_menu_combo` was written for, one flag at a time; a version number
+        covers the next one too.
+
+        Recorded even when there is nothing to rebuild, so a fresh install does
+        not spend its first startup deciding it is behind.
+        """
+        settings = await self._run(store.get_settings)
+        if settings.get("launcher_format") == launchers.FORMAT_VERSION:
+            return
+
+        await self._run(store.set_settings, {"launcher_format": launchers.FORMAT_VERSION})
+        if not await self._run(store.get_library):
+            return
+
+        decky.logger.info(
+            "Rewriting launchers for format %d", launchers.FORMAT_VERSION
+        )
+        await self.rebuild_launchers()
+
+    async def _backfill_library(self):
+        """Fill in fields that older versions of this plugin never recorded.
+
+        Games added before per-platform collections existed have no `platform`,
+        which would make them fall back to the plain collection name instead of
+        being grouped by system. The core id and database name were recorded even
+        then, so the label can be recovered.
+        """
+        library = await self._run(store.get_library)
+        # Through the settings rather than _platform_label directly: the stored
+        # label is what the games list shows, so a backfilled game would otherwise
+        # read "Super Nintendo Entertainment System" while every other game on the
+        # same shelf read "SNES".
+        settings = await self._run(store.get_settings)
+        filled = {}
+        for entry in library.values():
+            if entry.get("platform"):
+                continue
+            core = self._core_by_id(entry.get("core_id", ""))
+            platform = self._entry_platform(settings, core, entry)
+            if not platform:
+                continue
+            entry["platform"] = platform
+            filled[entry["app_id"]] = entry
+
+        # One write for the whole pass. This runs at every startup, and writing
+        # per game rewrote the entire registry once per game backfilled.
+        if filled:
+            await self._run(store.remember_games, filled)
+            decky.logger.info("Backfilled platform for %d existing game(s)", len(filled))
+
+    async def _unload(self):
+        # Cancelled before stopping, and only here. Stopping deliberately leaves
+        # running transfers alone -- dismissing the dialog must not kill a
+        # multi-gigabyte upload -- but an unload is the end of the process that
+        # was writing them. Their handler threads would otherwise keep going with
+        # nothing left to rename the file into place, leaving a .uploading
+        # leftover that only the next start() would clear. Cancelling makes each
+        # handler delete its own partial on the way out, which is the one thing
+        # nothing else can do safely while it still holds the file open.
+        #
+        # Each independently, for the reason the startup steps are: the two
+        # listening sockets must not outlive the plugin, and a socket left bound
+        # because an unrelated cancel raised on the way past is exactly the
+        # failure that makes the *next* start unable to bind its port.
+        for label, step in (
+            ("cancel transfers in flight", fileserver.cancel),
+            ("stop the transfer server", fileserver.stop),
+            ("stop the update handoff server", handoff.stop),
+        ):
+            try:
+                await self._run(step)
+            except Exception:
+                decky.logger.exception("Unload: could not %s", label)
+        decky.logger.info("DeckyEmu unloading")
+
+    async def _uninstall(self):
+        # Launcher scripts live in the plugin runtime dir, which decky removes
+        # for us. The Steam shortcuts themselves are the user's to keep.
+        decky.logger.info("DeckyEmu uninstalled")
+
+    async def _run(self, func, *args, **kwargs):
+        return await self.loop.run_in_executor(None, functools.partial(func, *args, **kwargs))
+
+    def _detach(self, coro, event, *args):
+        """Run `coro` in the background, guaranteeing `event` fires either way.
+
+        An install runs detached because it takes minutes and streams progress,
+        so the panel's only way to learn it is over is the done event. A
+        detached task that raises reaches nobody: asyncio logs "Task exception
+        was never retrieved" into decky's own output and the panel keeps its
+        progress bar and its disabled button forever, which is the shape of
+        every "it just hung" report.
+
+        The handlers inside these coroutines cover the failures that were
+        expected -- flatpak missing, a bad exit code. This covers the rest,
+        which is the class that has no name yet: a KeyError on an entry field, a
+        permission error writing a config, anything from the registration step
+        that runs after the download succeeded.
+
+        `event` is emitted as `event(*args, False, message)`, which fits both
+        shapes in use: `emulator_install_done(id, ok, message)` when an id is
+        passed and `retroarch_install_done(ok, message)` when nothing is.
+
+        Returns the task. Callers discard it -- detached is the point -- but a
+        test needs something to await, and polling for an event that is supposed
+        to arrive is how a test passes by timing out slowly.
+        """
+        async def guarded():
+            try:
+                await coro
+            except asyncio.CancelledError:
+                # Unload cancels these. Swallowing it would keep the task alive
+                # while the loop is trying to close, so it goes back up -- and
+                # there is nothing left to emit to in any case.
+                raise
+            except Exception as error:
+                decky.logger.exception("Background work for %s failed", event)
+                try:
+                    await decky.emit(
+                        event, *args, False,
+                        "%s: %s" % (type(error).__name__, error),
+                    )
+                except Exception:
+                    # The socket is the only way to report anything, so its
+                    # failure ends the matter. Logged rather than raised so the
+                    # original exception above stays the one in the log.
+                    decky.logger.exception("Could not report the failure of %s", event)
+
+        return self.loop.create_task(guarded())
+
+    # ---------------------------------------------------------------- discovery
+
+    async def refresh_retroarch(self):
+        """Re-detect RetroArch and re-scan cores. Returns the status payload."""
+        self._install = await self._run(ra_detect.detect)
+        self._cores = await self._run(ra_cores.list_cores, self._install) if self._install else []
+        await self._refresh_emulators()
+        return await self.get_status()
+
+    async def get_status(self):
+        # `default_rom_dir()` *is* `user_home()`, so asking for both separately put
+        # two executor round trips behind one environment lookup -- on the call the
+        # panel makes every time it mounts. Resolved once and used for both.
+        home = await self._run(ra_detect.user_home)
+        if not self._install:
+            return {
+                "found": False,
+                "kind": "",
+                "exe": "",
+                "config_dir": "",
+                "core_count": 0,
+                "core_dirs": [],
+                "emulator_count": len(self._emulators),
+                "default_rom_dir": home,
+                "home_dir": home,
+            }
+        return {
+            "found": True,
+            "kind": self._install["kind"],
+            "exe": self._install["exe"],
+            "config_dir": self._install["config_dir"],
+            "core_count": len(self._cores),
+            "core_dirs": self._install["core_dirs"],
+            "emulator_count": len(self._emulators),
+            "default_rom_dir": home,
+            "home_dir": home,
+        }
+
+    async def list_cores(self):
+        """Every way to run a ROM: libretro cores plus custom emulators.
+
+        Emulators are shaped like cores on purpose, so ROM probing, extension
+        matching, artwork lookup and collection naming need no special cases.
+        """
+        if not self._cores and self._install:
+            self._cores = await self._run(ra_cores.list_cores, self._install)
+
+        settings = await self._run(store.get_settings)
+        short = settings.get("platform_names", "short") == "short"
+
+        custom = []
+        for emulator in self._emulators:
+            databases = emulator.get("databases") or []
+            if databases:
+                label = platforms.short_name(databases[0], "") if short else ""
+            else:
+                # No libretro database, so the label was stored directly.
+                label = (
+                    emulator.get("platform", "")
+                    if short
+                    else (emulator.get("platform_full") or emulator.get("platform", ""))
+                )
+            custom.append(emulators.to_core_entry(emulator, label))
+
+        return self._cores + custom
+
+    async def _refresh_emulators(self):
+        self._emulators = await self._run(emulators.list_emulators)
+        return self._emulators
+
+    async def probe_rom(self, rom_path: str):
+        """Suggested cores for a ROM, most relevant first, plus a default name."""
+        decky.logger.info("probe_rom: %s", rom_path)
+        if not os.path.isfile(rom_path):
+            decky.logger.warning("probe_rom: not a file: %s", rom_path)
+        cores = await self.list_cores()
+        extension = os.path.splitext(rom_path)[1].lower().lstrip(".")
+
+        # A zipped ROM is matched on what is inside it, since RetroArch unpacks
+        # archives itself and no core advertises `zip`.
+        match_extension = await self._run(ra_cores.content_extension, rom_path)
+        matching = ra_cores.cores_for_extension(cores, match_extension)
+
+        settings = await self._run(store.get_settings)
+        remembered = settings.get("last_core_by_ext", {}).get(match_extension, "")
+
+        if remembered:
+            matching.sort(key=lambda core: core["id"] != remembered)
+
+        result = {
+            "extension": extension,
+            "match_extension": match_extension,
+            "is_archive": extension in ra_cores.ARCHIVE_EXTENSIONS,
+            "provisional_title": libretro_meta.display_title(libretro_meta.rom_stem(rom_path)),
+            "matching_cores": matching,
+            "all_cores": cores,
+            "suggested_core_id": (matching[0]["id"] if matching else ""),
+            "unsupported_extension": extension in ROM_EXTENSION_BLOCKLIST,
+        }
+
+        # A PlayStation 3 package is the one thing the picker can be pointed at
+        # that is not a game yet. RPCS3 has to unpack it first, and what boots
+        # afterwards is dev_hdd0/game/<TITLE_ID>/USRDIR/EBOOT.BIN -- so the add
+        # flow installs it and carries on with that path, and the user never
+        # sees either the product code or the word EBOOT.
+        # `.pkg` does not say which console it is for. A PS3 package begins
+        # \x7fPKG and a PS4 one \x7fCNT, and nothing else about the file tells
+        # them apart -- same extension, same rough size, same naming. Sending a
+        # PS4 game to RPCS3 gets it reported as a corrupt package.
+        # Three consoles now share it. PS4 is `\x7fCNT`; the PS3 and the Vita
+        # are both `\x7fPKG` and differ only in a type field at offset 6.
+        if extension == "pkg":
+            if await self._run(ps4_games.is_package, rom_path):
+                result["ps4_package"] = await self._run(self._ps4_package_state, rom_path)
+            elif await self._run(vita_games.is_package, rom_path):
+                result["vita_package"] = await self._run(self._vita_package_state, rom_path)
+            else:
+                result["ps3_package"] = await self._run(self._ps3_package_state, rom_path)
+
+        # A PS Vita release, which is a zip like every zipped ROM is a zip. The
+        # picker already looks inside an archive to match cores on its content,
+        # and a Vita release holds nothing that looks like a ROM -- so without
+        # this it matches nothing and Vita3K is never offered. Detected by the
+        # one file every release carries and no ROM archive does.
+        if extension == "zip":
+            vita = await self._run(vita_release.inspect, rom_path)
+            if vita["vita"]:
+                result["vita_release"] = vita
+                emulator = await self._run(emulators.find, "vita3k")
+                if emulator:
+                    core = emulators.to_core_entry(emulator)
+                    result["matching_cores"] = [core]
+                    result["suggested_core_id"] = core["id"]
+                if vita["title"]:
+                    result["provisional_title"] = vita["title"]
+
+        # An Xbox disc image with nothing to boot. Worth saying here because the
+        # console says it so badly: "Please insert an Xbox disc" on a black
+        # screen reads as a broken emulator, a missing BIOS or a dead pad long
+        # before it reads as a bad file. Said only when we are certain -- see
+        # xbox_disc, which stays silent about every .iso that is not an Xbox one.
+        if extension in ("iso", "xiso"):
+            disc = await self._run(xbox_disc.inspect, rom_path)
+            # `certain` matters: a root that could not be read to the end proves
+            # nothing about what is missing from it, and this answer is allowed
+            # to stop the game being added.
+            if disc["xbox"] and disc["certain"] and not disc["bootable"]:
+                result["disc_warning"] = (
+                    "This is an Xbox disc image, but there is no default.xbe at "
+                    "its root, so there is nothing for the console to start. It "
+                    "will boot to \"Please insert an Xbox disc\"."
+                )
+        decky.logger.info(
+            "probe_rom -> ext=%s match_ext=%s matching=%s suggested=%s",
+            extension,
+            match_extension,
+            [core["id"] for core in matching],
+            result["suggested_core_id"],
+        )
+        return result
+
+    @staticmethod
+    def _ps3_package_state(pkg_path):
+        """What a .pkg is, and whether RPCS3 has already unpacked it.
+
+        `installed` carries the game's real title and the path that boots, so a
+        package sent twice -- or picked again after the install -- skips straight
+        to the game instead of unpacking a second time.
+
+        `licence` says whether the .rap that decrypts this content is in place.
+        Store games need one and licence-free ones do not, so it is reported
+        rather than enforced -- but it means "Failed to decrypt content" on a
+        black screen is no longer the first time anybody hears about it.
+        """
+        title_id = ps3_games.package_title_id(pkg_path)
+        content_id = ps3_games.package_content_id(pkg_path)
+        game = None
+        if title_id:
+            game = next(
+                (item for item in ps3_games.installed_games()
+                 if item["title_id"] == title_id),
+                None,
+            )
+        return {
+            "title_id": title_id,
+            "installed": bool(game),
+            "title": game["title"] if game else "",
+            "eboot": game["eboot"] if game else "",
+            # The content id is reported alongside the verdict because it is
+            # the name the licence ends up under, and the one the user can be
+            # told to use if the search below found nothing to rename.
+            "content_id": content_id,
+            "licence_state": ps3_games.licence_state(
+                content_id,
+                ps3_games.licence_dirs(pkg_path, emu_install.firmware_dir()),
+                pkg_path,
+            ),
+        }
+
+    @staticmethod
+    def _ps4_package_state(pkg_path):
+        """What a PS4 .pkg is, and whether shadPS4 already has it unpacked."""
+        title_id = ps4_games.package_title_id(pkg_path)
+        game = None
+        if title_id:
+            game = next(
+                (item for item in ps4_games.installed_games()
+                 if item["title_id"] == title_id),
+                None,
+            )
+        return {
+            "title_id": title_id,
+            "installed": bool(game),
+            "title": game["title"] if game else "",
+            "eboot": game["eboot"] if game else "",
+        }
+
+    @staticmethod
+    def _vita_package_state(pkg_path):
+        """What a Vita .pkg is, whether it is installed, and whether its key is here.
+
+        `licence` is the one extra thing this console needs: Vita3K cannot
+        install a package without the zRIF that decrypts it, and cannot work it
+        out. The panel says so before the button is pressed rather than after
+        the install fails.
+        """
+        title_id = vita_games.package_title_id(pkg_path)
+        game = None
+        if title_id:
+            game = next(
+                (item for item in vita_games.installed_games()
+                 if item["title_id"] == title_id),
+                None,
+            )
+        return {
+            "title_id": title_id,
+            "installed": bool(game),
+            "title": game["title"] if game else "",
+            "eboot": game["eboot"] if game else "",
+            "licence": bool(vita_games.find_zrif(pkg_path, title_id)),
+        }
+
+    def _core_by_id(self, core_id):
+        if emulators.is_emulator_id(core_id):
+            for emulator in self._emulators:
+                if emulator.get("id") == emulators.emulator_id(core_id):
+                    # The platform label is recomputed from `databases` wherever
+                    # it matters, so it is not needed here.
+                    return emulators.to_core_entry(emulator)
+            return None
+
+        for core in self._cores:
+            if core["id"] == core_id:
+                return core
+        return None
+
+    def _emulator_for_core_id(self, core_id):
+        """The raw emulator definition behind a core id, if it is one."""
+        if not emulators.is_emulator_id(core_id):
+            return None
+        wanted = emulators.emulator_id(core_id)
+        for emulator in self._emulators:
+            if emulator.get("id") == wanted:
+                return emulator
+        return None
+
+    # -------------------------------------------------------------- collections
+
+    @staticmethod
+    def _platform_label(core=None, system="", short=False):
+        """A human system name for use in a collection title.
+
+        `short` gives the name people actually use -- SNES rather than "Super
+        Nintendo Entertainment System", which is 46 characters of shelf header.
+        Otherwise the core's own `systemname` is preferred over the libretro
+        database name, which reads badly once appended to a collection name.
+        """
+        database = system
+        if not database and core and core.get("databases"):
+            database = core["databases"][0]
+
+        if short:
+            label = platforms.short_name(database, (core or {}).get("system_name", ""))
+            if label:
+                return label
+
+        if core:
+            if core.get("system_name"):
+                return core["system_name"]
+            if core.get("databases"):
+                return core["databases"][0].split(" - ")[-1]
+        if system:
+            return system.split(" - ")[-1]
+        return ""
+
+    @staticmethod
+    def _system_for(core, resolved="", fallback=""):
+        """Which of a core's databases a game actually belongs to.
+
+        Only interesting when a core covers more than one system, which Dolphin
+        does: it declares GameCube *and* Wii, and taking `databases[0]` filed
+        every Wii game under GameCube. `libretro_meta.resolve` already works the
+        real one out -- it probes each database's boxart directory and reports
+        which one had the game -- and that answer was being thrown away here.
+
+        `resolved` is only believed when the core actually claims it, so a stale
+        value cannot survive a core change.
+        """
+        databases = (core or {}).get("databases") or []
+        if not databases:
+            return ""
+        for candidate in (resolved, fallback):
+            if candidate and candidate in databases:
+                return candidate
+        return databases[0]
+
+    @classmethod
+    def _entry_platform(cls, settings, core, entry=None):
+        """The platform label for a game under the current naming style.
+
+        Computed rather than read back from the entry, so switching between short
+        and full names re-labels games that were already added.
+        """
+        entry = entry or {}
+        short = settings.get("platform_names", "short") == "short"
+        label = cls._platform_label(core, entry.get("system", ""), short)
+        return label or entry.get("platform", "")
+
+    @staticmethod
+    def _collection_name(settings, platform):
+        """The collection a game belongs in under the current settings."""
+        base = (settings.get("collection_name") or "").strip()
+        if not base:
+            return ""
+        if not (settings.get("collection_per_platform") and platform):
+            return base
+
+        template = settings.get("collection_template") or "{name} - {platform}"
+        # Stored as an escape so the template survives a round trip through JSON
+        # and the settings UI as one line.
+        name = template.replace("\\n", "\n")
+        name = name.replace("{name}", base).replace("{platform}", platform)
+        # Collapse runs of spaces and tabs, but keep any newline the user asked
+        # for; trailing separators are left over when a placeholder is unused.
+        name = re.sub(r"[ \t]+", " ", name)
+        return name.strip(" \t-:·|/,")
+
+    # Per-game launch overrides. Only explicit overrides are stored, so a game
+    # left alone keeps following the global setting when that setting changes.
+    _OSD_MODES = ("keep", "startup", "all")
+
+    @staticmethod
+    def _menu_combo(settings):
+        """The RetroArch menu shortcut to bake in, validated before it is used.
+
+        Global rather than per game, so it is read straight from settings here
+        instead of going through _launch_options. Validated because an unknown
+        key would otherwise reach RetroArch as no combo at all, silently leaving
+        the user with no way into the menu.
+        """
+        combo = settings.get("menu_combo", "start_select")
+        return combo if combo in launchers.MENU_COMBOS else "start_select"
+
+    @classmethod
+    def _launch_options(cls, settings, entry):
+        """How this game should be launched: its overrides over the globals."""
+        options = entry.get("options") or {}
+        hide_osd = options.get("hide_osd") or ""
+        fullscreen = options.get("fullscreen")
+        return {
+            "hide_osd": (
+                hide_osd if hide_osd in cls._OSD_MODES else settings.get("hide_osd", "startup")
+            ),
+            "fullscreen": (
+                bool(settings.get("emulator_fullscreen", True))
+                if fullscreen is None
+                else bool(fullscreen)
+            ),
+            "extra_args": (options.get("extra_args") or "").strip(),
+        }
+
+    @classmethod
+    def _clean_options(cls, options):
+        """Keep only real overrides, so 'follow the global setting' stays absent."""
+        options = options or {}
+        cleaned = {}
+        hide_osd = options.get("hide_osd") or ""
+        if hide_osd in cls._OSD_MODES:
+            cleaned["hide_osd"] = hide_osd
+        fullscreen = options.get("fullscreen")
+        if fullscreen is not None:
+            cleaned["fullscreen"] = bool(fullscreen)
+        extra_args = (options.get("extra_args") or "").strip()
+        if extra_args:
+            cleaned["extra_args"] = extra_args
+        return cleaned
+
+    async def collection_name_for(self, core_id: str):
+        """What collection a game on `core_id` should go into right now."""
+        settings = await self._run(store.get_settings)
+        if not settings.get("add_to_collection", True):
+            return ""
+        core = self._core_by_id(core_id)
+        return self._collection_name(settings, self._entry_platform(settings, core))
+
+    async def plan_collection_migration(self, previous: Optional[dict] = None):
+        """Moves needed to bring existing games in line with current settings.
+
+        Renaming the collection or toggling per-platform naming has to move games
+        that were already added, otherwise the setting appears to do nothing
+        until the next ROM is added.
+
+        `previous` carries the settings as they were before the change. It matters
+        for games added by an older version of this plugin, which did not record
+        which collection they went into: without it their old collection is
+        unknown, so they would be added to the new one and never removed from the
+        old -- leaving the old collection sitting there, still populated.
+        """
+        settings = await self._run(store.get_settings)
+        library = await self._run(store.get_library)
+
+        moves = []
+        for entry in library.values():
+            app_id = entry.get("app_id")
+            if not app_id:
+                continue
+            core = self._core_by_id(entry.get("core_id", ""))
+            platform = self._entry_platform(settings, core, entry)
+            target = self._collection_name(settings, platform)
+
+            current = entry.get("collection", "")
+            if not current and previous:
+                # Derive the old name entirely from the old settings -- the
+                # platform style may have changed too, so reusing the label
+                # computed above would name a collection that never existed.
+                current = self._collection_name(
+                    previous, self._entry_platform(previous, core, entry)
+                )
+
+            if target and target != current:
+                moves.append(
+                    {
+                        "app_id": app_id,
+                        "title": entry.get("title", ""),
+                        "from": current,
+                        "to": target,
+                    }
+                )
+
+        decky.logger.info(
+            "plan_collection_migration: %d move(s)%s",
+            len(moves),
+            "" if not previous else " (using previous settings for unrecorded games)",
+        )
+        return {"moves": moves}
+
+    async def collection_shape(self):
+        """What a collection name made by this plugin looks like.
+
+        For finding the ones it left behind empty. Every other way of knowing
+        which collections are ours goes through a registered game -- and an
+        empty collection is precisely one with no game left to ask.
+
+        The pattern rather than a list of names: the platform half can be any
+        system label the plugin has ever produced, including for a core since
+        uninstalled, and enumerating those is guesswork where the template is
+        exactly what was used to build the name in the first place.
+        """
+        settings = await self._run(store.get_settings)
+        base = (settings.get("collection_name") or "").strip()
+        per_platform = bool(settings.get("collection_per_platform"))
+        template = settings.get("collection_template") or "{name} - {platform}"
+        return {
+            "base": base,
+            "per_platform": per_platform,
+            "template": template.replace("\\n", "\n"),
+        }
+
+    async def collection_targets(self):
+        """{app_id: collection} for every registered game, under current settings.
+
+        Used to find games sitting in collections they no longer belong to.
+        """
+        settings = await self._run(store.get_settings)
+        library = await self._run(store.get_library)
+
+        targets = {}
+        titles = {}
+        for entry in library.values():
+            app_id = entry.get("app_id")
+            if not app_id:
+                continue
+            core = self._core_by_id(entry.get("core_id", ""))
+            platform = self._entry_platform(settings, core, entry)
+            targets[str(app_id)] = self._collection_name(settings, platform)
+            titles[str(app_id)] = entry.get("title", "")
+        return {"targets": targets, "titles": titles}
+
+    async def record_collections(self, assignments: dict):
+        """Persist which collection each game now lives in."""
+        library = await self._run(store.get_library)
+        updated = {}
+        for app_id, name in (assignments or {}).items():
+            entry = library.get(str(app_id))
+            if not entry:
+                continue
+            entry["collection"] = name
+            updated[app_id] = entry
+        await self._run(store.remember_games, updated)
+        return {"ok": True, "recorded": len(assignments or {})}
+
+    # ----------------------------------------------------------------- metadata
+
+    async def resolve_game(self, rom_path: str, core_id: str, title: str = ""):
+        """Canonical name + artwork for a ROM/core pair.
+
+        Artwork comes back as data URIs so the frontend can both preview it and
+        hand it straight to the Steam client without a second download.
+
+        `title` overrides the name derived from the filename, for the cases where
+        the file is not named after the game at all. A PS3 game installed from a
+        package boots `USRDIR/EBOOT.BIN`, so every one of them would search
+        SteamGridDB for "EBOOT" -- its PARAM.SFO says "Braid".
+        """
+        decky.logger.info("resolve_game: core=%s rom=%s title=%r", core_id, rom_path, title)
+        core = self._core_by_id(core_id)
+        databases = core["databases"] if core else []
+        settings = await self._run(store.get_settings)
+        api_key = (settings.get("sgdb_api_key") or "").strip()
+        art_source = settings.get("art_source", "auto")
+
+        meta = await self._run(libretro_meta.resolve, rom_path, databases)
+        if title:
+            # Both, because they are used differently below: `title` is what the
+            # search asks for and what the UI shows, `matched_name` is the hint
+            # that keeps SteamGridDB from answering with a modern sequel.
+            meta = dict(meta, title=title, matched_name=meta.get("matched_name") or title)
+
+        art = {}
+        source_used = "none"
+        # Which game SteamGridDB thinks this is, so a wrong match is visible in
+        # the UI rather than silently producing art for another game.
+        art_game_name = ""
+
+        want_sgdb = api_key and art_source in ("auto", "sgdb")
+        if want_sgdb:
+            # The system and the libretro-matched name both help: SteamGridDB's
+            # own search happily returns a modern sequel for an 8-bit title.
+            game_id = await self._run(
+                sgdb.search_game,
+                api_key,
+                meta["title"],
+                databases,
+                meta["matched_name"],
+            )
+            if game_id:
+                urls = await self._run(sgdb.art_urls, api_key, game_id)
+                art = await self._download_art(urls)
+                if art:
+                    source_used = "steamgriddb"
+                    art_game_name = await self._run(sgdb.game_name, api_key, game_id)
+
+        if not art and art_source in ("auto", "libretro") and meta["boxart_url"]:
+            art = await self._download_art({"capsule": meta["boxart_url"]})
+            if art:
+                source_used = "libretro"
+
+        decky.logger.info(
+            "resolve_game -> title=%r match=%s art=%s via=%s",
+            meta["title"],
+            meta["match_kind"],
+            sorted(art.keys()),
+            source_used,
+        )
+
+        return {
+            "title": meta["title"],
+            "system": meta["system"],
+            "matched_name": meta["matched_name"],
+            "match_kind": meta["match_kind"],
+            "art": art,
+            "art_source": source_used,
+            "art_game_name": art_game_name,
+            "core_id": core_id,
+            "rom_path": rom_path,
+        }
+
+    async def list_art_candidates(self, rom_path: str, core_id: str, query: str = ""):
+        """Alternative artwork matches, for when the automatic one is wrong.
+
+        `query` lets the user search by a name of their own choosing, which is
+        the only way out when both sources mis-identify a ROM.
+        """
+        core = self._core_by_id(core_id)
+        databases = core["databases"] if core else []
+        term = (query or "").strip() or libretro_meta.display_title(
+            libretro_meta.rom_stem(rom_path)
+        )
+
+        settings = await self._run(store.get_settings)
+        api_key = (settings.get("sgdb_api_key") or "").strip()
+
+        libretro_hits = await self._run(libretro_meta.index_candidates, databases, term)
+        sgdb_hits = []
+        if api_key:
+            sgdb_hits = await self._run(sgdb.search_candidates, api_key, term, databases, "", 10)
+
+        decky.logger.info(
+            "list_art_candidates(%r): %d libretro, %d steamgriddb",
+            term,
+            len(libretro_hits),
+            len(sgdb_hits),
+        )
+        return {
+            "query": term,
+            "libretro": libretro_hits,
+            "steamgriddb": sgdb_hits,
+            "sgdb_available": bool(api_key),
+        }
+
+    async def apply_art_candidate(self, source: str, ref: str, system: str = ""):
+        """Fetch artwork for a candidate the user picked by hand."""
+        settings = await self._run(store.get_settings)
+        api_key = (settings.get("sgdb_api_key") or "").strip()
+
+        if source == "steamgriddb":
+            if not api_key:
+                return {"ok": False, "error": "No SteamGridDB API key is set."}
+            try:
+                game_id = int(ref)
+            except (TypeError, ValueError):
+                return {"ok": False, "error": "Invalid SteamGridDB game id."}
+            urls = await self._run(sgdb.art_urls, api_key, game_id)
+            art = await self._download_art(urls)
+            if not art:
+                return {"ok": False, "error": "That game has no usable artwork on SteamGridDB."}
+            name = await self._run(sgdb.game_name, api_key, game_id)
+            return {"ok": True, "art": art, "art_source": "steamgriddb", "art_game_name": name}
+
+        if source == "libretro":
+            if not system:
+                return {"ok": False, "error": "No system was supplied for that thumbnail."}
+            url = libretro_meta.boxart_url(system, ref)
+            art = await self._download_art({"capsule": url})
+            if not art:
+                return {"ok": False, "error": "That thumbnail could not be downloaded."}
+            return {"ok": True, "art": art, "art_source": "libretro", "art_game_name": ref}
+
+        return {"ok": False, "error": "Unknown artwork source %r." % source}
+
+    async def _download_art(self, urls):
+        """{slot: url} -> {slot: {data, kind}} for whatever downloaded cleanly.
+
+        Concurrently, because these are up to four independent images of a
+        megabyte or so each and nothing about one informs another. Downloading
+        them one after another put four round trips end to end in front of the
+        cover the user is waiting to see.
+        """
+        wanted = [(slot, url) for slot, url in (urls or {}).items() if url]
+        if not wanted:
+            return {}
+
+        downloaded = await asyncio.gather(
+            *(self._run(net.get_data_uri, url) for _slot, url in wanted)
+        )
+
+        art = {}
+        for (slot, _url), (data_uri, kind) in zip(wanted, downloaded):
+            if data_uri:
+                art[slot] = {"data": data_uri, "kind": kind}
+        return art
+
+    # ---------------------------------------------------------------- shortcuts
+
+    async def prepare_shortcut(
+        self, title: str, core_id: str, rom_path: str, system: str = "",
+        title_id: str = "",
+    ):
+        """Write the launcher script and return the fields Steam needs.
+
+        `system` is what resolve_game worked out, and matters only for a core
+        covering more than one: it decides the collection the frontend files the
+        game into, which is otherwise the core's first database and put every
+        Wii game under GameCube.
+        """
+        decky.logger.info("prepare_shortcut: title=%r core=%s rom=%s", title, core_id, rom_path)
+        emulator = self._emulator_for_core_id(core_id)
+        # A custom emulator does not need RetroArch present at all.
+        if not self._install and not emulator:
+            return {"ok": False, "error": "RetroArch was not found on this system."}
+
+        core = self._core_by_id(core_id)
+        if not core:
+            return {"ok": False, "error": "Core '%s' is no longer available." % core_id}
+
+        if not os.path.isfile(rom_path):
+            return {"ok": False, "error": "ROM file no longer exists: %s" % rom_path}
+
+        clean_title = (title or "").strip() or libretro_meta.display_title(
+            libretro_meta.rom_stem(rom_path)
+        )
+
+        settings = await self._run(store.get_settings)
+
+        # Filed before the launcher is written, and that ordering is the whole
+        # reason this is safe. The ROM path is baked into the launcher's argv,
+        # the launcher's own filename is a hash of it, and the library records
+        # it -- so moving a ROM afterwards breaks a game in three places at
+        # once. Moving it first means nothing has been told the old path yet.
+        rom_path = await self._run(
+            romshelf.file_rom,
+            rom_path,
+            self._system_for(core, system),
+            await self._run(fileserver.default_dir),
+            await self._run(romshelf.library_dir),
+        )
+
+        try:
+            script = await self._run(
+                launchers.write_launcher,
+                self._install,
+                clean_title,
+                core["path"],
+                rom_path,
+                settings.get("hide_osd", "startup"),
+                emulator,
+                settings.get("emulator_fullscreen", True),
+                "",
+                self._menu_combo(settings),
+                settings,
+                title_id,
+            )
+        except OSError as error:
+            decky.logger.exception("Failed writing launcher")
+            return {"ok": False, "error": "Could not write launcher script: %s" % error}
+
+        return {
+            "ok": True,
+            "title": clean_title,
+            "exe": script,
+            "start_dir": os.path.dirname(script),
+            "launch_options": "",
+            "launcher_path": script,
+            "core_path": core["path"],
+            # Where the ROM ended up, which is not where the caller sent it if
+            # it was just filed. Returned so the library records the path the
+            # launcher actually runs -- otherwise every filed game would look
+            # like an orphan the moment anything checked.
+            "rom_path": rom_path,
+            # Resolved here so per-platform naming lives in one place.
+            "collection_name": (
+                self._collection_name(
+                    settings,
+                    self._entry_platform(
+                        settings, core, {"system": self._system_for(core, system)}
+                    ),
+                )
+                if settings.get("add_to_collection", True)
+                else ""
+            ),
+            # Guarded on the install existing at all. The check above lets
+            # `_install` be None whenever a standalone emulator was chosen --
+            # the plugin is usable with no RetroArch, which is the whole point
+            # of the emulator catalog -- and this line then indexed None and
+            # raised TypeError. Adding a game to a Deck that had never
+            # installed RetroArch failed here, at the last statement before
+            # success. Found by a type checker, not by use.
+            "warn_flatpak_sdcard": self._install is not None
+            and self._install["kind"] == "flatpak"
+            and rom_path.startswith("/run/media"),
+        }
+
+    async def register_game(
+        self,
+        app_id: int,
+        title: str,
+        rom_path: str,
+        core_id: str,
+        launcher_path: str,
+        system: str = "",
+        remember_core: bool = True,
+    ):
+        core = self._core_by_id(core_id)
+        decky.logger.info("register_game: app_id=%s title=%r", app_id, title)
+        settings = await self._run(store.get_settings)
+        # Passed in from resolve_game, which already found out which of a
+        # multi-system core's databases this game is in.
+        resolved = self._system_for(core, system)
+        platform = self._entry_platform(settings, core, {"system": resolved})
+        entry = {
+            "app_id": app_id,
+            "title": title,
+            "rom_path": rom_path,
+            "core_id": core_id,
+            "core_path": core["path"] if core else "",
+            "system": resolved,
+            "platform": platform,
+            # Remembered so a later rename knows which collection to move it out
+            # of, rather than guessing from the current settings.
+            "collection": (
+                self._collection_name(settings, platform)
+                if settings.get("add_to_collection", True)
+                else ""
+            ),
+            "launcher_path": launcher_path,
+        }
+        await self._run(store.remember_game, app_id, entry)
+
+        # Keyed on the content extension so a zipped SNES ROM remembers the same
+        # core as a loose one.
+        #
+        # Off for a PS3 game, and it has to be: what boots is EBOOT.BIN, so
+        # remembering this would file `.bin` under RPCS3 and then suggest a PS3
+        # emulator for the next PS1 disc image somebody adds.
+        extension = await self._run(ra_cores.content_extension, rom_path) if remember_core else ""
+        if extension and core_id:
+            settings = await self._run(store.get_settings)
+            by_ext = dict(settings.get("last_core_by_ext", {}))
+            by_ext[extension] = core_id
+            await self._run(store.set_settings, {"last_core_by_ext": by_ext})
+
+        return entry
+
+    async def update_game(
+        self,
+        app_id: int,
+        title: str,
+        core_id: str,
+        rom_path: str = "",
+        options: Optional[dict] = None,
+    ):
+        """Change a tracked game's name, ROM, what runs it, or how it launches.
+
+        Artwork is handled separately (the picker applies it directly), because it
+        needs no launcher or collection work.
+
+        The caller must finish the job on the Steam side: rename the shortcut,
+        repoint it if the launcher moved, and move it between collections. This
+        returns everything needed for that, including the previous collection --
+        recording a new one without moving the app is the inconsistency that bit
+        us before.
+        """
+        decky.logger.info(
+            "update_game: app_id=%s title=%r core=%s rom=%s options=%s",
+            app_id,
+            title,
+            core_id,
+            rom_path or "(unchanged)",
+            options or {},
+        )
+
+        library = await self._run(store.get_library)
+        entry = library.get(str(app_id))
+        if not entry:
+            return {"ok": False, "error": "That game is no longer tracked."}
+
+        previous_rom = entry.get("rom_path", "")
+        rom_path = (rom_path or "").strip() or previous_rom
+        if not rom_path or not await self._run(os.path.isfile, rom_path):
+            return {"ok": False, "error": "The ROM file is missing: %s" % rom_path}
+        rom_changed = bool(previous_rom) and os.path.normpath(previous_rom) != os.path.normpath(
+            rom_path
+        )
+
+        core = self._core_by_id(core_id)
+        if not core:
+            return {"ok": False, "error": "Core '%s' is not available." % core_id}
+        emulator = self._emulator_for_core_id(core_id)
+
+        # A ROM the chosen core cannot read would produce a launcher that starts
+        # the emulator and nothing else, which is a confusing way to find out.
+        if rom_changed:
+            extension = await self._run(ra_cores.content_extension, rom_path)
+            supported = [text.lower() for text in core.get("extensions", [])]
+            if extension and supported and extension.lower() not in supported:
+                return {
+                    "ok": False,
+                    "error": "%s does not support .%s files."
+                    % (core.get("display_name") or core_id, extension),
+                }
+
+        cleaned_options = self._clean_options(options)
+        try:
+            await self._run(launchers.split_extra_args, cleaned_options.get("extra_args", ""))
+        except ValueError:
+            return {
+                "ok": False,
+                "error": "Those launch arguments have an unclosed quote.",
+            }
+
+        settings = await self._run(store.get_settings)
+        clean_title = (title or "").strip() or entry.get("title") or libretro_meta.display_title(
+            libretro_meta.rom_stem(rom_path)
+        )
+        launch = self._launch_options(settings, {"options": cleaned_options})
+
+        try:
+            script = await self._run(
+                launchers.write_launcher,
+                self._install,
+                clean_title,
+                core["path"],
+                rom_path,
+                launch["hide_osd"],
+                emulator,
+                launch["fullscreen"],
+                launch["extra_args"],
+                self._menu_combo(settings),
+                settings,
+            )
+        except OSError as error:
+            decky.logger.exception("Could not rewrite launcher")
+            return {"ok": False, "error": "Could not write the launcher: %s" % error}
+
+        # The launcher filename embeds both the title and a hash of the ROM path,
+        # so renaming or repointing produces a new file and the old one would
+        # otherwise linger and be reported as a stray.
+        old_launcher = entry.get("launcher_path", "")
+        launcher_changed = bool(old_launcher) and os.path.normpath(old_launcher) != os.path.normpath(
+            script
+        )
+        if launcher_changed:
+            await self._run(launchers.remove_launcher, old_launcher)
+
+        # Computed from the new core, not blindly from the stored entry: after a
+        # core change the old system would give the wrong platform. The stored
+        # one is still preferred when the new core also covers it, so editing a
+        # Wii game's name does not refile it under GameCube.
+        new_system = self._system_for(core, "", entry.get("system", ""))
+        platform = self._entry_platform(settings, core, {"system": new_system})
+        previous_collection = entry.get("collection", "")
+        collection = (
+            self._collection_name(settings, platform)
+            if settings.get("add_to_collection", True)
+            else ""
+        )
+
+        entry.update(
+            {
+                "title": clean_title,
+                "rom_path": rom_path,
+                "core_id": core_id,
+                "core_path": core["path"],
+                "system": new_system,
+                "platform": platform,
+                "collection": collection,
+                "launcher_path": script,
+                "options": cleaned_options,
+            }
+        )
+        await self._run(store.remember_game, app_id, entry)
+
+        return {
+            "ok": True,
+            "title": clean_title,
+            "rom_path": rom_path,
+            "rom_changed": rom_changed,
+            "exe": script,
+            "start_dir": os.path.dirname(script),
+            "launcher_changed": launcher_changed or not old_launcher,
+            "collection": collection,
+            "previous_collection": previous_collection,
+            "platform": platform,
+        }
+
+    async def unregister_game(self, app_id: int):
+        """Forget a game and delete its launcher. Steam removal is done frontend-side."""
+        entry = await self._run(store.forget_game, app_id)
+        if entry:
+            await self._run(launchers.remove_launcher, entry.get("launcher_path", ""))
+        return entry
+
+    async def list_added(self):
+        library = await self._run(store.get_library)
+        return sorted(library.values(), key=lambda entry: entry.get("title", "").lower())
+
+    @staticmethod
+    def _stray_launchers(referenced):
+        """Launcher scripts in our own directory that no registry entry claims."""
+        return sorted(
+            path
+            for path in glob.glob(os.path.join(launchers.LAUNCHER_DIR, "*.sh"))
+            if os.path.normpath(path) not in referenced
+        )
+
+    async def rebuild_launchers(self):
+        """Regenerate every launcher script from the current settings."""
+        if not self._install:
+            return {"ok": False, "error": "RetroArch was not found on this system."}
+
+        settings = await self._run(store.get_settings)
+        library = await self._run(store.get_library)
+
+        # Resolving what each game needs is all in-memory, so it happens here;
+        # only the filesystem work is handed over, and in one pass rather than
+        # one per game. `_launch_options` is per game so a global change does not
+        # quietly discard the overrides someone set on one title.
+        jobs = []
+        for entry in library.values():
+            core_id = entry.get("core_id", "")
+            core = self._core_by_id(core_id)
+            launch = self._launch_options(settings, entry)
+            jobs.append(
+                {
+                    "title": entry.get("title", "Game"),
+                    "label": entry.get("title", "?"),
+                    "core_path": core["path"] if core else entry.get("core_path", ""),
+                    "rom_path": entry.get("rom_path", ""),
+                    "emulator": self._emulator_for_core_id(core_id),
+                    "hide_osd": launch["hide_osd"],
+                    "fullscreen": launch["fullscreen"],
+                    "extra_args": launch["extra_args"],
+                    # Derived from the recorded ROM rather than stored beside
+                    # it, so a library written before any of this still rebuilds
+                    # correctly. Empty for every game that launches by path,
+                    # which is all of them but Vita3K's.
+                    "title_id": vita_games.title_of(entry.get("rom_path", "")),
+                }
+            )
+
+        rebuilt, skipped = await self._run(
+            self._write_launchers, self._install, self._menu_combo(settings), settings, jobs
+        )
+
+        decky.logger.info("Rebuilt %d launcher(s), skipped %d", rebuilt, len(skipped))
+        return {"ok": True, "rebuilt": rebuilt, "skipped": skipped}
+
+    @staticmethod
+    def _write_launchers(install, menu_combo, settings, jobs):
+        """Write every launcher in `jobs`. Returns (rebuilt, skipped titles).
+
+        The ROM check lives here rather than at the call site because it is the
+        one piece of blocking filesystem work that was being done on the event
+        loop, where every other file operation in this class goes through the
+        executor.
+        """
+        rebuilt = 0
+        skipped = []
+        for job in jobs:
+            if not job["core_path"] or not job["rom_path"] or not os.path.isfile(job["rom_path"]):
+                skipped.append(job["label"])
+                continue
+            try:
+                launchers.write_launcher(
+                    install,
+                    job["title"],
+                    job["core_path"],
+                    job["rom_path"],
+                    job["hide_osd"],
+                    job["emulator"],
+                    job["fullscreen"],
+                    job["extra_args"],
+                    menu_combo,
+                    settings,
+                    job.get("title_id", ""),
+                )
+                rebuilt += 1
+            except OSError as error:
+                decky.logger.warning(
+                    "Could not rebuild launcher for %r: %s", job["label"], error
+                )
+                skipped.append(job["label"])
+        return rebuilt, skipped
+
+    async def clear_library(self):
+        """Forget every game and delete every launcher this plugin wrote.
+
+        Returns what the frontend must still undo on the Steam side -- the app ids
+        to remove and which collection each was filed into -- because the backend
+        cannot touch Steam. Reported before anything is deleted, since afterwards
+        the records naming those apps are gone.
+
+        Stray scripts in the launcher directory go too. "Clear the library" that
+        left files behind for the orphan audit to complain about would not have
+        cleared anything the user can see.
+        """
+        library = await self._run(store.get_library)
+        games = [
+            {
+                "app_id": entry.get("app_id"),
+                "title": entry.get("title", ""),
+                "collection": entry.get("collection", ""),
+            }
+            for entry in library.values()
+            if entry.get("app_id")
+        ]
+
+        # And the games themselves, for the same reason removing one game
+        # deletes it: a file this plugin put on the disk that nothing points at
+        # any more is not a saving, it is something to reconcile later. "Clear
+        # the library" leaving twenty gigabytes of ROMs behind was the largest
+        # instance of exactly that.
+        freed = 0
+        for entry in library.values():
+            freed += await self._delete_game_files(entry.get("rom_path", ""))
+
+        removed = 0
+        for entry in library.values():
+            if await self._run(launchers.remove_launcher, entry.get("launcher_path", "")):
+                removed += 1
+        # One write rather than one per game: the whole registry goes, so there is
+        # nothing to preserve between the individual deletions.
+        await self._run(store.clear_library)
+
+        strays = await self._run(self._stray_launchers, set())
+        for path in strays:
+            if await self._run(launchers.remove_launcher, path):
+                removed += 1
+
+        decky.logger.info(
+            "Cleared the library: %d game(s), %d launcher(s), %d bytes freed",
+            len(games), removed, freed,
+        )
+        return {
+            "ok": True,
+            "games": games,
+            # Deduped but order-stable, so the frontend can report them.
+            "collections": list(dict.fromkeys(g["collection"] for g in games if g["collection"])),
+            "launchers_deleted": removed,
+            "freed": freed,
+        }
+
+    async def _delete_game_files(self, rom_path):
+        """Delete whatever this plugin put on the disk for one game. Bytes freed.
+
+        The same two cases the remove dialog covers, and the same boundary: a
+        game unpacked inside an emulator, or a ROM filed under its system. A ROM
+        the user keeps somewhere of their own is not ours and is left, here as
+        everywhere else.
+        """
+        if not rom_path:
+            return 0
+
+        for system, module in self._PACKAGED.items():
+            info = await self._run(module.game_info, rom_path)
+            if info.get("ok") and info.get("title_id"):
+                gone, error = await self._run(module.delete_game, info["title_id"])
+                if error:
+                    decky.logger.warning("Could not delete %s: %s", rom_path, error)
+                return gone
+
+        library = await self._run(romshelf.library_dir)
+        if await self._run(romshelf.owned, rom_path, library):
+            gone, error = await self._run(romshelf.delete_rom, rom_path, library)
+            if error:
+                decky.logger.warning("Could not delete %s: %s", rom_path, error)
+            return gone
+        return 0
+
+    # ---------------------------------------------------------------- installing
+
+    async def list_installable_cores(self, refresh: bool = False):
+        """The full buildbot catalog, annotated with what is already installed."""
+        catalog = await self._run(installer.core_catalog, refresh)
+        installed = {core["id"] for core in await self.list_cores()}
+        for entry in catalog:
+            entry["installed"] = entry["id"] in installed
+        return catalog
+
+    async def suggest_cores_for_extension(self, extension: str):
+        """Installable cores that claim `extension`, for ROMs with no local core."""
+        ext = (extension or "").lower().lstrip(".")
+        if not ext:
+            return []
+        catalog = await self.list_installable_cores()
+        return [entry for entry in catalog if ext in entry["extensions"]]
+
+    async def install_core(self, core_id: str):
+        if not self._install:
+            return {"ok": False, "error": "RetroArch was not found on this system."}
+
+        await decky.emit("core_install_progress", core_id, "downloading", 0)
+        result = await self._run(installer.install_core, self._install, core_id)
+
+        if result.get("ok"):
+            # Re-scan so the new core is immediately selectable.
+            self._cores = await self._run(ra_cores.list_cores, self._install)
+            result["core_count"] = len(self._cores)
+            await decky.emit("core_install_progress", core_id, "done", 100)
+        else:
+            await decky.emit("core_install_progress", core_id, "failed", 0)
+
+        return result
+
+    async def uninstall_core(self, core_id: str):
+        if not self._install:
+            return {"ok": False, "error": "RetroArch was not found on this system."}
+        result = await self._run(installer.uninstall_core, self._install, core_id)
+        if result.get("ok"):
+            self._cores = await self._run(ra_cores.list_cores, self._install)
+            result["core_count"] = len(self._cores)
+        return result
+
+    async def can_install_retroarch(self):
+        return {"flatpak_available": bool(await self._run(installer.flatpak_binary))}
+
+    async def can_uninstall_retroarch(self):
+        """Whether removing RetroArch is something this plugin may attempt.
+
+        Reported rather than decided in the UI so the reason can be shown: a
+        greyed-out button with no explanation is worse than no button.
+        """
+        if not self._install:
+            return {"ok": False, "reason": "RetroArch is not installed."}
+
+        kind = self._install.get("kind")
+        if kind != "flatpak":
+            return {
+                "ok": False,
+                "kind": kind,
+                "reason": (
+                    "This is a native package install, which belongs to the system's package "
+                    "manager and would need SteamOS's read-only filesystem unlocked."
+                    if kind == "native"
+                    else "This is a loose AppImage that DeckyEmu did not install, so it is not "
+                    "DeckyEmu's to delete. Remove the file yourself if you want it gone."
+                ),
+            }
+
+        scope = await self._run(ra_detect.flatpak_scope)
+        if scope == "system":
+            return {
+                "ok": False,
+                "kind": kind,
+                "scope": scope,
+                "reason": (
+                    "This flatpak was installed system-wide, most likely by EmuDeck or Discover. "
+                    "Removing it needs root, which the plugin cannot supply. Uninstall it from "
+                    "Discover in desktop mode."
+                ),
+            }
+
+        return {"ok": True, "kind": kind, "scope": scope or "user"}
+
+    async def uninstall_retroarch(self, delete_data: bool = False):
+        """Remove the user-scope RetroArch flatpak.
+
+        Deliberately synchronous, unlike the install: removal takes a couple of
+        seconds and has nothing worth streaming, and a result the UI can act on
+        beats a progress bar here.
+
+        Games already added to Steam keep their shortcuts and launcher scripts.
+        Nothing is rewritten, because reinstalling RetroArch makes every one of
+        them work again -- and deleting them here would be an unrelated,
+        irreversible act hidden behind a button labelled "uninstall RetroArch".
+        """
+        allowed = await self.can_uninstall_retroarch()
+        if not allowed.get("ok"):
+            return {"ok": False, "error": allowed.get("reason", "RetroArch cannot be removed.")}
+
+        argv = await self._run(installer.retroarch_uninstall_argv, bool(delete_data))
+        if not argv:
+            return {"ok": False, "error": "flatpak is not available on this system."}
+
+        decky.logger.info("Running: %s", " ".join(argv))
+        try:
+            process = await asyncio.create_subprocess_exec(
+                *argv,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+                env=self._subprocess_env(),
+            )
+            output, _ = await asyncio.wait_for(process.communicate(), timeout=180)
+        except asyncio.TimeoutError:
+            return {"ok": False, "error": "flatpak did not finish within three minutes."}
+        except (OSError, NotImplementedError) as error:
+            decky.logger.exception("Could not run flatpak")
+            return {"ok": False, "error": "Could not run flatpak: %s" % error}
+
+        text = (output or b"").decode("utf-8", errors="replace").strip()
+        for line in text.splitlines():
+            decky.logger.info("flatpak: %s", line)
+
+        if process.returncode != 0:
+            # The last line is where flatpak puts the reason; the exit code alone
+            # says nothing useful.
+            tail = [line for line in text.splitlines() if line.strip()][-2:]
+            return {"ok": False, "error": " | ".join(tail) or "flatpak exited with %s" % process.returncode}
+
+        # Re-detect rather than assume: this is what makes every other tab agree
+        # that RetroArch is gone, and it is also how a failed-but-zero-exit
+        # removal would still be caught.
+        await self.refresh_retroarch()
+        return {
+            "ok": True,
+            "still_installed": bool(self._install),
+            "deleted_data": bool(delete_data),
+        }
+
+    async def install_retroarch(self):
+        """Kick off a user-scope flatpak install, streaming progress as events."""
+        if self._install:
+            return {"ok": False, "error": "RetroArch is already installed."}
+
+        steps = await self._run(installer.retroarch_install_argv)
+        if not steps:
+            return {
+                "ok": False,
+                "error": "flatpak is not available on this system, so RetroArch cannot be installed automatically.",
+            }
+
+        self._detach(self._run_retroarch_install(steps), "retroarch_install_done")
+        return {"ok": True, "started": True}
+
+    @staticmethod
+    def _subprocess_env():
+        """Environment for flatpak, with HOME guaranteed to be the user's.
+
+        The plugin does not inherit a login shell's environment. `flatpak --user`
+        resolves its installation from HOME/XDG_DATA_HOME, so a missing or wrong
+        HOME makes it fail immediately -- and the exit code alone gives no hint
+        why.
+        """
+        # Steam's runtime libraries make flatpak fail instantly with an
+        # OPENSSL symbol error, so they are cleared first.
+        env = sysenv.clean_env()
+        home = env.get("DECKY_USER_HOME") or ra_detect.user_home()
+        if home:
+            env["HOME"] = home
+            env.setdefault("XDG_DATA_HOME", os.path.join(home, ".local", "share"))
+            env.setdefault("XDG_CACHE_HOME", os.path.join(home, ".cache"))
+        env.setdefault("PATH", "/usr/bin:/bin:/usr/local/bin")
+        return env
+
+    # `(?<!\d)` matters: output is read in fixed-size chunks, so a number can be
+    # split across two reads. Without the guard, "1425%" yields 425 and the
+    # progress bar is driven past 100 and off the right edge of its track.
+    _PERCENT_RE = re.compile(r"(?<!\d)(\d{1,3})\s*%")
+
+    @classmethod
+    def _parse_percent(cls, text):
+        """The last sane percentage in `text`, or -1 when there is none."""
+        best = -1
+        for match in cls._PERCENT_RE.finditer(text):
+            value = int(match.group(1))
+            if 0 <= value <= 100:
+                best = value
+        return best
+
+    async def _run_retroarch_install(self, steps):
+        """RetroArch is a large download, so progress is streamed to the UI."""
+        env = self._subprocess_env()
+        decky.logger.info(
+            "Install environment: HOME=%s XDG_DATA_HOME=%s",
+            env.get("HOME"),
+            env.get("XDG_DATA_HOME"),
+        )
+
+        try:
+            for argv in steps:
+                decky.logger.info("Running: %s", " ".join(argv))
+                try:
+                    process = await asyncio.create_subprocess_exec(
+                        *argv,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.STDOUT,
+                        env=env,
+                    )
+                except (OSError, NotImplementedError) as error:
+                    # NotImplementedError happens when the event loop cannot
+                    # spawn children, which is not obvious from an exit code.
+                    decky.logger.exception("Could not start %s", argv[0])
+                    await decky.emit(
+                        "retroarch_install_done", False, "Could not run flatpak: %s" % error
+                    )
+                    return
+
+                # Kept so a failure can be explained rather than reduced to a
+                # number -- flatpak writes the actual reason here.
+                tail = []
+                # flatpak redraws its progress line with carriage returns, so
+                # output is split on those as well as newlines. Buffering whole
+                # segments keeps numbers intact across chunk boundaries.
+                buffer = ""
+                while True:
+                    chunk = await process.stdout.read(256)
+                    if not chunk:
+                        break
+                    buffer += chunk.decode("utf-8", errors="replace")
+
+                    segments = re.split(r"[\r\n]+", buffer)
+                    # The final piece may be incomplete; hold it back.
+                    buffer = segments.pop()
+
+                    for segment in segments:
+                        text = segment.strip()
+                        if not text:
+                            continue
+                        decky.logger.info("flatpak: %s", text)
+                        tail.append(text)
+                        del tail[:-5]
+                        await decky.emit(
+                            "retroarch_install_progress", text, self._parse_percent(text)
+                        )
+
+                if buffer.strip():
+                    text = buffer.strip()
+                    decky.logger.info("flatpak: %s", text)
+                    tail.append(text)
+                    del tail[:-5]
+                    await decky.emit(
+                        "retroarch_install_progress", text, self._parse_percent(text)
+                    )
+
+                code = await process.wait()
+                decky.logger.info("%s exited with %d", argv[1] if len(argv) > 1 else argv[0], code)
+
+                # remote-add is allowed to fail: the remote usually already exists.
+                if code != 0 and "install" in argv:
+                    reason = " ".join(tail).strip() or "no output"
+                    await decky.emit(
+                        "retroarch_install_done",
+                        False,
+                        "flatpak exited with code %d: %s" % (code, reason),
+                    )
+                    return
+
+            status = await self.refresh_retroarch()
+            await decky.emit(
+                "retroarch_install_done",
+                bool(status["found"]),
+                "" if status["found"] else "Install finished but RetroArch was still not found.",
+            )
+        # Only the expected failure, and deliberately not CancelledError: this
+        # runs detached, so `_detach` re-raises a cancellation properly and
+        # reports anything else. Catching it here swallowed an unload, then tried
+        # to emit over the socket that was closing.
+        except OSError as error:
+            decky.logger.exception("RetroArch install failed")
+            await decky.emit("retroarch_install_done", False, str(error))
+
+    # ---------------------------------------------------------- file transfer
+
+    async def file_server_status(self):
+        status = await self._run(fileserver.status)
+        status["received"] = await self._run(fileserver.received_files)
+        # Its own folder, not wherever ROMs are browsed from -- see
+        # fileserver.default_dir.
+        status["suggested_dir"] = await self._run(fileserver.default_dir)
+        return status
+
+    async def start_file_server(self, target_dir: str = ""):
+        # Empty means the default folder. Lets a caller start receiving in one call
+        # without first asking where that is.
+        target_dir = (target_dir or "").strip() or await self._run(fileserver.default_dir)
+
+        settings = await self._run(store.get_settings)
+        remember = bool(settings.get("transfer_remember"))
+        result = await self._run(
+            fileserver.start,
+            target_dir,
+            int(settings.get("transfer_port") or 0) if remember else 0,
+            (settings.get("transfer_token") or "") if remember else "",
+        )
+        if result.get("error"):
+            return {"ok": False, "error": result["error"]}
+
+        if remember:
+            # Whatever was actually bound and minted, not what was asked for: a
+            # remembered port can be taken by something else and fallen back from,
+            # and recording the request rather than the outcome would hand out a
+            # link to an address nothing is listening on.
+            await self._run(
+                store.set_settings,
+                {
+                    "transfer_port": result.get("port", 0),
+                    "transfer_token": await self._run(fileserver.current_token),
+                },
+            )
+
+        result["received"] = await self._run(fileserver.received_files)
+        return {"ok": True, **result}
+
+    async def reset_transfer_link(self):
+        """Invalidate every saved link. The next start issues a fresh one.
+
+        All or nothing by design: the link is the credential, so there is nothing
+        per-device to revoke. Refused while a transfer is running, because taking
+        the address away mid-upload would cut off the very device that is using it.
+        """
+        status = await self._run(fileserver.status)
+        if status.get("uploading"):
+            return {
+                "ok": False,
+                "error": "A transfer is still running. Wait for it to finish, or cancel it first.",
+            }
+
+        await self._run(store.set_settings, {"transfer_port": 0, "transfer_token": ""})
+        decky.logger.info("Reset the transfer link; saved bookmarks no longer work")
+
+        # Restarted rather than left running, so the old link stops working now
+        # instead of at the end of a session the user thinks they have revoked.
+        if status.get("running"):
+            await self._run(fileserver.stop)
+            return await self.start_file_server(status.get("target_dir", ""))
+        return {"ok": True, "running": False}
+
+    async def stop_file_server(self):
+        result = await self._run(fileserver.stop)
+        result["received"] = await self._run(fileserver.received_files)
+        return {"ok": True, **result}
+
+    async def cancel_upload(self, upload_id: int = 0):
+        """Abandon a transfer in progress. 0 means every one of them.
+
+        The half-written file goes with it: nothing can resume an upload, so
+        keeping it would only leave litter in the folder the user browses for
+        ROMs. The handler deletes its own, which is the only thread that can do
+        it safely while the file is still open.
+        """
+        cancelled = await self._run(fileserver.cancel, upload_id or None)
+        status = await self._run(fileserver.status)
+        status["received"] = await self._run(fileserver.received_files)
+        return {"ok": True, "cancelled": cancelled, **status}
+
+    # ------------------------------------------------------- custom emulators
+
+    async def list_emulators(self):
+        return await self._refresh_emulators()
+
+    async def list_systems(self):
+        """libretro system names an emulator can be mapped to, for artwork.
+
+        This is the field that matters: artwork lookup and the SteamGridDB era
+        check both key on the libretro database name, so a custom emulator that
+        declares one gets boxart exactly like a core does. Sourced from the core
+        catalog so the list covers everything libretro knows, not a hand-written
+        subset.
+        """
+        names = set(platforms.SHORT_NAMES.keys())
+        for core in self._cores:
+            names.update(core.get("databases") or [])
+        for entry in await self._run(installer.core_catalog):
+            names.update(entry.get("databases") or [])
+
+        # `label` is the full "Manufacturer - System" name and is what the picker
+        # shows. Sorting on it keeps each manufacturer's systems together, which
+        # short names cannot do -- they scatter Nintendo across 3DS, GBA, N64,
+        # SNES, Switch and Wii.
+        options = [
+            {
+                "id": name,
+                "database": name,
+                "label": name,
+                "short": platforms.short_name(name),
+                "full": name,
+                "libretro": True,
+            }
+            for name in names
+        ]
+
+        # Switch, Wii U, PS3 and friends are absent from libretro entirely, so
+        # they would otherwise be unselectable. They get a label for collection
+        # naming and rely on SteamGridDB for artwork.
+        #
+        # Skipped when libretro turns out to know the system after all: the Vita
+        # is in the catalog, and listing it twice offered the same name twice,
+        # once able to find boxart and once not.
+        for label, full, short in platforms.NO_LIBRETRO_PLATFORMS:
+            if label in names:
+                continue
+            options.append(
+                {
+                    "id": "~%s" % short,
+                    "database": "",
+                    "label": label,
+                    "short": short,
+                    "full": full,
+                    "libretro": False,
+                }
+            )
+
+        options.sort(key=lambda option: option["label"].lower())
+        return options
+
+    # --------------------------------------------------------------- dev reset
+
+    async def dev_reset_available(self):
+        """Whether the reset tab may do anything. See py_modules/devreset.py.
+
+        The frontend tab is compiled out of a release build entirely, so this is
+        the second of two independent gates rather than the only one. It exists
+        because "compiled out" is a property of one artifact and these endpoints
+        are reachable by anything that can talk to the plugin.
+        """
+        return {"ok": True, "available": devreset.available(PLUGIN_ROOT)}
+
+    async def dev_reset_inventory(self):
+        """What each reset would delete, with sizes, before anything happens."""
+        if not devreset.available(PLUGIN_ROOT):
+            return {"ok": False, "error": "Not a development build."}
+        return {"ok": True, "groups": await self._run(devreset.inventory)}
+
+    async def dev_reset(self, action: str):
+        """Run one reset. One action per press, named, never bundled.
+
+        Separate because what they cost differs by orders of magnitude: state
+        is rebuilt by using the plugin, a download is twenty minutes, and sent
+        dumps and save games mean a trip to another machine. A single "reset
+        everything" would hide the third behind the first.
+        """
+        if not devreset.available(PLUGIN_ROOT):
+            return {"ok": False, "error": "Not a development build."}
+
+        decky.logger.warning("Dev reset requested: %s", action)
+
+        if action == "retroarch":
+            return await self._dev_reset_retroarch()
+        if action == "emulators":
+            return await self._dev_reset_emulators()
+
+        simple = {
+            "emulator_data": devreset.clear_emulator_data,
+            "transfers": devreset.clear_transfers,
+            "downloads": devreset.clear_downloads,
+            "state": devreset.clear_state,
+        }
+        if action not in simple:
+            return {"ok": False, "error": "Unknown reset %r." % action}
+
+        freed = await self._run(simple[action])
+        # Whatever was just deleted, this backend is still holding what it
+        # detected before -- which RetroArch is installed, which cores it has,
+        # which emulators are registered. Re-detected here rather than left to
+        # whoever asks next, because the answer they would get is wrong and
+        # nothing about it looks stale.
+        await self.refresh_retroarch()
+        decky.logger.warning("Dev reset %s freed %d bytes", action, freed)
+        return {"ok": True, "freed": freed}
+
+    async def _dev_reset_emulators(self):
+        """Uninstall every catalog emulator this plugin can remove.
+
+        Through the same endpoint the Emulators tab uses, so a system-wide
+        flatpak is refused here for the same reason and with the same words --
+        removing one needs root, which the plugin has not got.
+        """
+        removed, failed = [], []
+        for entry in emulator_catalog.CATALOG:
+            present = (
+                await self._run(emu_install.flatpak_installed, entry["source"]["id"])
+                if entry["source"]["kind"] == "flatpak"
+                else bool(await self._run(emu_install.installed_appimage, entry["id"]))
+            )
+            if not present:
+                continue
+            result = await self.uninstall_emulator(entry["id"])
+            (removed if result.get("ok") else failed).append(
+                entry["name"] if result.get("ok")
+                else "%s (%s)" % (entry["name"], result.get("error", ""))
+            )
+        await self.refresh_retroarch()
+        return {"ok": True, "removed": removed, "failed": failed}
+
+    async def _dev_reset_retroarch(self):
+        """Remove RetroArch itself, its cores and its configuration."""
+        app_id = "org.libretro.RetroArch"
+        scope = await self._run(emu_install.flatpak_scope, app_id)
+        if scope == "system":
+            return {
+                "ok": False,
+                "error": "RetroArch was installed system-wide, most likely by EmuDeck. "
+                "Removing it needs root, which the plugin cannot supply.",
+            }
+
+        # Only if it is there. A reset should be runnable twice, and the second
+        # press finding nothing installed is success rather than a flatpak
+        # error about an unknown application.
+        if scope:
+            removed = await self._flatpak_uninstall(app_id)
+            if not removed["ok"]:
+                return removed
+
+        # The data directory survives a flatpak uninstall, and it is where the
+        # cores, the system folder and every config override live -- so leaving
+        # it is the difference between "removed" and "removed and forgotten".
+        freed = await self._run(devreset.clear_retroarch_data)
+        # Not just the emulators: RetroArch itself and its cores were what this
+        # deleted, and both are held in this object until something re-detects.
+        await self.refresh_retroarch()
+        return {"ok": True, "freed": freed}
+
+    # ----------------------------------------------------------------- settings
+
+    async def plugin_version(self):
+        """What this backend is, for display and for spotting a stale frontend.
+
+        package.json is the source of truth for the version. `build.json` is written
+        by CI beside it and names the commit; a local build has none, and reports
+        "dev" so the frontend knows not to compare.
+        """
+
+        def _read():
+            root = PLUGIN_ROOT
+            version, build, built_at = "0.0.0", "dev", ""
+            # What changed in the build that is actually installed. CI writes it
+            # into the stamp so the Updates tab can answer "what did I get?"
+            # without a network -- and, while the repository is private, without a
+            # token. A local build has none, which reads as "nothing to show".
+            notes = ""
+            try:
+                with open(os.path.join(root, "package.json"), "r", encoding="utf-8") as handle:
+                    version = json.load(handle).get("version") or version
+            except (OSError, ValueError):
+                pass
+            try:
+                with open(os.path.join(root, "build.json"), "r", encoding="utf-8") as handle:
+                    stamp = json.load(handle)
+                build = stamp.get("commit") or build
+                built_at = stamp.get("built_at") or ""
+                notes = (stamp.get("notes") or "").strip()
+                # CI writes the version it built, which is authoritative over a
+                # package.json that could have been edited since.
+                version = stamp.get("version") or version
+            except (OSError, ValueError):
+                pass
+            return {
+                "version": version,
+                "build": build,
+                "built_at": built_at,
+                "notes": notes,
+            }
+
+        return await self._run(_read)
+
+    async def check_for_update(self, force: bool = False):
+        """Whether a newer release exists, and what the frontend needs to install it.
+
+        Only looks. Decky's loader does the installing -- it runs as root and this
+        backend runs as `deck`, which cannot write the plugin's own directory.
+        """
+        current = (await self.plugin_version())["version"]
+        settings = await self._run(store.get_settings)
+        token = (settings.get("github_token") or "").strip()
+        result = await self._run(releases.check, current, force, False, token)
+        # Logged either way. When this only spoke up for an available update, a
+        # check that never ran looked exactly like one that found nothing.
+        decky.logger.info(
+            "Update check: current=%s checked=%s releases=%d available=%s%s",
+            current,
+            result.get("checked"),
+            result.get("count", 0),
+            result.get("available"),
+            (" error=%s" % result["error"]) if result.get("error") else "",
+        )
+        return result
+
+    async def stage_update(self):
+        """Download the newest release and offer it to decky over loopback.
+
+        Decky installs from a URL it fetches itself, and has no credentials -- so a
+        private repository's asset would 404 for it. Downloading here with the token
+        and re-offering the bytes on 127.0.0.1 makes the private case work and gives
+        the public one a digest computed from the file actually obtained.
+        """
+        settings = await self._run(store.get_settings)
+        token = (settings.get("github_token") or "").strip()
+        current = (await self.plugin_version())["version"]
+        found = await self._run(releases.check, current, True, False, token)
+
+        release = found.get("latest")
+        if not release:
+            return {"ok": False, "error": "No release to install."}
+
+        try:
+            payload = await self._run(releases.download, release, token)
+        except Exception as error:  # noqa: BLE001 - reported, not raised, to the UI
+            decky.logger.exception("Could not download the release")
+            return {"ok": False, "error": "Could not download it: %s" % error}
+
+        if not payload:
+            return {
+                "ok": False,
+                "error": "The release could not be downloaded."
+                + (" A private repository needs a GitHub token." if not token else ""),
+            }
+
+        def _write():
+            os.makedirs(decky.DECKY_PLUGIN_RUNTIME_DIR, exist_ok=True)
+            path = os.path.join(
+                decky.DECKY_PLUGIN_RUNTIME_DIR, release.get("asset_name") or "deckyemu.zip"
+            )
+            with open(path, "wb") as handle:
+                handle.write(payload)
+            return path, hashlib.sha256(payload).hexdigest()
+
+        path, digest = await self._run(_write)
+
+        expected = release.get("sha256") or ""
+        if expected and expected != digest:
+            await self._run(os.remove, path)
+            return {"ok": False, "error": "The download did not match its published digest."}
+
+        url = await self._run(handoff.serve, path)
+        if not url:
+            return {"ok": False, "error": "Could not offer the download to decky."}
+
+        decky.logger.info("Staged %s for decky at %s", release["version"], url)
+        return {"ok": True, "url": url, "version": release["version"], "sha256": digest}
+
+    async def get_settings(self):
+        settings = await self._run(store.get_settings)
+        # Never ship the key itself to the UI; only whether one is set.
+        settings = dict(settings)
+        settings["sgdb_api_key_set"] = bool((settings.pop("sgdb_api_key", "") or "").strip())
+        settings["github_token_set"] = bool((settings.pop("github_token", "") or "").strip())
+        # The username is shown -- it is the whole point of saying who is signed
+        # in -- but the Connect token is password-equivalent and stays here.
+        settings["cheevos_token_set"] = bool((settings.pop("cheevos_token", "") or "").strip())
+        return settings
+
+    async def set_settings(self, patch: dict):
+        await self._run(store.set_settings, patch or {})
+        # Launch behaviour is baked into each game's launcher script, so a
+        # change here has to be written back out or it would only affect games
+        # added from now on.
+        if patch and any(
+            key in patch
+            for key in (
+                "hide_osd",
+                "emulator_fullscreen",
+                "menu_combo",
+                # Achievements are written into the same override file, so
+                # switching them on has to reach launchers that already exist --
+                # otherwise it would only apply to games added afterwards.
+                "cheevos_enable",
+                "cheevos_hardcore",
+                "cheevos_username",
+                "cheevos_token",
+            )
+        ):
+            await self.rebuild_launchers()
+        return await self.get_settings()
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,262 @@
+name: CI
+
+# The same commands the deploy loop runs by hand: both test suites, typecheck,
+# bundle, plus an installable plugin to download.
+#
+# Run on request only -- from the Actions tab, or `gh workflow run ci.yml`. Not on
+# push: most commits here are already validated locally before they leave the
+# machine, and a build per push is noise rather than a signal. It also means the
+# release commit this workflow pushes cannot retrigger it.
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish a release"
+        type: boolean
+        default: false
+      bump:
+        description: "Version to release (ignored unless publishing)"
+        type: choice
+        default: patch
+        options: [patch, minor, major, none]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    # Committing the version bump and creating a release both need write access;
+    # the rest of the job does not.
+    permissions:
+      contents: write
+    steps:
+      # The branch, not the detached commit: a release commits the bump back to it.
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.ref_name }}
+          # The release notes are generated from the commits since the previous
+          # tag, and the default shallow clone has neither the tags nor the
+          # history to walk. It would only fail on the run that matters.
+          fetch-depth: 0
+
+      # Before setup-node, which needs pnpm on PATH to resolve its cache.
+      # `version` rather than a packageManager field, since package.json has none.
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      - run: pnpm install --frozen-lockfile
+
+      # Everything that does not depend on the version runs first, so a release
+      # never pushes a bump that then fails to build.
+
+      # The frontend suite. Fast and pure -- no DOM, no Deck -- and it covers
+      # the rules that decide whether something gets deleted, which nothing on
+      # the Python side can reach.
+      - name: Frontend tests
+        run: pnpm exec vitest run
+
+      - name: Typecheck
+        run: pnpm exec tsc --noEmit
+
+      # The backend half. Not strict -- see mypy.ini for what is off and why --
+      # but it is what found prepare_shortcut indexing an install that the
+      # guard above it allows to be None.
+      - name: Typecheck the backend
+        run: |
+          pip install mypy
+          python -m mypy py_modules main.py
+
+      # Offline: the live section reaches thumbnails.libretro.com and
+      # steamgriddb.com, which would make CI fail on their availability rather
+      # than on this repository's changes.
+      - name: Backend tests
+        run: python scripts/test_backend.py --offline
+
+      # The backend runs on decky's bundled Python, so a syntax error in a module
+      # that the suite happens not to import would only surface on the device.
+      - name: Compile every backend module
+        run: python -m compileall -q main.py py_modules
+
+      # --- version ------------------------------------------------------------
+      #
+      # package.json is the single source of truth. Bumping happens here rather
+      # than by hand so a release is one action, and it is committed *before* the
+      # bundle is built: the commit stamped into a build has to be one whose
+      # package.json carries the version being released, or the two halves of that
+      # metadata contradict each other.
+
+      - name: Bump the version
+        if: inputs.publish && inputs.bump != 'none'
+        run: npm version "${{ inputs.bump }}" --no-git-tag-version
+
+      - name: Read the version
+        id: meta
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Refuse to reuse a version
+        if: inputs.publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="v${{ steps.meta.outputs.version }}"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::$tag already exists. Pick a bump, or use bump=none only for a version never released."
+            exit 1
+          fi
+
+      - name: Commit the bump
+        if: inputs.publish && inputs.bump != 'none'
+        run: |
+          git config user.name "Pendor"
+          git config user.email "2113610+elpendor@users.noreply.github.com"
+          git add package.json
+          git commit -m "Release v${{ steps.meta.outputs.version }}"
+          git push origin "HEAD:${{ github.ref_name }}"
+
+      # What the release is actually made from: the bump commit when there is one,
+      # otherwise whatever was checked out.
+      - name: Resolve the build commit
+        id: commit
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      # Generated from the commit subjects since the previous tag, so there is no
+      # changelog file to keep in step with the code. Written to a file rather
+      # than a step output because it is multi-line, and read by both the release
+      # body and the build stamp that ships inside the zip -- the plugin shows the
+      # running version's notes offline, without a network or a token.
+      #
+      # Resolved *after* the bump commit exists, so the range ends at what is
+      # actually being released.
+      - name: Generate the changelog
+        run: |
+          python scripts/changelog.py > release-notes.md
+          echo "--- notes for v${{ steps.meta.outputs.version }} ---"
+          cat release-notes.md
+
+      # --- build --------------------------------------------------------------
+
+      - name: Bundle
+        env:
+          DECKYEMU_BUILD: ${{ steps.commit.outputs.sha }}
+        run: pnpm exec rollup -c
+
+      # The bundle is what actually ships, so a silently empty one is worth
+      # catching here rather than after a deploy.
+      - name: Check the bundle is not empty
+        run: test -s dist/index.js
+
+      # Development-only code must be absent from a release, not merely
+      # unreachable in it -- the Reset panel deletes save games. This was
+      # already false once: the build stamp used to be prepended after
+      # tree-shaking, so the panel could never be folded away and shipped
+      # intact. Checked against the bundle itself rather than trusted.
+      - name: Check no development-only code shipped
+        run: |
+          for needle in "Forget everything the plugin knows" "dev_reset"; do
+            if grep -qF -- "$needle" dist/index.js; then
+              echo "Release bundle contains development-only code: $needle"
+              exit 1
+            fi
+          done
+          echo "No development-only code in the bundle."
+
+      # Only what the plugin needs at runtime, nested under the directory name
+      # decky expects -- DECKY_PLUGIN_SETTINGS_DIR and friends derive from the
+      # folder name, not from plugin.json, so unpacking under any other name
+      # orphans existing settings.
+      - name: Assemble the plugin
+        run: |
+          mkdir -p artifact/deckyemu
+          cp -r main.py plugin.json package.json py_modules dist artifact/deckyemu/
+          find artifact -name '__pycache__' -type d -prune -exec rm -rf {} +
+          find artifact -name '*.pyc' -delete
+          # The backend half of the stamp. It must agree with what was compiled
+          # into the bundle above, which is why both come from this one job.
+          #
+          # Written by python rather than a heredoc: `notes` is multi-line
+          # markdown and has to be escaped into JSON properly. A heredoc would
+          # produce a file that parses only until someone writes a quote in a
+          # commit subject.
+          VERSION="${{ steps.meta.outputs.version }}" \
+          COMMIT="${{ steps.commit.outputs.sha }}" \
+          RUN="${{ github.run_number }}" \
+          python - <<'PY'
+          import datetime, json, os, pathlib
+          notes = pathlib.Path("release-notes.md")
+          json.dump(
+              {
+                  "version": os.environ["VERSION"],
+                  "commit": os.environ["COMMIT"],
+                  "built_at": datetime.datetime.now(datetime.timezone.utc)
+                  .strftime("%Y-%m-%dT%H:%M:%SZ"),
+                  "run": os.environ["RUN"],
+                  "notes": notes.read_text(encoding="utf-8").strip() if notes.exists() else "",
+              },
+              open("artifact/deckyemu/build.json", "w", encoding="utf-8"),
+              indent=2,
+          )
+          PY
+
+      # Fails the build rather than shipping halves that disagree, which is the
+      # confusing state this stamping exists to make visible.
+      #
+      # Asserted on `FRONTEND_BUILD`, the constant the bundle actually exports,
+      # rather than on the `__DECKYEMU_BUILD__` placeholder it is built from.
+      # The placeholder is substituted before rollup parses -- that is what lets
+      # the development-only panel be tree-shaken out of a release -- so it does
+      # not survive into the output, and grepping for it failed the first build
+      # after that change. This check runs only on request, so nothing noticed
+      # for a day.
+      - name: Check both halves carry the same stamp
+        run: |
+          grep -q "FRONTEND_BUILD = \"${{ steps.commit.outputs.sha }}\"" dist/index.js
+          grep -q "${{ steps.commit.outputs.sha }}" artifact/deckyemu/build.json
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: deckyemu-${{ steps.meta.outputs.version }}-${{ steps.commit.outputs.sha }}
+          path: artifact/
+          if-no-files-found: error
+
+      # --- publish ------------------------------------------------------------
+      #
+      # The plugin's updater reads GitHub releases, so a release is what makes an
+      # update reachable. The zip keeps deckyemu/ at its root for the same reason
+      # the artifact does.
+
+      - name: Package
+        if: inputs.publish
+        run: |
+          cd artifact && zip -qr ../deckyemu.zip deckyemu && cd ..
+          # The changelog first, then the machine trailer. `sha256:` is not
+          # decoration -- releases.py scans the body for it and stage_update
+          # verifies the download against it, so it has to survive whatever the
+          # notes above happen to say. The plugin strips this trailer back off
+          # before showing the notes to anyone.
+          {
+            cat release-notes.md
+            echo ""
+            echo ""
+            echo "sha256: $(sha256sum deckyemu.zip | cut -d' ' -f1)"
+            echo ""
+            echo "Built from ${{ steps.commit.outputs.sha }}."
+          } > notes.md
+
+      - name: Publish the release
+        if: inputs.publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v${{ steps.meta.outputs.version }}" deckyemu.zip \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "${{ steps.commit.outputs.sha }}" \
+            --title "v${{ steps.meta.outputs.version }}" \
+            --notes-file notes.md

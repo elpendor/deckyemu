@@ -1,0 +1,79 @@
+/**
+ * The in-progress "add a game" selection, held outside React.
+ *
+ * Steam unmounts a Quick Access panel's content when a modal opens over it, so
+ * the file picker destroys the panel that launched it. Anything kept in
+ * component state is lost, and worse, the artwork lookup that was already in
+ * flight resolves into a component that no longer exists -- the ROM is picked,
+ * the backend does all the work, and the UI shows nothing.
+ *
+ * Keeping the draft in module scope fixes both halves: state survives the
+ * remount, and late-arriving async results are stored and broadcast to whatever
+ * instance is mounted at the time.
+ */
+
+import type { InstallableCore, ResolvedGame, RomProbe } from "./backend";
+
+export interface RomDraft {
+  romPath: string;
+  /**
+   * The installed title this game is, for emulators that start a title id
+   * rather than a file. Vita3K only — everything else ignores it, and a ROM
+   * picked from disk clears it.
+   */
+  titleId: string;
+  probe: RomProbe | null;
+  coreId: string;
+  showAllCores: boolean;
+  resolved: ResolvedGame | null;
+  title: string;
+  installable: InstallableCore[];
+  looking: boolean;
+  adding: boolean;
+  installingCore: string;
+  error: string;
+}
+
+export const EMPTY_DRAFT: RomDraft = {
+  romPath: "",
+  titleId: "",
+  probe: null,
+  coreId: "",
+  showAllCores: false,
+  resolved: null,
+  title: "",
+  installable: [],
+  looking: false,
+  adding: false,
+  installingCore: "",
+  error: "",
+};
+
+let draft: RomDraft = EMPTY_DRAFT;
+
+type Listener = (next: RomDraft) => void;
+const listeners = new Set<Listener>();
+
+export function getDraft(): RomDraft {
+  return draft;
+}
+
+/** Merge a patch into the draft and notify any mounted panel. */
+export function updateDraft(patch: Partial<RomDraft>): RomDraft {
+  draft = { ...draft, ...patch };
+  for (const listener of listeners) {
+    listener(draft);
+  }
+  return draft;
+}
+
+export function resetDraft(): RomDraft {
+  return updateDraft(EMPTY_DRAFT);
+}
+
+export function subscribeDraft(listener: Listener): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
