@@ -2263,7 +2263,15 @@ class Plugin(
         return settings
 
     async def set_settings(self, patch: dict):
-        await self._run(store.set_settings, patch or {})
+        # Filtered here rather than in `store.set_settings`: this is the one
+        # entry point that takes a dict from outside, and the internal callers
+        # write keys of their own choosing knowingly.
+        patch, dropped = await self._run(store.known_only, patch)
+        if dropped:
+            decky.logger.warning(
+                "Ignoring unknown setting(s): %s", ", ".join(sorted(dropped))
+            )
+        await self._run(store.set_settings, patch)
         # Launch behaviour is baked into each game's launcher script, so a
         # change here has to be written back out or it would only affect games
         # added from now on.

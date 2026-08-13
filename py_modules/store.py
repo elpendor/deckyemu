@@ -2,6 +2,7 @@
 
 import json
 import os
+import stat
 import threading
 
 import decky
@@ -84,6 +85,12 @@ DEFAULT_SETTINGS = {
     # which is what invalidates every bookmark at once.
     "transfer_port": 0,
     "transfer_token": "",
+    # Which launchers.FORMAT_VERSION the scripts on disk were written in, so a
+    # fix to how they are generated reaches games that already exist. Written by
+    # startup rather than by anyone, and declared here because this dict is what
+    # says which keys settings.json has -- one key that was written and read but
+    # never listed is one the allowlist below would have dropped.
+    "launcher_format": 0,
     # Remembered so the file picker reopens where the user left off.
     "last_rom_dir": "",
     # Remembered per-system so picking a core twice in a row is one tap.
@@ -106,6 +113,18 @@ def _write_json(path, payload):
     tmp = path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as handle:
         json.dump(payload, handle, indent=2)
+    # 0600 before the rename, so the file is never readable at its real name
+    # even briefly. settings.json holds the SteamGridDB key, the GitHub token
+    # and the RetroAchievements Connect token, which is password-equivalent --
+    # the same value launchers.write_override_config already restricts where it
+    # writes it. Set unconditionally and on both files: a mode that depends on
+    # what is being written is one that will be wrong the first time the
+    # contents change, and library.json records where every ROM on the device
+    # lives.
+    try:
+        os.chmod(tmp, stat.S_IRUSR | stat.S_IWUSR)
+    except OSError as error:
+        decky.logger.warning("Could not restrict %s: %s", path, error)
     os.replace(tmp, path)
 
 
@@ -127,6 +146,27 @@ def stored_keys():
     """
     stored = _read_json(SETTINGS_PATH, {})
     return set(stored) if isinstance(stored, dict) else set()
+
+
+def known_only(patch):
+    """`patch` reduced to the settings that exist. Returns (kept, dropped).
+
+    Every method on the Plugin class is callable by anything running in Steam's
+    JS context, so `set_settings` is reachable with any dict at all and merges
+    whatever it is given. Nothing here is privileged, but a settings file that
+    accumulates keys nobody reads is one nobody can reason about later.
+
+    It catches the ordinary case as well: a misspelt key is not an error today,
+    it is written and silently never read, which looks exactly like the setting
+    not working.
+    """
+    kept, dropped = {}, []
+    for key, value in (patch or {}).items():
+        if key in DEFAULT_SETTINGS:
+            kept[key] = value
+        else:
+            dropped.append(key)
+    return kept, dropped
 
 
 def set_settings(patch):
