@@ -28,7 +28,7 @@ reference.
 [Installing RetroArch and cores](#installing-retroarch-and-cores) ·
 [Installing an emulator](#installing-an-emulator) ·
 [Updating an emulator](#updating-an-emulator-or-going-back) ·
-[Custom emulators](#custom-emulators) · [Editing a game](#editing-a-game)
+[Adding your own emulator](#adding-your-own-emulator) · [Editing a game](#editing-a-game)
 
 **How the library looks** — [Collections](#collections) ·
 [Artwork sources](#artwork-sources)
@@ -315,7 +315,7 @@ are still detected, and the row tells you the one step left.
 
 A few emulators are marked as having unconfirmed launch arguments. They install
 the same way, but if a game opens the emulator without loading the game, edit the
-arguments under **Custom emulators** below.
+arguments under **All registered emulators** below.
 
 Removing an emulator here leaves your saves and configuration alone, and games
 already added to Steam start working again the moment you reinstall it.
@@ -383,10 +383,16 @@ otherwise: what each build carries is a one-line note about its *packaging* —
 "Restrict nvidia-cg-toolkit to x86_64" — not the emulator's own release notes.
 Those live on the project's own site.
 
-## Custom emulators
+## Adding your own emulator
 
-For anything the list above does not cover, a standalone emulator can be
-registered by hand. Either a Flatpak application id or
+The Emulators tab has two lists. **Ready-made emulators** is the catalog: what
+the plugin knows how to install and set up. **All registered emulators** below it
+is everything wired up for adding games — whichever list it came from, since
+installing from the catalog registers it too — and it is where each one's
+system, file types and launch arguments are edited.
+
+For anything the catalog does not cover, a standalone emulator can be
+registered by hand with **Add an emulator**. Either a Flatpak application id or
 an executable/AppImage path, plus the file extensions it handles and an argument
 template where `{rom}` is substituted.
 
@@ -454,8 +460,13 @@ hand.
 
 ## Artwork sources
 
-**libretro thumbnails** need no setup and no API key. They are box-shaped, so
-they letterbox slightly inside Steam's 600x900 portrait capsule.
+**libretro thumbnails** need no setup and no API key. They are scans of the
+physical box, so their shape is whatever that console's boxes were: SNES and N64
+scans are landscape, PlayStation and Game Boy Advance ones are square. Steam's
+capsule is 600x900 portrait and stretches whatever it is given, so a scan more
+than a little off that shape is redrawn first — whole, centred, at its true
+proportions, on a blurred copy of itself. Art already made for the slot is
+passed through untouched, whichever source it came from.
 
 **SteamGridDB** (optional) gives purpose-made Steam art — capsule, wide header,
 hero and logo.
@@ -589,6 +600,26 @@ never sent to the frontend, and the launch override file carrying it is `0600`.
 drifted out of sync — a ROM or launcher that has gone, a record whose Steam
 shortcut was deleted, launcher scripts nothing references, and games left behind
 by a previous install under a different plugin name.
+
+It also reports the other direction: shortcuts **Steam** has that the plugin's
+records do not account for. These are read from Steam's own `shortcuts.vdf`,
+because a shortcut whose record *and* launcher script are both gone leaves no
+trace anywhere else — and that is exactly what wiping the plugin's records
+produces. They are split by what can be done about each:
+
+| | |
+| --- | --- |
+| **Cannot start** | The launcher script is gone, so the entry does nothing when launched. Removing it is all there is to do |
+| **Duplicate** | A tracked game already runs this same launcher, so it appears twice in Steam. Removing it keeps the tracked copy |
+| **Untracked** | It still plays, but the plugin has no record of it, so editing and removing from the plugin will not work |
+
+Ownership is decided by the executable being one of the plugin's launcher
+scripts, never by the name — two shortcuts called *Super Mario 3D World* could be
+one of these and one a real Steam game.
+
+When any are found, the Quick Access panel says so and offers the way through,
+since none of this is visible by looking at your library: an entry whose launcher
+was deleted looks like an ordinary game that happens to do nothing.
 
 Forgetting a record also takes the game out of the collection it was filed into,
 deleting that collection once it is empty.
@@ -751,6 +782,7 @@ py_modules/
   sysenv.py                 Strip Steam's runtime libs from subprocesses
   releases.py               Find newer releases on GitHub (looks only)
   handoff.py                Serve one staged update to decky over loopback
+  steam_shortcuts.py        Read Steam's shortcuts.vdf (the records outlive ours)
 src/
   index.tsx                 Quick Access panel root (status, add, added games)
   ManagePage.tsx            Full-screen setup page; one route per tab
