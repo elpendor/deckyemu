@@ -11,6 +11,11 @@
  * not installed yet" is neither fine nor missing -- it is the one state where
  * the fix is a single press, and collapsing it into either of the others hides
  * the cheapest thing the user could do.
+ *
+ * Per file only. The emulator's own line carried a summary of its requirements
+ * for a while, which meant most emulators wore the same mark twice a few pixels
+ * apart -- once for the emulator and once for its single requirement. A symbol
+ * that repeats itself stops being read.
  */
 
 export type FirmwareRowState = "installed" | "waiting" | "missing";
@@ -33,14 +38,6 @@ export function firmwareState(requirement: FirmwareCounts): FirmwareRowState {
   if (requirement.installed.length > 0) return "installed";
   if (requirement.waiting.length > 0) return "waiting";
   return "missing";
-}
-
-/** The worst state among a set, for a summary beside the emulator's name. */
-export function worstState(requirements: FirmwareCounts[]): FirmwareRowState {
-  const states = requirements.map(firmwareState);
-  if (states.includes("missing")) return "missing";
-  if (states.includes("waiting")) return "waiting";
-  return "installed";
 }
 
 /**

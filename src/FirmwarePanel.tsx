@@ -14,7 +14,6 @@ import {
   firmwareState,
   STATE_COLOR,
   STATE_TITLE,
-  worstState,
   type FirmwareRowState,
 } from "./firmwareState";
 
@@ -336,22 +335,7 @@ export function FirmwarePanel({ reloadKey = 0 }: Props) {
       {[...report.emulators].sort(byName).map((emulator) => (
         <div key={emulator.id}>
           <PanelSectionRow>
-            {/* The emulator's own line answers "does this one need me?" without
-                reading any of its rows -- which is the question being asked when
-                somebody scrolls past four emulators looking for the one that
-                will not boot. */}
-            <div
-              style={{
-                fontWeight: 600,
-                padding: "10px 0 2px",
-                display: "flex",
-                alignItems: "center",
-                gap: "8px",
-              }}
-            >
-              <StatusIcon state={worstState(emulator.requirements)} />
-              {emulator.name}
-            </div>
+            <div style={{ fontWeight: 600, padding: "10px 0 2px" }}>{emulator.name}</div>
           </PanelSectionRow>
 
           {emulator.requirements.map((requirement) => {

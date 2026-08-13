@@ -4,7 +4,6 @@ import {
   firmwareState,
   STATE_COLOR,
   STATE_TITLE,
-  worstState,
   type FirmwareCounts,
 } from "./firmwareState";
 
@@ -35,27 +34,6 @@ describe("firmwareState", () => {
    */
   it("counts installed-with-leftovers as done, not outstanding", () => {
     expect(firmwareState(req(["4.93"], ["PS3UPDAT.PUP"]))).toBe("installed");
-  });
-});
-
-describe("worstState", () => {
-  it("reports the thing most worth knowing", () => {
-    expect(worstState([req(["a"]), req(), req([], ["b"])])).toBe("missing");
-    expect(worstState([req(["a"]), req([], ["b"])])).toBe("waiting");
-    expect(worstState([req(["a"]), req(["b"])])).toBe("installed");
-  });
-
-  // xemu asks for two dumps and a disk image. One satisfied requirement must
-  // not make the emulator look ready when another is still missing.
-  it("does not let one satisfied requirement mask an unmet one", () => {
-    expect(worstState([req(["mcpx.bin"]), req()])).toBe("missing");
-  });
-
-  // An emulator with nothing to ask for never reaches this panel, but a state
-  // machine that answers "missing" for an empty set would be a trap for the
-  // next person who reuses it.
-  it("treats nothing to supply as fine", () => {
-    expect(worstState([])).toBe("installed");
   });
 });
 
