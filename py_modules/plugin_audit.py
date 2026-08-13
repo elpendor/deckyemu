@@ -24,6 +24,7 @@ import plugin_base
 
 import launchers
 import romshelf
+import steam_shortcuts
 import store
 
 
@@ -57,9 +58,82 @@ class Audit(plugin_base.PluginContext):
             "broken": broken,
             "strays": sorted(strays),
             "previous_installs": previous,
+            "unknown_shortcuts": await self._run(self._unknown_shortcuts, library),
             "unused_roms": await self._run(self._unused_roms, library),
         }
 
+
+    async def shortcut_for_launcher(self, exe: str):
+        """The appid of an existing Steam shortcut that runs `exe`, or 0.
+
+        Asked before a game is added, so re-adding one whose record was lost
+        takes back the shortcut it already has instead of making a second
+        alongside it.
+
+        Steam's file is written on Steam's own schedule, so a shortcut created
+        moments ago may not be in it yet. That makes this answer "no" too often
+        rather than "yes" wrongly, which is the right way round: a missed
+        duplicate is a row in the cleanup screen, while a wrong match would
+        rewrite a shortcut belonging to something else.
+        """
+        wanted = (exe or "").strip().strip('"')
+        if not wanted:
+            return {"app_id": 0}
+
+        def look():
+            for item in steam_shortcuts.ours():
+                if os.path.normpath(item["exe"]) == os.path.normpath(wanted):
+                    return item["app_id"]
+            return 0
+
+        return {"app_id": await self._run(look)}
+
+    @staticmethod
+    def _unknown_shortcuts(library):
+        """Shortcuts of ours that the registry does not account for.
+
+        The one check that does not begin with a registry entry, and the only
+        one that can see a game whose registry entry and launcher script were
+        both deleted. That pair is not an edge case: it is what a reset leaves,
+        every time, and the shortcuts it leaves behind cannot start anything.
+
+        Three outcomes, because the right offer differs:
+
+        `dead` -- the launcher script is gone. It cannot launch and nothing can
+        bring it back, so removing it is the only thing to do with it.
+
+        `duplicate` -- a registered game already runs this exact launcher under
+        a different appid. Removing it costs nothing: the game stays, under the
+        entry the plugin knows about.
+
+        `orphan` -- the launcher works but no registry entry claims it. This one
+        still plays, so it is reported rather than swept up with the others.
+        """
+        known = {str(app_id) for app_id in (library or {}).keys()}
+        registered_launchers = {
+            str((entry or {}).get("launcher_path") or "")
+            for entry in (library or {}).values()
+        }
+        registered_launchers.discard("")
+
+        report = []
+        for item in steam_shortcuts.ours():
+            if str(item["app_id"]) in known:
+                continue
+            if not item["launcher_exists"]:
+                kind = "dead"
+            elif item["exe"] in registered_launchers:
+                kind = "duplicate"
+            else:
+                kind = "orphan"
+            report.append(dict(item, kind=kind))
+
+        decky.logger.info(
+            "audit: %d shortcut(s) the registry does not know (%s)",
+            len(report),
+            ", ".join(sorted({item["kind"] for item in report})) or "none",
+        )
+        return report
 
     @staticmethod
     def _inspect_library(library):

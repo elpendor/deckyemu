@@ -119,11 +119,19 @@ export async function createShortcut(args: CreateShortcutArgs): Promise<number> 
   return appId;
 }
 
-export function removeShortcut(appId: number): void {
+export function removeShortcut(appId: number): boolean {
   try {
-    steamClient()?.Apps?.RemoveShortcut?.(appId);
+    const apps = steamClient()?.Apps;
+    if (!apps?.RemoveShortcut) return false;
+    apps.RemoveShortcut(appId);
+    // Whether Steam has finished removing it is not knowable from here -- the
+    // call returns nothing and the library updates on its own schedule. What
+    // this reports is that the request was made, which is what a caller
+    // counting "how many did I ask to go" needs.
+    return true;
   } catch (error) {
     console.error("[retroarch] RemoveShortcut failed", error);
+    return false;
   }
 }
 

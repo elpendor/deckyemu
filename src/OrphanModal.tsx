@@ -251,6 +251,75 @@ export function OrphanModal({ onChanged, closeModal }: Props) {
     });
   }
 
+  /*
+   * Shortcuts Steam has that the registry does not, read from shortcuts.vdf.
+   *
+   * Split by kind rather than offered as one pile: "cannot launch" and "plays
+   * fine but is untracked" want different decisions, and a single button over
+   * both would make deleting a working game the same press as sweeping up
+   * wreckage.
+   */
+  const unknown = report?.unknown_shortcuts ?? [];
+  const removeShortcuts = async (items: typeof unknown) => {
+    let removed = 0;
+    for (const item of items) {
+      if (removeShortcut(item.app_id)) removed += 1;
+    }
+    return `${removed} of ${items.length} shortcut(s) removed from Steam.`;
+  };
+
+  const dead = unknown.filter((item) => item.kind === "dead");
+  if (dead.length > 0) {
+    findings.push({
+      key: "dead-shortcuts",
+      title: "Shortcuts that cannot start",
+      detail:
+        `${dead.length} shortcut(s) in Steam were made by this plugin, but the launcher script ` +
+        `each one runs is gone — so they do nothing when launched. A reset deletes the scripts ` +
+        `and the records while leaving Steam's shortcuts behind, which is how these are left. ` +
+        `Nothing else is touched: no ROM, no save, no emulator.` +
+        "\n\n" +
+        dead.map((item) => item.title || item.launcher).join("\n"),
+      action: `Remove ${dead.length}`,
+      destructive: true,
+      run: async () => removeShortcuts(dead),
+    });
+  }
+
+  const duplicates = unknown.filter((item) => item.kind === "duplicate");
+  if (duplicates.length > 0) {
+    findings.push({
+      key: "duplicate-shortcuts",
+      title: "Duplicate shortcuts",
+      detail:
+        `${duplicates.length} shortcut(s) run the same launcher as a game already in your ` +
+        `library, so each of these games appears twice in Steam. Removing these keeps the copy ` +
+        `this plugin tracks — the game itself stays, along with its artwork and collections.` +
+        "\n\n" +
+        duplicates.map((item) => item.title || item.launcher).join("\n"),
+      action: `Remove ${duplicates.length}`,
+      run: async () => removeShortcuts(duplicates),
+    });
+  }
+
+  const orphans = unknown.filter((item) => item.kind === "orphan");
+  if (orphans.length > 0) {
+    findings.push({
+      key: "orphan-shortcuts",
+      title: "Shortcuts this plugin no longer tracks",
+      detail:
+        `${orphans.length} shortcut(s) still launch their game, but nothing here has a record of ` +
+        `them — so editing and removing them from the plugin will not work. They are listed ` +
+        `rather than swept up because they do still play. Removing one deletes the Steam entry ` +
+        `only; its ROM and its launcher script stay where they are.` +
+        "\n\n" +
+        orphans.map((item) => item.title || item.launcher).join("\n"),
+      action: `Remove ${orphans.length}`,
+      destructive: true,
+      run: async () => removeShortcuts(orphans),
+    });
+  }
+
   if ((report?.unused_roms.length ?? 0) > 0) {
     const unused = report!.unused_roms;
     const bytes = unused.reduce((sum, rom) => sum + rom.bytes, 0);

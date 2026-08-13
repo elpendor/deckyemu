@@ -100,6 +100,26 @@ export interface AuditReport {
    * shortcut deleted in Steam itself never reaches that dialog at all.
    */
   unused_roms: Array<{ path: string; name: string; system: string; bytes: number }>;
+  /**
+   * Shortcuts of ours that the registry does not account for.
+   *
+   * Read from Steam's own shortcuts.vdf rather than from anything the plugin
+   * keeps, which is the point: a reset deletes the registry and the launcher
+   * scripts, and Steam's shortcuts outlive both. Every other check here starts
+   * from a registry entry, so that pair was invisible.
+   *
+   * `dead` — the launcher is gone, so it cannot start anything.
+   * `duplicate` — a registered game already runs this same launcher.
+   * `orphan` — the launcher works, but nothing claims it.
+   */
+  unknown_shortcuts: Array<{
+    app_id: number;
+    title: string;
+    exe: string;
+    launcher: string;
+    launcher_exists: boolean;
+    kind: "dead" | "duplicate" | "orphan";
+  }>;
   previous_installs: Array<{
     name: string;
     path: string;
@@ -114,6 +134,17 @@ export interface AuditReport {
 }
 
 export const auditLibrary = callable<[], AuditReport>("audit_library");
+
+/**
+ * The appid of a Steam shortcut already running this launcher, or 0.
+ *
+ * Read from Steam's shortcuts.vdf, which is the only place an appid and the
+ * executable it runs are written down together — `appStore` can confirm an
+ * appid exists but not say what it launches.
+ */
+export const shortcutForLauncher = callable<[exe: string], { app_id: number }>(
+  "shortcut_for_launcher",
+);
 
 export interface ReceivedFile {
   name: string;

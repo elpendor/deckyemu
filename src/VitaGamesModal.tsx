@@ -9,7 +9,8 @@ import {
   registerGame,
   type Ps3Game,
 } from "./backend";
-import { addToCollection, applyArtwork, createShortcut } from "./steam";
+import { addToCollection, applyArtwork } from "./steam";
+import { createOrReuseShortcut } from "./reuseShortcut";
 import { getDraft } from "./romDraft";
 import { lookupArtwork } from "./addFlow";
 
@@ -62,7 +63,9 @@ export function VitaGamesModal({ closeModal, onAdded }: Props) {
           return;
         }
 
-        const appId = await createShortcut({
+        // Reuses the shortcut this launcher already has, if there is one; see
+        // reuseShortcut.ts.
+        const { appId } = await createOrReuseShortcut({
           title: prepared.title,
           exe: prepared.exe,
           startDir: prepared.start_dir,

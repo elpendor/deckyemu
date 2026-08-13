@@ -11,6 +11,8 @@ import { useCallback, useEffect, useState } from "react";
 
 import { callable } from "@decky/api";
 
+import { listAdded } from "./backend";
+import { removeShortcut } from "./steam";
 import { humanSize } from "./TransferModal";
 import { callWithRetry } from "./timeout";
 
@@ -63,7 +65,9 @@ const ACTIONS: {
     title: "Forget everything the plugin knows",
     what:
       "The record of games added, registered emulators, which config version each " +
-      "has had applied, what firmware was installed, and cached artwork.",
+      "has had applied, what firmware was installed, and cached artwork. The Steam " +
+      "shortcuts for those games go too — their launcher scripts are deleted here, " +
+      "so leaving the shortcuts behind would leave entries that start nothing.",
     cost:
       "Cheapest of these to undo — nothing on disk is lost, and re-scanning rebuilds " +
       "most of it. This is the one that makes a clean run actually clean: leave the " +
@@ -180,10 +184,41 @@ export function DevPanel({ onChanged }: Props) {
             setBusy(action.id);
             void (async () => {
               try {
+                /*
+                 * Read before the reset, acted on after it.
+                 *
+                 * This action deletes the registry and the whole launcher
+                 * directory, and the backend cannot touch Steam -- so without
+                 * this every game added was left as a shortcut running a script
+                 * that no longer existed. Twenty of them, in the library,
+                 * starting nothing, and invisible to the audit because every
+                 * check it makes begins from a registry entry that has just
+                 * been deleted.
+                 *
+                 * Gathered first because the registry is about to go, and
+                 * removed only once the reset has actually succeeded: deleting
+                 * somebody's shortcuts and then failing to reset would be the
+                 * worst of both.
+                 */
+                const stranded =
+                  action.id === "state"
+                    ? await listAdded()
+                        .then((games) => games.map((game) => game.app_id))
+                        .catch((listError) => {
+                          console.error("[deckyemu] could not read the library", listError);
+                          return [] as number[];
+                        })
+                    : [];
+
                 const result = await devReset(action.id);
                 if (!result.ok) {
                   toaster.toast({ title: "Reset failed", body: result.error ?? "" });
                   return;
+                }
+
+                let unshortcut = 0;
+                for (const appId of stranded) {
+                  if (removeShortcut(appId)) unshortcut += 1;
                 }
                 const failed = result.failed?.length
                   ? ` ${result.failed.length} could not be removed.`
@@ -193,7 +228,9 @@ export function DevPanel({ onChanged }: Props) {
                   body:
                     (result.removed
                       ? `${result.removed.length} removed.`
-                      : `${humanSize(result.freed ?? 0)} recovered.`) + failed,
+                      : `${humanSize(result.freed ?? 0)} recovered.`) +
+                    (unshortcut ? ` ${unshortcut} Steam shortcut(s) removed.` : "") +
+                    failed,
                 });
                 load();
                 onChanged?.();

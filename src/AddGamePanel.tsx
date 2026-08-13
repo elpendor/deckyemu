@@ -43,7 +43,8 @@ import {
   type ResolvedGame,
   type RetroArchStatus,
 } from "./backend";
-import { addToCollection, applyArtwork, createShortcut, removeShortcut } from "./steam";
+import { addToCollection, applyArtwork, removeShortcut } from "./steam";
+import { createOrReuseShortcut } from "./reuseShortcut";
 import { getDraft, resetDraft, subscribeDraft, updateDraft } from "./romDraft";
 import {
   LOOKUP_FAILED,
@@ -425,12 +426,17 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
         return;
       }
 
-      createdAppId = await createShortcut({
+      // Takes over an existing shortcut for this launcher rather than adding a
+      // second one beside it. See reuseShortcut.ts -- the case that produced
+      // duplicates is a lost registry, where the plugin has forgotten a game
+      // Steam still has.
+      const shortcut = await createOrReuseShortcut({
         title: prepared.title,
         exe: prepared.exe,
         startDir: prepared.start_dir,
         launchOptions: prepared.launch_options,
       });
+      createdAppId = shortcut.appId;
 
       const artApplied = resolved?.art ? await applyArtwork(createdAppId, resolved.art) : 0;
 
