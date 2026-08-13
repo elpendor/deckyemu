@@ -3583,6 +3583,14 @@ targets = run(plugin.collection_targets())
 check("targets cover every registered game", sorted(targets["targets"].keys()), ["11", "22", "33"])
 check("targets use the current name", set(targets["targets"].values()), {"Fresh"})
 
+# With collections off a game belongs nowhere, so "is it filed correctly" has no
+# answer -- and the library check, which has no panel gating it, would otherwise
+# report every game as missing from a collection nobody asked for.
+store.set_settings({"add_to_collection": False})
+check("no targets at all when collections are switched off",
+      run(plugin.collection_targets()), {"targets": {}, "titles": {}})
+store.set_settings({"add_to_collection": True})
+
 section("install progress -- a bogus percentage drives the bar off screen")
 # Output is read in fixed-size chunks, so a number can be split across reads.
 # "1425%" must not be read as 425: nProgress is 0-100 (decky-loader emits

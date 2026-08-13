@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { deleteCollections, findEmptyCollections } from "./steam";
+import { deleteCollections, findEmptyCollections, findUnfiledGames } from "./steam";
 
 /**
  * The two functions that delete a Steam collection.
@@ -17,6 +17,8 @@ import { deleteCollections, findEmptyCollections } from "./steam";
 interface FakeCollection {
   displayName: string;
   allApps?: unknown[];
+  /** Membership, as `Set` here because all steam.ts asks of it is `has`. */
+  apps?: { has: (appId: number) => boolean };
   Delete?: () => Promise<void>;
 }
 
@@ -67,6 +69,69 @@ describe("findEmptyCollections", () => {
   it("answers nothing rather than throwing when Steam is not there", () => {
     delete (globalThis as any).collectionStore;
     expect(findEmptyCollections(ours)).toEqual([]);
+  });
+});
+
+/**
+ * The check the library audit makes to find games missing from their shelf.
+ *
+ * Worth its own tests because the registry cannot answer it: a game recorded as
+ * filed can simply not be there, and the migration is blind to that case by
+ * construction.
+ */
+describe("findUnfiledGames", () => {
+  it("finds a game that is not in the collection it belongs to", () => {
+    install([{ displayName: "DeckyEmu - SNES", apps: new Set([11]) }]);
+    expect(findUnfiledGames({ "11": "DeckyEmu - SNES", "22": "DeckyEmu - SNES" })).toEqual([
+      { tag: "DeckyEmu - SNES", appIds: [22] },
+    ]);
+  });
+
+  it("says nothing when every game is where it belongs", () => {
+    install([{ displayName: "DeckyEmu - SNES", apps: new Set([11, 22]) }]);
+    expect(findUnfiledGames({ "11": "DeckyEmu - SNES", "22": "DeckyEmu - SNES" })).toEqual([]);
+  });
+
+  // The deleted-in-Steam case, and the reason this cannot be answered from the
+  // registry: every record still says filed.
+  it("treats a collection that no longer exists as holding none of them", () => {
+    install([]);
+    expect(findUnfiledGames({ "11": "DeckyEmu - SNES", "22": "DeckyEmu - SNES" })).toEqual([
+      { tag: "DeckyEmu - SNES", appIds: [11, 22] },
+    ]);
+  });
+
+  it("groups by collection, so each shelf is one call", () => {
+    install([
+      { displayName: "DeckyEmu - SNES", apps: new Set<number>() },
+      { displayName: "DeckyEmu - N64", apps: new Set<number>() },
+    ]);
+    expect(
+      findUnfiledGames({ "11": "DeckyEmu - SNES", "22": "DeckyEmu - N64", "33": "DeckyEmu - SNES" }),
+    ).toEqual([
+      { tag: "DeckyEmu - SNES", appIds: [11, 33] },
+      { tag: "DeckyEmu - N64", appIds: [22] },
+    ]);
+  });
+
+  // Same rule as findEmptyCollections: a build that will not say is "cannot
+  // tell", not "not there". Otherwise every game reads as unfiled and the
+  // finding never clears however many times it is acted on.
+  it("treats unreadable membership as do-not-report", () => {
+    install([{ displayName: "DeckyEmu - SNES" }]);
+    expect(findUnfiledGames({ "11": "DeckyEmu - SNES" })).toEqual([]);
+  });
+
+  // Collections turned off means no game belongs anywhere, which the backend
+  // reports as no targets at all.
+  it("reports nothing when there are no targets", () => {
+    install([{ displayName: "DeckyEmu - SNES", apps: new Set<number>() }]);
+    expect(findUnfiledGames({})).toEqual([]);
+  });
+
+  it("answers nothing rather than throwing when Steam is not there", () => {
+    delete (globalThis as any).collectionStore;
+    expect(findUnfiledGames({ "11": "DeckyEmu - SNES" })).toEqual([]);
   });
 });
 

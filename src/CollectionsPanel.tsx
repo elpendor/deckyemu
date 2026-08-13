@@ -1,11 +1,8 @@
 import {
-  ButtonItem,
-  ConfirmModal,
   DropdownItem,
   Field,
   PanelSection,
   PanelSectionRow,
-  showModal,
   TextField,
   ToggleField,
   type SingleDropdownOption,
@@ -14,19 +11,13 @@ import { toaster } from "@decky/api";
 import { useCallback, useEffect, useState } from "react";
 
 import {
-  collectionTargets,
   getSettings,
   planCollectionMigration,
   recordCollections,
   setSettings,
   type PluginSettings,
 } from "./backend";
-import {
-  addAppsToCollection,
-  findStaleCollections,
-  migrateCollections,
-  pruneStaleCollections,
-} from "./steam";
+import { migrateCollections } from "./steam";
 import { callWithRetry } from "./timeout";
 
 /**
@@ -145,107 +136,6 @@ export function CollectionsPanel() {
     [patch, settings],
   );
 
-  /**
-   * Put every tracked game into the collection it should be in.
-   *
-   * The migration only moves games whose target differs from what was recorded,
-   * so it cannot repair a game that was recorded as filed but never actually
-   * added -- the two agree, and nothing moves. This ignores the recorded value
-   * and files everything, which is safe because adding a game already present is
-   * a no-op.
-   */
-  const refileCollections = useCallback(async () => {
-    setMigrating(true);
-    try {
-      const { targets } = await collectionTargets();
-
-      const byCollection = new Map<string, number[]>();
-      for (const [appIdText, tag] of Object.entries(targets)) {
-        const appId = Number(appIdText);
-        if (!appId || !tag) continue;
-        byCollection.set(tag, [...(byCollection.get(tag) ?? []), appId]);
-      }
-
-      if (byCollection.size === 0) {
-        toaster.toast({
-          title: "Nothing to file",
-          body: "No tracked games, or collections are turned off.",
-        });
-        return;
-      }
-
-      let filed = 0;
-      const failed: string[] = [];
-      for (const [tag, appIds] of byCollection) {
-        if (await addAppsToCollection(tag, appIds)) filed += appIds.length;
-        else failed.push(tag);
-      }
-
-      toaster.toast({
-        title: failed.length ? "Some collections failed" : "Games filed",
-        body: failed.length
-          ? `${filed} filed; could not update ${failed.join(", ")}.`
-          : `${filed} game(s) across ${byCollection.size} collection(s).`,
-      });
-    } catch (error) {
-      console.error("[retroarch] refile failed", error);
-      toaster.toast({ title: "Could not file games", body: "See the plugin log." });
-    } finally {
-      setMigrating(false);
-    }
-  }, []);
-
-  /**
-   * Remove our games from collections they no longer belong to.
-   *
-   * Separate from the migration because the old collection cannot always be
-   * derived -- games added by an older build recorded nothing. This looks at
-   * what Steam actually contains instead, and always confirms first, since one
-   * of these could be a collection the user curates by hand.
-   */
-  const tidyCollections = useCallback(async () => {
-    setMigrating(true);
-    try {
-      const { targets } = await collectionTargets();
-      const stale = findStaleCollections(targets);
-
-      if (stale.length === 0) {
-        toaster.toast({
-          title: "Nothing to tidy",
-          body: "No games are in collections they should not be.",
-        });
-        return;
-      }
-
-      const summary = stale
-        .map((entry) => `"${entry.tag}" (${entry.appIds.length} game(s))`)
-        .join(", ");
-
-      showModal(
-        <ConfirmModal
-          strTitle="Tidy up collections?"
-          strDescription={`These collections hold games that now belong elsewhere: ${summary}. They will be removed from those collections, and any collection left empty will be deleted. Your games and ROMs are not affected.`}
-          strOKButtonText="Tidy up"
-          bDestructiveWarning
-          onOK={() => {
-            void (async () => {
-              const pruned = await pruneStaleCollections(stale);
-              toaster.toast({
-                title: pruned > 0 ? "Collections tidied" : "Could not tidy collections",
-                body: `${pruned} entry(s) removed.`,
-              });
-            })();
-          }}
-        />,
-      );
-    } catch (error) {
-      console.error("[retroarch] tidy failed", error);
-      toaster.toast({ title: "Could not check collections", body: "See the log for details." });
-    } finally {
-      setMigrating(false);
-    }
-  }, []);
-
   const saveCollectionName = useCallback(() => {
     const name = collectionInput.trim();
     if (!name || name === settings?.collection_name) {
@@ -341,26 +231,13 @@ export function CollectionsPanel() {
             </PanelSectionRow>
           )}
 
+          {/* The two repair buttons that were here are findings in the library
+              check now. They were checks wearing the clothes of settings:
+              nothing about "are my games on the right shelf" belongs beside the
+              naming format, and both asked to be pressed on suspicion, with no
+              way to see whether anything was wrong first. */}
           <PanelSectionRow>
-            <ButtonItem
-              layout="below"
-              onClick={refileCollections}
-              disabled={migrating}
-              description="Adds every tracked game to the collection it belongs to. Useful if games are missing from a collection; adding one that is already there does nothing."
-            >
-              Re-file games into collections
-            </ButtonItem>
-          </PanelSectionRow>
-
-          <PanelSectionRow>
-            <ButtonItem
-              layout="below"
-              onClick={tidyCollections}
-              disabled={migrating}
-              description="Removes your games from collections they no longer belong to, and deletes any left empty. Asks first."
-            >
-              Tidy up old collections
-            </ButtonItem>
+            <Field description="Games are filed as they are added, and moved when this naming changes. If any end up on the wrong shelf, Library → Check the library finds and fixes them." />
           </PanelSectionRow>
 
           {migrating && (

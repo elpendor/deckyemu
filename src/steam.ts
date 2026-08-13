@@ -380,6 +380,56 @@ export function findStaleCollections(
 }
 
 /**
+ * Games that are not in the collection they belong to.
+ *
+ * The mirror of `findStaleCollections`: that one finds our games in the wrong
+ * place, this one finds them missing from the right one. Neither implies the
+ * other, and neither is answerable from the registry -- a game can be recorded
+ * as filed and simply not be there, because the add failed when it was first put
+ * in or because the collection was deleted in Steam afterwards. The migration is
+ * blind to it by construction: it moves games whose target differs from what was
+ * recorded, and here the two agree.
+ *
+ * Grouped by collection, so the caller can add them in one call per shelf.
+ */
+export function findUnfiledGames(targets: Record<string, string>): StaleCollection[] {
+  const store = collectionStore();
+  if (!store) return [];
+
+  const missing = new Map<string, number[]>();
+  try {
+    for (const [appIdText, tag] of Object.entries(targets)) {
+      const appId = Number(appIdText);
+      if (!appId || !tag) continue;
+
+      const collection = findCollection(tag);
+      // A build that exposes no readable membership is "cannot tell", never
+      // "not there" -- the same rule findEmptyCollections uses. Reporting every
+      // game as unfiled on such a build would be a finding that never clears.
+      if (collection && typeof collection.apps?.has !== "function") continue;
+      // No collection at all means every game bound for it is unfiled, which is
+      // the deleted-in-Steam case.
+      if (collection?.apps?.has?.(appId)) continue;
+
+      missing.set(tag, [...(missing.get(tag) ?? []), appId]);
+    }
+  } catch (error) {
+    console.error("[retroarch] findUnfiledGames failed", error);
+  }
+
+  return [...missing].map(([tag, appIds]) => ({ tag, appIds }));
+}
+
+/** Put games on the shelf they belong to. Returns how many were filed. */
+export async function fileUnfiledGames(unfiled: StaleCollection[]): Promise<number> {
+  let filed = 0;
+  for (const entry of unfiled) {
+    if (await addAppsToCollection(entry.tag, entry.appIds)) filed += entry.appIds.length;
+  }
+  return filed;
+}
+
+/**
  * Collections this plugin made that now hold nothing.
  *
  * A collection is emptied as its last game leaves, but only where something was

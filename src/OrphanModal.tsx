@@ -6,6 +6,7 @@ import {
   adoptPreviousInstall,
   auditLibrary,
   collectionShape,
+  collectionTargets,
   deleteRom,
   deleteStrayLaunchers,
   discardPreviousInstall,
@@ -15,11 +16,16 @@ import {
 import {
   addAppsToCollection,
   deleteCollections,
+  fileUnfiledGames,
   findEmptyCollections,
+  findStaleCollections,
+  findUnfiledGames,
+  pruneStaleCollections,
   removeAppsFromCollection,
   removeShortcut,
   repointShortcut,
   shortcutExists,
+  type StaleCollection,
 } from "./steam";
 import { humanSize } from "./TransferModal";
 import { emptyCollectionMatcher } from "./collectionMatch";
@@ -95,6 +101,8 @@ export function OrphanModal({ onChanged, closeModal }: Props) {
   const [missingShortcuts, setMissingShortcuts] = useState<AuditReport["registry"]>([]);
   const [busy, setBusy] = useState("");
   const [emptyCollections, setEmptyCollections] = useState<string[]>([]);
+  const [unfiled, setUnfiled] = useState<StaleCollection[]>([]);
+  const [stale, setStale] = useState<StaleCollection[]>([]);
   const [done, setDone] = useState<string[]>([]);
   const [error, setError] = useState("");
 
@@ -108,6 +116,13 @@ export function OrphanModal({ onChanged, closeModal }: Props) {
       // Shelves with nothing left on them. Not derivable from the registry --
       // an empty collection is one no registered game names any more.
       setEmptyCollections(findEmptyCollections(emptyCollectionMatcher(await collectionShape())));
+
+      // Where each game belongs, against where Steam actually has it. Empty
+      // when collections are switched off, so both checks below fall away with
+      // the feature rather than reporting a library-wide fault.
+      const { targets } = await collectionTargets();
+      setUnfiled(findUnfiledGames(targets));
+      setStale(findStaleCollections(targets));
     } catch (loadError) {
       console.error("[retroarch] audit failed", loadError);
       setError("Could not check the library.");
@@ -346,6 +361,54 @@ export function OrphanModal({ onChanged, closeModal }: Props) {
         return (
           `${humanSize(freed)} freed` + (failed ? `, ${failed} could not be deleted.` : ".")
         );
+      },
+    });
+  }
+
+  /*
+   * The two halves of "this game is on the wrong shelf", which used to be a
+   * pair of buttons on the Collections tab that you pressed on suspicion.
+   *
+   * They are checks, not settings: nothing about them belongs next to the
+   * naming format, and repairing a fault you have not been shown is the thing
+   * this screen exists to replace. Kept as two findings rather than one because
+   * they are genuinely independent -- a game can be missing from its collection
+   * without being anywhere else, and the fix for one is additive while the fix
+   * for the other removes.
+   */
+  if (unfiled.length > 0) {
+    const count = unfiled.reduce((total, entry) => total + entry.appIds.length, 0);
+    findings.push({
+      key: "unfiled-games",
+      title: "Games missing from their collection",
+      detail:
+        `${count} tracked game(s) are not on the shelf they belong to: ` +
+        `${unfiled.map((entry) => entry.tag).join(", ")}. This happens when the collection ` +
+        `was deleted in Steam, or when filing the game failed as it was added — the record ` +
+        `says it is there, so nothing else notices.`,
+      action: `File ${count}`,
+      run: async () => {
+        const filed = await fileUnfiledGames(unfiled);
+        return `${filed} game(s) filed.`;
+      },
+    });
+  }
+
+  if (stale.length > 0) {
+    const count = stale.reduce((total, entry) => total + entry.appIds.length, 0);
+    findings.push({
+      key: "stale-collections",
+      title: "Games on a collection they have left",
+      detail:
+        `${stale.map((entry) => `${entry.tag} (${entry.appIds.length})`).join(", ")} — ` +
+        `held here but belonging elsewhere now, usually after the naming was changed. ` +
+        `They are removed from these collections only; any collection left empty is ` +
+        `deleted. One of these could be a collection you fill by hand, so check the names.`,
+      action: `Remove ${count}`,
+      destructive: true,
+      run: async () => {
+        const pruned = await pruneStaleCollections(stale);
+        return `${pruned} entry(s) removed.`;
       },
     });
   }

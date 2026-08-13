@@ -889,9 +889,20 @@ class Plugin(
     async def collection_targets(self):
         """{app_id: collection} for every registered game, under current settings.
 
-        Used to find games sitting in collections they no longer belong to.
+        Used to find games missing from the collection they belong to, and games
+        sitting in one they do not.
+
+        Nothing at all when collections are switched off, which is part of "under
+        current settings" and not a special case: a game belongs nowhere then, so
+        neither of those questions has an answer. It went unnoticed while the
+        only callers were buttons on a panel that hides itself when the switch is
+        off -- the library check has no such gate and would have reported every
+        game as missing from a collection nobody asked for.
         """
         settings = await self._run(store.get_settings)
+        if not settings.get("add_to_collection"):
+            return {"targets": {}, "titles": {}}
+
         library = await self._run(store.get_library)
 
         targets = {}

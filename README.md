@@ -630,6 +630,13 @@ was deleted looks like an ordinary game that happens to do nothing.
 Forgetting a record also takes the game out of the collection it was filed into,
 deleting that collection once it is empty.
 
+Collections are checked here too, in all three directions — games **missing**
+from the shelf they belong to, games still on one they have **left**, and shelves
+left **empty**. None of the three is answerable from the plugin's own records: a
+game recorded as filed can simply not be there, because the collection was
+deleted in Steam or because filing it failed as it was added. Each is reported
+before anything is done about it, and the list is rebuilt after every fix.
+
 A previous install can be **discarded** as well as adopted. Games with no
 surviving shortcut are not offered for adoption at all, and discarding deletes
 only the old record — the launcher scripts stay, because they are why any
@@ -639,12 +646,17 @@ still-working shortcut works.
 
 **Remove all DeckyEmu games from Steam**, at the bottom of the Library tab,
 undoes everything the plugin has added: every shortcut, every launcher script,
-and any collection it created that ends up empty. **ROM files are never
-touched**, and games can be added again afterwards.
+and any collection it created that ends up empty. It also deletes **the games it
+put on this Deck** — ROMs filed under a system, and games unpacked into an
+emulator — for the same reason removing a single game does. A ROM you keep
+somewhere of your own was never the plugin's to move and is left alone.
 
 Collections are emptied first, while the app overviews Steam needs to identify
 those apps still exist. A collection is deleted only once it is empty, so one
-holding games dragged in by hand survives.
+holding games dragged in by hand survives. Shelves left empty by anything else —
+a shortcut deleted in Steam, an earlier reset — are swept at the end.
+
+It can take a while, so it reports what it is deleting as it goes.
 
 ## Updates and what changed
 
@@ -807,7 +819,7 @@ src/
   timeout.ts                withTimeout + callWithRetry, for calls lost to a reload
   InstallRetroArchPanel.tsx First-run install, with streamed progress
   ArtworkPanel.tsx          Artwork source and the SteamGridDB key flow
-  CollectionsPanel.tsx      Collection naming, per-system split, re-file/tidy
+  CollectionsPanel.tsx      Collection naming and the per-system split
   RetroArchPanel.tsx        RetroArch status, install/uninstall, cores, launching
   AchievementsPanel.tsx     RetroAchievements sign-in and per-launch settings
   LibraryPanel.tsx          Orphan check and removing every added game
