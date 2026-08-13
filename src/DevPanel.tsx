@@ -11,8 +11,14 @@ import { useCallback, useEffect, useState } from "react";
 
 import { callable } from "@decky/api";
 
-import { listAdded } from "./backend";
-import { removeShortcut } from "./steam";
+import { collectionShape, listAdded, type AddedGame } from "./backend";
+import {
+  deleteCollections,
+  findEmptyCollections,
+  removeAppsFromCollection,
+  removeShortcut,
+} from "./steam";
+import { emptyCollectionMatcher } from "./collectionMatch";
 import { humanSize } from "./TransferModal";
 import { callWithRetry } from "./timeout";
 
@@ -202,12 +208,10 @@ export function DevPanel({ onChanged }: Props) {
                  */
                 const stranded =
                   action.id === "state"
-                    ? await listAdded()
-                        .then((games) => games.map((game) => game.app_id))
-                        .catch((listError) => {
-                          console.error("[deckyemu] could not read the library", listError);
-                          return [] as number[];
-                        })
+                    ? await listAdded().catch((listError) => {
+                        console.error("[deckyemu] could not read the library", listError);
+                        return [] as AddedGame[];
+                      })
                     : [];
 
                 const result = await devReset(action.id);
@@ -216,10 +220,35 @@ export function DevPanel({ onChanged }: Props) {
                   return;
                 }
 
-                let unshortcut = 0;
-                for (const appId of stranded) {
-                  if (removeShortcut(appId)) unshortcut += 1;
+                /*
+                 * Out of their collections before their shortcuts go, for the
+                 * reason the removal dialog does it in that order: once the app
+                 * no longer exists the collection still lists its id, so it
+                 * never reads as empty and the shelf outlives every game on it.
+                 * A reset that left twenty dead shortcuts also left the shelves
+                 * they sat on.
+                 */
+                const byCollection = new Map<string, number[]>();
+                for (const game of stranded) {
+                  if (!game.collection) continue;
+                  const existing = byCollection.get(game.collection) ?? [];
+                  existing.push(game.app_id);
+                  byCollection.set(game.collection, existing);
                 }
+                for (const [tag, appIds] of byCollection) {
+                  await removeAppsFromCollection(tag, appIds);
+                }
+
+                let unshortcut = 0;
+                for (const game of stranded) {
+                  if (removeShortcut(game.app_id)) unshortcut += 1;
+                }
+
+                // And whatever earlier resets left standing, since this is the
+                // action that made them.
+                const emptied = await deleteCollections(
+                  findEmptyCollections(emptyCollectionMatcher(await collectionShape())),
+                );
                 const failed = result.failed?.length
                   ? ` ${result.failed.length} could not be removed.`
                   : "";
@@ -230,6 +259,7 @@ export function DevPanel({ onChanged }: Props) {
                       ? `${result.removed.length} removed.`
                       : `${humanSize(result.freed ?? 0)} recovered.`) +
                     (unshortcut ? ` ${unshortcut} Steam shortcut(s) removed.` : "") +
+                    (emptied ? ` ${emptied} empty collection(s) deleted.` : "") +
                     failed,
                 });
                 load();

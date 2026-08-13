@@ -8,10 +8,16 @@ import {
 import { addEventListener, removeEventListener, toaster } from "@decky/api";
 import { useCallback, useEffect, useState } from "react";
 
-import { clearLibrary, listAdded, type AddedGame } from "./backend";
-import { removeAppsFromCollection, removeShortcut } from "./steam";
+import { clearLibrary, collectionShape, listAdded, type AddedGame } from "./backend";
+import {
+  deleteCollections,
+  findEmptyCollections,
+  removeAppsFromCollection,
+  removeShortcut,
+} from "./steam";
 import { AddedGamesModal } from "./AddedGamesModal";
 import { clearWarning, shouldConfirmClear } from "./clearWarning";
+import { emptyCollectionMatcher } from "./collectionMatch";
 import { DANGER_CLASS, DANGER_CSS } from "./danger";
 import { InstallProgress } from "./InstallProgress";
 import { OrphanModal } from "./OrphanModal";
@@ -126,7 +132,33 @@ export function LibraryPanel({ onRefresh }: Props) {
       for (const game of cleared.games) {
         removeShortcut(game.app_id);
       }
+
+      /*
+       * The same sweep the library check offers, which this did not do.
+       *
+       * Emptying a collection is not the same as deleting it, and only the
+       * paths that empty one *on purpose* have ever deleted it: a shortcut
+       * removed in Steam itself, or a dev reset, leaves the shelf standing with
+       * nothing on it and nothing since goes looking. Clearing the library was
+       * the one place certain to have just made some, and it swept none of
+       * them.
+       *
+       * It is a backstop for shelves left by earlier sessions, not the
+       * mechanism for the games just removed -- `RemoveShortcut` is fire and
+       * forget and Steam recomputes its collections on its own schedule, so
+       * anything emptied by the loop above may still look occupied from here.
+       * Those are handled by taking the apps out explicitly first, which is
+       * what the loop before it is for.
+       */
+      setProgress({ text: "Deleting empty collections", percent: 97 });
+      const emptied = await deleteCollections(
+        findEmptyCollections(emptyCollectionMatcher(await collectionShape())),
+      );
       setProgress({ text: "Done", percent: 100 });
+
+      const removed = [`${cleared.launchers_deleted} launcher(s) deleted`];
+      if (emptied > 0) removed.push(`${emptied} empty collection(s) deleted`);
+      if (cleared.freed) removed.push(`${humanSize(cleared.freed)} freed`);
 
       toaster.toast({
         title:
@@ -135,8 +167,7 @@ export function LibraryPanel({ onRefresh }: Props) {
             : "Nothing to remove",
         body:
           cleared.games.length > 0
-            ? `${cleared.launchers_deleted} launcher(s) deleted` +
-              (cleared.freed ? `, ${humanSize(cleared.freed)} freed.` : ".")
+            ? `${removed.join(", ")}.`
             : "No games were tracked by DeckyEmu.",
       });
       // The row above still shows the old count until this runs, and it sits
