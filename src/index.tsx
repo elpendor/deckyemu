@@ -220,10 +220,16 @@ const GuardedManagePage = () => (
  *
  * The button's numbers are all doing something. `minWidth: 0` because
  * DialogButton is sized for a dialog footer and defaults far wider than a header
- * row has to spare; the negative `marginTop` on the icon because a glyph in a
- * button that short otherwise sits low against the text beside it. `marginRight:
- * auto` on the name is what pushes the button to the right edge rather than
- * leaving it next to the title.
+ * row has to spare; 28x40 is what a Quick Access header button measures across
+ * the plugins that put one there, and the narrower 30px this used before was
+ * small enough to be awkward with a thumbstick. `marginRight: auto` on the name
+ * is what pushes the button to the right edge rather than leaving it next to
+ * the title.
+ *
+ * The glyph is centred by making the button a flex container rather than by
+ * nudging the icon up with a negative margin. The nudge was tuned against one
+ * padding value and quietly went wrong whenever the button's size changed --
+ * which is how it ended up sitting low here.
  */
 function TitleView() {
   return (
@@ -242,13 +248,16 @@ function TitleView() {
         style={{
           marginLeft: "5px",
           height: "28px",
-          width: "30px",
+          width: "40px",
           minWidth: 0,
-          padding: "10px 6px",
+          padding: 0,
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
         }}
         onClick={() => openManagePage()}
       >
-        <FaCog style={{ marginTop: "-4px", display: "block" }} />
+        <FaCog style={{ display: "block" }} />
       </DialogButton>
     </div>
   );
