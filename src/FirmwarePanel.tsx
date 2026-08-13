@@ -20,9 +20,11 @@ import {
 import {
   deleteFirmware,
   fetchFirmware,
+  firmwareDir,
   firmwareStatus,
   installFirmware,
   prepareFirmwareGui,
+  startFileServer,
   uninstallFirmware,
   type FirmwareReport,
   type FirmwareState,
@@ -84,19 +86,42 @@ export function FirmwarePanel({ reloadKey = 0 }: Props) {
   // requirements the user was about to satisfy. Re-reads on dismiss, since the
   // point is that an arriving file turns "still needed" into "ready".
   const send = useCallback(
-    (emulatorName: string, requirement: FirmwareState) => {
-      showModal(
-        <TransferModal
-          purpose="firmware"
-          onClosed={load}
-          expecting={[
-            {
-              label: `${emulatorName} — ${requirement.name}`,
-              expects: requirement.expects || requirement.note,
-            },
-          ]}
-        />,
-      );
+    (entryId: string, emulatorName: string, requirement: FirmwareState) => {
+      void (async () => {
+        // Started before the dialog opens, like the ROM transfer does, so
+        // there is nothing to press before sending. The ROM side gets away
+        // with startFileServer("") -- the backend's default folder is the ROM
+        // inbox -- which is exactly the folder a BIOS must not land in, so the
+        // firmware folder is resolved and named instead.
+        try {
+          const where = await firmwareDir();
+          const result = await startFileServer(where.path || "");
+          if (!result.ok) {
+            toaster.toast({
+              title: "Could not start receiving",
+              body: result.error ?? "You can try again from the dialog.",
+            });
+          }
+        } catch (startError) {
+          console.error("[deckyemu] could not start the file server", startError);
+        }
+
+        showModal(
+          <TransferModal
+            purpose="firmware"
+            onClosed={load}
+            // Named, so an arriving file can be put in place from the dialog
+            // rather than sending the user back to this row to press install.
+            installInto={{ entryId, requirement: requirement.name }}
+            expecting={[
+              {
+                label: `${emulatorName} — ${requirement.name}`,
+                expects: requirement.expects || requirement.note,
+              },
+            ]}
+          />,
+        );
+      })();
     },
     [load],
   );
@@ -465,7 +490,7 @@ export function FirmwarePanel({ reloadKey = 0 }: Props) {
                     ) : (
                       <DialogButton
                         disabled={busy === key}
-                        onClick={() => send(emulator.name, requirement)}
+                        onClick={() => send(emulator.id, emulator.name, requirement)}
                         style={{ minWidth: "auto", width: "auto", padding: "6px 12px" }}
                       >
                         <FaUpload />

@@ -18,6 +18,7 @@ import {
   firmwareDir,
   getSettings,
   importEmulatorDefinition,
+  installFirmware,
   previewEmulatorDefinition,
   resetTransferLink,
   setSettings,
@@ -95,6 +96,15 @@ interface Props {
    * renaming and sending again.
    */
   expecting?: Array<{ label: string; expects: string }>;
+  /**
+   * Which requirement an arriving file should be installed into.
+   *
+   * Present only for a firmware send, and it is what lets the received list
+   * finish the job rather than hand the file on. Without it every arrival was
+   * offered to the ROM add flow -- so a PS3 firmware .PUP came with a button
+   * asking to add it to Steam as a game.
+   */
+  installInto?: { entryId: string; requirement: string };
   /**
    * Called once when the dialog goes away, however it was dismissed.
    *
@@ -198,6 +208,7 @@ export function TransferModal({
   purpose = "roms",
   onClosed,
   expecting = [],
+  installInto,
 }: Props) {
   const [status, setStatus] = useState<FileServerStatus | null>(null);
   const [busy, setBusy] = useState(false);
@@ -409,6 +420,47 @@ export function TransferModal({
     },
     [close],
   );
+
+  /**
+   * Put what has arrived where the emulator reads it, without leaving.
+   *
+   * The row that opened this dialog can do the same thing, and having to close
+   * the dialog, find that row again and press a second button is a step that
+   * exists only because the two were built separately. The dialog stays open:
+   * a requirement can want more than one file, and xemu wants three.
+   *
+   * Installs the requirement rather than the one file the button sits on --
+   * that is what the backend does, and it is why the result is reported by
+   * count instead of by the name that was pressed. Saying "mcpx.bin installed"
+   * while quietly moving the other two would be a lie in the safe direction,
+   * which is still a lie.
+   */
+  const install = useCallback(async () => {
+    if (!installInto) return;
+    setBusy(true);
+    setError("");
+    try {
+      const result = await installFirmware(installInto.entryId, installInto.requirement);
+      if (!result.ok) {
+        setError(result.error ?? "Could not install that file.");
+        return;
+      }
+      const moved = result.copied?.length ?? 0;
+      const kept = result.kept?.length ?? 0;
+      toaster.toast({
+        title: `${installInto.requirement} installed`,
+        body: kept
+          ? `${moved} file(s) moved into place; ${kept} already there and left alone.`
+          : `${moved} file(s) moved into place.`,
+      });
+      await load();
+    } catch (installError) {
+      console.error("[deckyemu] could not install firmware", installError);
+      setError("Could not install that file.");
+    } finally {
+      setBusy(false);
+    }
+  }, [installInto, load]);
 
   /**
    * Import an emulator definition the user sent.
@@ -670,6 +722,9 @@ export function TransferModal({
                     </div>
                     <div style={MUTED}>{humanSize(file.size)}</div>
                   </div>
+                  {/* What the file is for decides the button. A BIOS offered
+                      "Add" was being offered the ROM add flow, which would have
+                      made a Steam entry out of a firmware dump. */}
                   {file.name.endsWith(DEFINITION_SUFFIX) ? (
                     <DialogButton
                       onClick={() => importDefinition(file.name)}
@@ -677,6 +732,19 @@ export function TransferModal({
                     >
                       Import
                     </DialogButton>
+                  ) : installInto ? (
+                    <DialogButton
+                      disabled={busy}
+                      onClick={() => void install()}
+                      style={{ minWidth: "auto", width: "auto", padding: "6px 16px" }}
+                    >
+                      Install
+                    </DialogButton>
+                  ) : purpose === "firmware" ? (
+                    // A firmware send with no requirement named -- nothing to
+                    // install it into from here, so it says where it went
+                    // rather than offering an action that would be wrong.
+                    <div style={MUTED}>In the firmware folder</div>
                   ) : (
                     <DialogButton
                       onClick={() => use(file.path, file.name)}
