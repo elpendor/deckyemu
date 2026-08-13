@@ -60,6 +60,24 @@ check("every setting the backend writes is declared in DEFAULT_SETTINGS",
       sorted(_written - set(store.DEFAULT_SETTINGS)), [])
 check("and the scan found some, so it is testing something", len(_written) > 3, True)
 
+# The frontend matters more than the backend here, because it is the side the
+# allowlist actually filters: a panel sending a key that is not declared no
+# longer writes anything, and a setting that silently stops sticking is a bad
+# way to find that out. Checked by scanning what the panels pass rather than by
+# keeping a list, which would be the thing that drifts.
+_src = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
+    os.path.abspath(__file__)))), "src")
+_sent = set()
+for _name in sorted(os.listdir(_src)):
+    if not _name.endswith(".tsx"):
+        continue
+    with open(os.path.join(_src, _name), encoding="utf-8") as _handle:
+        _sent.update(_re.findall(r'(?:patch|setSettings|applyCollectionChange)\(\{\s*([a-z_]+)',
+                                 _handle.read()))
+check("every setting a panel sends is declared too",
+      sorted(_sent - set(store.DEFAULT_SETTINGS)), [])
+check("and that scan found the panels", len(_sent) > 8, True)
+
 
 if __name__ == "__main__":
     summary()
