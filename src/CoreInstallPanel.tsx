@@ -54,7 +54,7 @@ export function CoreInstallPanel({ onCoresChanged, reloadKey = 0 }: Props) {
       cachedCatalog = loaded;
       setCatalog(loaded);
     } catch (loadError) {
-      console.error("[retroarch] could not load core catalog", loadError);
+      console.error("[deckyemu] could not load core catalog", loadError);
       setError("Could not reach the libretro buildbot.");
       setCatalog([]);
     }
@@ -130,7 +130,7 @@ export function CoreInstallPanel({ onCoresChanged, reloadKey = 0 }: Props) {
       await load(false);
       onCoresChanged();
     } catch (installError) {
-      console.error("[retroarch] core install failed", installError);
+      console.error("[deckyemu] core install failed", installError);
       setError("Install failed. Check the plugin log for details.");
     } finally {
       setBusy("");

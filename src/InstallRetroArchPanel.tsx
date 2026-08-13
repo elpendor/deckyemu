@@ -75,7 +75,7 @@ export function InstallRetroArchPanel({ onInstalled, onRescan }: Props) {
         setRunning(false);
       }
     } catch (startError) {
-      console.error("[retroarch] install could not start", startError);
+      console.error("[deckyemu] install could not start", startError);
       setError("Could not start the install.");
       setRunning(false);
     }

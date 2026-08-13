@@ -80,7 +80,7 @@ export function CollectionsPanel() {
     try {
       setLocalSettings(await setSettings(changes));
     } catch (error) {
-      console.error("[retroarch] failed to save settings", error);
+      console.error("[deckyemu] failed to save settings", error);
     }
   }, []);
 
@@ -124,7 +124,7 @@ export function CollectionsPanel() {
               : `${moved} game(s) moved.`,
         });
       } catch (error) {
-        console.error("[retroarch] collection migration failed", error);
+        console.error("[deckyemu] collection migration failed", error);
         toaster.toast({
           title: "Could not update collections",
           body: "The setting was saved but existing games were not moved.",

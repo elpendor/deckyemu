@@ -103,7 +103,7 @@ export async function createShortcut(args: CreateShortcutArgs): Promise<number> 
   }
 
   if (!(await waitForOverview(appId))) {
-    console.warn("[retroarch] app overview never appeared; applying fields anyway");
+    console.warn("[deckyemu] app overview never appeared; applying fields anyway");
   }
 
   try {
@@ -112,7 +112,7 @@ export async function createShortcut(args: CreateShortcutArgs): Promise<number> 
     apps.SetShortcutStartDir?.(appId, args.startDir);
     apps.SetShortcutLaunchOptions?.(appId, args.launchOptions);
   } catch (error) {
-    console.error("[retroarch] could not apply shortcut fields", error);
+    console.error("[deckyemu] could not apply shortcut fields", error);
     throw new Error("Steam created the shortcut but rejected its settings.");
   }
 
@@ -130,7 +130,7 @@ export function removeShortcut(appId: number): boolean {
     // counting "how many did I ask to go" needs.
     return true;
   } catch (error) {
-    console.error("[retroarch] RemoveShortcut failed", error);
+    console.error("[deckyemu] RemoveShortcut failed", error);
     return false;
   }
 }
@@ -186,7 +186,7 @@ export async function applyArtwork(appId: number, art: ResolvedArt): Promise<num
       await apps.SetCustomArtworkForApp(appId, toBareBase64(data), kind, assetType);
       applied += 1;
     } catch (error) {
-      console.error(`[retroarch] failed to set ${slot} art`, error);
+      console.error(`[deckyemu] failed to set ${slot} art`, error);
     }
   }
   return applied;
@@ -221,7 +221,7 @@ function allCollections(): Collection[] {
     }
     return Array.isArray(raw) ? raw : [];
   } catch (error) {
-    console.error("[retroarch] could not enumerate collections", error);
+    console.error("[deckyemu] could not enumerate collections", error);
     return [];
   }
 }
@@ -260,7 +260,7 @@ async function overviewsFor(appIds: number[]): Promise<AppOverview[]> {
   const overviews: AppOverview[] = [];
   settled.forEach((overview, index) => {
     if (overview) overviews.push(overview);
-    else console.warn(`[retroarch] no app overview for ${appIds[index]}`);
+    else console.warn(`[deckyemu] no app overview for ${appIds[index]}`);
   });
   return overviews;
 }
@@ -286,7 +286,7 @@ export async function addAppsToCollection(tag: string, appIds: number[]): Promis
     await collection.Save();
     return true;
   } catch (error) {
-    console.error("[retroarch] addAppsToCollection failed", error);
+    console.error("[deckyemu] addAppsToCollection failed", error);
     return false;
   }
 }
@@ -325,11 +325,11 @@ export async function removeAppsFromCollection(
     const remaining = extras.allApps?.length ?? 1;
     if (remaining === 0 && typeof extras.Delete === "function") {
       await extras.Delete();
-      console.log(`[retroarch] deleted now-empty collection "${tag}"`);
+      console.log(`[deckyemu] deleted now-empty collection "${tag}"`);
     }
     return true;
   } catch (error) {
-    console.error("[retroarch] removeAppsFromCollection failed", error);
+    console.error("[deckyemu] removeAppsFromCollection failed", error);
     return false;
   }
 }
@@ -373,7 +373,7 @@ export function findStaleCollections(
       if (misplaced.length > 0) stale.push({ tag, appIds: misplaced });
     }
   } catch (error) {
-    console.error("[retroarch] findStaleCollections failed", error);
+    console.error("[deckyemu] findStaleCollections failed", error);
   }
 
   return stale;
@@ -414,7 +414,7 @@ export function findUnfiledGames(targets: Record<string, string>): StaleCollecti
       missing.set(tag, [...(missing.get(tag) ?? []), appId]);
     }
   } catch (error) {
-    console.error("[retroarch] findUnfiledGames failed", error);
+    console.error("[deckyemu] findUnfiledGames failed", error);
   }
 
   return [...missing].map(([tag, appIds]) => ({ tag, appIds }));
@@ -457,7 +457,7 @@ export function findEmptyCollections(matches: (name: string) => boolean): string
       if (Array.isArray(extras.allApps) && extras.allApps.length === 0) empty.push(tag);
     }
   } catch (error) {
-    console.error("[retroarch] findEmptyCollections failed", error);
+    console.error("[deckyemu] findEmptyCollections failed", error);
   }
   return empty;
 }
@@ -478,7 +478,7 @@ export async function deleteCollections(tags: string[]): Promise<number> {
       await extras.Delete();
       deleted += 1;
     } catch (error) {
-      console.error(`[retroarch] could not delete collection "${tag}"`, error);
+      console.error(`[deckyemu] could not delete collection "${tag}"`, error);
     }
   }
   return deleted;
@@ -500,7 +500,7 @@ export function shortcutExists(appId: number): boolean {
   try {
     return Boolean(appStore()?.GetAppOverviewByAppID?.(appId));
   } catch (error) {
-    console.error("[retroarch] could not look up app", appId, error);
+    console.error("[deckyemu] could not look up app", appId, error);
     // Assume it exists rather than inviting the user to delete a live entry.
     return true;
   }
@@ -597,7 +597,7 @@ export function repointShortcut(appId: number, exe: string): boolean {
     apps.SetShortcutStartDir?.(appId, exe.slice(0, Math.max(0, exe.lastIndexOf("/"))));
     return true;
   } catch (error) {
-    console.error("[retroarch] could not repoint shortcut", appId, error);
+    console.error("[deckyemu] could not repoint shortcut", appId, error);
     return false;
   }
 }

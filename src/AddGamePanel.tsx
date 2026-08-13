@@ -281,9 +281,9 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
     } catch (pickError) {
       const message = String(pickError ?? "");
       if (message.toLowerCase().includes("cancel")) {
-        console.log("[retroarch] ROM selection cancelled");
+        console.log("[deckyemu] ROM selection cancelled");
       } else {
-        console.error("[retroarch] file picker failed", pickError);
+        console.error("[deckyemu] file picker failed", pickError);
         updateDraft({ error: "Could not open the file browser." });
       }
       return;
@@ -292,7 +292,7 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
     // The picker's footer button submits the current *directory*, so a path
     // without a filename is a real possibility rather than an edge case.
     const path = picked?.realpath || picked?.path || "";
-    console.log("[retroarch] picked", picked);
+    console.log("[deckyemu] picked", picked);
     if (!path) {
       updateDraft({ error: "That selection did not return a file path." });
       return;
@@ -371,7 +371,7 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
           body: "Ready to add this game.",
         });
       } catch (installError) {
-        console.error("[retroarch] core install failed", installError);
+        console.error("[deckyemu] core install failed", installError);
         updateDraft({ error: "Could not install that core.", installingCore: "" });
       }
     },
@@ -472,7 +472,7 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
       onGameAdded();
       resetDraft();
     } catch (addError) {
-      console.error("[retroarch] add failed", addError);
+      console.error("[deckyemu] add failed", addError);
       // Do not leave a half-built shortcut behind.
       if (createdAppId) removeShortcut(createdAppId);
       updateDraft({

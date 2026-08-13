@@ -59,7 +59,7 @@ export function ArtPickerModal({ romPath, coreId, onApplied, closeModal }: Props
         setCandidates(result);
         if (!term) setQuery(result.query);
       } catch (searchError) {
-        console.error("[retroarch] artwork search failed", searchError);
+        console.error("[deckyemu] artwork search failed", searchError);
         setError("Could not search for artwork.");
       } finally {
         setSearching(false);
@@ -85,7 +85,7 @@ export function ArtPickerModal({ romPath, coreId, onApplied, closeModal }: Props
         onApplied(result);
         closeModal?.();
       } catch (applyError) {
-        console.error("[retroarch] could not apply artwork", applyError);
+        console.error("[deckyemu] could not apply artwork", applyError);
         setError("Could not download that artwork.");
       } finally {
         setApplying("");

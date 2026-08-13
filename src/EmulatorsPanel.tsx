@@ -30,7 +30,7 @@ export function EmulatorsPanel({ onChanged }: Props) {
   const load = useCallback(() => {
     callWithRetry(listEmulators)
       .then(setEmulators)
-      .catch((error) => console.error("[retroarch] could not list emulators", error));
+      .catch((error) => console.error("[deckyemu] could not list emulators", error));
   }, []);
 
   useEffect(load, [load]);

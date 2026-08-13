@@ -116,7 +116,7 @@ export function ArtworkPanel() {
     try {
       setLocalSettings(await setSettings(changes));
     } catch (error) {
-      console.error("[retroarch] failed to save settings", error);
+      console.error("[deckyemu] failed to save settings", error);
     }
   }, []);
 
@@ -165,7 +165,7 @@ export function ArtworkPanel() {
       Navigation.NavigateToExternalWeb(url);
       Navigation.CloseSideMenus();
     } catch (navError) {
-      console.error("[retroarch] could not open the browser", navError);
+      console.error("[deckyemu] could not open the browser", navError);
       toaster.toast({ title: "Could not open the browser", body: url });
     }
   }, []);
@@ -225,7 +225,7 @@ export function ArtworkPanel() {
         (Window & { SteamClient?: any }) | null;
       view?.SteamClient?.Browser?.Paste?.();
     } catch (pasteError) {
-      console.error("[retroarch] Steam paste failed", pasteError);
+      console.error("[deckyemu] Steam paste failed", pasteError);
     }
 
     const text = (await pasted).trim();

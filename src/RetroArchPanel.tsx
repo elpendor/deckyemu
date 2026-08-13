@@ -218,7 +218,7 @@ export function RetroArchPanel({ status, onRefresh, reloadKey = 0 }: Props) {
     try {
       setLocalSettings(await setSettings(changes));
     } catch (error) {
-      console.error("[retroarch] failed to save settings", error);
+      console.error("[deckyemu] failed to save settings", error);
     }
   }, []);
 

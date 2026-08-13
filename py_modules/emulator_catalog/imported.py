@@ -13,11 +13,21 @@ and its firmware requirements are listed.
 
 **An imported definition is not trusted.** A catalog entry is not data the plugin
 reads, it is a list of actions the plugin performs: install this, write there,
-delete that, run this. `schema.validate(..., imported=True)` refuses the actions
-that are destructive or fetch software -- see FORBIDDEN_WHEN_IMPORTED -- and
-confines every write to the one directory the entry declares. What is left is an
-entry that can describe how to launch a binary the user chose and where its
-configuration lives, which is the whole point and none of the danger.
+delete that, run this. `schema.validate(..., imported=True)` bounds which of
+those it may ask for.
+
+It **may install the emulator it describes**, by any of the three source kinds.
+Refusing that would be friction rather than safety: the alternative is the user
+downloading a build by hand and re-pointing at it on every update, which does
+not change who they decided to trust. What is refused is everything that is not
+"install the emulator you asked for" -- deleting trees, fetching firmware,
+fetching a second binary beside the emulator (see FORBIDDEN_WHEN_IMPORTED) --
+and every write is confined to the one directory the entry declares as `root`.
+
+Those bound what a definition can reach. They cannot say whether it is honest
+about which emulator it installs, which is why the panel says so before
+anything is fetched. docs/emulator-definitions.md is the same list for a reader
+who is deciding whether to import one.
 
 JSON rather than Python. A Python definition would let an imported entry look
 exactly like a bundled one, and would also be a code-execution hole that no

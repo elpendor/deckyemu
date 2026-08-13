@@ -137,7 +137,7 @@ export function EmulatorEditorModal({ emulator, onSaved, closeModal }: Props) {
       }
     } catch (pickError) {
       if (!String(pickError ?? "").toLowerCase().includes("cancel")) {
-        console.error("[retroarch] emulator picker failed", pickError);
+        console.error("[deckyemu] emulator picker failed", pickError);
       }
     }
   }, [applySuggestions]);
@@ -169,7 +169,7 @@ export function EmulatorEditorModal({ emulator, onSaved, closeModal }: Props) {
       onSaved();
       closeModal?.();
     } catch (saveError) {
-      console.error("[retroarch] could not save emulator", saveError);
+      console.error("[deckyemu] could not save emulator", saveError);
       setError("Could not save that emulator.");
     } finally {
       setSaving(false);

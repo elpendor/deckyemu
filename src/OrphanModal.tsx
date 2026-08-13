@@ -124,7 +124,7 @@ export function OrphanModal({ onChanged, closeModal }: Props) {
       setUnfiled(findUnfiledGames(targets));
       setStale(findStaleCollections(targets));
     } catch (loadError) {
-      console.error("[retroarch] audit failed", loadError);
+      console.error("[deckyemu] audit failed", loadError);
       setError("Could not check the library.");
     }
   }, []);
@@ -144,7 +144,7 @@ export function OrphanModal({ onChanged, closeModal }: Props) {
         onChanged();
         await load();
       } catch (runError) {
-        console.error("[retroarch] fix failed", runError);
+        console.error("[deckyemu] fix failed", runError);
         setError("That could not be completed — see the plugin log.");
       } finally {
         setBusy("");

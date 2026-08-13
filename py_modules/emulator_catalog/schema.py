@@ -86,9 +86,12 @@ OPTIONAL = {
 #: `byo` -- bring your own -- is the kind that can be described but not
 #: installed: the user points at a binary they obtained themselves and the entry
 #: supplies the launch recipe, the controller bindings and the firmware layout.
-#: It exists for emulators this project will not distribute or link to, and it
-#: is the *only* kind an imported entry may declare, because every other kind
-#: ends in the plugin fetching and running something a stranger chose.
+#: It exists for emulators this project will not distribute or link to.
+#:
+#: An imported entry may declare any of the three. Installing the emulator it
+#: describes is the point of importing one, and refusing it would only send the
+#: user to download the same build by hand -- see FORBIDDEN_WHEN_IMPORTED for
+#: what is actually withheld, which is everything that is not that.
 SOURCE_KINDS = ("flatpak", "github", "byo")
 
 #: Keys a firmware spec may carry, as `emu_firmware` reads them.
