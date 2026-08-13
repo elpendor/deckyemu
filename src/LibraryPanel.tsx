@@ -5,7 +5,7 @@ import {
   PanelSectionRow,
   showModal,
 } from "@decky/ui";
-import { toaster } from "@decky/api";
+import { addEventListener, removeEventListener, toaster } from "@decky/api";
 import { useCallback, useEffect, useState } from "react";
 
 import { clearLibrary, listAdded, type AddedGame } from "./backend";
@@ -13,6 +13,7 @@ import { removeAppsFromCollection, removeShortcut } from "./steam";
 import { AddedGamesModal } from "./AddedGamesModal";
 import { clearWarning, shouldConfirmClear } from "./clearWarning";
 import { DANGER_CLASS, DANGER_CSS } from "./danger";
+import { InstallProgress } from "./InstallProgress";
 import { OrphanModal } from "./OrphanModal";
 import { callWithRetry } from "./timeout";
 import { humanSize } from "./TransferModal";
@@ -20,6 +21,16 @@ import { humanSize } from "./TransferModal";
 interface Props {
   onRefresh: () => void;
 }
+
+/**
+ * How much of the bar the backend's own work is worth.
+ *
+ * Deleting the files is where the minutes go -- an unpacked PS3 game is an
+ * rmtree over tens of gigabytes -- while emptying the collections and removing
+ * the shortcuts is a handful of Steam calls. A bar split evenly would crawl to
+ * halfway and then jump.
+ */
+const BACKEND_SHARE = 0.9;
 
 /**
  * What to do about games already in Steam: find the ones that drifted out of
@@ -30,9 +41,35 @@ interface Props {
  */
 export function LibraryPanel({ onRefresh }: Props) {
   const [clearing, setClearing] = useState(false);
+  /*
+   * What the clear is doing right now, on one 0-100 scale that spans both
+   * halves of it.
+   *
+   * The backend reports its own progress and knows nothing of the Steam side,
+   * so its number is folded into the first `BACKEND_SHARE` here rather than
+   * shown raw -- otherwise the bar would fill, then sit at 100% while the
+   * collections and shortcuts are still going.
+   */
+  const [progress, setProgress] = useState({ text: "", percent: 0 });
   // null while unread and after a failed read, which is not the same as 0 --
   // nothing here may treat "could not ask" as "there is nothing there".
   const [games, setGames] = useState<AddedGame[] | null>(null);
+
+  // Bound to the component rather than started with the clear: the backend
+  // emits from the moment the call lands, and a listener attached inside the
+  // handler races the first few events on a large library.
+  useEffect(() => {
+    const onProgress = (text: string, percent: number) =>
+      setProgress({
+        text,
+        percent: Math.round(Math.max(0, Math.min(100, percent)) * BACKEND_SHARE),
+      });
+    const listener = addEventListener<[text: string, percent: number]>(
+      "clear_library_progress",
+      onProgress,
+    );
+    return () => removeEventListener("clear_library_progress", listener);
+  }, []);
 
   const loadGames = useCallback(async () => {
     try {
@@ -61,6 +98,10 @@ export function LibraryPanel({ onRefresh }: Props) {
    */
   const clearEverything = useCallback(async () => {
     setClearing(true);
+    // Named before the first event arrives. The backend has to read the
+    // registry and walk the first game before it can say whose files it is
+    // deleting, and an empty bar in the meantime says nothing.
+    setProgress({ text: "Deleting games", percent: 0 });
     try {
       const cleared = await clearLibrary();
 
@@ -71,13 +112,21 @@ export function LibraryPanel({ onRefresh }: Props) {
         existing.push(game.app_id);
         byCollection.set(game.collection, existing);
       }
+      let done = 0;
       for (const [tag, appIds] of byCollection) {
+        setProgress({
+          text: `Emptying collections (${done + 1} of ${byCollection.size})`,
+          percent: Math.round(100 * BACKEND_SHARE + (5 * done) / byCollection.size),
+        });
         await removeAppsFromCollection(tag, appIds);
+        done += 1;
       }
 
+      setProgress({ text: "Removing shortcuts", percent: 95 });
       for (const game of cleared.games) {
         removeShortcut(game.app_id);
       }
+      setProgress({ text: "Done", percent: 100 });
 
       toaster.toast({
         title:
@@ -203,11 +252,27 @@ export function LibraryPanel({ onRefresh }: Props) {
 
         <PanelSectionRow>
           <div className={DANGER_CLASS}>
+            {/* The bar goes where the description does, and the button stays
+                put. This can run for minutes -- deleting an unpacked game is
+                tens of gigabytes -- and "Removing..." over a disabled button
+                looked the same at second one and minute three. There is no
+                second window on a Deck to check whether it is still alive. */}
             <ButtonItem
               layout="below"
               onClick={() => void confirmClearEverything()}
               disabled={clearing}
-              description="Deletes every shortcut, launcher and empty collection this plugin created, and every ROM and unpacked game it put on this Deck."
+              description={
+                clearing ? (
+                  <InstallProgress
+                    inline
+                    label="Removing"
+                    percent={progress.percent}
+                    status={progress.text}
+                  />
+                ) : (
+                  "Deletes every shortcut, launcher and empty collection this plugin created, and every ROM and unpacked game it put on this Deck."
+                )
+              }
             >
               {clearing ? "Removing..." : "Remove all DeckyEmu games from Steam"}
             </ButtonItem>

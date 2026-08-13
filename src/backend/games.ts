@@ -379,6 +379,14 @@ export interface ClearedLibrary {
   freed: number;
 }
 
+/**
+ * Emits `clear_library_progress` (text, percent 0-100) while it runs.
+ *
+ * The percentages cover the backend's own work only, and it is not all of the
+ * work: the caller still has to empty the collections and remove the shortcuts
+ * afterwards. See `LibraryPanel`, which folds this into a scale that includes
+ * those.
+ */
 export const clearLibrary = callable<[], ClearedLibrary>("clear_library");
 /** A core from the libretro buildbot catalog, installed or not. */
 export interface InstallableCore {

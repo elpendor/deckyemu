@@ -1474,10 +1474,26 @@ class Plugin(
         # any more is not a saving, it is something to reconcile later. "Clear
         # the library" leaving twenty gigabytes of ROMs behind was the largest
         # instance of exactly that.
+        #
+        # Which is also why this reports progress on `clear_library_progress`.
+        # Deleting an unpacked PS3 game is an rmtree over tens of gigabytes, and
+        # a library of them takes minutes with nothing to look at -- the button
+        # said "Removing..." for the whole of it, which is indistinguishable
+        # from a hang on a device with no second window to check.
+        total = len(library) or 1
         freed = 0
-        for entry in library.values():
+        for index, entry in enumerate(library.values()):
+            await decky.emit(
+                "clear_library_progress",
+                "Deleting %s" % (entry.get("title") or "game"),
+                # By count, not by bytes. The sizes are not known until each one
+                # is walked, and a bar that recalculated its own scale partway
+                # through would go backwards.
+                int(index * 90 / total),
+            )
             freed += await self._delete_game_files(entry.get("rom_path", ""))
 
+        await decky.emit("clear_library_progress", "Removing launchers", 90)
         removed = 0
         for entry in library.values():
             if await self._run(launchers.remove_launcher, entry.get("launcher_path", "")):
@@ -1486,6 +1502,7 @@ class Plugin(
         # nothing to preserve between the individual deletions.
         await self._run(store.clear_library)
 
+        await decky.emit("clear_library_progress", "Tidying up leftover launchers", 96)
         strays = await self._run(self._stray_launchers, set())
         for path in strays:
             if await self._run(launchers.remove_launcher, path):

@@ -27,7 +27,7 @@ from harness import REPO_ROOT, check, section  # noqa: E402  -- installs the dec
 
 sys.path.insert(0, REPO_ROOT)
 
-import decky  # noqa: E402  -- the stub, which has no emit of its own
+import decky  # noqa: E402  -- the stub; its recording emit is replaced below
 import main  # noqa: E402
 
 section("detached work always reports a result")

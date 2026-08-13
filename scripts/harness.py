@@ -62,6 +62,22 @@ os.makedirs(decky.DECKY_USER_HOME, exist_ok=True)
 decky.DECKY_HOME = os.path.join(TMP, "homebrew")
 logging.basicConfig(level=logging.WARNING, format="[decky] %(message)s")
 decky.logger = logging.getLogger("decky")
+
+
+async def _emit(event, *args):
+    """Swallow progress events, and record them for anyone who wants to look.
+
+    The real `decky.emit` reaches the frontend over decky's socket, which does
+    not exist here. Without this, adding a progress event to any code path the
+    suite already covers turns it into an AttributeError -- which is how it went
+    the first time, on `clear_library`. A test that cares about the events
+    replaces this outright; see scripts/tests/test_detach.py.
+    """
+    decky.emitted.append((event, args))
+
+
+decky.emitted = []
+decky.emit = _emit
 sys.modules["decky"] = decky
 
 for directory in (decky.DECKY_PLUGIN_RUNTIME_DIR, decky.DECKY_PLUGIN_SETTINGS_DIR):
