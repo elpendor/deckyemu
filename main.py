@@ -2230,9 +2230,12 @@ class Plugin(
 
         def _write():
             os.makedirs(decky.DECKY_PLUGIN_RUNTIME_DIR, exist_ok=True)
-            path = os.path.join(
-                decky.DECKY_PLUGIN_RUNTIME_DIR, release.get("asset_name") or "deckyemu.zip"
-            )
+            # The asset name is whatever the releases API said, so it decides a
+            # path here. A basename cannot climb out of the runtime directory,
+            # and an empty one falls back rather than naming the directory
+            # itself. `handoff` serves this file back under the same name.
+            name = os.path.basename(release.get("asset_name") or "") or "deckyemu.zip"
+            path = os.path.join(decky.DECKY_PLUGIN_RUNTIME_DIR, name)
             with open(path, "wb") as handle:
                 handle.write(payload)
             return path, hashlib.sha256(payload).hexdigest()

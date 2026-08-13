@@ -34,6 +34,13 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import decky
 
+# The comparison, not the server: this is the one thing the two HTTP surfaces in
+# this plugin genuinely share, and it exists because compare_digest refuses a str
+# holding any non-ASCII character. BaseHTTPRequestHandler decodes the request
+# line as latin-1, so a raw high byte in a path becomes one -- and the comparison
+# then raises inside the handler instead of answering 404.
+from fileserver import same_secret
+
 TOKEN_BYTES = 16
 
 # Long enough for decky to show its confirmation dialog and for the user to read
@@ -66,7 +73,7 @@ class _Handler(BaseHTTPRequestHandler):
         if (
             not token
             or len(segments) != 2
-            or not secrets.compare_digest(segments[0], token)
+            or not same_secret(segments[0], token)
             or segments[1] != name
             or not os.path.isfile(path)
         ):

@@ -165,8 +165,13 @@ def safe_name(name):
     return name[:180] or "upload.bin"
 
 
-def _same_secret(given, expected):
+def same_secret(given, expected):
     """Constant-time comparison that tolerates anything off the network.
+
+    Public because `handoff` compares a token off the network too, and this is
+    the only thing the two servers have any business sharing. Duplicating six
+    lines is how the two would come to disagree about a fix neither remembers
+    needing.
 
     secrets.compare_digest refuses a str holding any non-ASCII character --
     "comparing strings with non-ASCII characters is not supported" -- and both
@@ -208,7 +213,7 @@ class _Handler(BaseHTTPRequestHandler):
 
         raw = self.path.split("?", 1)[0].split("#", 1)[0]
         segments = [segment for segment in raw.split("/") if segment]
-        if not segments or not _same_secret(segments[0], expected):
+        if not segments or not same_secret(segments[0], expected):
             return None
 
         return [urllib.parse.unquote(segment) for segment in segments[1:]]
@@ -241,7 +246,7 @@ class _Handler(BaseHTTPRequestHandler):
             expected = _pin
             if _pin_locked or not expected:
                 return False
-            if _same_secret((given or "").strip(), expected):
+            if same_secret((given or "").strip(), expected):
                 return True
             _pin_attempts += 1
             if _pin_attempts >= PIN_ATTEMPTS:

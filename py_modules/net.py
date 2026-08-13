@@ -84,6 +84,20 @@ def _urlopen(request, timeout=DEFAULT_TIMEOUT):
         return urllib.request.urlopen(request, timeout=timeout, context=context)
 
 
+def is_web_url(url):
+    """Whether `url` is something to fetch over the network at all.
+
+    urllib understands `file:` and `ftp:` as well as HTTP, so a URL that did not
+    come from us decides which handler runs. Every URL here that is not a
+    constant arrives from a release API -- ours, a self-hosted forge named by an
+    imported definition, or SteamGridDB -- and `file:///etc/passwd` in an asset's
+    download field would otherwise be honoured as a download. `_once` has
+    refused non-HTTP since it was written; the two readers below did not.
+    """
+    parsed = urllib.parse.urlsplit(url or "")
+    return parsed.scheme in ("http", "https") and bool(parsed.netloc)
+
+
 def _request(url, headers=None, method="GET"):
     request = urllib.request.Request(url, method=method)
     request.add_header("User-Agent", USER_AGENT)
@@ -248,6 +262,9 @@ def head_ok(url, headers=None):
 
 def get_bytes(url, headers=None, max_bytes=12 * 1024 * 1024):
     """Returns (bytes, content_type) or (None, None)."""
+    if not is_web_url(url):
+        decky.logger.warning("Refusing to fetch non-HTTP url %s", url)
+        return None, None
     try:
         with _urlopen(_request(url, headers)) as response:
             payload = response.read(max_bytes + 1)
@@ -275,6 +292,9 @@ def download(url, dest, headers=None, max_bytes=512 * 1024 * 1024, on_progress=N
     mistaken for a complete one -- which for an executable would mean a game that
     closes instantly with nothing to explain why.
     """
+    if not is_web_url(url):
+        return False, "That download link is not an HTTP address."
+
     tmp = dest + ".part"
     try:
         os.makedirs(os.path.dirname(dest), exist_ok=True)
