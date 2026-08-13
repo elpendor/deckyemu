@@ -146,6 +146,18 @@ export const shortcutForLauncher = callable<[exe: string], { app_id: number }>(
   "shortcut_for_launcher",
 );
 
+/**
+ * How many of our Steam shortcuts the registry cannot account for.
+ *
+ * Cheaper than the full audit, because the panel asks on every open. See
+ * `shortcut_health` — the point is that this class of problem is invisible
+ * unless something goes looking for it.
+ */
+export const shortcutHealth = callable<
+  [],
+  { unknown: number; dead: number; duplicate: number; orphan: number }
+>("shortcut_health");
+
 export interface ReceivedFile {
   name: string;
   path: string;

@@ -5,6 +5,7 @@ import {
   PanelSection,
   PanelSectionRow,
   quickAccessMenuClasses,
+  showModal,
 } from "@decky/ui";
 import { definePlugin, routerHook, useQuickAccessVisible } from "@decky/api";
 import { useCallback, useEffect, useState } from "react";
@@ -13,12 +14,15 @@ import { FaCog, FaGamepad } from "react-icons/fa";
 import {
   getStatus,
   listAdded,
+  shortcutHealth,
   type AddedGame,
   type RetroArchStatus,
 } from "./backend";
 import { AddGamePanel } from "./AddGamePanel";
 import { AddedGamesPanel } from "./AddedGamesPanel";
 import { ErrorBoundary } from "./ErrorBoundary";
+import { OrphanModal } from "./OrphanModal";
+import { shortcutNudge, type ShortcutCounts } from "./shortcutNudge";
 import { TransferStatusPanel } from "./TransferStatusPanel";
 import { ManagePage, MANAGE_ROUTE, openManagePage } from "./ManagePage";
 import { callWithRetry } from "./timeout";
@@ -68,6 +72,19 @@ function Content() {
   const [unreachable, setUnreachable] = useState(false);
   // Shown while retrying, so a wait after a reload does not look like a freeze.
   const [waitNote, setWaitNote] = useState("");
+  const [health, setHealth] = useState<ShortcutCounts | null>(null);
+
+  // Its own endpoint rather than the full audit, which walks the ROM library
+  // and every previous install looking for things this does not need. Failure
+  // is silent: a count nobody asked for must not put an error in front of
+  // somebody trying to add a game.
+  const loadHealth = useCallback(async () => {
+    try {
+      setHealth(await shortcutHealth());
+    } catch (error) {
+      console.error("[deckyemu] could not check shortcut health", error);
+    }
+  }, []);
 
   const loadGames = useCallback(() => {
     // Retried for the same reason as the status call: a reload drops whatever was
@@ -105,7 +122,10 @@ function Content() {
   useEffect(() => {
     void loadStatus();
     loadGames();
-  }, [visible, loadStatus, loadGames]);
+    void loadHealth();
+  }, [visible, loadStatus, loadGames, loadHealth]);
+
+  const nudge = shortcutNudge(health);
 
   const openManage = useCallback(() => openManagePage(), []);
 
@@ -167,6 +187,36 @@ function Content() {
             description={statusSummary(status)}
           />
         </PanelSectionRow>
+
+        {/* Only when there is something to say. This exists because the problem
+            it reports cannot be found by looking: a shortcut whose launcher and
+            registry entry were both deleted sits in the library as a game that
+            does nothing, and the screen that fixes it is one nobody opens
+            without already suspecting trouble. */}
+        {nudge && (
+          <>
+            <PanelSectionRow>
+              <Field label={nudge.label} description={nudge.description} />
+            </PanelSectionRow>
+            <PanelSectionRow>
+              <ButtonItem
+                layout="below"
+                onClick={() =>
+                  showModal(
+                    <OrphanModal
+                      onChanged={() => {
+                        loadGames();
+                        void loadHealth();
+                      }}
+                    />,
+                  )
+                }
+              >
+                Check the library
+              </ButtonItem>
+            </PanelSectionRow>
+          </>
+        )}
 
         {/* Kept as a full-width button only while there is nothing to play with.
             Routine access to the settings page is the cog in the header now, and

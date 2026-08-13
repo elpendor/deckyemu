@@ -63,6 +63,27 @@ class Audit(plugin_base.PluginContext):
         }
 
 
+    async def shortcut_health(self):
+        """How many of our Steam shortcuts the registry cannot account for.
+
+        Its own endpoint rather than a read of `audit_library`, because the
+        panel asks this every time it opens and the full audit walks the ROM
+        library and every previous install's directory looking for things this
+        does not need.
+
+        Exists because the problem it reports is invisible by nature: a
+        shortcut whose registry entry and launcher script are both gone shows
+        up in Steam as an ordinary game that happens to do nothing, and the
+        only way anybody found out was noticing a duplicate by chance. A
+        cleanup screen nobody has a reason to open cannot report it.
+        """
+        library = await self._run(store.get_library)
+        found = await self._run(self._unknown_shortcuts, library)
+        counts = {"dead": 0, "duplicate": 0, "orphan": 0}
+        for item in found:
+            counts[item["kind"]] = counts.get(item["kind"], 0) + 1
+        return {"unknown": len(found), **counts}
+
     async def shortcut_for_launcher(self, exe: str):
         """The appid of an existing Steam shortcut that runs `exe`, or 0.
 
