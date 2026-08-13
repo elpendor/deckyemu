@@ -96,13 +96,11 @@ Decky's own settings take a URL, so no Desktop Mode is needed:
    browser, copy the asset link, and use the keyboard's paste key.
 3. Confirm Decky's prompt. DeckyEmu appears in the Quick Access panel.
 
-> **While this repository is private, that route does not work.** Decky fetches
-> the URL itself and has no credentials, so a private release asset answers 404
-> for it. Use the manual path below until the repository is public.
-
 ### Manual install
 
-Needs Desktop Mode once. Download `deckyemu.zip` from the
+The route above is the one to use; this is here for a Deck that cannot reach
+GitHub, or a build you made yourself. It needs Desktop Mode once. Download
+`deckyemu.zip` from the
 [releases page](https://github.com/elpendor/deckyemu/releases) and unpack it into
 `~/homebrew/plugins`, so that `~/homebrew/plugins/deckyemu/main.py` exists — the
 zip already has the folder at its root.
@@ -676,9 +674,9 @@ with no network and no token.
 
 **This plugin cannot install its own updates.** The backend runs as `deck` while
 `~/homebrew/plugins/deckyemu` is root-owned, so the install goes through decky's
-own loader, which runs as root. While this repository is private, decky would 404
-on the asset, so the update is downloaded here with the stored token and
-re-offered on `127.0.0.1` for decky to install from.
+own loader, which runs as root. The release is downloaded here and re-offered on
+`127.0.0.1` for decky to install from, so the digest it checks is computed from
+the bytes actually received rather than from a second trip to the network.
 
 ## TODO
 
