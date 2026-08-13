@@ -8,7 +8,15 @@ import {
 } from "@decky/ui";
 import { toaster } from "@decky/api";
 import { useCallback, useEffect, useState } from "react";
-import { FaDownload, FaTrash, FaUpload } from "react-icons/fa";
+import { FaCheckCircle, FaDownload, FaExclamationTriangle, FaTrash, FaUpload } from "react-icons/fa";
+
+import {
+  firmwareState,
+  STATE_COLOR,
+  STATE_TITLE,
+  worstState,
+  type FirmwareRowState,
+} from "./firmwareState";
 
 import {
   deleteFirmware,
@@ -25,6 +33,17 @@ import { humanSize, TransferModal } from "./TransferModal";
 import { callWithRetry } from "./timeout";
 import { byName } from "./order";
 
+
+/** The tick or the triangle, in the colour that state is drawn in. */
+function StatusIcon({ state }: { state: FirmwareRowState }) {
+  const Icon = state === "installed" ? FaCheckCircle : FaExclamationTriangle;
+  return (
+    <Icon
+      title={STATE_TITLE[state]}
+      style={{ color: STATE_COLOR[state], flexShrink: 0, fontSize: "15px" }}
+    />
+  );
+}
 
 /**
  * BIOS files and keys the user has to supply.
@@ -298,6 +317,11 @@ export function FirmwarePanel({ reloadKey = 0 }: Props) {
   // showing an empty section.
   if (!report || report.emulators.length === 0) return null;
 
+  /* Waiting and missing share the triangle as well as the colour: both mean
+     this requirement is not met yet, and the row's own words say which of the
+     two it is and what to press. A third symbol would be a thing to learn for a
+     distinction already spelled out an inch to the right. */
+
   return (
     <PanelSection title="BIOS and firmware">
       <PanelSectionRow>
@@ -312,7 +336,22 @@ export function FirmwarePanel({ reloadKey = 0 }: Props) {
       {[...report.emulators].sort(byName).map((emulator) => (
         <div key={emulator.id}>
           <PanelSectionRow>
-            <div style={{ fontWeight: 600, padding: "10px 0 2px" }}>{emulator.name}</div>
+            {/* The emulator's own line answers "does this one need me?" without
+                reading any of its rows -- which is the question being asked when
+                somebody scrolls past four emulators looking for the one that
+                will not boot. */}
+            <div
+              style={{
+                fontWeight: 600,
+                padding: "10px 0 2px",
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+              }}
+            >
+              <StatusIcon state={worstState(emulator.requirements)} />
+              {emulator.name}
+            </div>
           </PanelSectionRow>
 
           {emulator.requirements.map((requirement) => {
@@ -363,7 +402,12 @@ export function FirmwarePanel({ reloadKey = 0 }: Props) {
             return (
               <PanelSectionRow key={key}>
                 <Field
-                  label={requirement.name}
+                  label={
+                    <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <StatusIcon state={firmwareState(requirement)} />
+                      {requirement.name}
+                    </span>
+                  }
                   description={description}
                   childrenContainerWidth="min"
                 >
