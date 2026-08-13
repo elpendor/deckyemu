@@ -41,8 +41,14 @@ DEFAULT_SETTINGS = {
     # Picture rather than lost among every other non-Steam shortcut.
     "add_to_collection": True,
     "collection_name": "DeckyEmu",
-    # When set, each system gets its own collection: "RetroArch - Nintendo 64".
-    "collection_per_platform": False,
+    # When set, each system gets its own collection: "[DeckyEmu] Nintendo 64".
+    #
+    # On, because a shelf per console is what the library is *for* -- one
+    # collection holding every system is the pile this was meant to replace, and
+    # it only gets worse the more you add. `_pin_collection_layout` keeps an
+    # install that already has games on whatever it was using, since changing
+    # where games are filed under somebody is not a default's job.
+    "collection_per_platform": True,
     # How a per-platform collection is named. `{name}` is the collection name
     # above, `{platform}` the system. A literal \n is turned into a newline,
     # though Steam most likely renders it as a space.

@@ -435,18 +435,24 @@ Steam, so its playtime and its place in a collection survive.
 ## Collections
 
 Added games are filed under a Steam collection so they are findable in Big
-Picture. **One collection per system** gives each system its own, named by a
-selectable format:
+Picture. The collection is called `DeckyEmu` unless you rename it.
+
+**One collection per system** is on by default: each system gets its own shelf,
+named by a selectable format. Turn it off and every system shares the one
+collection.
 
 | Format | Result |
 | --- | --- |
-| `[{name}] {platform}` (default) | `[Emulation] SNES` |
+| `[{name}] {platform}` (default) | `[DeckyEmu] SNES` |
 | `{platform}` | `SNES` |
-| `{name}: {platform}` | `Emulation: SNES` |
-| `{name} · {platform}` | `Emulation · SNES` |
-| `{name} - {platform}` | `Emulation - SNES` |
-| `{platform} ({name})` | `SNES (Emulation)` |
+| `{name}: {platform}` | `DeckyEmu: SNES` |
+| `{name} · {platform}` | `DeckyEmu · SNES` |
+| `{name} - {platform}` | `DeckyEmu - SNES` |
+| `{platform} ({name})` | `SNES (DeckyEmu)` |
 | `{name}\n{platform}` | two lines — but Steam renders collection titles on one line, so expect a space |
+
+An install that already has games keeps whichever layout those games were filed
+under, so an upgrade never moves them. Only a new install takes the default.
 
 **Platform names** are short by default: `SNES` rather than `Super Nintendo
 Entertainment System`, which is 46 characters of shelf header. Unlisted systems

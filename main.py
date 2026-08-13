@@ -116,6 +116,7 @@ class Plugin(
             ("detect RetroArch and scan cores", self.refresh_retroarch),
             ("backfill the library", self._backfill_library),
             ("adopt the menu shortcut", self._adopt_menu_combo),
+            ("keep an existing library's collection layout", self._pin_collection_layout),
             ("upgrade launchers", self._upgrade_launchers),
             ("upgrade emulator recipes", self._upgrade_emulator_recipes),
             ("upgrade emulator setups", self._upgrade_emulator_setups),
@@ -149,6 +150,31 @@ class Plugin(
             return
         decky.logger.info("Adding the %s menu shortcut to existing launchers", combo)
         await self.rebuild_launchers()
+
+    async def _pin_collection_layout(self):
+        """Leave an existing library on the collection layout it was filed under.
+
+        `collection_per_platform` defaults on now. Settings are merged from the
+        defaults when they are read rather than written at install, so changing
+        one changes it for everybody who never opened that toggle -- and this
+        one decides where a game is filed. Their next added game would land on a
+        per-system shelf while every game already added stayed on the shared
+        one: nothing moved, and a library split across two schemes.
+
+        So anyone with games keeps what those games were filed under, written
+        down explicitly. Only an install with nothing filed yet takes the new
+        default. Changing it in the panel still migrates the library, which is
+        the supported way to move between the two.
+        """
+        if "collection_per_platform" in await self._run(store.stored_keys):
+            return
+        if not await self._run(store.get_library):
+            return
+
+        await self._run(store.set_settings, {"collection_per_platform": False})
+        decky.logger.info(
+            "Existing library: staying on one shared collection until it is changed",
+        )
 
     async def _upgrade_emulator_recipes(self):
         """Carry a corrected launch recipe to an emulator already installed.

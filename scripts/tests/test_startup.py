@@ -62,6 +62,9 @@ class _Startup(main.Plugin):
     async def _adopt_menu_combo(self):
         await _step("menu")
 
+    async def _pin_collection_layout(self):
+        await _step("collections")
+
     async def _upgrade_launchers(self):
         await _step("launchers")
 
@@ -84,16 +87,16 @@ finally:
     _loop.close()
 
 check("every step runs even after one raises",
-      ran, ["detect", "backfill", "menu", "launchers", "recipes", "setups"])
-# Stated separately because these four are the whole point: they are the ones
+      ran, ["detect", "backfill", "menu", "collections", "launchers", "recipes", "setups"])
+# Stated separately because these five are the whole point: they are the ones
 # that silently never ran, and the ones whose absence is invisible.
 check("the steps after the failure are the ones that matter", ran[2:],
-      ["menu", "launchers", "recipes", "setups"])
+      ["menu", "collections", "launchers", "recipes", "setups"])
 
 # A guard that swallows everything is its own bug: startup carrying on past a
 # step that never ran at all would report success for a plugin that had done
 # none of its migrations. The list above is what says each one was attempted.
-check("and the guard did not skip anything", len(ran), 6)
+check("and the guard did not skip anything", len(ran), 7)
 
 decky.logger.setLevel(_log_level)
 
