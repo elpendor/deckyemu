@@ -1,16 +1,19 @@
 import {
+  ConfirmModal,
   DropdownItem,
   Field,
   PanelSection,
   PanelSectionRow,
   TextField,
   ToggleField,
+  showModal,
   type SingleDropdownOption,
 } from "@decky/ui";
 import { toaster } from "@decky/api";
 import { useCallback, useEffect, useState } from "react";
 
 import {
+  collectionTargets,
   getSettings,
   planCollectionMigration,
   recordCollections,
@@ -19,6 +22,7 @@ import {
 } from "./backend";
 import { migrateCollections } from "./steam";
 import { callWithRetry } from "./timeout";
+import { shouldConfirmUnfile, unfileWarning } from "./unfileWarning";
 
 /**
  * Naming formats for per-platform collections.
@@ -136,6 +140,58 @@ export function CollectionsPanel() {
     [patch, settings],
   );
 
+  /**
+   * The master switch, which has to reconcile the library like its neighbours.
+   *
+   * It was the only control here that just wrote a setting: turning collections
+   * off left every shelf standing and full, so the switch looked inert on any
+   * library that already had games in it -- the same failure the migration was
+   * written for when a collection is renamed.
+   *
+   * Asymmetric on purpose. Switching it on only adds games to collections, so it
+   * needs no permission. Switching it off takes them out and can remove a
+   * collection, which is visible across the whole library, so it asks first.
+   */
+  const setEnabled = useCallback(
+    async (value: boolean) => {
+      if (value) {
+        await applyCollectionChange({ add_to_collection: true });
+        return;
+      }
+
+      let filed = 0;
+      let shelves = 0;
+      try {
+        const { targets } = await collectionTargets();
+        const names = Object.values(targets ?? {}).filter(Boolean);
+        filed = names.length;
+        shelves = new Set(names).size;
+      } catch (error) {
+        // Counting is for the sentence, not for the operation. A library that
+        // cannot be read still gets the dialog, because the backend is the
+        // authority on what actually moves.
+        console.error("[deckyemu] could not count filed games", error);
+        filed = 1;
+        shelves = 1;
+      }
+
+      if (!shouldConfirmUnfile(filed)) {
+        await patch({ add_to_collection: false });
+        return;
+      }
+
+      showModal(
+        <ConfirmModal
+          strTitle="Take games out of their collections?"
+          strDescription={unfileWarning(filed, shelves)}
+          strOKButtonText="Turn off and unfile"
+          onOK={() => void applyCollectionChange({ add_to_collection: false })}
+        />,
+      );
+    },
+    [applyCollectionChange, patch],
+  );
+
   const saveCollectionName = useCallback(() => {
     const name = collectionInput.trim();
     if (!name || name === settings?.collection_name) {
@@ -165,7 +221,8 @@ export function CollectionsPanel() {
           label="Add to a collection"
           description="Groups added games together in Big Picture"
           checked={settings.add_to_collection}
-          onChange={(value) => void patch({ add_to_collection: value })}
+          onChange={(value) => void setEnabled(value)}
+          disabled={migrating}
         />
       </PanelSectionRow>
 

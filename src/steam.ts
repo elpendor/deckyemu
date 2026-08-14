@@ -631,8 +631,14 @@ export async function migrateCollections(
     if (existing) existing.push(appId);
     else map.set(tag, [appId]);
   };
+  // A move with no target takes a game out of collections and puts it nowhere:
+  // the feature switched off, or the name cleared. It has no addition to make,
+  // so it needs tracking separately -- grouping by target would drop it, which
+  // is what made turning collections off do nothing at all.
+  const unfiling = new Set<number>();
   for (const move of moves) {
     if (move.to) group(byTarget, move.to, move.app_id);
+    else unfiling.add(move.app_id);
     if (move.from) group(bySource, move.from, move.app_id);
   }
 
@@ -648,9 +654,20 @@ export async function migrateCollections(
 
   for (const [tag, appIds] of bySource) {
     // Only pull a game out of its old collection once it is safely in the new
-    // one, so a failure mid-way leaves it findable rather than orphaned.
-    const settled = appIds.filter((appId) => assignments[String(appId)]);
-    if (settled.length > 0) await removeAppsFromCollection(tag, settled);
+    // one, so a failure mid-way leaves it findable rather than orphaned. A game
+    // being unfiled has no new collection to reach: the removal is the whole
+    // operation, so it is recorded and counted only once that has succeeded --
+    // otherwise the entry would forget a collection it is still sitting in.
+    const settled = appIds.filter(
+      (appId) => unfiling.has(appId) || assignments[String(appId)],
+    );
+    if (settled.length === 0) continue;
+    if (!(await removeAppsFromCollection(tag, settled))) continue;
+    for (const appId of settled) {
+      if (!unfiling.has(appId)) continue;
+      assignments[String(appId)] = "";
+      moved += 1;
+    }
   }
 
   return { moved, assignments };

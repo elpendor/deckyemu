@@ -753,7 +753,17 @@ class Plugin(
 
     @staticmethod
     def _collection_name(settings, platform):
-        """The collection a game belongs in under the current settings."""
+        """The collection a game belongs in under the current settings.
+
+        Empty means "nowhere", which is a real answer rather than a missing one:
+        collections switched off, or a name cleared to nothing. The switch is
+        read here rather than at each call site because it was read at four of
+        them and missed at the fifth -- `plan_collection_migration` computed
+        targets as though collections were on, so turning them off planned no
+        moves and the setting appeared to do nothing.
+        """
+        if not settings.get("add_to_collection", True):
+            return ""
         base = (settings.get("collection_name") or "").strip()
         if not base:
             return ""
@@ -821,10 +831,11 @@ class Plugin(
         return cleaned
 
     async def collection_name_for(self, core_id: str):
-        """What collection a game on `core_id` should go into right now."""
+        """What collection a game on `core_id` should go into right now.
+
+        Empty when collections are off; `_collection_name` owns that rule.
+        """
         settings = await self._run(store.get_settings)
-        if not settings.get("add_to_collection", True):
-            return ""
         core = self._core_by_id(core_id)
         return self._collection_name(settings, self._entry_platform(settings, core))
 
@@ -862,7 +873,13 @@ class Plugin(
                     previous, self._entry_platform(previous, core, entry)
                 )
 
-            if target and target != current:
+            # An empty `to` means "take it out and put it nowhere" -- collections
+            # switched off, or the name cleared. This used to require a target,
+            # so the one setting that removes games from collections planned
+            # nothing at all and looked inert on an existing library. The
+            # frontend removes, then deletes the collection only if it is left
+            # empty, since one of ours can hold games dragged in by hand.
+            if target != current:
                 moves.append(
                     {
                         "app_id": app_id,
@@ -1184,15 +1201,11 @@ class Plugin(
             # like an orphan the moment anything checked.
             "rom_path": rom_path,
             # Resolved here so per-platform naming lives in one place.
-            "collection_name": (
-                self._collection_name(
-                    settings,
-                    self._entry_platform(
-                        settings, core, {"system": self._system_for(core, system)}
-                    ),
-                )
-                if settings.get("add_to_collection", True)
-                else ""
+            "collection_name": self._collection_name(
+                settings,
+                self._entry_platform(
+                    settings, core, {"system": self._system_for(core, system)}
+                ),
             ),
             # Guarded on the install existing at all. The check above lets
             # `_install` be None whenever a standalone emulator was chosen --
@@ -1233,11 +1246,7 @@ class Plugin(
             "platform": platform,
             # Remembered so a later rename knows which collection to move it out
             # of, rather than guessing from the current settings.
-            "collection": (
-                self._collection_name(settings, platform)
-                if settings.get("add_to_collection", True)
-                else ""
-            ),
+            "collection": self._collection_name(settings, platform),
             "launcher_path": launcher_path,
         }
         await self._run(store.remember_game, app_id, entry)
@@ -1365,11 +1374,7 @@ class Plugin(
         new_system = self._system_for(core, "", entry.get("system", ""))
         platform = self._entry_platform(settings, core, {"system": new_system})
         previous_collection = entry.get("collection", "")
-        collection = (
-            self._collection_name(settings, platform)
-            if settings.get("add_to_collection", True)
-            else ""
-        )
+        collection = self._collection_name(settings, platform)
 
         entry.update(
             {
