@@ -14,28 +14,25 @@
  * library, and "your games" is not.
  */
 
-/** A migration move, narrowed to what counting needs. */
-interface Move {
-  from: string;
-  to: string;
-}
-
 /**
- * How many games are filed, and across how many collections.
+ * How many games are in a collection, and how many collections that is.
  *
- * Derived from the plan rather than counted separately: with collections off,
- * every move the backend produces is an unfiling, so the plan already is the
- * answer. Three call sites worked this out by hand and had to agree on which
- * moves counted and how to deduplicate the names.
+ * Counted from what each game recorded when it was added, so the answer does
+ * not depend on the setting being off already -- the dialog has to state it
+ * while collections are still on, which is exactly when a plan would say there
+ * is nothing to do.
+ *
+ * A game that records no collection is not counted. It was added before that
+ * was stored, or was never filed; either way there is no shelf to name and
+ * nothing this dialog can promise about it. The migration still takes it out if
+ * it turns out to be somewhere.
  */
-export function countStranded(moves: Move[]): { games: number; shelves: number } {
-  const leaving = moves.filter((move) => !move.to);
-  return {
-    games: leaving.length,
-    // A game whose old collection was never recorded -- added by a build before
-    // that was stored -- still has to be taken out, but names no shelf to count.
-    shelves: new Set(leaving.map((move) => move.from).filter(Boolean)).size,
-  };
+export function countFiled(names: (string | undefined)[]): {
+  games: number;
+  shelves: number;
+} {
+  const filed = names.filter((name): name is string => Boolean(name));
+  return { games: filed.length, shelves: new Set(filed).size };
 }
 
 /**

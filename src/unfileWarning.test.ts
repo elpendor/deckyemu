@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { countStranded, strandedSummary, unfileWarning } from "./unfileWarning";
+import { countFiled, strandedSummary, unfileWarning } from "./unfileWarning";
 
 /**
  * The sentence shown before collections are switched off.
@@ -11,31 +11,26 @@ import { countStranded, strandedSummary, unfileWarning } from "./unfileWarning";
  * that reads as dangerous when it is not teaches people to dismiss the ones
  * that are.
  */
-describe("countStranded", () => {
-  const out = (from: string) => ({ from, to: "" });
-
+describe("countFiled", () => {
   it("counts the games and the collections they are spread across", () => {
-    expect(
-      countStranded([out("SNES"), out("SNES"), out("N64")]),
-    ).toEqual({ games: 3, shelves: 2 });
+    expect(countFiled(["SNES", "SNES", "N64"])).toEqual({ games: 3, shelves: 2 });
   });
 
-  it("ignores moves that are going somewhere", () => {
-    // A plan can hold both when the name changed and the switch did not, and
-    // only the ones leaving are what this dialog is about.
-    expect(
-      countStranded([out("SNES"), { from: "Old", to: "New" }]),
-    ).toEqual({ games: 1, shelves: 1 });
+  it("ignores games that record no collection", () => {
+    // Added before the collection was stored, or never filed: there is no shelf
+    // to name and nothing the dialog can promise about them.
+    expect(countFiled(["SNES", "", undefined])).toEqual({ games: 1, shelves: 1 });
   });
 
-  it("counts a game whose old collection was never recorded", () => {
-    // Added by a build before the collection was stored: it still has to be
-    // taken out, but it names no shelf to count.
-    expect(countStranded([out(""), out("SNES")])).toEqual({ games: 2, shelves: 1 });
+  it("is zero for an empty library, which is what skips the dialog", () => {
+    expect(countFiled([])).toEqual({ games: 0, shelves: 0 });
   });
 
-  it("is zero for an empty plan, which is what skips the dialog", () => {
-    expect(countStranded([])).toEqual({ games: 0, shelves: 0 });
+  it("counts one collection holding many games as one", () => {
+    expect(countFiled(["DeckyEmu", "DeckyEmu", "DeckyEmu"])).toEqual({
+      games: 3,
+      shelves: 1,
+    });
   });
 });
 

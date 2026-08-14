@@ -15,6 +15,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import {
   getSettings,
+  listAdded,
   planCollectionMigration,
   recordCollections,
   setSettings,
@@ -22,7 +23,7 @@ import {
 } from "./backend";
 import { migrateCollections, type CollectionMove } from "./steam";
 import { callWithRetry } from "./timeout";
-import { countStranded, strandedSummary, unfileWarning } from "./unfileWarning";
+import { countFiled, strandedSummary, unfileWarning } from "./unfileWarning";
 
 /**
  * Naming formats for per-platform collections.
@@ -74,16 +75,20 @@ export function CollectionsPanel() {
   // an error state -- declining the dialog is a legitimate answer -- but it is
   // a state the panel has to be able to show, or the only way to discover it is
   // to look at the library.
-  const [stranded, setStranded] = useState({ games: 0, shelves: 0 });
+  const [filed, setFiled] = useState({ games: 0, shelves: 0 });
 
   /**
-   * Recount what is still filed. Cheap, and the plan is the honest source: with
-   * collections off every move it produces is an unfiling, which is exactly the
-   * question being asked.
+   * Recount how many games are in a collection, from what each recorded when it
+   * was added.
+   *
+   * Not from a migration plan, which was the first attempt: a plan is computed
+   * against the stored settings, so while collections are still on it reports
+   * nothing to unfile -- which is the exact moment the dialog needs the number.
    */
-  const refreshPending = useCallback(async () => {
+  const refreshFiled = useCallback(async () => {
     try {
-      setStranded(countStranded((await planCollectionMigration(null)).moves));
+      const added = await listAdded();
+      setFiled(countFiled(added.map((game) => game.collection)));
     } catch (error) {
       console.error("[deckyemu] could not count filed games", error);
     }
@@ -94,10 +99,12 @@ export function CollectionsPanel() {
       .then((loaded) => {
         setLocalSettings(loaded);
         setCollectionInput(loaded.collection_name);
-        if (!loaded.add_to_collection) void refreshPending();
+        // Both ways round: off, it decides whether the "still filed" row is
+        // shown; on, it is the count the dialog quotes before anything moves.
+        void refreshFiled();
       })
       .catch(() => undefined);
-  }, [refreshPending]);
+  }, [refreshFiled]);
 
   const patch = useCallback(async (changes: Record<string, unknown>) => {
     try {
@@ -140,10 +147,10 @@ export function CollectionsPanel() {
         return 0;
       } finally {
         setMigrating(false);
-        void refreshPending();
+        void refreshFiled();
       }
     },
-    [refreshPending],
+    [refreshFiled],
   );
 
   /**
@@ -185,55 +192,82 @@ export function CollectionsPanel() {
   );
 
   /**
-   * The master switch, and nothing more than a switch.
+   * Write the setting off, then take the games out.
    *
-   * It says where games go from now on, so pressing it only writes the setting.
-   * Taking games that are already filed back out is a separate act with its own
-   * button below, and keeping the two apart is what this control is for.
-   *
-   * Two attempts got that wrong before landing here, both by hanging a dialog
-   * off the toggle. Asking *before* writing the setting left the switch drawn
-   * as off with the setting still on when the dialog was cancelled -- Steam's
-   * ToggleField keeps its own visual state and does not re-read `checked` when
-   * the prop it is given has not changed, so it stayed wrong until the tab was
-   * left and re-entered. Writing the setting first fixed that and was still
-   * wrong: pressing a switch and being asked a question you can decline leaves
-   * a switch that looks like it did not take, whatever the setting underneath
-   * says. A toggle should toggle.
-   *
-   * Switching it on files everything, without asking -- adding games to a
-   * collection destroys nothing and is the whole reason to turn it on.
+   * In that order, and it is not cosmetic: the plan is computed from the stored
+   * settings, so with collections still on it would produce no unfiling at all.
    */
-  const setEnabled = useCallback(
-    async (value: boolean) => {
-      if (value) {
-        await applyCollectionChange({ add_to_collection: true });
-        return;
-      }
+  const turnOffAndUnfile = useCallback(async () => {
+    await patch({ add_to_collection: false });
+    try {
+      const moves = (await planCollectionMigration(null)).moves.filter((move) => !move.to);
+      await applyMoves(moves);
+    } catch (error) {
+      console.error("[deckyemu] could not take games out of their collections", error);
+      toaster.toast({
+        title: "Could not update collections",
+        body: "Collections are off, but the games already added are still in them.",
+      });
+    }
+    await refreshFiled();
+  }, [applyMoves, patch, refreshFiled]);
+
+  /**
+   * Turn collections on or off. One press, and the label says which way.
+   *
+   * A button rather than a switch, because this control asks a question before
+   * it does anything and a switch cannot survive the answer being no. Steam's
+   * ToggleField keeps its own visual state and does not re-read `checked` when
+   * the prop it was given has not changed, so a declined dialog left the switch
+   * drawn in the position the user pressed it into while the setting said the
+   * opposite -- and it stayed that way until the tab was left and re-entered.
+   * Writing the setting first only moved the confusion: a switch you press and
+   * then decline is a switch that looks like it did not take.
+   *
+   * A button has no position to be wrong about. Cancel means nothing happened,
+   * which is the whole of what the user needs to know.
+   *
+   * Turning it on files everything, without asking -- adding games to a
+   * collection destroys nothing and is the reason to turn it on.
+   */
+  const toggleEnabled = useCallback(async () => {
+    if (!settings) return;
+
+    if (!settings.add_to_collection) {
+      await applyCollectionChange({ add_to_collection: true });
+      return;
+    }
+
+    // Counted from the library rather than from a plan: the plan is computed
+    // under the *current* settings, which still say collections are on, so it
+    // would report nothing to do at the exact moment this asks.
+    if (filed.games === 0) {
       await patch({ add_to_collection: false });
-      await refreshPending();
-    },
-    [applyCollectionChange, patch, refreshPending],
-  );
+      return;
+    }
+
+    showModal(
+      <ConfirmModal
+        strTitle="Turn off collections?"
+        strDescription={unfileWarning(filed.games, filed.shelves)}
+        strOKButtonText="Turn off and take them out"
+        onOK={() => void turnOffAndUnfile()}
+      />,
+    );
+  }, [applyCollectionChange, filed, patch, settings, turnOffAndUnfile]);
 
   /** The row's action: take out whatever is still filed, asking first. */
   const unfileStranded = useCallback(async () => {
-    const moves = (await planCollectionMigration(null)).moves.filter((move) => !move.to);
-    const { games, shelves } = countStranded(moves);
-    if (games === 0) {
-      setStranded({ games: 0, shelves: 0 });
-      return;
-    }
+    if (filed.games === 0) return;
     showModal(
       <ConfirmModal
         strTitle="Take them out of their collections?"
-        strDescription={unfileWarning(games, shelves)}
+        strDescription={unfileWarning(filed.games, filed.shelves)}
         strOKButtonText="Take them out"
-        strCancelButtonText="Leave them"
-        onOK={() => void applyMoves(moves)}
+        onOK={() => void turnOffAndUnfile()}
       />,
     );
-  }, [applyMoves]);
+  }, [filed, turnOffAndUnfile]);
 
   const saveCollectionName = useCallback(() => {
     const name = collectionInput.trim();
@@ -260,25 +294,33 @@ export function CollectionsPanel() {
     // PanelSection title that repeats its tab prints the heading twice.
     <PanelSection>
       <PanelSectionRow>
-        <ToggleField
+        {/* A button, not a switch. Turning collections off asks a question, and
+            a switch cannot survive that answer being no -- see toggleEnabled. */}
+        <ButtonItem
+          layout="below"
           label="Add to a collection"
-          description="Groups added games together in Big Picture"
-          checked={settings.add_to_collection}
-          onChange={(value) => void setEnabled(value)}
+          description={
+            settings.add_to_collection
+              ? "Added games are grouped together in Big Picture."
+              : "Added games are not grouped. They still appear in the library."
+          }
           disabled={migrating}
-        />
+          onClick={() => void toggleEnabled()}
+        >
+          {settings.add_to_collection ? "Turn off" : "Turn on"}
+        </ButtonItem>
       </PanelSectionRow>
 
       {/* Collections are off, but games added while they were on are still in
           them. Switching the setting says nothing about those -- this is where
           they are dealt with, and it is also the retry for a removal that only
           partly succeeded. */}
-      {!settings.add_to_collection && stranded.games > 0 && (
+      {!settings.add_to_collection && filed.games > 0 && (
         <PanelSectionRow>
           <ButtonItem
             layout="below"
             disabled={migrating}
-            description={strandedSummary(stranded.games, stranded.shelves)}
+            description={strandedSummary(filed.games, filed.shelves)}
             onClick={() => void unfileStranded()}
           >
             {migrating ? "Working..." : "Take them out of their collections"}
