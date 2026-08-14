@@ -22,7 +22,7 @@ import {
 } from "./backend";
 import { migrateCollections, type CollectionMove } from "./steam";
 import { callWithRetry } from "./timeout";
-import { countStranded, unfileWarning } from "./unfileWarning";
+import { countStranded, strandedSummary, unfileWarning } from "./unfileWarning";
 
 /**
  * Naming formats for per-platform collections.
@@ -107,13 +107,6 @@ export function CollectionsPanel() {
     }
   }, []);
 
-  /**
-   * Move games that were already added into their new collection.
-   *
-   * Without this, renaming the collection or switching to per-platform naming
-   * would only affect the next ROM added, leaving everything already in the
-   * library under the old name.
-   */
   /** Carry out a plan that has already been made. Returns how many landed. */
   const applyMoves = useCallback(
     async (moves: CollectionMove[]) => {
@@ -153,6 +146,13 @@ export function CollectionsPanel() {
     [refreshPending],
   );
 
+  /**
+   * Change a setting and bring games already added into line with it.
+   *
+   * Without this, renaming the collection or switching to per-platform naming
+   * would only affect the next ROM added, leaving everything already in the
+   * library under the old name.
+   */
   const applyCollectionChange = useCallback(
     async (changes: Record<string, unknown>) => {
       setMigrating(true);
@@ -185,24 +185,24 @@ export function CollectionsPanel() {
   );
 
   /**
-   * The master switch.
+   * The master switch, and nothing more than a switch.
    *
-   * The setting is written *first*, before anything is asked. It says what
-   * happens to games added from now on, and that is true the moment it is
-   * pressed -- so the switch showing its new position is honest, and there is
-   * nothing to put back if the question that follows is declined.
+   * It says where games go from now on, so pressing it only writes the setting.
+   * Taking games that are already filed back out is a separate act with its own
+   * button below, and keeping the two apart is what this control is for.
    *
-   * The first attempt did it the other way round: the dialog asked before the
-   * setting changed, so cancelling left the toggle drawn as off with the
-   * setting still on. Steam's ToggleField keeps its own visual state and does
-   * not re-read `checked` when the prop it is given has not changed, so the
-   * control simply stayed wrong until the tab was left and re-entered. The fix
-   * is not to force it back: it is to stop asking the user to authorise a
-   * preference, and ask them about the games instead, which is the part that
-   * actually needs a decision.
+   * Two attempts got that wrong before landing here, both by hanging a dialog
+   * off the toggle. Asking *before* writing the setting left the switch drawn
+   * as off with the setting still on when the dialog was cancelled -- Steam's
+   * ToggleField keeps its own visual state and does not re-read `checked` when
+   * the prop it is given has not changed, so it stayed wrong until the tab was
+   * left and re-entered. Writing the setting first fixed that and was still
+   * wrong: pressing a switch and being asked a question you can decline leaves
+   * a switch that looks like it did not take, whatever the setting underneath
+   * says. A toggle should toggle.
    *
-   * Switching it on files everything without asking -- adding games to a
-   * collection destroys nothing.
+   * Switching it on files everything, without asking -- adding games to a
+   * collection destroys nothing and is the whole reason to turn it on.
    */
   const setEnabled = useCallback(
     async (value: boolean) => {
@@ -210,31 +210,10 @@ export function CollectionsPanel() {
         await applyCollectionChange({ add_to_collection: true });
         return;
       }
-
       await patch({ add_to_collection: false });
-
-      let moves: CollectionMove[] = [];
-      try {
-        moves = (await planCollectionMigration(null)).moves.filter((move) => !move.to);
-      } catch (error) {
-        console.error("[deckyemu] could not plan the unfile", error);
-      }
-
-      const { games, shelves } = countStranded(moves);
-      setStranded({ games, shelves });
-      if (games === 0) return;
-
-      showModal(
-        <ConfirmModal
-          strTitle="Take them out of their collections?"
-          strDescription={unfileWarning(games, shelves)}
-          strOKButtonText="Take them out"
-          strCancelButtonText="Leave them"
-          onOK={() => void applyMoves(moves)}
-        />,
-      );
+      await refreshPending();
     },
-    [applyCollectionChange, applyMoves, patch],
+    [applyCollectionChange, patch, refreshPending],
   );
 
   /** The row's action: take out whatever is still filed, asking first. */
@@ -290,23 +269,19 @@ export function CollectionsPanel() {
         />
       </PanelSectionRow>
 
-      {/* Off, but games are still filed -- either the dialog was declined or the
-          setting was changed on another install. Shown rather than left to be
-          discovered in the library, and it doubles as the retry for a removal
-          that partly failed. */}
+      {/* Collections are off, but games added while they were on are still in
+          them. Switching the setting says nothing about those -- this is where
+          they are dealt with, and it is also the retry for a removal that only
+          partly succeeded. */}
       {!settings.add_to_collection && stranded.games > 0 && (
         <PanelSectionRow>
           <ButtonItem
             layout="below"
             disabled={migrating}
-            description={
-              `${stranded.games} game(s) added earlier are still in ` +
-              `${stranded.shelves} collection(s). Collections are off, so nothing new ` +
-              "is filed there."
-            }
+            description={strandedSummary(stranded.games, stranded.shelves)}
             onClick={() => void unfileStranded()}
           >
-            {migrating ? "Working..." : "Take them out"}
+            {migrating ? "Working..." : "Take them out of their collections"}
           </ButtonItem>
         </PanelSectionRow>
       )}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { countStranded, unfileWarning } from "./unfileWarning";
+import { countStranded, strandedSummary, unfileWarning } from "./unfileWarning";
 
 /**
  * The sentence shown before collections are switched off.
@@ -36,6 +36,31 @@ describe("countStranded", () => {
 
   it("is zero for an empty plan, which is what skips the dialog", () => {
     expect(countStranded([])).toEqual({ games: 0, shelves: 0 });
+  });
+});
+
+describe("strandedSummary", () => {
+  it("says what is there without calling it a problem", () => {
+    const text = strandedSummary(47, 12);
+    expect(text).toContain("47 games");
+    expect(text).toContain("12 collections");
+    // Leaving them is a legitimate choice, so the row states a fact rather than
+    // reporting an error to be cleared.
+    expect(text.toLowerCase()).not.toMatch(/error|wrong|should|problem/);
+  });
+
+  it("reads correctly for one of each", () => {
+    const text = strandedSummary(1, 1);
+    expect(text).toContain("1 game added");
+    expect(text).toContain("1 collection.");
+    expect(text).not.toContain("1 games");
+  });
+
+  it("does not name a count it does not have", () => {
+    // Games added before the collection was recorded name no shelf, so the
+    // count can legitimately be zero while games are still filed.
+    expect(strandedSummary(2, 0)).toContain("still in collections");
+    expect(strandedSummary(2, 0)).not.toContain("0 collections");
   });
 });
 

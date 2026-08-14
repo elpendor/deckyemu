@@ -38,6 +38,24 @@ export function countStranded(moves: Move[]): { games: number; shelves: number }
   };
 }
 
+/**
+ * The line under the button, when collections are off and games are still in
+ * them. Says what is true rather than what is wrong: leaving them there is a
+ * choice, and the row exists to make that choice visible and reversible, not to
+ * nag about it.
+ */
+export function strandedSummary(games: number, collections: number): string {
+  const count = games === 1 ? "1 game" : `${games} games`;
+  const shelves =
+    collections === 1 ? "1 collection" : `${collections} collections`;
+  const where = collections === 0 ? "still in collections" : `still in ${shelves}`;
+
+  return (
+    `${count} added while collections were on ${where}. Nothing new is being ` +
+    "filed there."
+  );
+}
+
 /** The dialog's body text. */
 export function unfileWarning(filed: number, collections: number): string {
   const games = filed === 1 ? "1 game" : `${filed} games`;
