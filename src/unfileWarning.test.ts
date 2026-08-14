@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { shouldConfirmUnfile, unfileWarning } from "./unfileWarning";
+import { countStranded, unfileWarning } from "./unfileWarning";
 
 /**
  * The sentence shown before collections are switched off.
@@ -11,16 +11,31 @@ import { shouldConfirmUnfile, unfileWarning } from "./unfileWarning";
  * that reads as dangerous when it is not teaches people to dismiss the ones
  * that are.
  */
-describe("shouldConfirmUnfile", () => {
-  it("asks when there is something to take out", () => {
-    expect(shouldConfirmUnfile(1)).toBe(true);
-    expect(shouldConfirmUnfile(47)).toBe(true);
+describe("countStranded", () => {
+  const out = (from: string) => ({ from, to: "" });
+
+  it("counts the games and the collections they are spread across", () => {
+    expect(
+      countStranded([out("SNES"), out("SNES"), out("N64")]),
+    ).toEqual({ games: 3, shelves: 2 });
   });
 
-  it("does not ask when nothing is filed", () => {
-    // The setting only affects what happens from now on, so there would be
-    // nothing for the user to agree to.
-    expect(shouldConfirmUnfile(0)).toBe(false);
+  it("ignores moves that are going somewhere", () => {
+    // A plan can hold both when the name changed and the switch did not, and
+    // only the ones leaving are what this dialog is about.
+    expect(
+      countStranded([out("SNES"), { from: "Old", to: "New" }]),
+    ).toEqual({ games: 1, shelves: 1 });
+  });
+
+  it("counts a game whose old collection was never recorded", () => {
+    // Added by a build before the collection was stored: it still has to be
+    // taken out, but it names no shelf to count.
+    expect(countStranded([out(""), out("SNES")])).toEqual({ games: 2, shelves: 1 });
+  });
+
+  it("is zero for an empty plan, which is what skips the dialog", () => {
+    expect(countStranded([])).toEqual({ games: 0, shelves: 0 });
   });
 });
 

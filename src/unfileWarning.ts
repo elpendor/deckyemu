@@ -1,5 +1,5 @@
 /**
- * What the dialog says before collections are switched off, and whether to ask.
+ * What the dialog says before games are taken out of their collections.
  *
  * Its own module for the same reason as `clearWarning`: the sentence is the
  * whole of what the user gets to react to. This is far less destructive than
@@ -14,11 +14,28 @@
  * library, and "your games" is not.
  */
 
-/** Whether switching collections off is worth asking about at all. */
-export function shouldConfirmUnfile(filed: number): boolean {
-  // Nothing filed, nothing to take out: the setting only affects what happens
-  // from now on, so a dialog would be asking permission to do nothing.
-  return filed > 0;
+/** A migration move, narrowed to what counting needs. */
+interface Move {
+  from: string;
+  to: string;
+}
+
+/**
+ * How many games are filed, and across how many collections.
+ *
+ * Derived from the plan rather than counted separately: with collections off,
+ * every move the backend produces is an unfiling, so the plan already is the
+ * answer. Three call sites worked this out by hand and had to agree on which
+ * moves counted and how to deduplicate the names.
+ */
+export function countStranded(moves: Move[]): { games: number; shelves: number } {
+  const leaving = moves.filter((move) => !move.to);
+  return {
+    games: leaving.length,
+    // A game whose old collection was never recorded -- added by a build before
+    // that was stored -- still has to be taken out, but names no shelf to count.
+    shelves: new Set(leaving.map((move) => move.from).filter(Boolean)).size,
+  };
 }
 
 /** The dialog's body text. */

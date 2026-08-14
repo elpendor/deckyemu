@@ -1,4 +1,5 @@
 import {
+  ButtonItem,
   ConfirmModal,
   DropdownItem,
   Field,
@@ -13,16 +14,15 @@ import { toaster } from "@decky/api";
 import { useCallback, useEffect, useState } from "react";
 
 import {
-  collectionTargets,
   getSettings,
   planCollectionMigration,
   recordCollections,
   setSettings,
   type PluginSettings,
 } from "./backend";
-import { migrateCollections } from "./steam";
+import { migrateCollections, type CollectionMove } from "./steam";
 import { callWithRetry } from "./timeout";
-import { shouldConfirmUnfile, unfileWarning } from "./unfileWarning";
+import { countStranded, unfileWarning } from "./unfileWarning";
 
 /**
  * Naming formats for per-platform collections.
@@ -70,15 +70,34 @@ export function CollectionsPanel() {
   // characters typed while a save was in flight.
   const [collectionInput, setCollectionInput] = useState("");
   const [migrating, setMigrating] = useState(false);
+  // Games still sitting in collections while the feature is switched off. Not
+  // an error state -- declining the dialog is a legitimate answer -- but it is
+  // a state the panel has to be able to show, or the only way to discover it is
+  // to look at the library.
+  const [stranded, setStranded] = useState({ games: 0, shelves: 0 });
+
+  /**
+   * Recount what is still filed. Cheap, and the plan is the honest source: with
+   * collections off every move it produces is an unfiling, which is exactly the
+   * question being asked.
+   */
+  const refreshPending = useCallback(async () => {
+    try {
+      setStranded(countStranded((await planCollectionMigration(null)).moves));
+    } catch (error) {
+      console.error("[deckyemu] could not count filed games", error);
+    }
+  }, []);
 
   useEffect(() => {
     callWithRetry(getSettings)
       .then((loaded) => {
         setLocalSettings(loaded);
         setCollectionInput(loaded.collection_name);
+        if (!loaded.add_to_collection) void refreshPending();
       })
       .catch(() => undefined);
-  }, []);
+  }, [refreshPending]);
 
   const patch = useCallback(async (changes: Record<string, unknown>) => {
     try {
@@ -95,6 +114,45 @@ export function CollectionsPanel() {
    * would only affect the next ROM added, leaving everything already in the
    * library under the old name.
    */
+  /** Carry out a plan that has already been made. Returns how many landed. */
+  const applyMoves = useCallback(
+    async (moves: CollectionMove[]) => {
+      if (moves.length === 0) return 0;
+      setMigrating(true);
+      try {
+        const { moved, assignments } = await migrateCollections(moves);
+        if (Object.keys(assignments).length > 0) {
+          await recordCollections(assignments);
+        }
+
+        // "Moved" is wrong for games that were taken out and put nowhere, and
+        // this is the one dialog where the difference is the whole point.
+        const leaving = moves.every((move) => !move.to);
+        const failed = moves.length - moved;
+        toaster.toast({
+          title: moved > 0 ? "Collections updated" : "Could not update collections",
+          body:
+            failed > 0
+              ? `${moved} of ${moves.length} game(s) ${leaving ? "taken out" : "moved"}; ` +
+                `${failed} could not be.`
+              : `${moved} game(s) ${leaving ? "taken out of their collections" : "moved"}.`,
+        });
+        return moved;
+      } catch (error) {
+        console.error("[deckyemu] collection migration failed", error);
+        toaster.toast({
+          title: "Could not update collections",
+          body: "The setting was saved but existing games were not moved.",
+        });
+        return 0;
+      } finally {
+        setMigrating(false);
+        void refreshPending();
+      }
+    },
+    [refreshPending],
+  );
+
   const applyCollectionChange = useCallback(
     async (changes: Record<string, unknown>) => {
       setMigrating(true);
@@ -112,21 +170,7 @@ export function CollectionsPanel() {
 
         await patch(changes);
         const plan = await planCollectionMigration(previous);
-        if (plan.moves.length === 0) return;
-
-        const { moved, assignments } = await migrateCollections(plan.moves);
-        if (Object.keys(assignments).length > 0) {
-          await recordCollections(assignments);
-        }
-
-        const failed = plan.moves.length - moved;
-        toaster.toast({
-          title: moved > 0 ? "Collections updated" : "Could not update collections",
-          body:
-            failed > 0
-              ? `${moved} of ${plan.moves.length} game(s) moved; ${failed} could not be.`
-              : `${moved} game(s) moved.`,
-        });
+        await applyMoves(plan.moves);
       } catch (error) {
         console.error("[deckyemu] collection migration failed", error);
         toaster.toast({
@@ -137,20 +181,28 @@ export function CollectionsPanel() {
         setMigrating(false);
       }
     },
-    [patch, settings],
+    [applyMoves, patch, settings],
   );
 
   /**
-   * The master switch, which has to reconcile the library like its neighbours.
+   * The master switch.
    *
-   * It was the only control here that just wrote a setting: turning collections
-   * off left every shelf standing and full, so the switch looked inert on any
-   * library that already had games in it -- the same failure the migration was
-   * written for when a collection is renamed.
+   * The setting is written *first*, before anything is asked. It says what
+   * happens to games added from now on, and that is true the moment it is
+   * pressed -- so the switch showing its new position is honest, and there is
+   * nothing to put back if the question that follows is declined.
    *
-   * Asymmetric on purpose. Switching it on only adds games to collections, so it
-   * needs no permission. Switching it off takes them out and can remove a
-   * collection, which is visible across the whole library, so it asks first.
+   * The first attempt did it the other way round: the dialog asked before the
+   * setting changed, so cancelling left the toggle drawn as off with the
+   * setting still on. Steam's ToggleField keeps its own visual state and does
+   * not re-read `checked` when the prop it is given has not changed, so the
+   * control simply stayed wrong until the tab was left and re-entered. The fix
+   * is not to force it back: it is to stop asking the user to authorise a
+   * preference, and ask them about the games instead, which is the part that
+   * actually needs a decision.
+   *
+   * Switching it on files everything without asking -- adding games to a
+   * collection destroys nothing.
    */
   const setEnabled = useCallback(
     async (value: boolean) => {
@@ -159,38 +211,50 @@ export function CollectionsPanel() {
         return;
       }
 
-      let filed = 0;
-      let shelves = 0;
+      await patch({ add_to_collection: false });
+
+      let moves: CollectionMove[] = [];
       try {
-        const { targets } = await collectionTargets();
-        const names = Object.values(targets ?? {}).filter(Boolean);
-        filed = names.length;
-        shelves = new Set(names).size;
+        moves = (await planCollectionMigration(null)).moves.filter((move) => !move.to);
       } catch (error) {
-        // Counting is for the sentence, not for the operation. A library that
-        // cannot be read still gets the dialog, because the backend is the
-        // authority on what actually moves.
-        console.error("[deckyemu] could not count filed games", error);
-        filed = 1;
-        shelves = 1;
+        console.error("[deckyemu] could not plan the unfile", error);
       }
 
-      if (!shouldConfirmUnfile(filed)) {
-        await patch({ add_to_collection: false });
-        return;
-      }
+      const { games, shelves } = countStranded(moves);
+      setStranded({ games, shelves });
+      if (games === 0) return;
 
       showModal(
         <ConfirmModal
-          strTitle="Take games out of their collections?"
-          strDescription={unfileWarning(filed, shelves)}
-          strOKButtonText="Turn off and unfile"
-          onOK={() => void applyCollectionChange({ add_to_collection: false })}
+          strTitle="Take them out of their collections?"
+          strDescription={unfileWarning(games, shelves)}
+          strOKButtonText="Take them out"
+          strCancelButtonText="Leave them"
+          onOK={() => void applyMoves(moves)}
         />,
       );
     },
-    [applyCollectionChange, patch],
+    [applyCollectionChange, applyMoves, patch],
   );
+
+  /** The row's action: take out whatever is still filed, asking first. */
+  const unfileStranded = useCallback(async () => {
+    const moves = (await planCollectionMigration(null)).moves.filter((move) => !move.to);
+    const { games, shelves } = countStranded(moves);
+    if (games === 0) {
+      setStranded({ games: 0, shelves: 0 });
+      return;
+    }
+    showModal(
+      <ConfirmModal
+        strTitle="Take them out of their collections?"
+        strDescription={unfileWarning(games, shelves)}
+        strOKButtonText="Take them out"
+        strCancelButtonText="Leave them"
+        onOK={() => void applyMoves(moves)}
+      />,
+    );
+  }, [applyMoves]);
 
   const saveCollectionName = useCallback(() => {
     const name = collectionInput.trim();
@@ -225,6 +289,27 @@ export function CollectionsPanel() {
           disabled={migrating}
         />
       </PanelSectionRow>
+
+      {/* Off, but games are still filed -- either the dialog was declined or the
+          setting was changed on another install. Shown rather than left to be
+          discovered in the library, and it doubles as the retry for a removal
+          that partly failed. */}
+      {!settings.add_to_collection && stranded.games > 0 && (
+        <PanelSectionRow>
+          <ButtonItem
+            layout="below"
+            disabled={migrating}
+            description={
+              `${stranded.games} game(s) added earlier are still in ` +
+              `${stranded.shelves} collection(s). Collections are off, so nothing new ` +
+              "is filed there."
+            }
+            onClick={() => void unfileStranded()}
+          >
+            {migrating ? "Working..." : "Take them out"}
+          </ButtonItem>
+        </PanelSectionRow>
+      )}
 
       {settings.add_to_collection && (
         <>
