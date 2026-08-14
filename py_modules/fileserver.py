@@ -652,6 +652,21 @@ _STYLE = """
 _SCRIPT = """
 const queue = document.getElementById('queue');
 const zone = document.getElementById('zone');
+const already = document.getElementById('already');
+const arrivingHeading = document.getElementById('arrivingHeading');
+const receivedHeading = document.getElementById('receivedHeading');
+
+// A file moves between the two lists exactly as it does on the Deck: it is
+// Arriving while it is in flight, and Received once the server has it. Leaving
+// finished uploads in the first list would make "Arriving" a lie within
+// seconds, and is what the panel does not do.
+//
+// A failed one stays put. It did not arrive, and moving it under Received --
+// or hiding it -- would be the page claiming something the Deck does not have.
+function reflowHeadings() {
+  arrivingHeading.style.display = queue.children.length ? '' : 'none';
+  if (already.children.length) receivedHeading.style.display = '';
+}
 
 function humanSize(n) {
   if (n >= 1073741824) return (n / 1073741824).toFixed(1) + ' GB';
@@ -720,6 +735,7 @@ function send(file) {
   row.appendChild(head);
   row.appendChild(bar);
   queue.appendChild(row);
+  reflowHeadings();
 
   // XHR rather than fetch: it reports upload progress, which matters for ROMs.
   const request = new XMLHttpRequest();
@@ -733,13 +749,21 @@ function send(file) {
   request.addEventListener('loadend', () => { active -= 1; });
   request.addEventListener('load', () => {
     bar.remove();
-    row.className = request.status === 200 ? 'done' : 'failed';
-    if (request.status !== 200) size.textContent = request.responseText || 'failed';
+    if (request.status === 200) {
+      row.className = 'done';
+      // Newest first, matching the order the server lists what it already had.
+      already.insertBefore(row, already.firstChild);
+    } else {
+      row.className = 'failed';
+      size.textContent = request.responseText || 'failed';
+    }
+    reflowHeadings();
   });
   request.addEventListener('error', () => {
     bar.remove();
     row.className = 'failed';
     size.textContent = 'connection lost';
+    reflowHeadings();
   });
   active += 1;
   request.send(file);
@@ -758,9 +782,14 @@ def _code_page(bad=False):
         remaining = max(0, PIN_ATTEMPTS - _pin_attempts)
 
     if locked:
+        # Names the two buttons as they are labelled on the Deck. The sender is
+        # reading this on another device and cannot see the panel, so "restart
+        # the transfer" left them looking for a control with that name, which
+        # does not exist.
         message = (
-            '<p class="bad">Too many wrong codes. Stop and restart the transfer '
-            "on your Deck to try again.</p>"
+            '<p class="bad">Too many wrong codes. On your Deck, press '
+            "<b>Stop receiving</b> and then <b>Start receiving</b> for a new "
+            "code.</p>"
         )
         form = ""
     else:
@@ -782,14 +811,14 @@ def _code_page(bad=False):
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <link rel="icon" href="%(icon)s">
-<title>Send files to your Deck</title>
+<title>Transfer to Deck</title>
 <style>%(style)s
   body { min-height: 100vh; display: grid; place-items: center; }
   main { max-width: 22rem; text-align: center; }
   h1 { margin-bottom: 14px; }
 </style>
 </head><body><main>
-<h1>Send files to your Deck</h1>
+<h1>Transfer to Deck</h1>
 %(message)s
 %(form)s
 </main></body></html>""" % {
@@ -852,11 +881,11 @@ def _page():
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="icon" href="%(icon)s">
-<title>Send files to your Deck</title>
+<title>Transfer to Deck</title>
 <style>%(style)s</style>
 </head><body>
 <main>
-  <h1>Send files to your Deck</h1>
+  <h1>Transfer to Deck</h1>
   <p class="dir">Saving into %(dir)s</p>
 %(keep)s
   <label class="pick" id="zone">
@@ -865,9 +894,15 @@ def _page():
     <input id="pick" type="file" multiple>
   </label>
 
+  <!-- The same two words the panel on the Deck uses for the same two lists:
+       a file is Arriving until it lands, then it is Received. Both sides of a
+       transfer describing it differently is how someone watching one screen
+       and holding the other ends up unsure whether they are looking at the
+       same thing. -->
+  <h2 id="arrivingHeading" style="display:none">Arriving</h2>
   <ul id="queue"></ul>
 
-  <h2 id="alreadyHeading"%(hide)s>Already received</h2>
+  <h2 id="receivedHeading"%(hide)s>Received</h2>
   <ul id="already">%(listed)s</ul>
 </main>
 
