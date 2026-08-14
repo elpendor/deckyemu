@@ -351,6 +351,25 @@ export interface StaleCollection {
  * is expected to show the list for confirmation before anything is removed --
  * one of these could be a collection the user curates by hand.
  */
+/**
+ * Which collections actually hold our games, whatever the registry believes.
+ *
+ * Asked of Steam rather than of `library.json`, because the two can disagree
+ * and only one of them is what the user is looking at. A game added by a build
+ * that did not record its collection -- or one whose record was cleared by an
+ * unfiling that then failed -- sits in a collection while its entry says it is
+ * nowhere. Trusting the entry there means "turn collections off" quietly does
+ * nothing while the shelves stay on screen, which is exactly what it did.
+ *
+ * Expressed as "every game belongs nowhere", which is what makes any collection
+ * holding one of them stale.
+ */
+export function findFiledGames(appIds: number[]): StaleCollection[] {
+  const nowhere: Record<string, string> = {};
+  for (const appId of appIds) nowhere[String(appId)] = "";
+  return findStaleCollections(nowhere);
+}
+
 export function findStaleCollections(
   targets: Record<string, string>,
 ): StaleCollection[] {

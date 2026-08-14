@@ -21,7 +21,7 @@ import {
   setSettings,
   type PluginSettings,
 } from "./backend";
-import { migrateCollections, type CollectionMove } from "./steam";
+import { findFiledGames, migrateCollections, type CollectionMove } from "./steam";
 import { callWithRetry } from "./timeout";
 import { countFiled, strandedSummary, unfileWarning } from "./unfileWarning";
 
@@ -88,7 +88,9 @@ export function CollectionsPanel() {
   const refreshFiled = useCallback(async () => {
     try {
       const added = await listAdded();
-      setFiled(countFiled(added.map((game) => game.collection)));
+      const groups = findFiledGames(added.map((game) => game.app_id));
+      // One name per game found, so the counter sees both numbers it needs.
+      setFiled(countFiled(groups.flatMap((group) => group.appIds.map(() => group.tag))));
     } catch (error) {
       console.error("[deckyemu] could not count filed games", error);
     }
@@ -168,6 +170,11 @@ export function CollectionsPanel() {
         // their collection, so the old name is only knowable from these.
         const previous = settings
           ? {
+              // Including the switch matters: without it the backend derives
+              // where an unrecorded game *was* as though collections had always
+              // been on, decides it is already in the right place, and files
+              // nothing when they are turned back on.
+              add_to_collection: settings.add_to_collection,
               collection_name: settings.collection_name,
               collection_per_platform: settings.collection_per_platform,
               collection_template: settings.collection_template,
@@ -200,7 +207,19 @@ export function CollectionsPanel() {
   const turnOffAndUnfile = useCallback(async () => {
     await patch({ add_to_collection: false });
     try {
-      const moves = (await planCollectionMigration(null)).moves.filter((move) => !move.to);
+      // Built from what Steam reports rather than from a migration plan. The
+      // plan can only move games whose entry recorded a collection, and the
+      // ones stranded here are precisely those whose entry did not.
+      const added = await listAdded();
+      const titles = new Map(added.map((game) => [game.app_id, game.title]));
+      const moves = findFiledGames(added.map((game) => game.app_id)).flatMap((group) =>
+        group.appIds.map((appId) => ({
+          app_id: appId,
+          title: titles.get(appId) ?? "",
+          from: group.tag,
+          to: "",
+        })),
+      );
       await applyMoves(moves);
     } catch (error) {
       console.error("[deckyemu] could not take games out of their collections", error);

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { migrateCollections } from "./steam";
+import { findFiledGames, migrateCollections } from "./steam";
 
 /**
  * Taking games out of collections without putting them anywhere.
@@ -140,5 +140,39 @@ describe("migrateCollections, unfiling", () => {
 
     expect(moved).toBe(0);
     expect(assignments).toEqual({});
+  });
+});
+
+describe("findFiledGames", () => {
+  /**
+   * The failure this exists for: a game sitting in a collection whose entry
+   * records no collection at all -- added by a build that did not store it, or
+   * left behind by an unfiling that failed after clearing the record. Asking
+   * the registry returns nothing, so "turn collections off" did nothing while
+   * the shelves stayed on screen. Steam is the one that knows.
+   */
+  it("finds a collection holding a game the registry forgot", () => {
+    install({ "[DeckyEmu] SNES": [61] });
+
+    expect(findFiledGames([61])).toEqual([{ tag: "[DeckyEmu] SNES", appIds: [61] }]);
+  });
+
+  it("reports every collection a game is in", () => {
+    install({ "[DeckyEmu] SNES": [62], "Favourites": [62] });
+
+    const found = findFiledGames([62]);
+    expect(found.map((group) => group.tag).sort()).toEqual(["Favourites", "[DeckyEmu] SNES"]);
+  });
+
+  it("ignores collections holding nothing of ours", () => {
+    install({ "Someone else's shelf": [99] });
+
+    expect(findFiledGames([63])).toEqual([]);
+  });
+
+  it("is empty when no games are registered", () => {
+    install({ "[DeckyEmu] SNES": [64] });
+
+    expect(findFiledGames([])).toEqual([]);
   });
 });
