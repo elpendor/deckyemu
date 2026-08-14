@@ -279,57 +279,83 @@ export function CollectionsPanel() {
     void applyCollectionChange({ collection_name: name });
   }, [collectionInput, settings?.collection_name, applyCollectionChange]);
 
+  // Both sections are drawn while the settings load, with a Loading row each,
+  // so the page does not reflow under the reader as they arrive.
   if (!settings) {
     return (
-      <PanelSection>
-        <PanelSectionRow>
-          <Field label="Loading..." />
-        </PanelSectionRow>
-      </PanelSection>
+      <>
+        <PanelSection>
+          <PanelSectionRow>
+            <Field label="Loading..." />
+          </PanelSectionRow>
+        </PanelSection>
+        <PanelSection title="Naming">
+          <PanelSectionRow>
+            <Field label="Loading..." />
+          </PanelSectionRow>
+        </PanelSection>
+      </>
     );
   }
 
   return (
-    // No title: the sidebar already labels this page "Collections", and a
-    // PanelSection title that repeats its tab prints the heading twice.
-    <PanelSection>
-      <PanelSectionRow>
-        {/* A button, not a switch. Turning collections off asks a question, and
-            a switch cannot survive that answer being no -- see toggleEnabled. */}
-        <ButtonItem
-          layout="below"
-          label="Add to a collection"
-          description={
-            settings.add_to_collection
-              ? "Added games are grouped together in Big Picture."
-              : "Added games are not grouped. They still appear in the library."
-          }
-          disabled={migrating}
-          onClick={() => void toggleEnabled()}
-        >
-          {settings.add_to_collection ? "Turn off" : "Turn on"}
-        </ButtonItem>
-      </PanelSectionRow>
-
-      {/* Collections are off, but games added while they were on are still in
-          them. Switching the setting says nothing about those -- this is where
-          they are dealt with, and it is also the retry for a removal that only
-          partly succeeded. */}
-      {!settings.add_to_collection && filed.games > 0 && (
+    <>
+      {/* First section untitled: the sidebar already labels this page
+          "Collections", and a section title repeating it prints the word twice.
+          What belongs here is the one decision the tab is about -- whether games
+          are grouped at all -- and anything that follows from it. */}
+      <PanelSection>
         <PanelSectionRow>
+          {/* A button, not a switch. Turning collections off asks a question,
+              and a switch cannot survive that answer being no -- see
+              toggleEnabled. */}
           <ButtonItem
             layout="below"
+            label="Add to a collection"
+            description={
+              settings.add_to_collection
+                ? "Added games are grouped together in Big Picture."
+                : "Added games are not grouped. They still appear in the library."
+            }
             disabled={migrating}
-            description={strandedSummary(filed.games, filed.shelves)}
-            onClick={() => void unfileStranded()}
+            onClick={() => void toggleEnabled()}
           >
-            {migrating ? "Working..." : "Take them out of their collections"}
+            {settings.add_to_collection ? "Turn off" : "Turn on"}
           </ButtonItem>
         </PanelSectionRow>
-      )}
 
+        {/* Collections are off, but games added while they were on are still in
+            them. Directly under the control that explains why, rather than in
+            the naming group, which has nothing to do with it. It is the retry
+            for a removal that only partly succeeded, and the way back for an
+            install where the setting was changed elsewhere. */}
+        {!settings.add_to_collection && filed.games > 0 && (
+          <PanelSectionRow>
+            <ButtonItem
+              layout="below"
+              disabled={migrating}
+              description={strandedSummary(filed.games, filed.shelves)}
+              onClick={() => void unfileStranded()}
+            >
+              {migrating ? "Working..." : "Take them out of their collections"}
+            </ButtonItem>
+          </PanelSectionRow>
+        )}
+
+        {/* Here rather than at the foot of the naming group: a migration runs
+            for unfiling too, which happens while that group is not on screen. */}
+        {migrating && (
+          <PanelSectionRow>
+            <Field label="Working on collections..." />
+          </PanelSectionRow>
+        )}
+      </PanelSection>
+
+      {/* Its own titled group, and only when there is something to name. Every
+          row in it answers the same question -- what the collections are
+          called -- which is a different question from whether to have them. */}
       {settings.add_to_collection && (
-        <>
+        <PanelSection title="Naming">
           <PanelSectionRow>
             <TextField
               label="Collection name"
@@ -343,14 +369,14 @@ export function CollectionsPanel() {
           <PanelSectionRow>
             <ToggleField
               label="One collection per system"
+              // States what it does. The example that was here duplicated the
+              // format dropdown's own labels, which are previews of the same
+              // string -- two rows showing the same text, one of them stale
+              // whenever the other was being changed.
               description={
                 settings.collection_per_platform
-                  ? `e.g. "${previewTemplate(
-                      settings.collection_template,
-                      settings.collection_name,
-                      "Nintendo 64",
-                    )}"`
-                  : "All systems share a single collection"
+                  ? "Each system gets its own shelf."
+                  : "Every system shares one collection."
               }
               checked={settings.collection_per_platform}
               onChange={(value) => void applyCollectionChange({ collection_per_platform: value })}
@@ -359,53 +385,49 @@ export function CollectionsPanel() {
           </PanelSectionRow>
 
           {settings.collection_per_platform && (
-            <PanelSectionRow>
-              <DropdownItem
-                label="Platform names"
-                rgOptions={PLATFORM_NAME_OPTIONS}
-                selectedOption={settings.platform_names}
-                onChange={(option) =>
-                  void applyCollectionChange({ platform_names: String(option.data) })
-                }
-                disabled={migrating}
-              />
-            </PanelSectionRow>
+            <>
+              <PanelSectionRow>
+                <DropdownItem
+                  // "System", not "Platform": the toggle above says system and
+                  // so does the rest of the plugin.
+                  label="System names"
+                  rgOptions={PLATFORM_NAME_OPTIONS}
+                  selectedOption={settings.platform_names}
+                  onChange={(option) =>
+                    void applyCollectionChange({ platform_names: String(option.data) })
+                  }
+                  disabled={migrating}
+                />
+              </PanelSectionRow>
+
+              <PanelSectionRow>
+                <DropdownItem
+                  label="Name format"
+                  description="Each option shows how it would read. ⏎ marks a newline, which Steam will probably show as a space."
+                  rgOptions={COLLECTION_TEMPLATES.map((template) => ({
+                    data: template,
+                    label: previewTemplate(template, settings.collection_name, "Nintendo 64"),
+                  }))}
+                  selectedOption={settings.collection_template}
+                  onChange={(option) =>
+                    void applyCollectionChange({ collection_template: String(option.data) })
+                  }
+                  disabled={migrating}
+                />
+              </PanelSectionRow>
+            </>
           )}
 
-          {settings.collection_per_platform && (
-            <PanelSectionRow>
-              <DropdownItem
-                label="Naming format"
-                description="⏎ marks a newline, which Steam will probably show as a space."
-                rgOptions={COLLECTION_TEMPLATES.map((template) => ({
-                  data: template,
-                  label: previewTemplate(template, settings.collection_name, "Nintendo 64"),
-                }))}
-                selectedOption={settings.collection_template}
-                onChange={(option) =>
-                  void applyCollectionChange({ collection_template: String(option.data) })
-                }
-                disabled={migrating}
-              />
-            </PanelSectionRow>
-          )}
-
-          {/* The two repair buttons that were here are findings in the library
-              check now. They were checks wearing the clothes of settings:
-              nothing about "are my games on the right shelf" belongs beside the
-              naming format, and both asked to be pressed on suspicion, with no
-              way to see whether anything was wrong first. */}
+          {/* Last, because it is the note you read after making a change rather
+              than a control. The two repair buttons that used to sit here are
+              findings in the library check now: they were checks wearing the
+              clothes of settings, and both asked to be pressed on suspicion
+              with no way to see whether anything was wrong first. */}
           <PanelSectionRow>
             <Field description="Games are filed as they are added, and moved when this naming changes. If any end up on the wrong shelf, Library → Check the library finds and fixes them." />
           </PanelSectionRow>
-
-          {migrating && (
-            <PanelSectionRow>
-              <Field label="Working on collections..." />
-            </PanelSectionRow>
-          )}
-        </>
+        </PanelSection>
       )}
-    </PanelSection>
+    </>
   );
 }
