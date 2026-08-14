@@ -256,8 +256,58 @@ def validate(entry, known_platforms=(), imported=False):
             bad("data path %r must be relative to home and must not escape it"
                 % path)
 
+    problems.extend(_validate_setup(entry_id, entry.get("setup")))
+
     for item in entry.get("firmware") or ():
         problems.extend(_validate_firmware(entry_id, item))
+
+    return problems
+
+
+#: Keys a setup block may carry -- exactly what `emu_config` reads out of one.
+#: Anything else is a misspelling that would be ignored in silence, which is the
+#: failure this whole module exists to convert into a message.
+SETUP_OPTIONAL = ("format", "formats", "label", "version", "superseded")
+
+
+def _validate_setup(entry_id, setup):
+    """A setup block has to name the files it writes, in one of the two shapes.
+
+    `emu_config._files_of` reads `files`, or else `path` and `sections`, and
+    subscripts the second pair directly -- so a block with neither raises
+    KeyError part-way through an install rather than being reported. For a
+    bundled entry that is a test failure; for an imported one it is a file from
+    outside crashing the install of an emulator somebody asked for, and the
+    error names a private function rather than the definition that caused it.
+    """
+    if not setup:
+        return []
+
+    problems = []
+
+    def bad(message):
+        problems.append("%s setup: %s" % (entry_id, message))
+
+    if not isinstance(setup, dict):
+        bad("must be an object, not a %s" % type(setup).__name__)
+        return problems
+
+    if setup.get("files"):
+        if not isinstance(setup["files"], dict):
+            bad("'files' maps each path to its sections, so it must be an object")
+    elif setup.get("path"):
+        if not setup.get("sections"):
+            bad("has a 'path' but no 'sections', so there is nothing to write into it")
+    else:
+        bad("needs either 'files' -- {path: sections} -- or 'path' and 'sections' "
+            "together. Without one the install fails part-way through instead of "
+            "here")
+
+    unknown = sorted(set(setup) - {"files", "path", "sections"} - set(SETUP_OPTIONAL))
+    if unknown:
+        bad("unknown key(s) %s -- misspelt? known keys are: %s"
+            % (", ".join(repr(name) for name in unknown),
+               ", ".join(sorted({"files", "path", "sections"} | set(SETUP_OPTIONAL)))))
 
     return problems
 

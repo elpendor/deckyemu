@@ -78,6 +78,39 @@ check("and a JSON array is not a definition",
       "has to be a JSON object" in imported.parse("[]", _KNOWN)[1], True)
 
 
+section("a setup block has to name what it writes")
+
+# emu_config._files_of reads `files`, or else subscripts `path` and `sections`
+# directly. A block with neither raised KeyError part-way through the install
+# instead of being refused here -- naming a private function rather than the
+# definition that caused it, and for an imported entry that is a file from
+# outside crashing an install somebody asked for.
+check("a block with neither files nor path is refused",
+      any("either 'files'" in p for p in _problems(setup={"format": "ini"})), True)
+check("a path with no sections is refused too, since nothing would be written",
+      any("no 'sections'" in p for p in _problems(setup={"path": ".config/x/y.ini"})),
+      True)
+# Both shapes are in real use by the bundled catalog, so neither may be broken.
+check("the files shape is accepted",
+      _problems(setup={"files": {".config/testemu/a.ini": {"S": {}}}}), [])
+check("and so is path with sections",
+      _problems(setup={"path": ".config/testemu/a.ini", "sections": {"S": {}}}), [])
+check("a misspelt setup key is caught rather than ignored",
+      any("'sctions'" in p for p in
+          _problems(setup={"path": ".config/testemu/a.ini", "sctions": {}})),
+      True)
+# The rule applies to bundled entries as well: this file is the reference for
+# writing one, and a bundled block with neither shape fails the same way.
+check("a bundled entry is held to it too",
+      any("either 'files'" in p
+          for p in schema.validate(_definition(setup={"format": "ini"}), _KNOWN)),
+      True)
+# And the confinement rule still runs over whichever shape is used.
+check("a setup file outside the declared root is still refused",
+      any("outside this entry's root" in p
+          for p in _problems(setup={"files": {".ssh/authorized_keys": {"S": {}}}})),
+      True)
+
 section("what an imported definition may not do")
 
 # Installing the emulator it describes is allowed, and is the point: the
@@ -126,7 +159,8 @@ check("it may not write outside its declared root",
       True)
 check("and that applies to seeded settings too",
       any("outside this entry's root" in p for p in _problems(
-          setup={"format": "plain-ini", "path": ".config/other/x.ini", "files": {}})),
+          setup={"format": "plain-ini", "path": ".config/other/x.ini",
+                 "sections": {"S": {}}})),
       True)
 check("writing inside the root is fine",
       _problems(firmware=[{"name": "f", "dest": ".config/testemu/keys/prod.keys"}]),
@@ -142,7 +176,7 @@ check("root may be a list, for emulators that split config and data",
       _problems(root=[".config/testemu", ".local/share/testemu"],
                 firmware=[{"name": "keys", "dest": ".local/share/testemu/keys"}],
                 setup={"format": "plain-ini", "path": ".config/testemu/qt-config.ini",
-                       "files": {}}),
+                       "sections": {"S": {}}}),
       [])
 check("and a path outside every one of them is still refused",
       any("outside this entry's roots" in p for p in _problems(
