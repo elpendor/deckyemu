@@ -120,6 +120,7 @@ class Plugin(
             ("upgrade launchers", self._upgrade_launchers),
             ("upgrade emulator recipes", self._upgrade_emulator_recipes),
             ("upgrade emulator setups", self._upgrade_emulator_setups),
+            ("forget settings that no longer exist", self._forget_removed_settings),
         ):
             try:
                 await step()
@@ -296,6 +297,20 @@ class Plugin(
             "Rewriting launchers for format %d", launchers.FORMAT_VERSION
         )
         await self.rebuild_launchers()
+
+    async def _forget_removed_settings(self):
+        """Clear settings that have been taken out of the plugin.
+
+        The one this exists for is the GitHub token, which the update check
+        needed while this repository was private. Nothing reads it now, and a
+        credential nothing reads is still a credential in a file -- so it is
+        deleted rather than left to be ignored. It also has to go: `get_settings`
+        merges the stored file over the defaults, so a key that is no longer
+        declared is still handed to every reader, the frontend included.
+        """
+        gone = await self._run(store.forget_removed)
+        if gone:
+            decky.logger.info("Removed setting(s) no longer used: %s", ", ".join(gone))
 
     async def _backfill_library(self):
         """Fill in fields that older versions of this plugin never recorded.
@@ -2183,9 +2198,7 @@ class Plugin(
         backend runs as `deck`, which cannot write the plugin's own directory.
         """
         current = (await self.plugin_version())["version"]
-        settings = await self._run(store.get_settings)
-        token = (settings.get("github_token") or "").strip()
-        result = await self._run(releases.check, current, force, False, token)
+        result = await self._run(releases.check, current, force, False)
         # Logged either way. When this only spoke up for an available update, a
         # check that never ran looked exactly like one that found nothing.
         decky.logger.info(
@@ -2201,32 +2214,26 @@ class Plugin(
     async def stage_update(self):
         """Download the newest release and offer it to decky over loopback.
 
-        Decky installs from a URL it fetches itself, and has no credentials -- so a
-        private repository's asset would 404 for it. Downloading here with the token
-        and re-offering the bytes on 127.0.0.1 makes the private case work and gives
-        the public one a digest computed from the file actually obtained.
+        Decky installs from a URL it fetches itself. Downloading here first and
+        re-offering the bytes on 127.0.0.1 means the digest decky verifies is
+        computed from the file actually obtained, rather than from a second trip
+        to the network that could answer differently.
         """
-        settings = await self._run(store.get_settings)
-        token = (settings.get("github_token") or "").strip()
         current = (await self.plugin_version())["version"]
-        found = await self._run(releases.check, current, True, False, token)
+        found = await self._run(releases.check, current, True, False)
 
         release = found.get("latest")
         if not release:
             return {"ok": False, "error": "No release to install."}
 
         try:
-            payload = await self._run(releases.download, release, token)
+            payload = await self._run(releases.download, release)
         except Exception as error:  # noqa: BLE001 - reported, not raised, to the UI
             decky.logger.exception("Could not download the release")
             return {"ok": False, "error": "Could not download it: %s" % error}
 
         if not payload:
-            return {
-                "ok": False,
-                "error": "The release could not be downloaded."
-                + (" A private repository needs a GitHub token." if not token else ""),
-            }
+            return {"ok": False, "error": "The release could not be downloaded."}
 
         def _write():
             os.makedirs(decky.DECKY_PLUGIN_RUNTIME_DIR, exist_ok=True)
@@ -2259,7 +2266,6 @@ class Plugin(
         # Never ship the key itself to the UI; only whether one is set.
         settings = dict(settings)
         settings["sgdb_api_key_set"] = bool((settings.pop("sgdb_api_key", "") or "").strip())
-        settings["github_token_set"] = bool((settings.pop("github_token", "") or "").strip())
         # The username is shown -- it is the whole point of saying who is signed
         # in -- but the Connect token is password-equivalent and stays here.
         settings["cheevos_token_set"] = bool((settings.pop("cheevos_token", "") or "").strip())

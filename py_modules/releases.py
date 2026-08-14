@@ -14,9 +14,11 @@ helper or asking the user to loosen permissions on the plugin folder.
 The frontend passes what is found here to decky's `utilities/install_plugin`
 route. See src/updater.ts for that half.
 
-Releases come from the GitHub API. A public repository needs no credentials; a
-private one needs a token, which the user supplies in Settings and which is stored
-like the SteamGridDB key and never sent to the frontend.
+Releases come from the GitHub API, which needs no credentials to read a public
+repository. There was a stored token here for the period when this repository
+was private; it is gone, along with the settings entry it lived in. Nothing this
+module reaches is authenticated, which is why it can say so plainly when GitHub
+does not answer instead of having to wonder whether a token was wrong.
 """
 
 import re
@@ -105,9 +107,6 @@ def parse_release(entry):
         "tag": tag,
         "notes": readable_notes(body),
         "asset_url": asset["browser_download_url"],
-        # The API URL, which is the only one that accepts a token. A private
-        # repository's browser_download_url answers 404 without one.
-        "asset_api_url": asset.get("url", ""),
         "asset_name": asset.get("name", ""),
         "sha256": digest.group(1).lower() if digest else "",
         "prerelease": bool(entry.get("prerelease")),
@@ -115,24 +114,20 @@ def parse_release(entry):
     }
 
 
-def auth_headers(token):
-    """GitHub's documented header pair, or nothing when there is no token."""
-    if not token:
-        return {}
-    return {
-        "Authorization": "Bearer %s" % token,
-        "X-GitHub-Api-Version": "2022-11-28",
-    }
+#: The API version GitHub asks callers to pin. Nothing else is sent -- there is
+#: no Authorization header here, and an unauthenticated caller gets 60 requests
+#: an hour per address, which one check an hour leaves almost untouched.
+API_HEADERS = {"X-GitHub-Api-Version": "2022-11-28"}
 
 
-def fetch_releases(force=False, token=""):
+def fetch_releases(force=False):
     """Installable releases, newest first. Cached, and never raises."""
     now = time.time()
     if not force and _cache["releases"] and now - _cache["at"] < CACHE_SECONDS:
         return _cache["releases"]
 
     try:
-        raw = net.get_json(RELEASES_URL, auth_headers(token))
+        raw = net.get_json(RELEASES_URL, API_HEADERS)
     except Exception as error:  # noqa: BLE001 - a failed check must not break the UI
         decky.logger.warning("Could not read releases: %s", error)
         _cache["ok"] = False
@@ -140,14 +135,10 @@ def fetch_releases(force=False, token=""):
         return _cache["releases"]
 
     if raw is None:
-        # net logs the reason; say something the user can act on.
+        # net logs the reason; say something the user can act on. There is only
+        # one cause left worth naming now that nothing here authenticates.
         _cache["ok"] = False
-        _cache["error"] = (
-            "GitHub did not answer. Check the connection; a private repository "
-            "also needs a token."
-            if not token
-            else "GitHub did not answer, or the token is not valid for this repository."
-        )
+        _cache["error"] = "GitHub did not answer. Check the connection."
         return _cache["releases"]
 
     if not isinstance(raw, list):
@@ -168,23 +159,17 @@ def fetch_releases(force=False, token=""):
     return releases
 
 
-def download(release, token=""):
+def download(release):
     """The release zip's bytes.
 
-    Fetched through the API URL with the token when there is one, since that is
-    the form that works for a private repository; the plain download URL is the
-    fallback for a public one.
+    The plain browser download URL, which is what a public asset answers on.
+    There was an API-URL branch here for the authenticated case; with no token
+    it only ever asked GitHub for the asset's JSON metadata instead of the file.
     """
-    headers = dict(auth_headers(token))
-    url = release.get("asset_api_url") if token else ""
-    if url:
-        # Without this GitHub returns the asset's JSON metadata, not the file.
-        headers["Accept"] = "application/octet-stream"
-    else:
-        url = release.get("asset_url") or ""
+    url = release.get("asset_url") or ""
     if not url:
         return b""
-    payload, _ = net.get_bytes(url, headers, max_bytes=64 * 1024 * 1024)
+    payload, _ = net.get_bytes(url, max_bytes=64 * 1024 * 1024)
     return payload or b""
 
 
@@ -194,13 +179,13 @@ def newest(releases, allow_prerelease=False):
     return usable[0] if usable else None
 
 
-def check(current_version, force=False, allow_prerelease=False, token=""):
+def check(current_version, force=False, allow_prerelease=False):
     """Whether `current_version` is behind the newest release.
 
     `checked` says the request worked. A repository with nothing published yet is
     a successful check that found nothing, and must not be reported as a failure.
     """
-    releases = fetch_releases(force=force, token=token)
+    releases = fetch_releases(force=force)
     result = {
         "available": False,
         "current": current_version,

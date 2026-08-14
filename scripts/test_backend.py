@@ -6151,29 +6151,36 @@ releases.net.get_json = lambda url, headers=None: None
 releases.clear_cache()
 failed = releases.check("1.0.0", force=True)
 check("a failed request is reported as such", failed["checked"], False)
-check("with advice about the token", "token" in failed["error"], True)
+check("and blames the connection, the only cause left", "connection" in failed["error"], True)
 
 releases.net.get_json = _real_get_json
 releases.clear_cache()
 
-# A token is only needed while the repository is private, and must never reach
-# the frontend -- the same rule as the SteamGridDB key.
-store.set_settings({"github_token": "ghp_secret"})
-exposed = run(plugin.get_settings())
-check("the token is never sent to the UI", "github_token" in exposed, False)
-check("only whether one is set", exposed["github_token_set"], True)
-store.set_settings({"github_token": ""})
-check("and that flag clears with it", run(plugin.get_settings())["github_token_set"], False)
+# The GitHub token is gone. It existed while this repository was private, and a
+# credential nothing reads is still a credential in a file -- so an install that
+# stored one has it deleted rather than ignored. This matters beyond tidiness:
+# get_settings merges the stored file over the defaults, so a key that is no
+# longer declared would otherwise be handed straight to the frontend.
+store.set_settings({"github_token": "not-a-real-token"})
+check("an install that stored one still has it before startup runs",
+      "github_token" in store.get_settings(), True)
+# The hazard the migration exists for, asserted rather than described: nothing
+# pops this key any more, so until it is deleted from the file it is handed to
+# the frontend with every other setting.
+check("and until it is deleted it would reach the UI",
+      "github_token" in run(plugin.get_settings()), True)
 
-check("no token means no auth headers", releases.auth_headers(""), {})
-check(
-    "a token becomes a bearer header",
-    releases.auth_headers("abc")["Authorization"],
-    "Bearer abc",
-)
+run(plugin._forget_removed_settings())
+check("startup deletes it from the file", "github_token" in store.get_settings(), False)
+check("so it no longer reaches the UI",
+      "github_token" in run(plugin.get_settings()), False)
+check("and a second start has nothing to do", store.forget_removed(), [])
+check("nothing here sends an Authorization header",
+      "Authorization" in releases.API_HEADERS, False)
 
-# Decky downloads the URL it is given and has no credentials, so a private asset
-# is fetched here and re-offered on loopback instead.
+# Decky downloads the URL it is given, so the release is fetched here and
+# re-offered on loopback -- which is what makes the digest it checks one
+# computed from the bytes actually received.
 import handoff  # noqa: E402
 import urllib.request as _urlreq  # noqa: E402
 

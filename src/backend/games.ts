@@ -225,8 +225,6 @@ export interface PluginSettings {
   last_rom_dir: string;
   last_core_by_ext: Record<string, string>;
   sgdb_api_key_set: boolean;
-  /** Only needed while the repository is private. */
-  github_token_set: boolean;
 }
 
 /**

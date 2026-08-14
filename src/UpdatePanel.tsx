@@ -333,9 +333,9 @@ export function UpdatePanel() {
         </>
       )}
 
-      {/* The GitHub token has no entry here at all. A token stored earlier is
-          still used by the check; it is simply not something this page shows or
-          asks for. */}
+      {/* Nothing to configure. The check reads public releases and needs no
+          credentials; the token this page deliberately never offered to store
+          is gone from the plugin entirely. */}
     </PanelSection>
   );
 }

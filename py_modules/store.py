@@ -13,10 +13,12 @@ LIBRARY_PATH = os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "library.json")
 DEFAULT_SETTINGS = {
     # SteamGridDB API key. Empty means "use libretro thumbnails only".
     "sgdb_api_key": "",
-    # GitHub token, only needed while the repository is private: the update check
-    # and the release download both go through the API. Read-only Contents scope
-    # is enough. Stored like the key above and never sent to the frontend.
-    "github_token": "",
+    # There was a "github_token" here, for the period when this repository was
+    # private and the update check needed credentials to see its own releases.
+    # It is gone rather than merely unused: a credential nothing reads is still
+    # a credential sitting in a file. `forget_removed` clears it from installs
+    # that stored one, and must keep doing so for as long as any device might
+    # still be carrying it.
     # auto | libretro | sgdb
     "art_source": "auto",
     # RetroAchievements. Off until a login exists, because enabling it without
@@ -146,6 +148,29 @@ def stored_keys():
     """
     stored = _read_json(SETTINGS_PATH, {})
     return set(stored) if isinstance(stored, dict) else set()
+
+
+#: Settings that existed once and no longer do. Cleared from the stored file on
+#: startup rather than left to sit there, because the one that made this
+#: necessary was a credential -- and because `get_settings` merges whatever is
+#: stored over the defaults, so a key nothing declares any more is still handed
+#: to every reader, including the frontend.
+REMOVED_SETTINGS = ("github_token",)
+
+
+def forget_removed():
+    """Drop settings that no longer exist. Returns the names actually cleared."""
+    with _lock:
+        stored = _read_json(SETTINGS_PATH, {})
+        if not isinstance(stored, dict):
+            return []
+        gone = [key for key in REMOVED_SETTINGS if key in stored]
+        if not gone:
+            return []
+        for key in gone:
+            del stored[key]
+        _write_json(SETTINGS_PATH, stored)
+        return gone
 
 
 def known_only(patch):

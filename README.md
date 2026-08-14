@@ -670,7 +670,7 @@ visible rather than quietly dropped.
 
 The same text goes into the GitHub release body *and* into a `build.json` shipped
 beside `main.py`, which is what lets the tab show the running version's changelog
-with no network and no token.
+with no network at all.
 
 **This plugin cannot install its own updates.** The backend runs as `deck` while
 `~/homebrew/plugins/deckyemu` is root-owned, so the install goes through decky's
