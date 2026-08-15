@@ -1219,6 +1219,47 @@ class Plugin(
             and rom_path.startswith("/run/media"),
         }
 
+    @classmethod
+    def _entry_for(
+        cls, settings, app_id, title, rom_path, core_id, core, launcher_path,
+        system="", previous=None,
+    ):
+        """The registry record for one game, built the one way there is.
+
+        Three places wrote this dict by hand -- adding a game, editing one, and
+        adopting a previous install -- and the third built a fresh one rather
+        than updating what was there, so every per-game launch override was
+        silently reset to the global setting by an adoption. A field added to
+        the record later would have gone the same way.
+
+        `previous` is the record being replaced. Everything it holds that is not
+        recomputed here survives, which is what carries `options` through.
+
+        `system` is what resolve_game worked out for this add, and only matters
+        for a core covering more than one -- Dolphin declares GameCube and Wii.
+        Absent, the stored system is kept wherever the core still claims it, so
+        editing a Wii game's name does not refile it under GameCube.
+        """
+        entry = dict(previous or {})
+        resolved = cls._system_for(core, system, entry.get("system", ""))
+        platform = cls._entry_platform(settings, core, {"system": resolved})
+        entry.update(
+            {
+                "app_id": app_id,
+                "title": title,
+                "rom_path": rom_path,
+                "core_id": core_id,
+                "core_path": core["path"] if core else entry.get("core_path", ""),
+                "system": resolved,
+                "platform": platform,
+                # Remembered so a later rename knows which collection to move it
+                # out of, rather than guessing from the current settings.
+                "collection": cls._collection_name(settings, platform),
+                "launcher_path": launcher_path,
+            }
+        )
+        return entry
+
     async def register_game(
         self,
         app_id: int,
@@ -1232,23 +1273,9 @@ class Plugin(
         core = self._core_by_id(core_id)
         decky.logger.info("register_game: app_id=%s title=%r", app_id, title)
         settings = await self._run(store.get_settings)
-        # Passed in from resolve_game, which already found out which of a
-        # multi-system core's databases this game is in.
-        resolved = self._system_for(core, system)
-        platform = self._entry_platform(settings, core, {"system": resolved})
-        entry = {
-            "app_id": app_id,
-            "title": title,
-            "rom_path": rom_path,
-            "core_id": core_id,
-            "core_path": core["path"] if core else "",
-            "system": resolved,
-            "platform": platform,
-            # Remembered so a later rename knows which collection to move it out
-            # of, rather than guessing from the current settings.
-            "collection": self._collection_name(settings, platform),
-            "launcher_path": launcher_path,
-        }
+        entry = self._entry_for(
+            settings, app_id, title, rom_path, core_id, core, launcher_path, system
+        )
         await self._run(store.remember_game, app_id, entry)
 
         # Keyed on the content extension so a zipped SNES ROM remembers the same
@@ -1367,28 +1394,17 @@ class Plugin(
         if launcher_changed:
             await self._run(launchers.remove_launcher, old_launcher)
 
-        # Computed from the new core, not blindly from the stored entry: after a
-        # core change the old system would give the wrong platform. The stored
-        # one is still preferred when the new core also covers it, so editing a
-        # Wii game's name does not refile it under GameCube.
-        new_system = self._system_for(core, "", entry.get("system", ""))
-        platform = self._entry_platform(settings, core, {"system": new_system})
         previous_collection = entry.get("collection", "")
-        collection = self._collection_name(settings, platform)
-
-        entry.update(
-            {
-                "title": clean_title,
-                "rom_path": rom_path,
-                "core_id": core_id,
-                "core_path": core["path"],
-                "system": new_system,
-                "platform": platform,
-                "collection": collection,
-                "launcher_path": script,
-                "options": cleaned_options,
-            }
+        # No system hint: an edit says nothing new about which of a multi-system
+        # core's databases this game is in, so the stored answer stands wherever
+        # the newly chosen core still claims it. `_entry_for` owns that rule.
+        entry = self._entry_for(
+            settings, app_id, clean_title, rom_path, core_id, core, script,
+            previous=entry,
         )
+        entry["options"] = cleaned_options
+        platform = entry["platform"]
+        collection = entry["collection"]
         await self._run(store.remember_game, app_id, entry)
 
         return {

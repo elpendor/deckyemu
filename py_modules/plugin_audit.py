@@ -339,6 +339,12 @@ class Audit(plugin_base.PluginContext):
                 continue
 
             title = entry.get("title", "Game")
+            # The old record's overrides, not the globals. Writing the globals
+            # here undid every per-game choice the previous install carried --
+            # and did it invisibly, because the record it wrote alongside said
+            # the overrides were still in force. `_launch_options` resolves one
+            # against the other, which is what `rebuild_launchers` does too.
+            launch = self._launch_options(settings, entry)
             try:
                 script = await self._run(
                     launchers.write_launcher,
@@ -346,10 +352,10 @@ class Audit(plugin_base.PluginContext):
                     title,
                     core["path"],
                     rom,
-                    settings.get("hide_osd", "startup"),
+                    launch["hide_osd"],
                     emulator,
-                    settings.get("emulator_fullscreen", True),
-                    "",
+                    launch["fullscreen"],
+                    launch["extra_args"],
                     self._menu_combo(settings),
                     settings,
                 )
@@ -358,23 +364,18 @@ class Audit(plugin_base.PluginContext):
                 skipped.append(title)
                 continue
 
-            platform = self._entry_platform(settings, core, entry)
-            collection = (
-                self._collection_name(settings, platform)
-                if settings.get("add_to_collection", True)
-                else ""
+            # Built from the old record rather than beside it, so everything the
+            # previous install knew that is not recomputed here survives -- the
+            # per-game launch overrides above all, which a hand-built record
+            # dropped, quietly resetting every one of them to the global
+            # setting. It also keeps the game on the system it was filed under:
+            # this took the core's first database, which files every Wii game
+            # under GameCube for as long as the entry lives.
+            record = self._entry_for(
+                settings, entry["app_id"], title, rom, core_id, core, script,
+                previous=entry,
             )
-            records[entry["app_id"]] = {
-                "app_id": entry["app_id"],
-                "title": title,
-                "rom_path": rom,
-                "core_id": core_id,
-                "core_path": core["path"],
-                "system": (core["databases"][0] if core["databases"] else ""),
-                "platform": platform,
-                "collection": collection,
-                "launcher_path": script,
-            }
+            records[entry["app_id"]] = record
             # The caller must actually file it into `collection`. Recording the
             # name without adding the app would make a later rename believe the
             # game was already in place and skip it.
@@ -383,7 +384,7 @@ class Audit(plugin_base.PluginContext):
                     "app_id": entry["app_id"],
                     "title": title,
                     "exe": script,
-                    "collection": collection,
+                    "collection": record["collection"],
                 }
             )
 

@@ -75,6 +75,20 @@ class PluginContext:
         """The collection a game belongs in under the current settings."""
         raise NotImplementedError
 
+    @classmethod
+    def _entry_for(
+        cls, settings: dict, app_id: int, title: str, rom_path: str, core_id: str,
+        core: Optional[dict], launcher_path: str, system: str = "",
+        previous: Optional[dict] = None,
+    ) -> dict:
+        """The registry record for one game. Pass `previous` to keep its fields."""
+        raise NotImplementedError
+
+    @classmethod
+    def _launch_options(cls, settings: dict, entry: dict) -> dict:
+        """How one game launches: its own overrides resolved over the globals."""
+        raise NotImplementedError
+
     @staticmethod
     def _menu_combo(settings: dict) -> str:
         """The controller combo that opens RetroArch's menu."""
