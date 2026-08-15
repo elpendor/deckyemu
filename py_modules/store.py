@@ -17,6 +17,15 @@ LIBRARY_PATH = os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "library.json")
 #: tidy away once no game names them any more.
 COLLECTIONS_PATH = os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "collections.json")
 
+#: How a per-system collection is named when nothing says otherwise.
+#:
+#: One constant because it was four literals: the default here, and a separate
+#: fallback in each of the three places that read the setting -- two in the
+#: backend and one in the frontend -- which had drifted to a *different* string
+#: from this one. A settings file with the key missing or blank therefore
+#: produced names in one format while every default said another.
+DEFAULT_COLLECTION_TEMPLATE = "[{name}] {platform}"
+
 DEFAULT_SETTINGS = {
     # SteamGridDB API key. Empty means "use libretro thumbnails only".
     "sgdb_api_key": "",
@@ -62,7 +71,7 @@ DEFAULT_SETTINGS = {
     # How a per-platform collection is named. `{name}` is the collection name
     # above, `{platform}` the system. A literal \n is turned into a newline,
     # though Steam most likely renders it as a space.
-    "collection_template": "[{name}] {platform}",
+    "collection_template": DEFAULT_COLLECTION_TEMPLATE,
     # short | full -- "SNES" rather than "Super Nintendo Entertainment System".
     "platform_names": "short",
     # Apply each custom emulator's fullscreen switch when launching.

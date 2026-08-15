@@ -3446,10 +3446,14 @@ check("no core and no system", Plugin._platform_label(None, ""), "")
 flat = {"collection_name": "RetroArch", "collection_per_platform": False}
 per_platform = {"collection_name": "RetroArch", "collection_per_platform": True}
 check("flat naming", Plugin._collection_name(flat, "Nintendo 64"), "RetroArch")
+# No template in this dict, so the default applies -- and the default is one
+# constant now. It used to be stated four times, and the three fallbacks had
+# drifted to a different string from the stored default, so a settings file with
+# the key missing produced names in a format nothing claimed was the default.
 check(
-    "per-platform naming",
+    "per-platform naming uses the one default",
     Plugin._collection_name(per_platform, "Nintendo 64"),
-    "RetroArch - Nintendo 64",
+    "[RetroArch] Nintendo 64",
 )
 check(
     "per-platform with unknown system falls back",
@@ -3480,8 +3484,46 @@ check("middot format", named("{name} · {platform}"), "Emulation · Nintendo 64"
 check("platform only", named("{platform}"), "Nintendo 64")
 check("platform first", named("{platform} ({name})"), "Nintendo 64 (Emulation)")
 check("newline escape becomes a newline", named("{name}\\n{platform}"), "Emulation\nNintendo 64")
-check("a missing template falls back to the default", named(""), "Emulation - Nintendo 64")
+check("a missing template falls back to the stored default",
+      named(""), Plugin._render_collection(store.DEFAULT_COLLECTION_TEMPLATE,
+                                           "Emulation", "Nintendo 64"))
+# Read off the constant rather than written out, so the two cannot part
+# company again without something saying so.
+check("which is the format the settings ship with",
+      store.DEFAULT_SETTINGS["collection_template"], store.DEFAULT_COLLECTION_TEMPLATE)
 # A template that leaves a dangling separator should not produce " - Nintendo 64".
+# The contract with the frontend, which has to *recognise* a name this produced
+# in order to decide whether a collection is ours to delete. That is a second
+# implementation of this rule in another language, and nothing compared the two:
+# each was checked against names written by hand in its own suite, which proves
+# only that each agrees with itself.
+#
+# So the pairs below are the fixture both suites share. src/collectionMatch.test.ts
+# asserts the matcher accepts every one of these exact strings; this asserts the
+# renderer still produces them. Changing how a name is built now fails here, and
+# fixing it here without the other side fails there.
+_NAMED = {"collection_name": "DeckyEmu", "collection_per_platform": True}
+_CONTRACT = [
+    ("[{name}] {platform}", "[DeckyEmu] Nintendo 64"),
+    ("{platform}", "Nintendo 64"),
+    ("{name}: {platform}", "DeckyEmu: Nintendo 64"),
+    ("{name} · {platform}", "DeckyEmu · Nintendo 64"),
+    ("{name} - {platform}", "DeckyEmu - Nintendo 64"),
+    ("{platform} ({name})", "Nintendo 64 (DeckyEmu)"),
+    ("{name}\\n{platform}", "DeckyEmu\nNintendo 64"),
+]
+check(
+    "every offered format renders the name the frontend is told to recognise",
+    [
+        Plugin._collection_name(dict(_NAMED, collection_template=template), "Nintendo 64")
+        for template, _ in _CONTRACT
+    ],
+    [name for _, name in _CONTRACT],
+)
+# And the list itself is the one the panel offers, so a format added to the
+# catalog of them cannot skip the contract above.
+check("and the shared fixture covers every format on offer",
+      [template for template, _ in _CONTRACT], list(Plugin.COLLECTION_TEMPLATES))
 check("dangling separators are trimmed", named("- {platform}"), "Nintendo 64")
 check("runs of spaces collapse", named("{name}    {platform}"), "Emulation Nintendo 64")
 check("an empty base disables collections", Plugin._collection_name({"collection_name": " "}, "N64"), "")
@@ -3515,6 +3557,12 @@ store.remember_game(
 store.remember_game(
     22, {"app_id": 22, "title": "Mario", "core_id": "bsnes", "collection": "RetroArch"}
 )
+
+# The preview shown in the dropdown is rendered by the same function, which is
+# what stops a label promising a format the filing does not use.
+_previews = run(plugin.collection_templates())["templates"]
+check("the previews come from the renderer itself",
+      [item["template"] for item in _previews], list(Plugin.COLLECTION_TEMPLATES))
 
 check("nothing to do when settings are unchanged", run(plugin.plan_collection_migration())["moves"], [])
 
@@ -3577,7 +3625,7 @@ legacy = [
 ]
 # The previous dict carries no template or style, so the built-in defaults for
 # those apply -- which is what an older settings file looks like.
-check("including a previous per-platform name", legacy[0]["from"], "Emulation - SNES")
+check("including a previous per-platform name", legacy[0]["from"], "[Emulation] SNES")
 
 targets = run(plugin.collection_targets())
 check("targets cover every registered game", sorted(targets["targets"].keys()), ["11", "22", "33"])

@@ -828,8 +828,8 @@ class Plugin(
         label = cls._platform_label(core, entry.get("system", ""), short)
         return label or entry.get("platform", "")
 
-    @staticmethod
-    def _collection_name(settings, platform):
+    @classmethod
+    def _collection_name(cls, settings, platform):
         """The collection a game belongs in under the current settings.
 
         Empty means "nowhere", which is a real answer rather than a missing one:
@@ -847,7 +847,32 @@ class Plugin(
         if not (settings.get("collection_per_platform") and platform):
             return base
 
-        template = settings.get("collection_template") or "{name} - {platform}"
+        template = settings.get("collection_template") or store.DEFAULT_COLLECTION_TEMPLATE
+        return cls._render_collection(template, base, platform)
+
+    #: The naming formats offered in the UI.
+    #:
+    #: Here rather than in the frontend so that the thing which *renders* a
+    #: collection name is also the thing that previews one. There were three
+    #: renderers of this template across two languages -- the one below, the
+    #: pattern that recognises a name, and a preview in the settings panel --
+    #: and they did not agree: the preview substituted only the first occurrence
+    #: of a placeholder, and neither of the other two applied the trailing
+    #: separator strip. They agreed on the seven formats offered and would have
+    #: parted company on the first one added.
+    COLLECTION_TEMPLATES = (
+        "[{name}] {platform}",
+        "{platform}",
+        "{name}: {platform}",
+        "{name} · {platform}",
+        "{name} - {platform}",
+        "{platform} ({name})",
+        "{name}\\n{platform}",
+    )
+
+    @staticmethod
+    def _render_collection(template, base, platform):
+        """One template, one name. The only thing that turns one into the other."""
         # Stored as an escape so the template survives a round trip through JSON
         # and the settings UI as one line.
         name = template.replace("\\n", "\n")
@@ -856,6 +881,26 @@ class Plugin(
         # for; trailing separators are left over when a placeholder is unused.
         name = re.sub(r"[ \t]+", " ", name)
         return name.strip(" \t-:·|/,")
+
+    async def collection_templates(self):
+        """Every offered naming format, with the name it would actually produce.
+
+        The preview is rendered here, by the same function that names a real
+        collection, so the dropdown cannot promise a format the filing does not
+        use. `{platform}` is filled with a stand-in system for the sake of the
+        example; everything else is the user's own settings.
+        """
+        settings = await self._run(store.get_settings)
+        base = (settings.get("collection_name") or "").strip() or "Collection"
+        return {
+            "templates": [
+                {
+                    "template": template,
+                    "preview": self._render_collection(template, base, "Nintendo 64"),
+                }
+                for template in self.COLLECTION_TEMPLATES
+            ]
+        }
 
     # Per-game launch overrides. Only explicit overrides are stored, so a game
     # left alone keeps following the global setting when that setting changes.
@@ -988,7 +1033,7 @@ class Plugin(
         settings = await self._run(store.get_settings)
         base = (settings.get("collection_name") or "").strip()
         per_platform = bool(settings.get("collection_per_platform"))
-        template = settings.get("collection_template") or "{name} - {platform}"
+        template = settings.get("collection_template") or store.DEFAULT_COLLECTION_TEMPLATE
         return {
             "base": base,
             "per_platform": per_platform,

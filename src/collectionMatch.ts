@@ -46,8 +46,15 @@ function patternMatcher(shape: CollectionShape): (name: string) => boolean {
   if (!base) return () => false;
   if (!shape.per_platform) return (name) => name === base;
 
+  // No fallback of its own. `collection_shape` resolves the template against
+  // the backend's default before sending it, and a second default here is a
+  // second thing to keep in step -- which it was not: this said one string
+  // while the stored default said another, so a blank setting produced names
+  // in one format and was recognised in the other.
+  if (!shape.template) return (name) => name === base;
+
   const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const pattern = escape(shape.template || "{name} - {platform}")
+  const pattern = escape(shape.template)
     .replace(/\\\{name\\\}/g, escape(base))
     .replace(/\\\{platform\\\}/g, ".+");
   let expression: RegExp;

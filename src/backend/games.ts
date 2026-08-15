@@ -381,6 +381,19 @@ export interface CollectionShape {
   known?: string[];
 }
 export const collectionShape = callable<[], CollectionShape>("collection_shape");
+/** One offered naming format, and the name it would actually produce. */
+export interface CollectionTemplate {
+  template: string;
+  /**
+   * Rendered by the backend, using the same function that names a real
+   * collection — so a preview cannot promise a format the filing does not use.
+   * Holds a real newline where the format asks for one.
+   */
+  preview: string;
+}
+export const collectionTemplates = callable<[], { templates: CollectionTemplate[] }>(
+  "collection_templates",
+);
 /**
  * Stop claiming collections, because they have been deleted. Keeps the record
  * from growing forever and from coming to claim a shelf somebody later makes by

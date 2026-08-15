@@ -75,6 +75,51 @@ describe("emptyCollectionMatcher", () => {
 });
 
 /*
+ * The contract with the backend.
+ *
+ * The rule for building a collection name lives in Python; the rule for
+ * recognising one lives here. Two implementations of one thing, and nothing
+ * compared them: each suite checked its own half against names written by hand,
+ * which proves only that each half agrees with itself. They already differed --
+ * the renderer strips trailing separators and substitutes every occurrence of a
+ * placeholder, and the preview that was in this codebase did neither.
+ *
+ * These strings are the fixture both suites share. scripts/test_backend.py
+ * asserts the renderer still produces exactly these for exactly these formats;
+ * this asserts the matcher accepts them. Changing how a name is built fails
+ * there, and fixing it there without fixing it here fails below.
+ */
+const RENDERED: Array<[template: string, name: string]> = [
+  ["[{name}] {platform}", "[DeckyEmu] Nintendo 64"],
+  ["{platform}", "Nintendo 64"],
+  ["{name}: {platform}", "DeckyEmu: Nintendo 64"],
+  ["{name} · {platform}", "DeckyEmu · Nintendo 64"],
+  ["{name} - {platform}", "DeckyEmu - Nintendo 64"],
+  ["{platform} ({name})", "Nintendo 64 (DeckyEmu)"],
+  ["{name}\\n{platform}", "DeckyEmu\nNintendo 64"],
+];
+
+describe("emptyCollectionMatcher, against names the backend really produces", () => {
+  it.each(RENDERED)("recognises what %s renders", (template, name) => {
+    // The shape arrives with the newline already real, because collection_shape
+    // unescapes it before sending -- so the matcher never sees the escape.
+    const matches = emptyCollectionMatcher(
+      shape("DeckyEmu", true, template.replace("\\n", "\n")),
+    );
+    expect(matches(name)).toBe(true);
+  });
+
+  // The formats differ mostly in their separators, so a matcher built from one
+  // must not accept a name built by another -- that is what would let a rename
+  // delete a shelf still holding the games it was renamed away from.
+  it("does not accept a name another format produced", () => {
+    const matches = emptyCollectionMatcher(shape("DeckyEmu", true, "[{name}] {platform}"));
+    expect(matches("DeckyEmu - Nintendo 64")).toBe(false);
+    expect(matches("DeckyEmu: Nintendo 64")).toBe(false);
+  });
+});
+
+/*
  * What was recorded beats what the settings would produce.
  *
  * The pattern above can only describe shelves the *current* naming would make,

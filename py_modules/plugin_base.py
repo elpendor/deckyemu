@@ -70,8 +70,8 @@ class PluginContext:
         """The platform label for a game, which decides its collection."""
         raise NotImplementedError
 
-    @staticmethod
-    def _collection_name(settings: dict, platform: str) -> str:
+    @classmethod
+    def _collection_name(cls, settings: dict, platform: str) -> str:
         """The collection a game belongs in under the current settings."""
         raise NotImplementedError
 

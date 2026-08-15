@@ -14,11 +14,13 @@ import { toaster } from "@decky/api";
 import { useCallback, useEffect, useState } from "react";
 
 import {
+  collectionTemplates,
   getSettings,
   listAdded,
   planCollectionMigration,
   recordCollections,
   setSettings,
+  type CollectionTemplate,
   type PluginSettings,
 } from "./backend";
 import { findFiledGames, migrateCollections, type CollectionMove } from "./steam";
@@ -26,37 +28,22 @@ import { forgetDeleted } from "./collections";
 import { callWithRetry } from "./timeout";
 import { countFiled, strandedSummary, unfileWarning } from "./unfileWarning";
 
-/**
- * Naming formats for per-platform collections.
- *
- * The two-line option is offered because it was asked for, but Steam renders
- * collection titles as single-line text and CSS collapses whitespace, so the
- * newline will most likely show as a space rather than a break.
- */
-const COLLECTION_TEMPLATES = [
-  "[{name}] {platform}",
-  "{platform}",
-  "{name}: {platform}",
-  "{name} · {platform}",
-  "{name} - {platform}",
-  "{platform} ({name})",
-  "{name}\\n{platform}",
-];
-
 const PLATFORM_NAME_OPTIONS: SingleDropdownOption[] = [
   { data: "short", label: "Short (SNES, N64, GBA)" },
   { data: "full", label: "Full (Super Nintendo Entertainment System)" },
 ];
 
-/** Render a template the way the backend will, for the dropdown labels. */
-function previewTemplate(template: string, name: string, platform: string): string {
-  return template
-    .replace("\\n", " ⏎ ")
-    .replace("{name}", name || "Collection")
-    .replace("{platform}", platform)
-    .replace(/[ \t]+/g, " ")
-    .trim();
-}
+/**
+ * Show a rendered name in a dropdown label.
+ *
+ * The rendering itself is the backend's -- `collection_templates` runs the same
+ * function that names a real collection, so a preview cannot promise a format
+ * the filing does not use. This only makes a newline visible, which is a
+ * property of the row rather than of the name. Steam renders collection titles
+ * as single-line text and CSS collapses whitespace, so the newline will most
+ * likely show as a space rather than a break wherever it really appears.
+ */
+const showNewlines = (preview: string) => preview.replace(/\n/g, " ⏎ ");
 
 /**
  * How added games are grouped in the library.
@@ -77,6 +64,25 @@ export function CollectionsPanel() {
   // a state the panel has to be able to show, or the only way to discover it is
   // to look at the library.
   const [filed, setFiled] = useState({ games: 0, shelves: 0 });
+  // The offered formats and how each would read, rendered by the backend. Held
+  // rather than derived because the previews contain the user's own collection
+  // name, so they are re-fetched whenever that changes.
+  const [templates, setTemplates] = useState<CollectionTemplate[]>([]);
+
+  /**
+   * Re-read the offered formats and their previews.
+   *
+   * After any settings change, because a preview quotes the collection name and
+   * would otherwise go on showing the old one. Cheap, and it is the only thing
+   * standing between the dropdown and a label that lies about what filing does.
+   */
+  const refreshTemplates = useCallback(async () => {
+    try {
+      setTemplates((await collectionTemplates()).templates);
+    } catch (error) {
+      console.error("[deckyemu] could not read the naming formats", error);
+    }
+  }, []);
 
   /**
    * Recount how many games are in a collection, from what each recorded when it
@@ -105,17 +111,22 @@ export function CollectionsPanel() {
         // Both ways round: off, it decides whether the "still filed" row is
         // shown; on, it is the count the dialog quotes before anything moves.
         void refreshFiled();
+        void refreshTemplates();
       })
       .catch(() => undefined);
-  }, [refreshFiled]);
+  }, [refreshFiled, refreshTemplates]);
 
-  const patch = useCallback(async (changes: Record<string, unknown>) => {
-    try {
-      setLocalSettings(await setSettings(changes));
-    } catch (error) {
-      console.error("[deckyemu] failed to save settings", error);
-    }
-  }, []);
+  const patch = useCallback(
+    async (changes: Record<string, unknown>) => {
+      try {
+        setLocalSettings(await setSettings(changes));
+        await refreshTemplates();
+      } catch (error) {
+        console.error("[deckyemu] failed to save settings", error);
+      }
+    },
+    [refreshTemplates],
+  );
 
   /** Carry out a plan that has already been made. Returns how many landed. */
   const applyMoves = useCallback(
@@ -428,9 +439,9 @@ export function CollectionsPanel() {
                 <DropdownItem
                   label="Name format"
                   description="Each option shows how it would read. ⏎ marks a newline, which Steam will probably show as a space."
-                  rgOptions={COLLECTION_TEMPLATES.map((template) => ({
-                    data: template,
-                    label: previewTemplate(template, settings.collection_name, "Nintendo 64"),
+                  rgOptions={templates.map((option) => ({
+                    data: option.template,
+                    label: showNewlines(option.preview),
                   }))}
                   selectedOption={settings.collection_template}
                   onChange={(option) =>
