@@ -82,6 +82,11 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
   const [unpacking, setUnpacking] = useState(false);
   const [unpackPercent, setUnpackPercent] = useState(0);
   const [unpackStatus, setUnpackStatus] = useState("");
+  // Which licence key the user said belongs to a Vita package, when nothing
+  // about its name says so. Only ever one of the names the backend offered --
+  // see `chosenKey`, which is what makes a stale choice impossible rather than
+  // something to remember to clear when the ROM changes.
+  const [keyChoice, setKeyChoice] = useState("");
   // How many games RPCS3 has installed, so the route to them is offered only
   // when there is something behind it.
   const [ps3Count, setPs3Count] = useState(0);
@@ -175,6 +180,46 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
   const lookup = lookupArtwork;
 
   /**
+   * Look again for a Vita package's licence key whenever this panel comes back.
+   *
+   * The advice for a missing key is "send it to the same folder", and doing
+   * that means opening the transfer modal — which unmounts this panel, because
+   * Steam unmounts Quick Access content behind a modal. So the user follows the
+   * instruction, comes back, and the row still says the key is missing: the
+   * probe ran once, when the ROM was picked, and nothing has re-read the folder
+   * since. The only way out was to pick the same file again, which nothing
+   * suggests.
+   *
+   * Remounting is exactly the moment to re-check, and it is free: this runs
+   * only while a package is sitting here waiting for a key it does not have.
+   * There is no event to use instead — a file arriving over the transfer server
+   * emits nothing, which is why the transfer row polls.
+   */
+  useEffect(() => {
+    if (!romPath || probe?.vita_package?.licence !== false) return;
+    let live = true;
+    void probeRom(romPath)
+      .then((info) => {
+        // Only when it changes, or this writes the draft on every mount and
+        // re-renders the panel for nothing.
+        if (live && info.vita_package?.licence !== probe.vita_package?.licence) {
+          updateDraft({ probe: info });
+        }
+      })
+      .catch((probeError) => {
+        // A failed re-check leaves what is on screen, which is the truth as of
+        // the last read. Nothing here is worth an error row.
+        console.error("[deckyemu] could not re-check the licence key", probeError);
+      });
+    return () => {
+      live = false;
+    };
+    // Deliberately keyed on the ROM and the answer, not on `probe`: the effect
+    // writes `probe`, so depending on the whole object would re-run it on its
+    // own result.
+  }, [romPath, probe?.vita_package?.licence]);
+
+  /**
    * RPCS3's own output while it unpacks, which only fills the bar.
    *
    * Deliberately not how the unpack finishes: `installPs3Package` resolves when
@@ -208,7 +253,7 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
    * `selectPs3Game`. No window opens: `--headless --installpkg` does a 240MB
    * package in about five seconds with nothing on screen.
    */
-  const unpackPackage = useCallback((system: Console) => {
+  const unpackPackage = useCallback((system: Console, keyName = "") => {
     if (!romPath) return;
     updateDraft({ error: "" });
     setUnpacking(true);
@@ -220,7 +265,10 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
           system === "ps4"
             ? await installPs4Package(romPath)
             : system === "vita"
-              ? await installVitaPackage(romPath)
+              ? // `keyName` is only set when the user picked a key that is not
+                // named for this game. Without it the backend uses the one
+                // named after the package, and refuses rather than guessing.
+                await installVitaPackage(romPath, keyName)
               : await installPs3Package(romPath);
         if (!result.ok || !result.title_id) {
           updateDraft({ error: result.error ?? "The package did not install." });
@@ -510,6 +558,25 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
         : null;
   const pendingPackage = packaged && !packaged.state.installed ? packaged : null;
 
+  // Key files in the folder that nothing ties to this package by name. Present
+  // only while the backend could not match one itself, which is what makes an
+  // empty list here mean "no choice to make" rather than "no key".
+  const keyCandidates =
+    pendingPackage?.system === "vita" && pendingPackage.state.licence === false
+      ? (pendingPackage.state.licence_candidates ?? [])
+      : [];
+  // Derived from what is on offer rather than kept in step with it. A choice
+  // that is no longer among the candidates -- another ROM picked, or the key
+  // sent under its proper name since -- falls back to the first instead of
+  // lingering as a name the backend would reject.
+  const chosenKey = keyCandidates.includes(keyChoice) ? keyChoice : (keyCandidates[0] ?? "");
+  // Vita cannot install without a key, and there is one exactly when the
+  // backend matched it by name or the user has picked one here.
+  const licenceBlocked =
+    pendingPackage?.system === "vita" &&
+    pendingPackage.state.licence === false &&
+    !chosenKey;
+
   return (
     <PanelSection title="Add a game">
       {/* Getting the file here comes before picking it, so it is the first row.
@@ -683,16 +750,74 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
           </PanelSectionRow>
         )}
 
-      {/* Vita3K installs a release the first time it is launched, so there is
-          no unpack step here — but a missing licence is worth saying before
-          the game refuses to start for a reason nothing on screen explains. */}
-      {probe?.vita_release?.vita && !probe.vita_release.licence && (
+      {/* A .vpk or a NoNpDrm .zip. Recognised so it can be explained: this is
+          the one console whose content cannot be handed over as a file. Vita3K
+          decrypts as it installs, and its own launcher re-splits any path with
+          a space in it, so a shortcut pointing at this file could never work —
+          which is what it used to offer, failing only at launch. */}
+      {probe?.vita_release?.vita && (
         <PanelSectionRow>
           <Field
-            label="No licence in this release"
-            description="PS Vita releases normally carry a work.bin licence file. Without one the game installs but may refuse to start."
+            label="PS Vita releases are installed, not opened"
+            description={
+              `${probe.vita_release.title || "This release"} has to be installed into Vita3K before ` +
+              `it can be added, because Vita3K decrypts games as it installs them. Two ways in: send ` +
+              `the game as a .pkg with its .zrif key and this panel installs it for you, or install ` +
+              `this file from Vita3K's own interface on the Emulators tab. Either way it then appears ` +
+              `under "PlayStation Vita games in Vita3K" here.`
+            }
           />
         </PanelSectionRow>
+      )}
+
+      {/* The licence, said before the button rather than inside it.
+          Vita3K cannot install a package without the zRIF that decrypts it and
+          cannot derive one, so this is the whole of what stands between the
+          file being here and the game being installed — which makes it a
+          finding with an action, not a footnote on a control that is greyed
+          out. Two different problems, because they have different answers. */}
+      {pendingPackage?.system === "vita" && pendingPackage.state.licence === false && (
+        <>
+          <PanelSectionRow>
+            <Field
+              label={
+                (pendingPackage.state.licence_candidates?.length ?? 0) > 0
+                  ? "Which key is this game's?"
+                  : "This package needs its licence key"
+              }
+              description={
+                (pendingPackage.state.licence_candidates?.length ?? 0) > 0
+                  ? // There is a key here, but nothing ties it to this package.
+                    // Using it anyway is what installed a gigabyte and a half
+                    // under another game's licence, so it is offered by name
+                    // and pressed by a person who can see the name.
+                    `Nothing here is named for ${pendingPackage.state.title_id || "this package"}, so it cannot be ` +
+                    `matched automatically. Pick the one that came with this game, or send it again as ` +
+                    `${pendingPackage.state.licence_name || "the title id with a .zrif extension"} and it will be ` +
+                    `used without asking. The wrong key installs the whole game and then fails to decrypt it.`
+                  : `Vita3K decrypts a package as it installs and cannot work the key out, so it has to be here too. ` +
+                    `Send it to the same folder as the game — a .zrif or a .txt with the key in it, named ` +
+                    `${pendingPackage.state.licence_name || "after the title id"}. It is picked up as soon as it lands.`
+              }
+            />
+          </PanelSectionRow>
+
+          {/* The same shape as "Run with" above: choose, then press the one
+              install button, which names the choice so the filename is still
+              readable without opening the list. */}
+          {!unpacking && keyCandidates.length > 0 && (
+            <PanelSectionRow>
+              <DropdownItem
+                label="Licence key"
+                description="The file that came with this game. Picking the wrong one installs it and then fails to decrypt it."
+                rgOptions={keyCandidates.map((name) => ({ data: name, label: name }))}
+                selectedOption={chosenKey}
+                onChange={(option) => setKeyChoice(String(option.data))}
+                disabled={adding}
+              />
+            </PanelSectionRow>
+          )}
+        </>
       )}
 
       {pendingPackage && (
@@ -712,18 +837,33 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
           ) : (
             <ButtonItem
               layout="below"
-              onClick={() => unpackPackage(pendingPackage.system)}
-              // Refused rather than allowed to fail: without the key Vita3K
+              // `chosenKey` is empty for every console but Vita, and for Vita
+              // whenever the backend matched the key by name itself -- which is
+              // the case where it must stay empty, because a name the user did
+              // not choose is not one to send back as though they had.
+              onClick={() => unpackPackage(pendingPackage.system, chosenKey)}
+              // Refused rather than allowed to fail: without a key Vita3K
               // reports a corrupt package, which reads as a bad download.
-              disabled={adding || pendingPackage.state.licence === false}
+              disabled={adding || licenceBlocked}
               description={
                 pendingPackage.system === "vita"
                   ? // Vita3K installs it itself, like RPCS3 — but it cannot
                     // decrypt without the key the package was sold with, and
-                    // cannot work that out, so the key has to arrive too.
-                    pendingPackage.state.licence === false
-                    ? "No licence key found beside this package. Vita3K cannot decrypt one without it — send the game's .zrif or .txt to the same folder and it will be picked up."
-                    : "Vita3K installs and decrypts this itself, with no window and nothing to press. The .pkg is deleted afterwards, using the licence key found beside it."
+                    // cannot work that out, so the key has to arrive too. What
+                    // is missing is said in its own row above, not here: this
+                    // description belongs to a button that cannot be pressed,
+                    // and a disabled control is the last place to put the one
+                    // thing the reader has to act on.
+                    licenceBlocked
+                    ? "Waiting for the licence key — see above."
+                    : chosenKey
+                      ? // Named again here, at the moment of pressing. The
+                        // dropdown is above and may well be scrolled off, and
+                        // this is the press that spends a gigabyte or two on
+                        // the answer being right.
+                        `Vita3K installs and decrypts this itself, with no window and nothing to press. ` +
+                        `Using ${chosenKey}, which you chose — the wrong key installs the game and then fails to decrypt it.`
+                      : "Vita3K installs and decrypts this itself, with no window and nothing to press. The .pkg is deleted afterwards, using the licence key found beside it."
                   : pendingPackage.system === "ps4"
                   ? // shadPS4 cannot do this itself, so the first PS4 package
                     // fetches the extractor. Worth saying: it is the one thing

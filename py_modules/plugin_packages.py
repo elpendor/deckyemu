@@ -270,13 +270,21 @@ class PackagedGames(plugin_base.PluginContext):
         games = await self._run(ps4_games.installed_games)
         return {"ok": True, "games": games}
 
-    async def install_vita_package(self, path: str):
+    async def install_vita_package(self, path: str, key_name: str = ""):
         """Install a Vita .pkg with the key that came with it. No window at all.
 
         Mirrors the PS3 one: the emulator does its own installing, so there is
         no helper to fetch. What differs is the key -- Vita3K needs a zRIF to
         decrypt the content and cannot derive it, so the package travels with
         one and this looks beside the file rather than in a bundled table.
+
+        `key_name` is a file in the same folder that the *user* said was this
+        game's, for the case where nothing about its name says so. Chosen there
+        rather than guessed here: picking the only key lying around installed a
+        gigabyte and a half under another game's licence once, and every symptom
+        of it pointed at the package instead. A name, never a path -- this is
+        reachable from anything running in Steam's JS context, and joining a
+        caller's string to a folder is how that becomes a file read anywhere.
         """
         emulator = await self._run(emulators.find, "vita3k")
         if not emulator:
@@ -286,11 +294,18 @@ class PackagedGames(plugin_base.PluginContext):
             return {"ok": False, "error": "That file is not a PlayStation Vita package."}
 
         title_id = await self._run(vita_games.package_title_id, path)
-        zrif = await self._run(vita_games.find_zrif, path, title_id)
+        zrif, key_file = await self._run(vita_games.locate_zrif, path, title_id)
+
+        if not zrif and key_name:
+            chosen = os.path.basename(key_name)
+            if chosen in await self._run(vita_games.zrif_candidates, os.path.dirname(path)):
+                key_file = os.path.join(os.path.dirname(path), chosen)
+                zrif = await self._run(vita_games.zrif_from, key_file)
+
         if not zrif:
             return {
                 "ok": False,
-                "error": "No licence key found beside this package. Send its .zrif "
+                "error": "No licence key found for this package. Send its .zrif "
                 "or .txt file to the same folder and try again -- Vita3K cannot "
                 "decrypt a package without one.",
             }
@@ -300,7 +315,15 @@ class PackagedGames(plugin_base.PluginContext):
             "Installing %s" % (title_id or "package"), -1,
         )
 
+        # Vita3K says why it failed and then exits 0, so the only account of a
+        # wrong key is a line in the middle of the output. Without this the
+        # install ends on "no new game appeared", which describes the symptom
+        # and points at the package -- the one thing that was not at fault.
+        mismatch = []
+
         async def on_line(text):
+            if "header signature is invalid" in text.lower():
+                mismatch.append(text)
             await decky.emit(
                 "vita_install_progress", os.path.basename(path), text,
                 self._parse_percent(text),
@@ -326,14 +349,26 @@ class PackagedGames(plugin_base.PluginContext):
             None,
         )
         if not game:
+            if mismatch:
+                return {
+                    "ok": False,
+                    "error": "That licence key is not this game's. Vita3K read the "
+                    "key and then could not decrypt the content with it (%s). Send "
+                    "the key that came with this package, named after its title id."
+                    % os.path.basename(key_file or "the key used"),
+                }
             return {
                 "ok": False,
                 "error": error or "Vita3K finished but no new game appeared.",
             }
 
-        removed = await self._run(
-            emu_firmware.remove, [os.path.basename(path)], os.path.dirname(path)
-        )
+        # The key goes with the package it unlocked. It is spent -- the content
+        # is decrypted and installed -- and a key left behind is one more
+        # unnamed candidate the next package has to be asked about.
+        spent = [os.path.basename(path)]
+        if key_file and os.path.dirname(key_file) == os.path.dirname(path):
+            spent.append(os.path.basename(key_file))
+        removed = await self._run(emu_firmware.remove, spent, os.path.dirname(path))
         decky.logger.info(
             "Installed %s as %s (deleted %s, exit ok=%s)",
             os.path.basename(path), game["title"], removed.get("removed", []), ok,

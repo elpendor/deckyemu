@@ -92,6 +92,16 @@ export interface PackageState {
    */
   licence?: boolean;
   /**
+   * Vita only: key files sitting in the folder that hold a zRIF but that
+   * nothing ties to this package. Empty unless there are at least two — one on
+   * its own is taken as the answer. This is the difference between "send the
+   * key" and "say which of these is the key", and telling somebody to send a
+   * file they have already sent is the worse of the two failures.
+   */
+  licence_candidates?: string[];
+  /** Vita only: the filename that would resolve the above, e.g. `PCSA00011.zrif`. */
+  licence_name?: string;
+  /**
    * PS3 only: where this content's `.rap` is — `"installed"`, `"waiting"` (sent
    * but not yet put in place), or `""` (not here at all). Reported rather than
    * enforced, because licence-free packages boot without one; what it buys is

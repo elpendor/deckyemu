@@ -120,16 +120,36 @@ def package_title_id(path):
 
 
 def find_zrif(pkg_path, title_id=""):
-    """The licence key kept beside a package, or ''.
+    """The licence key kept beside a package, or ''."""
+    return locate_zrif(pkg_path, title_id)[0]
+
+
+def locate_zrif(pkg_path, title_id=""):
+    """(key, the file it came out of) for a package's licence, or ('', '').
 
     Vita3K cannot install a package without one and cannot derive it: the key
     is what decrypts the content. It is not bundled here and never will be --
     a third-party table of licence keys is not something to ship, and it goes
     stale. So it travels with the game, which is how these are distributed.
 
-    Looked for beside the package under its own name, then under the title id,
-    then any single candidate in the same folder -- because "I sent both files"
-    should be enough without also having to name them alike.
+    **A key belongs to this package only when its name says so** -- the
+    package's own stem, or the title id. Anything else in the folder is a file
+    that happens to hold a zRIF, and this does not guess between them.
+
+    It used to: a lone candidate was taken as the answer, on the reasoning that
+    "I sent both files" ought to be enough without naming them alike. That is
+    wrong whenever the folder is an inbox, which is exactly what it is. A
+    transfer folder holding `gravity rush.pkg` and one unrelated `tennis.zrif`
+    installed a gigabyte and a half under the wrong licence; Vita3K decompressed
+    the key, failed the content with `header signature is invalid`, and the
+    plugin reported that no new game had appeared -- three steps at which it
+    read as a bad dump of the game rather than as the wrong key for a good one.
+
+    An unnamed key is now offered to the user by name instead, which costs one
+    tap and cannot pick the wrong one silently. See `zrif_report`.
+
+    The file is reported as well as the key so the caller can clear it away with
+    the package it belonged to.
     """
     folder = os.path.dirname(pkg_path)
     stem = os.path.splitext(os.path.basename(pkg_path))[0]
@@ -140,23 +160,44 @@ def find_zrif(pkg_path, title_id=""):
             names.extend(base + suffix for suffix in ZRIF_SUFFIXES)
 
     for name in names:
-        key = _read_zrif(os.path.join(folder, name))
+        path = os.path.join(folder, name)
+        key = _read_zrif(path)
         if key:
-            return key
+            return key, path
+    return "", ""
 
-    # Nothing named to match. One candidate in the folder is unambiguous;
-    # several are not, and guessing between them would install the wrong
-    # licence and fail in a way that looks like a bad dump.
+
+def zrif_candidates(folder):
+    """Filenames in `folder` that hold something shaped like a zRIF."""
     found = []
     try:
         for name in sorted(os.listdir(folder)):
-            if name.lower().endswith(ZRIF_SUFFIXES):
-                key = _read_zrif(os.path.join(folder, name))
-                if key:
-                    found.append(key)
+            if name.lower().endswith(ZRIF_SUFFIXES) and _read_zrif(os.path.join(folder, name)):
+                found.append(name)
     except OSError:
-        return ""
-    return found[0] if len(found) == 1 else ""
+        pass
+    return found
+
+
+def zrif_report(pkg_path, title_id=""):
+    """{key, file, candidates} -- this package's licence, and what else is here.
+
+    `key` is filled only when a file is named for this package. `candidates` is
+    every other key file in the folder, offered so the panel can ask *which*
+    rather than either guessing or claiming there is none.
+
+    Those are three different situations with three different answers -- send a
+    key, choose between these, or go ahead -- and they were one boolean before.
+    """
+    key, path = locate_zrif(pkg_path, title_id)
+    if key:
+        return {"key": key, "file": path, "candidates": []}
+    return {"key": "", "file": "", "candidates": zrif_candidates(os.path.dirname(pkg_path))}
+
+
+def zrif_from(path):
+    """The key in one named file, for a candidate the user picked themselves."""
+    return _read_zrif(path)
 
 
 # A licence key file is a line of text. Anything larger is not one.

@@ -685,6 +685,12 @@ class Plugin(
         install a package without the zRIF that decrypts it, and cannot work it
         out. The panel says so before the button is pressed rather than after
         the install fails.
+
+        `licence_candidates` is what to say when there is no key *for this
+        game* but there are keys in the folder. Reporting that as "no key
+        found" told the user to send a file they had already sent, and the
+        thing actually needed -- a name that ties one of them to this package
+        -- was never asked for.
         """
         title_id = vita_games.package_title_id(pkg_path)
         game = None
@@ -694,12 +700,19 @@ class Plugin(
                  if item["title_id"] == title_id),
                 None,
             )
+        licence = vita_games.zrif_report(pkg_path, title_id)
         return {
             "title_id": title_id,
             "installed": bool(game),
             "title": game["title"] if game else "",
             "eboot": game["eboot"] if game else "",
-            "licence": bool(vita_games.find_zrif(pkg_path, title_id)),
+            "licence": bool(licence["key"]),
+            "licence_candidates": licence["candidates"],
+            # The name that would end the ambiguity, so the panel can quote it
+            # rather than describe it. `find_zrif` looks for the title id and
+            # for the package's own stem, and the title id is the one the user
+            # can read off the row in front of them.
+            "licence_name": "%s.zrif" % title_id if title_id else "",
         }
 
     def _core_by_id(self, core_id):

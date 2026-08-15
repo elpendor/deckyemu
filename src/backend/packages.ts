@@ -107,8 +107,14 @@ export const vitaCoreId = callable<[], { ok: boolean; error?: string; core_id?: 
  * does its own installing, so unlike PS4 there is no helper tool to fetch.
  * Emits `vita_install_progress` while it runs.
  */
+/**
+ * `keyName` is a key file in the same folder that the user said belongs to this
+ * game, for when nothing about its name says so. A filename, never a path.
+ * Omit it whenever the key is named after the package or its title id — the
+ * backend finds that one itself, and it is the only kind it will use unasked.
+ */
 export const installVitaPackage = callable<
-  [path: string],
+  [path: string, keyName?: string],
   { ok: boolean; error?: string; title?: string; title_id?: string }
 >("install_vita_package");
 export const prepareVitaGame = callable<

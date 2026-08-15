@@ -4858,7 +4858,57 @@ check("a key in a text file named after the title id is found too",
       vita_games.find_zrif(_vpkg, "PCSA00045"), _ZRIF)
 check("and a readme with no key in it is not mistaken for one",
       vita_games._read_zrif(os.path.join(TMP, "notes.txt")), "")
+# Reported alongside the key so the install can clear it away with the package.
+# A spent key left in the folder is counted by the next package's search, and
+# one stray file is enough to make that choice ambiguous -- so the reward for
+# installing one game was an install that refused the next for no visible
+# reason.
+check("the file the key came out of is reported with it",
+      vita_games.locate_zrif(_vpkg, "PCSA00045")[1],
+      os.path.join(TMP, "PCSA00045.txt"))
 os.remove(os.path.join(TMP, "PCSA00045.txt"))
+check("and nothing is named when there is no key to find",
+      vita_games.locate_zrif(_vpkg, "PCSA00045"), ("", ""))
+
+# "No key here" and "a key is here but nothing says it is this game's" are
+# different problems with different answers, and they read the same while this
+# was a boolean.
+check("with nothing beside it, there is nothing to choose between",
+      vita_games.zrif_report(_vpkg, "PCSA00045")["candidates"], [])
+
+# The check this file exists for. A transfer folder is an inbox, so the one key
+# lying in it is not this game's by default -- and taking it as such installed
+# 1.5GB of Gravity Rush under a tennis game's licence, which Vita3K reported as
+# `header signature is invalid`: a message that reads as a bad dump of the game
+# rather than as the wrong key for a good one. Every symptom pointed away from
+# the cause.
+with io.open(os.path.join(TMP, "tennis.zrif"), "w") as _handle:
+    _handle.write(_ZRIF + "\n")
+_unnamed = vita_games.zrif_report(_vpkg, "PCSA00045")
+check("a key that is not named for this package is never used unasked",
+      _unnamed["key"], "")
+check("it is offered by name instead, so the choice is somebody's",
+      _unnamed["candidates"], ["tennis.zrif"])
+# And it can still be used, deliberately: the user reads the name and says yes.
+check("and the key inside a candidate can be read once it is chosen",
+      vita_games.zrif_from(os.path.join(TMP, "tennis.zrif")), _ZRIF)
+
+with io.open(os.path.join(TMP, "a-third-game.txt"), "w") as _handle:
+    _handle.write(_ZRIF + "\n")
+check("every candidate is listed, not just the first",
+      vita_games.zrif_report(_vpkg, "PCSA00045")["candidates"],
+      ["a-third-game.txt", "tennis.zrif"])
+
+# Naming one after the package ends the question, which is what the panel tells
+# the user to do and what the common case already does.
+with io.open(os.path.join(TMP, "PCSA00045.zrif"), "w") as _handle:
+    _handle.write(_ZRIF + "\n")
+_named = vita_games.zrif_report(_vpkg, "PCSA00045")
+check("a key named after the title id is used with no question",
+      _named["key"], _ZRIF)
+check("and nothing else is offered once one matches", _named["candidates"], [])
+for _leftover in ("tennis.zrif", "a-third-game.txt", "PCSA00045.zrif"):
+    os.remove(os.path.join(TMP, _leftover))
 
 # Removing a Vita game can clear it from the emulator, like the other two.
 _vita_info = vita_games.game_info(os.path.join(_vita_game, "eboot.bin"), _vita_root)
