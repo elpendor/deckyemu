@@ -8,16 +8,11 @@ import {
 import { addEventListener, removeEventListener, toaster } from "@decky/api";
 import { useCallback, useEffect, useState } from "react";
 
-import { clearLibrary, collectionShape, listAdded, type AddedGame } from "./backend";
-import {
-  deleteCollections,
-  findEmptyCollections,
-  removeAppsFromCollection,
-  removeShortcut,
-} from "./steam";
+import { clearLibrary, listAdded, type AddedGame } from "./backend";
+import { removeShortcut } from "./steam";
+import { sweepEmptyCollections, unfileGames } from "./collections";
 import { AddedGamesModal } from "./AddedGamesModal";
 import { clearWarning, shouldConfirmClear } from "./clearWarning";
-import { emptyCollectionMatcher } from "./collectionMatch";
 import { DANGER_CLASS, DANGER_CSS } from "./danger";
 import { InstallProgress } from "./InstallProgress";
 import { OrphanModal } from "./OrphanModal";
@@ -111,49 +106,24 @@ export function LibraryPanel({ onRefresh }: Props) {
     try {
       const cleared = await clearLibrary();
 
-      const byCollection = new Map<string, number[]>();
-      for (const game of cleared.games) {
-        if (!game.collection) continue;
-        const existing = byCollection.get(game.collection) ?? [];
-        existing.push(game.app_id);
-        byCollection.set(game.collection, existing);
-      }
-      let done = 0;
-      for (const [tag, appIds] of byCollection) {
+      await unfileGames(cleared.games, (done, total) =>
         setProgress({
-          text: `Emptying collections (${done + 1} of ${byCollection.size})`,
-          percent: Math.round(100 * BACKEND_SHARE + (5 * done) / byCollection.size),
-        });
-        await removeAppsFromCollection(tag, appIds);
-        done += 1;
-      }
+          text: `Emptying collections (${done + 1} of ${total})`,
+          percent: Math.round(100 * BACKEND_SHARE + (5 * done) / total),
+        }),
+      );
 
       setProgress({ text: "Removing shortcuts", percent: 95 });
       for (const game of cleared.games) {
         removeShortcut(game.app_id);
       }
 
-      /*
-       * The same sweep the library check offers, which this did not do.
-       *
-       * Emptying a collection is not the same as deleting it, and only the
-       * paths that empty one *on purpose* have ever deleted it: a shortcut
-       * removed in Steam itself, or a dev reset, leaves the shelf standing with
-       * nothing on it and nothing since goes looking. Clearing the library was
-       * the one place certain to have just made some, and it swept none of
-       * them.
-       *
-       * It is a backstop for shelves left by earlier sessions, not the
-       * mechanism for the games just removed -- `RemoveShortcut` is fire and
-       * forget and Steam recomputes its collections on its own schedule, so
-       * anything emptied by the loop above may still look occupied from here.
-       * Those are handled by taking the apps out explicitly first, which is
-       * what the loop before it is for.
-       */
+      // A backstop for shelves earlier sessions left standing, not the
+      // mechanism for the games just removed -- see `sweepEmptyCollections`.
+      // Clearing the library was the one place certain to have just made some
+      // and it swept none of them.
       setProgress({ text: "Deleting empty collections", percent: 97 });
-      const emptied = await deleteCollections(
-        findEmptyCollections(emptyCollectionMatcher(await collectionShape())),
-      );
+      const emptied = await sweepEmptyCollections();
       setProgress({ text: "Done", percent: 100 });
 
       const removed = [`${cleared.launchers_deleted} launcher(s) deleted`];

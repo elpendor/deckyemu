@@ -21,12 +21,12 @@ import {
   findStaleCollections,
   findUnfiledGames,
   pruneStaleCollections,
-  removeAppsFromCollection,
   removeShortcut,
   repointShortcut,
   shortcutExists,
   type StaleCollection,
 } from "./steam";
+import { unfileGames } from "./collections";
 import { humanSize } from "./TransferModal";
 import { emptyCollectionMatcher } from "./collectionMatch";
 import { callWithRetry } from "./timeout";
@@ -54,20 +54,7 @@ interface Finding {
  */
 async function forgetAndUnfile(appIds: number[]): Promise<string> {
   const result = await forgetGames(appIds);
-
-  const byCollection = new Map<string, number[]>();
-  for (const game of result.games ?? []) {
-    if (!game.collection) continue;
-    byCollection.set(game.collection, [
-      ...(byCollection.get(game.collection) ?? []),
-      game.app_id,
-    ]);
-  }
-  for (const [tag, ids] of byCollection) {
-    await removeAppsFromCollection(tag, ids);
-  }
-
-  const emptied = byCollection.size;
+  const emptied = await unfileGames(result.games ?? []);
   return (
     `${result.removed.length} forgotten` +
     (emptied ? `, ${emptied} collection(s) tidied` : "") +

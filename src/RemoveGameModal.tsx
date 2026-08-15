@@ -9,7 +9,8 @@ import {
   unregisterGame,
   type AddedGame,
 } from "./backend";
-import { removeAppsFromCollection, removeShortcut } from "./steam";
+import { removeShortcut } from "./steam";
+import { unfileGames } from "./collections";
 import { humanSize } from "./TransferModal";
 
 interface Props {
@@ -102,18 +103,18 @@ export function RemoveGameModal({ closeModal, game, onRemoved }: Props) {
       onOK={() => {
         void (async () => {
           try {
-            removeShortcut(game.app_id);
+            // Read the record first, take the game off its shelf, and only
+            // then remove the shortcut. The order is load-bearing and this was
+            // the one place that had it backwards: Steam takes an app out of a
+            // collection by its overview, which stops existing with the
+            // shortcut, so unfiling afterwards silently did nothing -- leaving
+            // the collection listing an id that no longer resolves, never
+            // reading as empty, and the shelf outliving every game on it. That
+            // is the bug the comment here used to describe while the code went
+            // on causing it. `unfileGames` owns the rule now.
             const forgotten = await unregisterGame(game.app_id);
-
-            // Take it out of its collection too, and let that collection go if
-            // it is now empty. Removing the shortcut alone left the collection
-            // holding an app id that no longer exists -- so it never counted as
-            // empty, and a shelf for a console with no games on it stayed in
-            // the library forever. Conditional inside removeAppsFromCollection:
-            // one still holding games the user dragged in survives.
-            if (forgotten?.collection) {
-              await removeAppsFromCollection(forgotten.collection, [game.app_id]);
-            }
+            if (forgotten) await unfileGames([forgotten]);
+            removeShortcut(game.app_id);
 
             let freed = 0;
             if (extra) {

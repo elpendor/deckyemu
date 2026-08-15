@@ -11,14 +11,9 @@ import { useCallback, useEffect, useState } from "react";
 
 import { callable } from "@decky/api";
 
-import { collectionShape, listAdded, type AddedGame } from "./backend";
-import {
-  deleteCollections,
-  findEmptyCollections,
-  removeAppsFromCollection,
-  removeShortcut,
-} from "./steam";
-import { emptyCollectionMatcher } from "./collectionMatch";
+import { listAdded, type AddedGame } from "./backend";
+import { removeShortcut } from "./steam";
+import { sweepEmptyCollections, unfileGames } from "./collections";
 import { humanSize } from "./TransferModal";
 import { callWithRetry } from "./timeout";
 
@@ -220,24 +215,11 @@ export function DevPanel({ onChanged }: Props) {
                   return;
                 }
 
-                /*
-                 * Out of their collections before their shortcuts go, for the
-                 * reason the removal dialog does it in that order: once the app
-                 * no longer exists the collection still lists its id, so it
-                 * never reads as empty and the shelf outlives every game on it.
-                 * A reset that left twenty dead shortcuts also left the shelves
-                 * they sat on.
-                 */
-                const byCollection = new Map<string, number[]>();
-                for (const game of stranded) {
-                  if (!game.collection) continue;
-                  const existing = byCollection.get(game.collection) ?? [];
-                  existing.push(game.app_id);
-                  byCollection.set(game.collection, existing);
-                }
-                for (const [tag, appIds] of byCollection) {
-                  await removeAppsFromCollection(tag, appIds);
-                }
+                // Out of their collections before their shortcuts go -- the
+                // ordering is load-bearing, and `unfileGames` says why. A reset
+                // that left twenty dead shortcuts also left the shelves they
+                // sat on.
+                await unfileGames(stranded);
 
                 let unshortcut = 0;
                 for (const game of stranded) {
@@ -246,9 +228,7 @@ export function DevPanel({ onChanged }: Props) {
 
                 // And whatever earlier resets left standing, since this is the
                 // action that made them.
-                const emptied = await deleteCollections(
-                  findEmptyCollections(emptyCollectionMatcher(await collectionShape())),
-                );
+                const emptied = await sweepEmptyCollections();
                 const failed = result.failed?.length
                   ? ` ${result.failed.length} could not be removed.`
                   : "";
