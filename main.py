@@ -1612,10 +1612,21 @@ class Plugin(
         )
 
     async def rebuild_launchers(self):
-        """Regenerate every launcher script from the current settings."""
-        if not self._install:
-            return {"ok": False, "error": "RetroArch was not found on this system."}
+        """Regenerate every launcher script from the current settings.
 
+        Not gated on RetroArch. It was, and that made every settings change
+        silently do nothing on a Deck running only catalog emulators -- which is
+        a configuration this plugin supports on purpose: `prepare_shortcut`
+        needs RetroArch only when the chosen core is a libretro one, and the
+        whole point of the emulator catalog is that a Deck can have no RetroArch
+        at all. The rebuild refused for all of them because one *kind* of game
+        needs it.
+
+        A libretro game still cannot be rebuilt without it -- there is no argv
+        to write without an install to run -- so those are skipped by name,
+        which is what the caller already reports. A standalone emulator's
+        launcher never needed it.
+        """
         settings = await self._run(store.get_settings)
         library = await self._run(store.get_library)
 
@@ -1666,6 +1677,13 @@ class Plugin(
         skipped = []
         for job in jobs:
             if not job["core_path"] or not job["rom_path"] or not os.path.isfile(job["rom_path"]):
+                skipped.append(job["label"])
+                continue
+            # A libretro core is run *by* RetroArch, so with no install there is
+            # no argv to write. Skipped by name rather than refused for the
+            # whole library: a standalone emulator's launcher does not involve
+            # RetroArch and must still be rebuilt on a Deck that has none.
+            if not install and not job["emulator"]:
                 skipped.append(job["label"])
                 continue
             try:
