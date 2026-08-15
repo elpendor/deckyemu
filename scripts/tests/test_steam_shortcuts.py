@@ -112,6 +112,59 @@ check("a launcher still on disk is seen", _ours[0]["launcher_exists"], True)
 check("and one that is gone is reported as missing", _ours[1]["launcher_exists"], False)
 
 
+# --------------------------------------------- entries pointing somewhere else
+
+# The other direction, and the one nothing asked. Every check in the audit
+# starts from a registry entry and asks whether the *files* it names are still
+# there; whether the Steam shortcut it claims is still that game was never
+# tested, though the appid and the executable are written down side by side in
+# the file read above.
+#
+# It matters because Steam reuses the appids of deleted shortcuts. An entry can
+# come to name an id that is now another game, and then editing this game
+# rewrites that one and removing it deletes it. The frontend cannot see any of
+# this: from there a shortcut's executable is not readable at all, so an app
+# existing under that id looks like agreement.
+import plugin_audit  # noqa: E402
+
+steam_shortcuts.shortcuts_files = lambda: [_vdf]
+
+_library = {
+    # Correct: the appid and the launcher are the pair the file records.
+    "3740231350": {
+        "app_id": 3740231350, "title": "Super Mario 3D World",
+        "launcher_path": os.path.join(LAUNCHER_DIR, "smw-e29cf16c.sh"),
+    },
+    # Wrong: this id belongs to the Wind Waker shortcut now.
+    "2861890934": {
+        "app_id": 2861890934, "title": "Metroid Prime",
+        "launcher_path": os.path.join(LAUNCHER_DIR, "prime-11112222.sh"),
+    },
+    # An id Steam's file says nothing about -- a real Steam game, or a shortcut
+    # not written out yet. Neither is something to report: the first is not ours
+    # to comment on and the second would appear for a moment after every add.
+    "999": {
+        "app_id": 999, "title": "Just Added",
+        "launcher_path": os.path.join(LAUNCHER_DIR, "just-added-33334444.sh"),
+    },
+}
+
+_mispointed = plugin_audit.Audit._mispointed_entries(_library)
+check("an entry whose id runs another game is found", len(_mispointed), 1)
+check("and it is the one that disagrees", _mispointed[0]["title"], "Metroid Prime")
+# So the report can name the game that would have been rewritten, which is the
+# whole reason this is not simply "forget it".
+check("the game it actually points at is named", _mispointed[0]["runs_title"], "Wind Waker HD")
+check("an entry pointing at its own launcher is not reported",
+      [item["app_id"] for item in _mispointed], [2861890934])
+check("nor is one Steam's file has never heard of",
+      any(item["app_id"] == 999 for item in _mispointed), False)
+check("and a library with nothing wrong reports nothing",
+      plugin_audit.Audit._mispointed_entries({"3740231350": _library["3740231350"]}), [])
+
+steam_shortcuts.shortcuts_files = _real_files
+
+
 # ------------------------------------------------------------------- damage
 
 # A cleanup screen that raises is worse than one that offers nothing: the file

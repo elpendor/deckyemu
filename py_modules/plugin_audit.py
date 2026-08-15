@@ -59,6 +59,7 @@ class Audit(plugin_base.PluginContext):
             "strays": sorted(strays),
             "previous_installs": previous,
             "unknown_shortcuts": await self._run(self._unknown_shortcuts, library),
+            "mispointed": await self._run(self._mispointed_entries, library),
             "unused_roms": await self._run(self._unused_roms, library),
         }
 
@@ -155,6 +156,58 @@ class Audit(plugin_base.PluginContext):
             ", ".join(sorted({item["kind"] for item in report})) or "none",
         )
         return report
+
+    @staticmethod
+    def _mispointed_entries(library):
+        """Entries whose appid belongs to a shortcut running something else.
+
+        The other direction of `_unknown_shortcuts`, and the one nothing asked.
+        Every check here starts from an entry and asks whether the *files* it
+        names are still there; whether the Steam shortcut it claims is still
+        that game was never tested, though `shortcuts.vdf` has the appid and the
+        executable written down side by side and the answer is a comparison.
+
+        Steam reuses the appids of deleted shortcuts -- `setupShortcut` relies
+        on knowing that -- so a registry entry can end up naming an id that now
+        belongs to something else entirely. Editing that game then rewrites
+        somebody else's shortcut, and removing it deletes their entry. The
+        frontend's own check sees an app exists under that id and is satisfied,
+        because from there a shortcut's executable cannot be read at all.
+
+        Only shortcuts this plugin made are compared. An entry whose appid is
+        not in the file is either a real Steam game's id or a shortcut Steam has
+        not written out yet, and neither is something to report -- the first is
+        not ours to comment on and the second would be a finding that appears
+        for a moment after every add.
+        """
+        ours = {item["app_id"]: item for item in steam_shortcuts.ours()}
+
+        found = []
+        for entry in library.values():
+            app_id = entry.get("app_id")
+            launcher = entry.get("launcher_path", "")
+            shortcut = ours.get(app_id)
+            if not app_id or not launcher or not shortcut:
+                continue
+            if os.path.normpath(shortcut["exe"]) == os.path.normpath(launcher):
+                continue
+            found.append(
+                {
+                    "app_id": app_id,
+                    "title": entry.get("title", ""),
+                    "launcher_path": launcher,
+                    # What the shortcut runs instead, so the report can say
+                    # which game would have been rewritten.
+                    "runs": shortcut["exe"],
+                    "runs_title": shortcut["title"],
+                }
+            )
+
+        if found:
+            decky.logger.info(
+                "audit: %d entry(s) point at a shortcut running something else", len(found)
+            )
+        return found
 
     @staticmethod
     def _inspect_library(library):

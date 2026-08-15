@@ -120,6 +120,25 @@ export interface AuditReport {
     launcher_exists: boolean;
     kind: "dead" | "duplicate" | "orphan";
   }>;
+  /**
+   * Entries whose appid belongs to a shortcut that runs something else.
+   *
+   * The other direction of `unknown_shortcuts`. Steam reuses the appids of
+   * deleted shortcuts, so an entry can come to name an id that is now another
+   * game — and then editing this game rewrites that one, and removing it
+   * deletes it. `shortcutExists` cannot see this: from the frontend a
+   * shortcut's executable is not readable at all, so an app existing under that
+   * id looks like agreement.
+   */
+  mispointed: Array<{
+    app_id: number;
+    title: string;
+    launcher_path: string;
+    /** What the shortcut actually runs. */
+    runs: string;
+    /** And what Steam calls it, which is the game that would have been rewritten. */
+    runs_title: string;
+  }>;
   previous_installs: Array<{
     name: string;
     path: string;

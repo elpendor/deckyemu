@@ -239,6 +239,34 @@ export function OrphanModal({ onChanged, closeModal }: Props) {
     });
   }
 
+  /*
+   * An entry naming an appid that now belongs to somebody else's shortcut.
+   *
+   * Forgetting is the only safe repair, and the wording has to be careful: the
+   * dangerous reading is "remove this game", which is exactly what must not
+   * happen -- the Steam entry under that id is not this game and is not ours.
+   * So the record goes and Steam is not touched at all.
+   */
+  const mispointed = report?.mispointed ?? [];
+  if (mispointed.length > 0) {
+    findings.push({
+      key: "mispointed",
+      title: "Entries pointing at somebody else's shortcut",
+      detail:
+        `${mispointed.length} tracked game(s) name a Steam entry that runs something else. Steam ` +
+        `reuses the id of a deleted shortcut, so an id recorded here can end up belonging to a ` +
+        `different game — and editing or removing one of these would have rewritten that game ` +
+        `instead. Forgetting the record fixes it: no Steam entry is touched at all. The ROM ` +
+        `stays where it is, so the game can be added again from the panel.` +
+        "\n\n" +
+        mispointed
+          .map((entry) => `${entry.title || entry.app_id} -> ${entry.runs_title || entry.runs}`)
+          .join("\n"),
+      action: `Forget ${mispointed.length}`,
+      run: async () => forgetAndUnfile(mispointed.map((entry) => entry.app_id)),
+    });
+  }
+
   if (missingShortcuts.length > 0) {
     findings.push({
       key: "missing-shortcuts",
