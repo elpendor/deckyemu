@@ -12,6 +12,7 @@ Everything downstream -- ROM probing, extension matching, artwork resolution,
 collection naming -- then works without knowing the difference.
 """
 
+import hashlib
 import json
 import os
 import posixpath
@@ -367,6 +368,57 @@ def gui_argv(emulator, args=(), allow=()):
     return [emulator.get("target", "")] + list(args)
 
 
+#: Where the space-free links below are kept. decky's runtime directory rather
+#: than the user's own folder: nothing here is theirs to look at or keep, and it
+#: being wiped on uninstall is correct.
+ARG_LINK_DIR = os.path.join(decky.DECKY_PLUGIN_RUNTIME_DIR, "argpaths")
+
+
+def space_free(path):
+    """`path`, or a symlink to it whose own path holds no space.
+
+    For an emulator whose launcher word-splits its arguments. Vita3K's AppImage
+    is one: its `AppRun.wrapped` ends in
+
+        "${APPDIR}/usr/bin/Vita3K" $@
+
+    with `$@` unquoted, so the shell inside the AppImage re-splits every
+    argument the shell outside it took care to keep together. A game at
+    `.../GRAVITY RUSH (PCSA00011).pkg` reaches the emulator as three arguments
+    and it reports the second word as unsupported content -- which reads as a
+    bad dump rather than as a quoting fault, and cost an evening the first time.
+
+    A link rather than a rename, because the file is the user's and where they
+    sent it is where they will look for it. Falls back to the original path if
+    a link cannot be made: the call then fails exactly as it does today, which
+    is no worse than not trying.
+    """
+    path = path or ""
+    if " " not in path:
+        return path
+
+    try:
+        os.makedirs(ARG_LINK_DIR, exist_ok=True)
+        # Named from the path rather than the file, so the same file sent twice
+        # under different names keeps one link each and neither shadows the
+        # other. The extension is kept: every one of these emulators decides
+        # what it has been handed by looking at it.
+        digest = hashlib.sha1(path.encode("utf-8", "replace")).hexdigest()[:12]
+        link = os.path.join(ARG_LINK_DIR, digest + os.path.splitext(path)[1])
+
+        if os.path.islink(link):
+            if os.readlink(link) == path:
+                return link
+            os.unlink(link)
+        elif os.path.exists(link):
+            return link
+        os.symlink(path, link)
+        return link
+    except OSError as error:
+        decky.logger.warning("Could not link %s without spaces: %s", path, error)
+        return path
+
+
 def tool_argv(emulator, args, allow=()):
     """Argv that runs an emulator as a command-line tool, with no window at all.
 
@@ -381,11 +433,25 @@ def tool_argv(emulator, args, allow=()):
     installed lives. Deliberately no `GAMESCOPE_SOCKET_ARG`: nothing is being
     displayed, and asking for a socket a headless run will never use only adds a
     way for it to fail.
+
+    An emulator that declares `splits_args` gets every argument that names an
+    existing file replaced by a space-free link to it -- see `space_free`. Done
+    here rather than at each call site because every tool call goes through this
+    one function, and the three that exist for Vita3K -- a package, its
+    firmware, its font package -- were each one spaced filename away from
+    failing in a way that names nothing.
     """
+    args = list(args)
+    if emulator.get("splits_args"):
+        args = [
+            space_free(arg) if isinstance(arg, str) and os.path.exists(arg) else arg
+            for arg in args
+        ]
+
     if emulator.get("kind") == "flatpak":
         grants = ["--filesystem=%s" % folder for folder in allow if folder]
-        return flatpak_prefix(emulator, grants) + list(args)
-    return [emulator.get("target", "")] + list(args)
+        return flatpak_prefix(emulator, grants) + args
+    return [emulator.get("target", "")] + args
 
 
 TITLE_PLACEHOLDER = "{title}"

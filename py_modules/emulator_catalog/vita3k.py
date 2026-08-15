@@ -79,9 +79,21 @@ ENTRY = {
     # launchers use, arrived at independently. A title id never contains a space,
     # which matters because Vita3K's AppImage word-splits its arguments.
     "installed_args": "-r {title}",
+    # And here is why it does, read off the AppImage rather than inferred: its
+    # `AppRun.wrapped` ends in `"${APPDIR}/usr/bin/Vita3K" $@`, with `$@`
+    # unquoted. Every path handed to it therefore has to be free of spaces --
+    # the title id above is one answer, and `emulators.space_free` is the other,
+    # for the package and firmware installs, which have no id to use instead.
+    "splits_args": True,
     #   2  the fullscreen flag, which was missing entirely
     #   3  installed titles launch by id rather than by path
-    "recipe": 3,
+    #   4  splits_args, so an install already on the device stops handing this
+    #      emulator paths it will re-split -- the field is refreshed only when
+    #      this number moves, so adding one without the other reaches nobody
+    #   5  and the same for the file extensions: dropping .vpk from the catalog
+    #      left every installed copy still claiming it, so the picker went on
+    #      offering to run one
+    "recipe": 5,
     "setup": _VITA3K_SETUP,
     # Booted on a Deck: firmware and font fetched and imported headlessly, a
     # .pkg installed with its zRIF, and the game started from its Steam

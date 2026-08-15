@@ -48,6 +48,11 @@ OPTIONAL = {
     "installed_args": "How to start a title the emulator has already installed, "
                       "when a file path will not do it. `{title}` is the title "
                       "id. Vita3K only.",
+    "splits_args": "True when the emulator's own launcher word-splits the "
+                   "arguments it is given, so a path with a space in it "
+                   "arrives as several. Every file path handed to it is then "
+                   "replaced by a space-free link. Vita3K only -- its AppImage "
+                   "runs `\"$APPDIR/usr/bin/Vita3K\" $@`, unquoted.",
     "command": "The binary to run inside the flatpak, when it is not the one "
                "the manifest names.",
     "env": "Environment variables the emulator needs, as a dict.",

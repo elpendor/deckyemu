@@ -316,6 +316,9 @@ def to_emulator(entry, target, database_extensions):
         # How to start a title this emulator has already installed, when a file
         # path will not do it. Vita3K only.
         "installed_args": entry.get("installed_args", ""),
+        # Whether the emulator's own launcher re-splits its arguments, so file
+        # paths have to reach it without spaces. Vita3K only.
+        "splits_args": bool(entry.get("splits_args")),
         "extensions": extensions_for(entry, database_extensions),
         "databases": list(entry.get("databases") or []),
         "platform": short,
