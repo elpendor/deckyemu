@@ -117,6 +117,10 @@ def _state_files():
         (os.path.join(settings, "emulator_setup.json"), "Which config version each emulator has"),
         (os.path.join(settings, "firmware_installed.json"), "What firmware this plugin installed"),
         (os.path.join(settings, "ps3_content_ids.json"), "Recorded PS3 content ids"),
+        # Which Steam collections this plugin made. Left behind, a reset would
+        # go on claiming shelves for games it no longer has any record of --
+        # and offering to delete them.
+        (os.path.join(settings, "collections.json"), "Collections this plugin made"),
         (os.path.join(settings, "settings.json"), "Plugin settings"),
     ]
 

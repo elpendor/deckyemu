@@ -73,3 +73,57 @@ describe("emptyCollectionMatcher", () => {
     expect(matches("Games - SNES")).toBe(false);
   });
 });
+
+/*
+ * What was recorded beats what the settings would produce.
+ *
+ * The pattern above can only describe shelves the *current* naming would make,
+ * and an empty shelf is reached long after the naming that made it moved on. So
+ * every change to the naming used to orphan every collection made before it --
+ * silently, and with no way back, because nothing else remembered they were
+ * ours.
+ */
+describe("emptyCollectionMatcher, what the backend recorded", () => {
+  const withKnown = (known: string[], base = "DeckyEmu", per_platform = true) =>
+    emptyCollectionMatcher({ ...shape(base, per_platform), known });
+
+  it("claims a shelf the current naming would never produce", () => {
+    const matches = withKnown(["[DeckyEmu] N64"]);
+    // The template is "{name} - {platform}" now; this one was made under
+    // "[{name}] {platform}" and the pattern cannot see it.
+    expect(matches("[DeckyEmu] N64")).toBe(true);
+  });
+
+  it("still claims one after per-system naming is switched off", () => {
+    expect(withKnown(["DeckyEmu - SNES"], "DeckyEmu", false)("DeckyEmu - SNES")).toBe(true);
+  });
+
+  it("still claims one after the base name is edited", () => {
+    expect(withKnown(["OldName - SNES"], "NewName")("OldName - SNES")).toBe(true);
+  });
+
+  // Collections are off, so the pattern half says no to everything -- but a
+  // shelf this plugin made is still one it made, and switching the feature off
+  // is the moment those are most likely to be left empty.
+  it("still claims one when no name is configured at all", () => {
+    expect(withKnown(["[DeckyEmu] N64"], "")("[DeckyEmu] N64")).toBe(true);
+    expect(withKnown(["[DeckyEmu] N64"], "")("Shooters I like")).toBe(false);
+  });
+
+  it("leaves alone anything neither recorded nor matching", () => {
+    const matches = withKnown(["[DeckyEmu] N64"]);
+    expect(matches("Shooters I like")).toBe(false);
+    expect(matches("[DeckyEmu] SNES")).toBe(false);
+  });
+
+  // The union runs the other way too: an install from before the record existed
+  // has nothing in it, and its shelves are still recognised by the pattern.
+  it("falls back to the pattern when nothing was recorded", () => {
+    const matches = emptyCollectionMatcher({ ...shape("DeckyEmu"), known: [] });
+    expect(matches("DeckyEmu - SNES")).toBe(true);
+  });
+
+  it("and when the backend is old enough not to send one", () => {
+    expect(emptyCollectionMatcher(shape("DeckyEmu"))("DeckyEmu - SNES")).toBe(true);
+  });
+});

@@ -117,6 +117,7 @@ class Plugin(
             ("backfill the library", self._backfill_library),
             ("adopt the menu shortcut", self._adopt_menu_combo),
             ("keep an existing library's collection layout", self._pin_collection_layout),
+            ("claim the collections already filed into", self._claim_filed_collections),
             ("upgrade launchers", self._upgrade_launchers),
             ("upgrade emulator recipes", self._upgrade_emulator_recipes),
             ("upgrade emulator setups", self._upgrade_emulator_setups),
@@ -310,6 +311,31 @@ class Plugin(
                 decky.logger.warning(
                     "Could not update %s settings: %s", entry["id"], result.get("error")
                 )
+
+    async def _claim_filed_collections(self):
+        """Record the collections an existing library is already filed into.
+
+        The record of which collections are ours is written as games are filed,
+        so an install that predates it starts empty -- and every shelf it made
+        would be recognised only by the name pattern, which is exactly the thing
+        that loses them the moment the naming changes. One pass over the library
+        at startup gives those installs the same footing as a new one.
+
+        Cheap to repeat and safe to: `remember_collections` adds only what is
+        missing and reports what it added, so this settles to doing nothing.
+        """
+        library = await self._run(store.get_library)
+        if not library:
+            return
+        added = await self._run(
+            store.remember_collections,
+            [entry.get("collection", "") for entry in library.values()],
+        )
+        if added:
+            decky.logger.info(
+                "Claiming %d collection(s) this library is already filed into: %s",
+                len(added), ", ".join(added),
+            )
 
     async def _upgrade_launchers(self):
         """Rewrite launchers when the format they were written in is out of date.
@@ -967,7 +993,28 @@ class Plugin(
             "base": base,
             "per_platform": per_platform,
             "template": template.replace("\\n", "\n"),
+            # What was actually done, as opposed to what the current settings
+            # would do. The pattern above can only recognise shelves this naming
+            # would produce today, so every one made under a naming since
+            # changed fell out of it -- and an empty shelf is reached long after
+            # the settings that made it moved on. These are the answer; the
+            # pattern stays as the answer for anything filed before this record
+            # existed.
+            "known": await self._run(store.known_collections),
         }
+
+    async def forget_collections(self, names: list):
+        """Stop claiming collections that no longer exist.
+
+        Called after they are deleted. Without it the record only grows, and a
+        name this plugin once used would go on being claimed if the user later
+        made a collection of their own by that name -- which is the one way
+        recording ownership could be worse than deriving it.
+        """
+        dropped = await self._run(store.forget_collections, names or [])
+        if dropped:
+            decky.logger.info("No longer claiming collection(s): %s", ", ".join(dropped))
+        return {"ok": True, "forgotten": dropped}
 
     async def collection_targets(self):
         """{app_id: collection} for every registered game, under current settings.

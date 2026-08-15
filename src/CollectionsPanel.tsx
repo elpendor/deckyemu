@@ -22,6 +22,7 @@ import {
   type PluginSettings,
 } from "./backend";
 import { findFiledGames, migrateCollections, type CollectionMove } from "./steam";
+import { forgetDeleted } from "./collections";
 import { callWithRetry } from "./timeout";
 import { countFiled, strandedSummary, unfileWarning } from "./unfileWarning";
 
@@ -122,10 +123,14 @@ export function CollectionsPanel() {
       if (moves.length === 0) return 0;
       setMigrating(true);
       try {
-        const { moved, assignments } = await migrateCollections(moves);
+        const { moved, assignments, deleted } = await migrateCollections(moves);
         if (Object.keys(assignments).length > 0) {
           await recordCollections(assignments);
         }
+        // A rename is the operation most likely to leave a collection empty and
+        // remove it, so it is also the one most likely to leave the backend
+        // claiming a shelf that has gone.
+        await forgetDeleted(deleted);
 
         // "Moved" is wrong for games that were taken out and put nowhere, and
         // this is the one dialog where the difference is the whole point.

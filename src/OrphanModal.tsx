@@ -15,7 +15,6 @@ import {
 } from "./backend";
 import {
   addAppsToCollection,
-  deleteCollections,
   fileUnfiledGames,
   findEmptyCollections,
   findStaleCollections,
@@ -26,7 +25,7 @@ import {
   shortcutExists,
   type StaleCollection,
 } from "./steam";
-import { unfileGames } from "./collections";
+import { deleteEmptied, forgetDeleted, unfileGames } from "./collections";
 import { humanSize } from "./TransferModal";
 import { emptyCollectionMatcher } from "./collectionMatch";
 import { callWithRetry } from "./timeout";
@@ -394,8 +393,13 @@ export function OrphanModal({ onChanged, closeModal }: Props) {
       action: `Remove ${count}`,
       destructive: true,
       run: async () => {
-        const pruned = await pruneStaleCollections(stale);
-        return `${pruned} entry(s) removed.`;
+        const { pruned, deleted } = await pruneStaleCollections(stale);
+        await forgetDeleted(deleted);
+        return (
+          `${pruned} entry(s) removed` +
+          (deleted.length ? `, ${deleted.length} empty collection(s) deleted` : "") +
+          "."
+        );
       },
     });
   }
@@ -413,7 +417,10 @@ export function OrphanModal({ onChanged, closeModal }: Props) {
       action: `Delete ${emptyCollections.length}`,
       destructive: true,
       run: async () => {
-        const deleted = await deleteCollections(emptyCollections);
+        // Deleted and unclaimed together -- the backend's record of what this
+        // plugin made is what decides ownership, so a name left in it after its
+        // collection has gone would go on being claimed.
+        const deleted = await deleteEmptied(emptyCollections);
         return `${deleted} collection(s) deleted.`;
       },
     });

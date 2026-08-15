@@ -18,9 +18,17 @@ const collectionShape = vi.fn(async () => ({
   base: "DeckyEmu",
   per_platform: true,
   template: "[{name}] {platform}",
+  known: [] as string[],
+}));
+const forgetCollections = vi.fn(async (..._args: unknown[]) => ({
+  ok: true,
+  forgotten: [] as string[],
 }));
 
-vi.mock("./backend", () => ({ collectionShape: () => collectionShape() }));
+vi.mock("./backend", () => ({
+  collectionShape: () => collectionShape(),
+  forgetCollections: (...args: unknown[]) => forgetCollections(...args),
+}));
 
 const { sweepEmptyCollections, unfileGames } = await import("./collections");
 
@@ -83,6 +91,7 @@ function installSteam(collections: Record<string, number[]>, live?: number[]) {
 
 beforeEach(() => {
   vi.useFakeTimers();
+  forgetCollections.mockClear();
 });
 
 afterEach(() => {
@@ -186,6 +195,39 @@ describe("unfileGames", () => {
   });
 });
 
+/*
+ * Ownership is recorded now, not derived from the naming -- so a collection
+ * that is deleted has to be given back, or the plugin goes on claiming a shelf
+ * that no longer exists and would claim a new one if the user ever made a
+ * collection of their own by that name. That is the one way recording ownership
+ * could be worse than deriving it, so every path that deletes is checked for it.
+ */
+describe("deleting a collection stops it being claimed", () => {
+  it("when unfiling emptied it", async () => {
+    installSteam({ "[DeckyEmu] SNES": [1] });
+    await settle(unfileGames([{ app_id: 1, collection: "[DeckyEmu] SNES" }]));
+    expect(forgetCollections).toHaveBeenCalledWith(["[DeckyEmu] SNES"]);
+  });
+
+  it("but not when the collection survived", async () => {
+    installSteam({ "[DeckyEmu] SNES": [1, 999] });
+    await settle(unfileGames([{ app_id: 1, collection: "[DeckyEmu] SNES" }]));
+    expect(forgetCollections).not.toHaveBeenCalled();
+  });
+
+  it("and a failure to unclaim does not fail the removal", async () => {
+    const state = installSteam({ "[DeckyEmu] SNES": [1] });
+    forgetCollections.mockRejectedValueOnce(new Error("the backend went away"));
+
+    await expect(
+      settle(unfileGames([{ app_id: 1, collection: "[DeckyEmu] SNES" }])),
+    ).resolves.toBe(1);
+    // The shelf is still gone from Steam, which is what the user asked for. A
+    // name left claimed costs nothing until such a collection exists again.
+    expect(state["[DeckyEmu] SNES"].deleted).toBe(true);
+  });
+});
+
 describe("sweepEmptyCollections", () => {
   it("deletes ours that hold nothing and leaves everything else", async () => {
     const state = installSteam({
@@ -198,6 +240,7 @@ describe("sweepEmptyCollections", () => {
 
     expect(deleted).toBe(1);
     expect(state["[DeckyEmu] SNES"].deleted).toBe(true);
+    expect(forgetCollections).toHaveBeenCalledWith(["[DeckyEmu] SNES"]);
     // Still holds a game.
     expect(state["[DeckyEmu] N64"].deleted).toBe(false);
     // Empty, but not one of ours -- somebody's own shelf is theirs to keep.

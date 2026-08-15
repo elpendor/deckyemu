@@ -301,16 +301,22 @@ export async function addToCollection(appId: number, tag: string): Promise<boole
  * The delete is deliberately conditional: the user may have dragged their own
  * games in, and removing a collection that still holds them would be
  * destructive.
+ *
+ * `deleted` names the collection when this call removed it, and is empty
+ * otherwise. Reported rather than kept quiet because the backend records which
+ * collections are ours, and a name left in that record after its collection has
+ * gone would go on being claimed. Nothing here can tell the backend -- this file
+ * must stay free of backend imports -- so it says so to its caller instead.
  */
 export async function removeAppsFromCollection(
   tag: string,
   appIds: number[],
-): Promise<boolean> {
-  if (!tag || appIds.length === 0) return true;
+): Promise<{ ok: boolean; deleted: string }> {
+  if (!tag || appIds.length === 0) return { ok: true, deleted: "" };
 
   try {
     const collection = findCollection(tag);
-    if (!collection) return true;
+    if (!collection) return { ok: true, deleted: "" };
 
     const present = appIds.filter((appId) => collection.apps.has(appId));
     if (present.length > 0) {
@@ -326,11 +332,12 @@ export async function removeAppsFromCollection(
     if (remaining === 0 && typeof extras.Delete === "function") {
       await extras.Delete();
       console.log(`[deckyemu] deleted now-empty collection "${tag}"`);
+      return { ok: true, deleted: tag };
     }
-    return true;
+    return { ok: true, deleted: "" };
   } catch (error) {
     console.error("[deckyemu] removeAppsFromCollection failed", error);
-    return false;
+    return { ok: false, deleted: "" };
   }
 }
 
@@ -503,15 +510,23 @@ export async function deleteCollections(tags: string[]): Promise<number> {
   return deleted;
 }
 
-/** Remove our games from collections they no longer belong to. */
-export async function pruneStaleCollections(stale: StaleCollection[]): Promise<number> {
+/**
+ * Remove our games from collections they no longer belong to.
+ *
+ * `deleted` is whichever of them this emptied and removed, for the caller to
+ * stop claiming. See `removeAppsFromCollection`.
+ */
+export async function pruneStaleCollections(
+  stale: StaleCollection[],
+): Promise<{ pruned: number; deleted: string[] }> {
   let pruned = 0;
+  const deleted: string[] = [];
   for (const entry of stale) {
-    if (await removeAppsFromCollection(entry.tag, entry.appIds)) {
-      pruned += entry.appIds.length;
-    }
+    const result = await removeAppsFromCollection(entry.tag, entry.appIds);
+    if (result.ok) pruned += entry.appIds.length;
+    if (result.deleted) deleted.push(result.deleted);
   }
-  return pruned;
+  return { pruned, deleted };
 }
 
 /** True when Steam still has a shortcut for this appId. */
@@ -636,9 +651,12 @@ export interface CollectionMove {
  */
 export async function migrateCollections(
   moves: CollectionMove[],
-): Promise<{ moved: number; assignments: Record<string, string> }> {
+): Promise<{ moved: number; assignments: Record<string, string>; deleted: string[] }> {
   const assignments: Record<string, string> = {};
-  if (moves.length === 0) return { moved: 0, assignments };
+  // Collections emptied and removed on the way, for the caller to stop
+  // claiming. A rename is the operation most likely to empty one.
+  const deleted: string[] = [];
+  if (moves.length === 0) return { moved: 0, assignments, deleted };
 
   const byTarget = new Map<string, number[]>();
   const bySource = new Map<string, number[]>();
@@ -681,7 +699,9 @@ export async function migrateCollections(
       (appId) => unfiling.has(appId) || assignments[String(appId)],
     );
     if (settled.length === 0) continue;
-    if (!(await removeAppsFromCollection(tag, settled))) continue;
+    const result = await removeAppsFromCollection(tag, settled);
+    if (result.deleted) deleted.push(result.deleted);
+    if (!result.ok) continue;
     for (const appId of settled) {
       if (!unfiling.has(appId)) continue;
       assignments[String(appId)] = "";
@@ -689,5 +709,5 @@ export async function migrateCollections(
     }
   }
 
-  return { moved, assignments };
+  return { moved, assignments, deleted };
 }

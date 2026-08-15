@@ -372,8 +372,24 @@ export interface CollectionShape {
   base: string;
   per_platform: boolean;
   template: string;
+  /**
+   * Collections this plugin has actually filed a game into, whatever the
+   * settings said at the time. The fields above can only describe shelves the
+   * *current* naming would produce, so they lose every one made under a naming
+   * since changed; these are the ones it knows it made.
+   */
+  known?: string[];
 }
 export const collectionShape = callable<[], CollectionShape>("collection_shape");
+/**
+ * Stop claiming collections, because they have been deleted. Keeps the record
+ * from growing forever and from coming to claim a shelf somebody later makes by
+ * hand under a name this plugin once used.
+ */
+export const forgetCollections = callable<
+  [names: string[]],
+  { ok: boolean; forgotten: string[] }
+>("forget_collections");
 export const unregisterGame = callable<[appId: number], AddedGame | null>("unregister_game");
 export const listAdded = callable<[], AddedGame[]>("list_added");
 

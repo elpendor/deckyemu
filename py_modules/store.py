@@ -9,6 +9,13 @@ import decky
 
 SETTINGS_PATH = os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "settings.json")
 LIBRARY_PATH = os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "library.json")
+#: Every collection name this plugin has filed a game into, ever.
+#:
+#: Its own file rather than a key in settings.json, because it is neither a
+#: setting nor derived from one: it is a record of what was done to somebody's
+#: Steam library, and the only thing that can say which shelves are ours to
+#: tidy away once no game names them any more.
+COLLECTIONS_PATH = os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "collections.json")
 
 DEFAULT_SETTINGS = {
     # SteamGridDB API key. Empty means "use libretro thumbnails only".
@@ -100,6 +107,9 @@ DEFAULT_SETTINGS = {
 }
 
 _lock = threading.Lock()
+# Its own lock, and it has to be: the library writes below remember collections
+# as they go, and `_lock` is not reentrant.
+_collections_lock = threading.Lock()
 
 
 def _read_json(path, fallback):
@@ -206,6 +216,75 @@ def set_settings(patch):
         return merged
 
 
+# --------------------------------------------------------------- collections
+#
+# Which Steam collections this plugin made.
+#
+# It used to be worked out from the collection *name*: a pattern was built from
+# the naming template and anything matching it was taken as ours. That reads the
+# current settings to answer a question about the past, so it is wrong exactly
+# when it matters. Change the template, turn per-system naming off, or rename
+# the base, and every shelf made under the old naming stops matching -- becoming
+# invisible to the one thing that would have cleared it away, permanently, and
+# with no way for the user to say otherwise.
+#
+# Names rather than Steam's collection ids, and that is a real limit worth
+# knowing: a collection renamed in Steam itself is no longer recognised. Ids
+# would survive that, but they are only obtainable while a collection exists,
+# and the case this has to answer -- an empty shelf nothing else remembers -- is
+# reached long afterwards. Recording the name at least never *loses* a shelf
+# that was ours, which is the failure that was actually happening.
+
+
+def known_collections():
+    """Every collection name this plugin has filed a game into."""
+    names = _read_json(COLLECTIONS_PATH, [])
+    return [name for name in names if isinstance(name, str)] if isinstance(names, list) else []
+
+
+def remember_collections(names):
+    """Record collections as ours. Returns the names that were new."""
+    wanted = [name for name in (names or []) if isinstance(name, str) and name.strip()]
+    if not wanted:
+        return []
+    with _collections_lock:
+        known = known_collections()
+        seen = set(known)
+        added = [name for name in wanted if name not in seen and not seen.add(name)]
+        if added:
+            _write_json(COLLECTIONS_PATH, known + added)
+        return added
+
+
+def forget_collections(names):
+    """Drop collections that no longer exist. Returns the names actually dropped.
+
+    Called when one is deleted, so the record does not grow forever and cannot
+    come to claim a shelf somebody later makes by hand under a name this plugin
+    once used.
+    """
+    unwanted = {name for name in (names or []) if isinstance(name, str)}
+    if not unwanted:
+        return []
+    with _collections_lock:
+        known = known_collections()
+        kept = [name for name in known if name not in unwanted]
+        if len(kept) == len(known):
+            return []
+        _write_json(COLLECTIONS_PATH, kept)
+        return [name for name in known if name in unwanted]
+
+
+def _collections_in(entries):
+    """The collection names recorded across `entries`, in order, without repeats."""
+    found = []
+    for entry in entries:
+        name = (entry or {}).get("collection") or ""
+        if name and name not in found:
+            found.append(name)
+    return found
+
+
 def get_library():
     """Returns {str(app_id): entry} for everything this plugin has added."""
     data = _read_json(LIBRARY_PATH, {})
@@ -219,6 +298,11 @@ def remember_game(app_id, entry):
             library = {}
         library[str(app_id)] = entry
         _write_json(LIBRARY_PATH, library)
+    # Outside the lock, which is not reentrant. Done here rather than at the
+    # call sites because a game being recorded as filed *is* the moment the
+    # collection became ours -- there is no other -- and four call sites that
+    # each have to remember to say so is four chances to forget.
+    remember_collections(_collections_in([entry]))
 
 
 def forget_game(app_id):
@@ -250,7 +334,8 @@ def remember_games(entries):
         for app_id, entry in entries.items():
             library[str(app_id)] = entry
         _write_json(LIBRARY_PATH, library)
-        return len(entries)
+    remember_collections(_collections_in(entries.values()))
+    return len(entries)
 
 
 def forget_games(app_ids):

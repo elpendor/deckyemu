@@ -1,4 +1,4 @@
-import { collectionShape } from "./backend";
+import { collectionShape, forgetCollections } from "./backend";
 import { emptyCollectionMatcher } from "./collectionMatch";
 import { deleteCollections, findEmptyCollections, removeAppsFromCollection } from "./steam";
 
@@ -61,12 +61,27 @@ export async function unfileGames(
   }
 
   let done = 0;
+  // Whichever of them this emptied. They have to be given back to the backend
+  // or it goes on claiming shelves that no longer exist -- see `deleteEmptied`.
+  const deleted: string[] = [];
   for (const [tag, appIds] of byCollection) {
     onProgress?.(done, byCollection.size);
-    await removeAppsFromCollection(tag, appIds);
+    const result = await removeAppsFromCollection(tag, appIds);
+    if (result.deleted) deleted.push(result.deleted);
     done += 1;
   }
+  await forgetDeleted(deleted);
   return byCollection.size;
+}
+
+/** Stop claiming collections that have gone. Best effort; see `deleteEmptied`. */
+export async function forgetDeleted(tags: string[]): Promise<void> {
+  if (tags.length === 0) return;
+  try {
+    await forgetCollections(tags);
+  } catch (error) {
+    console.error("[deckyemu] could not stop claiming deleted collections", error);
+  }
 }
 
 /**
@@ -83,5 +98,26 @@ export async function unfileGames(
  * first is what handles those; this catches what earlier sessions left.
  */
 export async function sweepEmptyCollections(): Promise<number> {
-  return deleteCollections(findEmptyCollections(emptyCollectionMatcher(await collectionShape())));
+  return deleteEmptied(findEmptyCollections(emptyCollectionMatcher(await collectionShape())));
+}
+
+/**
+ * Delete collections and stop claiming the ones that went.
+ *
+ * Both halves, always together. The record of what this plugin made is what
+ * decides ownership now, so leaving a deleted name in it means the plugin goes
+ * on claiming a shelf that no longer exists -- and would claim a new one if the
+ * user ever made a collection of their own by that name. Deleting without
+ * forgetting is the one way recording ownership could be worse than deriving
+ * it, so the two are not offered separately.
+ *
+ * Returns how many were deleted. Forgetting is best effort: a name still
+ * claimed after its collection has gone costs nothing until such a collection
+ * exists again, and failing the whole sweep over it would be worse.
+ */
+export async function deleteEmptied(tags: string[]): Promise<number> {
+  if (tags.length === 0) return 0;
+  const deleted = await deleteCollections(tags);
+  await forgetDeleted(tags);
+  return deleted;
 }

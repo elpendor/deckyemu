@@ -24,10 +24,10 @@ import {
   addAppsToCollection,
   applyArtwork,
   launchApp,
-  removeAppsFromCollection,
   renameShortcut,
   repointShortcut,
 } from "./steam";
+import { unfileGames } from "./collections";
 import { ArtPickerModal } from "./ArtPickerModal";
 import { coreOptions as buildCoreOptions, isEmulatorId } from "./corePicker";
 import { callWithRetry } from "./timeout";
@@ -271,10 +271,14 @@ export function GameEditorModal({ game, onSaved, closeModal }: Props) {
       }
 
       if (result.collection !== result.previous_collection) {
+        // Added before removed, so the game is never briefly on no shelf at
+        // all. `unfileGames` does the removal, which is also what gives back
+        // the old collection if this emptied it -- editing the last game on a
+        // shelf is one of the ways one is left standing with nothing on it.
         if (result.collection) await addAppsToCollection(result.collection, [game.app_id]);
-        if (result.previous_collection) {
-          await removeAppsFromCollection(result.previous_collection, [game.app_id]);
-        }
+        await unfileGames([
+          { app_id: game.app_id, collection: result.previous_collection },
+        ]);
         notes.push(`moved to ${result.collection || "no collection"}`);
       }
 
