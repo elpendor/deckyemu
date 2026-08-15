@@ -313,6 +313,11 @@ export const prepareShortcut = callable<
  * `rememberCore` is what makes the next ROM of the same kind suggest this core.
  * Pass false for a PS3 game: what boots is EBOOT.BIN, and remembering it would
  * file `.bin` under RPCS3 and suggest a PS3 emulator for the next PS1 disc.
+ *
+ * `collection` is the shelf the game was actually filed onto — "" when filing
+ * was not attempted or did not take. Omit it only if you have not tried yet;
+ * the backend then records where the game *belongs*, which is a guess. Go
+ * through `addPreparedGame` rather than calling this directly.
  */
 export const registerGame = callable<
   [
@@ -323,6 +328,7 @@ export const registerGame = callable<
     launcherPath: string,
     system: string,
     rememberCore?: boolean,
+    collection?: string,
   ],
   AddedGame
 >("register_game");

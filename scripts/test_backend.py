@@ -4423,6 +4423,27 @@ check(
     store.get_settings()["last_core_by_ext"].get("sfc"),
     "bsnes",
 )
+# Where the game *went*, which only the frontend can know: filing is a Steam-side
+# call and it can fail while every other step succeeds. Recording the computed
+# name regardless said a game was on a shelf it had never reached, and the two
+# things that read this field -- a rename, and removing the game -- then both
+# operated on a collection it was not in.
+_filed_nowhere = run(plugin.register_game(704, "Unfiled", add_rom, "bsnes",
+                                          prepared["exe"], "", False, ""))
+check("a game the frontend could not file is recorded as filed nowhere",
+      _filed_nowhere["collection"], "")
+_filed_elsewhere = run(plugin.register_game(705, "Filed", add_rom, "bsnes",
+                                            prepared["exe"], "", False, "Somewhere Else"))
+check("and one filed somewhere is recorded there, not where it belongs",
+      _filed_elsewhere["collection"], "Somewhere Else")
+# Absent is not the same as empty: a caller that has not tried yet gets the
+# computed answer, which is what every path did before this argument existed.
+check("saying nothing still records where it belongs",
+      run(plugin.register_game(706, "Assumed", add_rom, "bsnes",
+                               prepared["exe"], "", False))["collection"],
+      "[Games] SNES")
+for _app_id in (704, 705, 706):
+    run(plugin.unregister_game(_app_id))
 run(plugin.unregister_game(702))
 
 run(plugin.register_game(701, "Aardvark", add_rom, "mupen64plus_next", prepared["exe"]))

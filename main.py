@@ -1269,6 +1269,7 @@ class Plugin(
         launcher_path: str,
         system: str = "",
         remember_core: bool = True,
+        collection: Optional[str] = None,
     ):
         core = self._core_by_id(core_id)
         decky.logger.info("register_game: app_id=%s title=%r", app_id, title)
@@ -1276,6 +1277,17 @@ class Plugin(
         entry = self._entry_for(
             settings, app_id, title, rom_path, core_id, core, launcher_path, system
         )
+        # What the caller actually managed, not what the settings say should have
+        # happened. Only the frontend can put a game on a shelf, so only the
+        # frontend knows whether it went -- and this field is what a later rename
+        # moves the game out of and what removing it empties, so a name recorded
+        # for a collection the game never reached makes both of those no-ops.
+        # Computed here as well until then, which is what said so.
+        #
+        # None rather than "" for "you decide": an empty string is a real answer
+        # meaning the game is on no shelf, which is what a failed filing records.
+        if collection is not None:
+            entry["collection"] = collection
         await self._run(store.remember_game, app_id, entry)
 
         # Keyed on the content extension so a zipped SNES ROM remembers the same

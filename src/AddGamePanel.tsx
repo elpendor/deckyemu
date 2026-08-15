@@ -36,15 +36,13 @@ import {
   startFileServer,
   prepareShortcut,
   probeRom,
-  registerGame,
   type Core,
   type InstallableCore,
   type PluginSettings,
   type ResolvedGame,
   type RetroArchStatus,
 } from "./backend";
-import { addToCollection, applyArtwork, removeShortcut } from "./steam";
-import { createOrReuseShortcut } from "./reuseShortcut";
+import { addPreparedGame } from "./addGame";
 import { getDraft, resetDraft, subscribeDraft, updateDraft } from "./romDraft";
 import {
   LOOKUP_FAILED,
@@ -414,7 +412,6 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
     if (!romPath || !coreId) return;
     updateDraft({ adding: true, error: "" });
 
-    let createdAppId = 0;
     try {
       // The resolved system decides the collection for a core covering more
       // than one; without it Dolphin filed Wii games under GameCube.
@@ -426,40 +423,28 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
         return;
       }
 
-      // Takes over an existing shortcut for this launcher rather than adding a
-      // second one beside it. See reuseShortcut.ts -- the case that produced
-      // duplicates is a lost registry, where the plugin has forgotten a game
-      // Steam still has.
-      const shortcut = await createOrReuseShortcut({
-        title: prepared.title,
-        exe: prepared.exe,
-        startDir: prepared.start_dir,
-        launchOptions: prepared.launch_options,
-      });
-      createdAppId = shortcut.appId;
-
-      const artApplied = resolved?.art ? await applyArtwork(createdAppId, resolved.art) : 0;
-
-      // The backend resolves this, so per-platform naming lives in one place.
-      if (prepared.collection_name) {
-        await addToCollection(createdAppId, prepared.collection_name);
-      }
-
-      await registerGame(
-        createdAppId,
-        prepared.title,
-        // Where the ROM ended up, not where it was picked from: adding a game
-        // files it out of the transfer folder and into one named after its
-        // system, and the library has to record the path the launcher runs or
-        // every filed game reads as an orphan.
-        prepared.rom_path || romPath,
+      // Shortcut, artwork, collection, registry -- in that order, and rolled
+      // back on failure. See addGame.ts; the Vita list runs the same steps.
+      const added = await addPreparedGame({
+        prepared,
+        romPath,
         coreId,
-        prepared.launcher_path,
-        resolved?.system ?? "",
-      );
+        system: resolved?.system ?? "",
+        art: resolved?.art,
+      });
 
       const notes: string[] = [];
-      notes.push(artApplied > 0 ? `${artApplied} artwork image(s) applied` : "no artwork found");
+      notes.push(
+        added.artApplied > 0
+          ? `${added.artApplied} artwork image(s) applied`
+          : "no artwork found",
+      );
+      if (prepared.collection_name && !added.collection) {
+        // Said rather than swallowed: the game is in the library and playable,
+        // but it is not on the shelf the panel implied it would be on, and the
+        // library check is where that gets repaired.
+        notes.push("could not add it to its collection");
+      }
       if (prepared.warn_flatpak_sdcard) {
         notes.push("SD card access granted to the RetroArch flatpak");
       }
@@ -473,8 +458,6 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
       resetDraft();
     } catch (addError) {
       console.error("[deckyemu] add failed", addError);
-      // Do not leave a half-built shortcut behind.
-      if (createdAppId) removeShortcut(createdAppId);
       updateDraft({
         adding: false,
         error:
