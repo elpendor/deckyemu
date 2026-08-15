@@ -193,7 +193,15 @@ MANUAL_EXTENSIONS = {
     "Sony - PlayStation 3": ["bin", "self", "elf", "pkg"],
     "Sony - PlayStation 4": ["bin", "elf"],
     "Sony - PlayStation Portable": ["iso", "cso", "chd", "pbp", "elf", "prx"],
-    "Sony - PlayStation Vita": ["vpk", "self"],
+    # `pkg`, and only `pkg`, for the same reason the PS3 line above carries it:
+    # it is the one Vita format this plugin can do anything with. A `.vpk` or a
+    # NoNpDrm `.zip` was listed here and matched Vita3K in the picker, which
+    # produced a Steam shortcut that hands the emulator a path -- and that never
+    # works, twice over. Vita3K's AppImage re-splits the path on spaces, and the
+    # content has to be installed and decrypted before it can be started at all.
+    # Those formats are recognised in `probe_rom` now and explained rather than
+    # offered. See vita3k.py's own note.
+    "Sony - PlayStation Vita": ["pkg"],
     "Microsoft - Xbox": ["iso", "xiso"],
     "Microsoft - Xbox 360": ["iso", "xex"],
 }

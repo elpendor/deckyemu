@@ -579,20 +579,21 @@ class Plugin(
             else:
                 result["ps3_package"] = await self._run(self._ps3_package_state, rom_path)
 
-        # A PS Vita release, which is a zip like every zipped ROM is a zip. The
-        # picker already looks inside an archive to match cores on its content,
-        # and a Vita release holds nothing that looks like a ROM -- so without
-        # this it matches nothing and Vita3K is never offered. Detected by the
-        # one file every release carries and no ROM archive does.
-        if extension == "zip":
+        # A PS Vita release, which is a zip like every zipped ROM is a zip -- and
+        # a `.vpk` is the same thing under another extension. Detected by the one
+        # file every release carries and no ROM archive does.
+        #
+        # Recognised in order to be *explained*, not offered. Vita3K is given a
+        # `.pkg` and its zRIF or nothing: a release handed over as a path is
+        # re-split on its spaces by the emulator's own launcher, and even
+        # without spaces the content has to be installed and decrypted before
+        # anything can start it. This used to suggest Vita3K as the core to run
+        # it with, which wrote a Steam shortcut that could never work and said
+        # so only when the game was launched.
+        if extension in ("zip", "vpk"):
             vita = await self._run(vita_release.inspect, rom_path)
             if vita["vita"]:
                 result["vita_release"] = vita
-                emulator = await self._run(emulators.find, "vita3k")
-                if emulator:
-                    core = emulators.to_core_entry(emulator)
-                    result["matching_cores"] = [core]
-                    result["suggested_core_id"] = core["id"]
                 if vita["title"]:
                     result["provisional_title"] = vita["title"]
 
@@ -1198,6 +1199,22 @@ class Plugin(
 
         if not os.path.isfile(rom_path):
             return {"ok": False, "error": "ROM file no longer exists: %s" % rom_path}
+
+        # An emulator that starts installed titles by id has no by-path form to
+        # fall back on, whatever `args` says. `launch_argv` would quietly use
+        # the path form, which for Vita3K writes a shortcut that cannot work --
+        # the content is still encrypted, and its AppImage re-splits the path on
+        # any space it contains. Refused here, at the one gate every add goes
+        # through, rather than left to fail at launch with nothing on screen
+        # naming the cause.
+        if emulator and emulator.get("installed_args") and not title_id:
+            return {
+                "ok": False,
+                "error": "%s starts games it has already installed, not files. "
+                "Send the game as a .pkg with its licence key and install it "
+                "here, then add it from the installed list."
+                % (emulator.get("name") or "This emulator"),
+            }
 
         clean_title = (title or "").strip() or libretro_meta.display_title(
             libretro_meta.rom_stem(rom_path)
