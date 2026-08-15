@@ -5803,6 +5803,53 @@ check(
 emulators.remove("pcsx2")
 run(plugin._refresh_emulators())
 
+# The file extensions go stale the same way, and that one is visible: Vita3K
+# stopped claiming .vpk in the catalog and every installed copy went on claiming
+# it, so the picker kept offering to run a file the emulator cannot be handed.
+_vita_recipe = emu_catalog.find("vita3k")
+emulators.save(
+    {
+        # Registered as a flatpak, which the real one is not: a `path` target
+        # has to be absolute and exist, and this suite runs on two operating
+        # systems that disagree about what absolute looks like. Nothing being
+        # checked here depends on the kind.
+        "id": "vita3k", "name": "Vita3K", "kind": "flatpak",
+        "target": "org.vita3k.Vita3K",
+        "args": "{rom}", "fullscreen_args": "--fullscreen",
+        "extensions": ["self", "vpk"], "databases": [],
+        "platform": "PS Vita", "platform_full": "Sony - PlayStation Vita",
+        "catalog_recipe": 3, "catalog_args": "{rom}",
+        "catalog_fullscreen_args": "--fullscreen",
+    }
+)
+run(plugin._upgrade_emulator_recipes())
+check(
+    "an untouched extension list is brought up to date",
+    emulators.find("vita3k")["extensions"],
+    ["pkg"],
+)
+# Vita3K declares no libretro databases, so MANUAL_EXTENSIONS is the whole
+# answer and no info.zip has to be readable for this to be safe.
+check(
+    "and the catalog's own answer is recorded, so an edit can be told apart later",
+    emulators.find("vita3k")["catalog_extensions"],
+    ["pkg"],
+)
+
+# Editable in the emulator editor, so the same rule as the arguments: a list
+# somebody widened by hand is theirs.
+emulators.save(
+    {**emulators.find("vita3k"), "extensions": ["pkg", "mine"], "catalog_recipe": 3}
+)
+run(plugin._upgrade_emulator_recipes())
+check(
+    "extensions the user changed are left alone",
+    emulators.find("vita3k")["extensions"],
+    ["pkg", "mine"],
+)
+emulators.remove("vita3k")
+run(plugin._refresh_emulators())
+
 # Installed and registered come apart constantly -- Discover and the usual
 # emulation setups install these same flatpaks -- and the catalog row for one of
 # those offered only Remove, so there was no way to reach the registration.

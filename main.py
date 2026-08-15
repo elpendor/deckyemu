@@ -191,6 +191,12 @@ class Plugin(
         user's and is left alone, which is the same rule `emu_config` uses.
         """
         changed = []
+        # Read once for the whole pass, and only because something below needs
+        # it: this is what `extensions_for` derives a libretro-backed emulator's
+        # formats from, and it is a cached file rather than a fetch in the
+        # ordinary case.
+        extension_map = None
+
         for emulator in await self._refresh_emulators():
             entry = emulator_catalog.find(emulator.get("id", ""))
             if not entry:
@@ -198,6 +204,9 @@ class Plugin(
             recipe = entry.get("recipe", 1)
             if emulator.get("catalog_recipe", 1) == recipe:
                 continue
+
+            if extension_map is None:
+                extension_map = await self._run(installer.database_extensions)
 
             stored = emulator.get("catalog_args")
             if stored is not None and emulator.get("args") != stored:
@@ -218,13 +227,41 @@ class Plugin(
             # renders on the CPU without `env` -- so a stale one is not a
             # cosmetic difference.
             previous = (emulator.get("command"), emulator.get("env") or {},
-                        emulator.get("installed_args"))
+                        emulator.get("installed_args"), emulator.get("splits_args"))
             emulator["command"] = entry.get("command", "")
             emulator["env"] = dict(entry.get("env") or {})
             emulator["installed_args"] = entry.get("installed_args", "")
+            emulator["splits_args"] = bool(entry.get("splits_args"))
             if previous != (emulator["command"], emulator["env"],
-                            emulator["installed_args"]):
+                            emulator["installed_args"], emulator["splits_args"]):
                 changed.append(emulator["id"])
+
+            # Which files the picker offers this emulator for. Stored at install
+            # time and never revisited, so narrowing a system's formats reached
+            # nobody who already had the emulator: Vita3K stopped claiming .vpk
+            # in the catalog and went on claiming it on every device where it
+            # was installed, which is the whole reason a .vpk was still offered
+            # a "Run with" it could not honour.
+            #
+            # Editable in the emulator editor, so the same rule the arguments
+            # use applies -- refreshed only while it is still exactly what the
+            # catalog last supplied.
+            derived = emulator_catalog.extensions_for(entry, extension_map)
+            # An empty answer means the map could not be read, and so does a
+            # libretro-backed emulator with no map: both are "cannot tell", and
+            # writing a shorter list on a guess would stop the emulator matching
+            # ROMs it handles. An entry with no databases derives entirely from
+            # MANUAL_EXTENSIONS, so for those the map is not needed at all.
+            if derived and (extension_map or not entry.get("databases")):
+                stored_ext = emulator.get("catalog_extensions")
+                if stored_ext is not None and emulator.get("extensions") != stored_ext:
+                    decky.logger.info(
+                        "Leaving %s file extensions alone; they were edited", emulator["id"]
+                    )
+                elif emulator.get("extensions") != derived:
+                    emulator["extensions"] = derived
+                    changed.append(emulator["id"])
+                emulator["catalog_extensions"] = derived
 
             emulator["catalog_recipe"] = recipe
             emulator["catalog_args"] = entry.get("args") or "{rom}"

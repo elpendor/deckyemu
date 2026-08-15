@@ -177,7 +177,7 @@ def save(emulator):
     # the emulator.
     for key in (
         "catalog_recipe", "catalog_args", "catalog_fullscreen_args",
-        "command", "env", "installed_args",
+        "catalog_extensions", "command", "env", "installed_args", "splits_args",
     ):
         value = emulator.get(key)
         if value is None and existing:
