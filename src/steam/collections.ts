@@ -1,206 +1,22 @@
 /**
- * Everything that talks to the Steam client.
+ * Steam collections: filing games onto shelves, and clearing shelves away.
  *
- * These are undocumented internal APIs, so each one is called defensively and
- * the shapes are declared locally rather than imported -- a Steam update that
- * renames a method should degrade the feature, not break the whole plugin.
- */
-
-import type { ArtImage } from "./backend";
-import { fitToSlot } from "./fitArtwork";
-
-/** Matches ELibraryAssetType in decky-frontend-lib / generated Steam types. */
-export const enum LibraryAssetType {
-  Capsule = 0,
-  Hero = 1,
-  Logo = 2,
-  Header = 3,
-  Icon = 4,
-  HeroBlur = 5,
-}
-
-interface AppOverview {
-  appid: number;
-  display_name?: string;
-  /** Steam's 64-bit GameID as a string. RunGame wants this, not the appid. */
-  gameid?: string;
-}
-
-interface Collection {
-  AsDragDropCollection: () => {
-    AddApps: (overviews: AppOverview[]) => void;
-    RemoveApps: (overviews: AppOverview[]) => void;
-  };
-  Save: () => Promise<void>;
-  apps: { has: (appId: number) => boolean };
-  displayName: string;
-}
-
-interface CollectionStore {
-  /**
-   * Sometimes a Map, sometimes an array, depending on the Steam build -- always
-   * read it through `allCollections()` rather than iterating it directly.
-   */
-  userCollections: Collection[] | Map<string, Collection>;
-  GetCollection: (collectionId: string) => Collection | undefined;
-  GetCollectionIDByUserTag: (tag: string) => string | null;
-  NewUnsavedCollection: (
-    tag: string,
-    filter: unknown | undefined,
-    overviews: AppOverview[],
-  ) => Collection | undefined;
-}
-
-interface CollectionExtras {
-  Delete: () => Promise<void>;
-  allApps: AppOverview[];
-}
-
-// `any` deliberately: these are undocumented globals the Steam client injects.
-// There is nothing to import types from, and their shape changes between builds
-// -- the interfaces above describe only the parts this file actually uses, which
-// is why every call site checks for the method before calling it.
-const steamClient = (): any => (window as any).SteamClient;
-const appStore = (): any => (window as any).appStore;
-const collectionStore = (): CollectionStore | null =>
-  (window as any).collectionStore ?? null;
-
-/** Strips the `data:image/png;base64,` prefix -- Steam wants bare base64. */
-function toBareBase64(dataUri: string): string {
-  const marker = ";base64,";
-  const index = dataUri.indexOf(marker);
-  return index === -1 ? dataUri : dataUri.slice(index + marker.length);
-}
-
-const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
-
-export interface CreateShortcutArgs {
-  title: string;
-  exe: string;
-  startDir: string;
-  launchOptions: string;
-}
-
-/**
- * Creates the non-Steam shortcut and returns its appId.
+ * Everything here works in collection *names*, because that is what Steam's own
+ * lookup takes and what the backend records. `collectionStore.userCollections`
+ * is a Map on some builds and an array on others, so it is only ever read
+ * through `allCollections`.
  *
- * Current Steam clients accept all four AddShortcut arguments but only
- * reliably act on the first two -- it does not even set the name dependably.
- * The fields therefore have to be applied afterwards with the explicit
- * setters, and those only stick once Steam has registered the new app in
- * appStore. Both quirks are load-bearing here, not defensive padding.
+ * These are the primitives. Anything that has to tell the backend what happened
+ * -- which collections are ours, which have gone -- lives in `src/collections.ts`
+ * instead, because this package must stay free of backend imports: it is
+ * exercised by tests that run under Node, where `@decky/api` will not load.
  */
-export async function createShortcut(args: CreateShortcutArgs): Promise<number> {
-  const apps = steamClient()?.Apps;
-  if (!apps?.AddShortcut) {
-    throw new Error("SteamClient.Apps.AddShortcut is unavailable.");
-  }
-
-  const appId: number = await apps.AddShortcut(args.title, args.exe, "", "");
-
-  if (typeof appId !== "number" || appId <= 0) {
-    throw new Error("Steam did not return an app id for the new shortcut.");
-  }
-
-  if (!(await waitForOverview(appId))) {
-    console.warn("[deckyemu] app overview never appeared; applying fields anyway");
-  }
-
-  try {
-    apps.SetShortcutName?.(appId, args.title);
-    apps.SetShortcutExe?.(appId, args.exe);
-    apps.SetShortcutStartDir?.(appId, args.startDir);
-    apps.SetShortcutLaunchOptions?.(appId, args.launchOptions);
-  } catch (error) {
-    console.error("[deckyemu] could not apply shortcut fields", error);
-    throw new Error("Steam created the shortcut but rejected its settings.");
-  }
-
-  return appId;
-}
-
-export function removeShortcut(appId: number): boolean {
-  try {
-    const apps = steamClient()?.Apps;
-    if (!apps?.RemoveShortcut) return false;
-    apps.RemoveShortcut(appId);
-    // Whether Steam has finished removing it is not knowable from here -- the
-    // call returns nothing and the library updates on its own schedule. What
-    // this reports is that the request was made, which is what a caller
-    // counting "how many did I ask to go" needs.
-    return true;
-  } catch (error) {
-    console.error("[deckyemu] RemoveShortcut failed", error);
-    return false;
-  }
-}
-
-const ART_SLOTS: Array<[keyof ResolvedArt, LibraryAssetType]> = [
-  ["capsule", LibraryAssetType.Capsule],
-  ["header", LibraryAssetType.Header],
-  ["hero", LibraryAssetType.Hero],
-  ["logo", LibraryAssetType.Logo],
-];
-
-type ResolvedArt = Partial<Record<"capsule" | "header" | "hero" | "logo", ArtImage>>;
-
-/** Applies whatever art we have. Returns the number of slots that stuck. */
-export async function applyArtwork(appId: number, art: ResolvedArt): Promise<number> {
-  const apps = steamClient()?.Apps;
-  if (!apps?.SetCustomArtworkForApp) {
-    return 0;
-  }
-
-  let applied = 0;
-  for (const [slot, assetType] of ART_SLOTS) {
-    const image = art[slot];
-    if (!image?.data) continue;
-
-    let data = image.data;
-    let kind: string = image.kind;
-    /*
-     * Redrawn when it is the wrong shape for the slot. libretro's thumbnails are
-     * scans of the physical box, so for most systems Steam is handed a landscape
-     * or square picture for a portrait slot and stretches it -- which is what
-     * makes a freshly added game look wrong next to real Steam covers.
-     *
-     * Never the logo: it is a transparent PNG meant to sit free-form, and
-     * putting a blurred backdrop behind one would be worse than any stretching.
-     *
-     * Best effort. A failure here leaves the original, which is what would have
-     * been used anyway.
-     */
-    if (slot !== "logo") {
-      try {
-        const fitted = await fitToSlot(image.data, slot);
-        if (fitted) {
-          data = fitted;
-          kind = "jpg";
-        }
-      } catch (error) {
-        console.error(`[deckyemu] could not fit ${slot} art`, error);
-      }
-    }
-
-    try {
-      await apps.SetCustomArtworkForApp(appId, toBareBase64(data), kind, assetType);
-      applied += 1;
-    } catch (error) {
-      console.error(`[deckyemu] failed to set ${slot} art`, error);
-    }
-  }
-  return applied;
-}
-
-/** A freshly added shortcut takes a moment to appear in appStore. */
-async function waitForOverview(appId: number, attempts = 12): Promise<AppOverview | null> {
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
-    const overview = appStore()?.GetAppOverviewByAppID?.(appId);
-    if (overview) return overview as AppOverview;
-    await sleep(250);
-  }
-  return null;
-}
+import {
+  collectionStore,
+  overviewsFor,
+  type Collection,
+  type CollectionExtras,
+} from "./client";
 
 /**
  * Every user collection, regardless of how Steam is storing them.
@@ -244,25 +60,6 @@ async function getOrCreateCollection(tag: string): Promise<Collection | undefine
   if (!created) return undefined;
   await created.Save();
   return created;
-}
-
-/**
- * Overviews for `appIds`, waiting for any that Steam has not registered yet.
- *
- * Waited for together rather than one after another. The wait is Steam's own
- * bookkeeping catching up, which it does for every app at once, so serialising it
- * charged a second per app that was not ready yet -- and a collection rename hands
- * this the entire library at once.
- */
-async function overviewsFor(appIds: number[]): Promise<AppOverview[]> {
-  const settled = await Promise.all(appIds.map((appId) => waitForOverview(appId, 4)));
-
-  const overviews: AppOverview[] = [];
-  settled.forEach((overview, index) => {
-    if (overview) overviews.push(overview);
-    else console.warn(`[deckyemu] no app overview for ${appIds[index]}`);
-  });
-  return overviews;
 }
 
 /**
@@ -527,113 +324,6 @@ export async function pruneStaleCollections(
     if (result.deleted) deleted.push(result.deleted);
   }
   return { pruned, deleted };
-}
-
-/** True when Steam still has a shortcut for this appId. */
-export function shortcutExists(appId: number): boolean {
-  try {
-    return Boolean(appStore()?.GetAppOverviewByAppID?.(appId));
-  } catch (error) {
-    console.error("[deckyemu] could not look up app", appId, error);
-    // Assume it exists rather than inviting the user to delete a live entry.
-    return true;
-  }
-}
-
-/**
- * Rename an existing shortcut.
- *
- * The same call is used when creating one, where it is known to work. Whether
- * Steam refreshes an already-visible library entry immediately is less certain,
- * so the caller should not treat a stale-looking name as a failure.
- */
-export function renameShortcut(appId: number, name: string): boolean {
-  const apps = steamClient()?.Apps;
-  if (!apps?.SetShortcutName) return false;
-  try {
-    apps.SetShortcutName(appId, name);
-    return true;
-  } catch (error) {
-    console.error("[deckyemu] could not rename shortcut", appId, error);
-    return false;
-  }
-}
-
-/**
- * Steam's GameID for a shortcut.
- *
- * Read from the app overview when possible, since that is what Steam itself
- * passes to RunGame. The fallback computes it the way Steam encodes a non-Steam
- * shortcut -- the appid in the high 32 bits with the shortcut type bits set --
- * for the case where the overview has not materialised yet.
- */
-function shortcutGameId(appId: number): string {
-  try {
-    const fromStore = appStore()?.GetAppOverviewByAppID?.(appId)?.gameid;
-    if (fromStore) return String(fromStore);
-  } catch (error) {
-    console.error("[deckyemu] could not read gameid for", appId, error);
-  }
-  return ((BigInt(appId) << 32n) | 0x0200000000000000n).toString();
-}
-
-/**
- * Launch a game through Steam, exactly as selecting it in the library would.
- *
- * Going through Steam rather than running the script ourselves means gamescope,
- * Steam Input and the overlay all behave as they do in normal play -- which is
- * the point of a test launch.
- */
-export function launchApp(appId: number): boolean {
-  const apps = steamClient()?.Apps;
-  if (!apps?.RunGame) return false;
-  try {
-    apps.RunGame(shortcutGameId(appId), "", -1, 100);
-    return true;
-  } catch (error) {
-    console.error("[deckyemu] could not launch app", appId, error);
-    return false;
-  }
-}
-
-/**
- * Keep a shortcut out of the library without deleting it.
- *
- * For the setup shortcut, which exists only because gamescope composites nothing
- * Steam did not launch. It has to be a real Steam entry to work at all, and
- * nobody wants it on their shelf next to their games.
- *
- * Steam models hidden as a collection rather than a flag, which is why this goes
- * through `collectionStore` rather than `SteamClient.Apps`. Returns whether it
- * took: a failure here is untidy rather than broken -- the shortcut still works,
- * it is just visible -- so the caller carries on either way.
- */
-export function setAppHidden(appId: number, hidden: boolean): boolean {
-  try {
-    const store = collectionStore() as unknown as {
-      SetAppsAsHidden?: (appIds: number[], hidden: boolean) => void;
-    } | null;
-    if (typeof store?.SetAppsAsHidden !== "function") return false;
-    store.SetAppsAsHidden([appId], hidden);
-    return true;
-  } catch (error) {
-    console.error("[deckyemu] could not hide app", appId, error);
-    return false;
-  }
-}
-
-/** Point an adopted game's shortcut at its rebuilt launcher script. */
-export function repointShortcut(appId: number, exe: string): boolean {
-  const apps = steamClient()?.Apps;
-  if (!apps?.SetShortcutExe) return false;
-  try {
-    apps.SetShortcutExe(appId, exe);
-    apps.SetShortcutStartDir?.(appId, exe.slice(0, Math.max(0, exe.lastIndexOf("/"))));
-    return true;
-  } catch (error) {
-    console.error("[deckyemu] could not repoint shortcut", appId, error);
-    return false;
-  }
 }
 
 export interface CollectionMove {
