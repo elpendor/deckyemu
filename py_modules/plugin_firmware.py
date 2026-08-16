@@ -263,16 +263,55 @@ class Firmware(plugin_base.PluginContext):
         path = os.path.join(source_dir, name)
 
         args = [token.replace("{file}", path) for token in spec.get("args") or []]
-        ok, error = await self._run_emulator_tool(
-            emulator,
-            args,
-            allow=[source_dir],
-            seconds=spec.get("seconds", 600),
-            display=spec.get("needs_display", False),
-        )
 
-        installed = await self._run(emu_firmware.imported, spec)
+        attempts = 0
+
+        async def attempt():
+            """(what it installed, what went wrong). Emptiness of the first decides."""
+            nonlocal attempts
+            attempts += 1
+            _ok, failure = await self._run_emulator_tool(
+                emulator,
+                args,
+                allow=[source_dir],
+                seconds=spec.get("seconds", 600),
+                display=spec.get("needs_display", False),
+            )
+            # What it produced, not its exit code: the file is deleted after a
+            # success, so the emulator's own output is the only honest witness.
+            return await self._run(emu_firmware.imported, spec), failure
+
+        installed, error = await attempt()
+
+        # Run it a second time when the first produced nothing, because for one
+        # emulator the first run is not an install attempt at all -- it is the
+        # emulator starting for the first time.
+        #
+        # Vita3K has never run at this point, deliberately: its config is a
+        # whole document that must not be invented, so the setup block waits
+        # for the emulator to write one, and this import is the first thing
+        # that starts it. With no configuration it has no preference path, and
+        # `create_directories` is handed an empty one:
+        #
+        #   terminate called after throwing 'boost::filesystem::filesystem_error'
+        #   what(): create_directories: Invalid argument [generic:22]
+        #
+        # It aborts in under a second, having written the config on the way
+        # down -- so the identical command run again works, which is what
+        # pressing Install twice was doing. Once, here, instead of asking the
+        # user to guess that.
         if not installed:
+            decky.logger.info(
+                "%s installed nothing on the first run; trying once more, in case "
+                "that run was the emulator starting for the first time",
+                entry["name"],
+            )
+            installed, error = await attempt()
+
+        if not installed:
+            # The second run's failure, not the first: the first is expected to
+            # be the bootstrap and its message would describe a crash nobody
+            # needs to hear about when the retry then worked.
             return {
                 "ok": False,
                 "error": error or "%s ran but did not install anything." % entry["name"],
@@ -297,8 +336,14 @@ class Firmware(plugin_base.PluginContext):
                 entry["id"], result.get("error") or "ok",
             )
 
+        # Says whether the retry was needed, which is the difference between an
+        # emulator that started cleanly and one whose first run was the
+        # bootstrap described above. Worth having in the log for the next
+        # emulator that behaves this way.
         decky.logger.info(
-            "Imported %s into %s: %s (exit ok=%s)", name, entry["id"], installed, ok
+            "Imported %s into %s: %s%s",
+            name, entry["id"], installed,
+            "" if attempts == 1 else " (on the second run; the first started the emulator)",
         )
         return {
             "ok": True,
