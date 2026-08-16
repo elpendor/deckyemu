@@ -38,6 +38,10 @@ import main  # noqa: E402
 
 section("changing an emulator's build -- what is refused, and what holds")
 
+# The refusals below are logged with tracebacks, which is correct and also reads
+# like a broken run. Restored at the end -- the whole suite shares one logger, so
+# a file that quiets it and walks away silences every file that runs after it.
+_log_level = decky.logger.level
 decky.logger.setLevel(logging.CRITICAL)
 
 emitted = []
@@ -272,3 +276,5 @@ if __name__ == "__main__":
     from harness import summary
 
     summary()
+
+decky.logger.setLevel(_log_level)

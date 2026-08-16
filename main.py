@@ -2,6 +2,7 @@ import asyncio
 import functools
 import glob
 import hashlib
+import inspect
 import json
 import os
 import re
@@ -80,6 +81,60 @@ def _check_own_modules():
 PLUGIN_ROOT = os.path.dirname(os.path.abspath(__file__))
 
 
+def _log_failures(cls):
+    """Make every method decky can call write down why it failed.
+
+    Decky hands an exception back to whoever called the method and nothing
+    writes it anywhere. So the frontend gets a message, shows the user its own
+    wording for "that did not work", and the plugin log -- the one place anybody
+    looks afterwards, and the only thing a bug report can carry -- has nothing
+    in it. What the log does get is asyncio complaining about the wreckage,
+    which names neither the method nor the line.
+
+    That has cost this project twice. Six rounds went into a module-shadowing
+    bug whose exception never reached the log (a module in py_modules shadowing one of the standard library's), and `_installed_catalog_ids` returning a coroutine instead of a
+    list surfaced only as "The report could not be prepared" beside a log full
+    of "Task was destroyed but it is pending".
+
+    Applied to the class rather than written at each of the hundred-odd methods:
+    a rule that has to be remembered at every call site is one that will be
+    missing from the method that needs it. Public coroutines only -- `_main` and
+    `_unload` catch their own steps deliberately, and a private helper fails
+    inside a public one that is already covered.
+
+    The exception is logged and re-raised, never swallowed: the frontend still
+    has to hear about it. `except Exception` and not `BaseException`, so an
+    `asyncio.CancelledError` from decky unloading the plugin passes through
+    without being dressed up as a failure.
+    """
+    def wrap(name, method):
+        @functools.wraps(method)
+        async def logged(*args, **kwargs):
+            try:
+                return await method(*args, **kwargs)
+            except Exception:
+                decky.logger.exception("%s() failed", name)
+                raise
+
+        return logged
+
+    # Each method is replaced on the class that *defines* it, walking the MRO,
+    # rather than all of them being set on `Plugin`. Setting them here would
+    # give Plugin an attribute for every method its mixins own -- which is
+    # exactly the shadowing `test_plugin_mixins` exists to catch, and it caught
+    # this. A name defined in two places is a name with two implementations, and
+    # nothing about logging should invent one.
+    for klass in cls.__mro__:
+        if klass is object:
+            continue
+        for name, method in list(vars(klass).items()):
+            if name.startswith("_") or not inspect.iscoroutinefunction(method):
+                continue
+            setattr(klass, name, wrap(name, method))
+    return cls
+
+
+@_log_failures
 class Plugin(
     plugin_accounts.Accounts,
     plugin_audit.Audit,
