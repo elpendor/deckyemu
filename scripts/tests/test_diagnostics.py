@@ -71,6 +71,17 @@ with open(_LOG, "w", encoding="utf-8") as _handle:
                 "/home/deck/deckyemu/transfer",
                 "[INFO]: fileserver: \"PUT /GcMnhBhWcdNuNWo7EY_aVg/upload/"
                 "gravity%20rush.pkg HTTP/1.1\" 200 -",
+                # What Vita3K prints while installing a package, immediately
+                # before it copies the licence into place. Undocumented, and key
+                # material beside a licence copy is not something to publish on
+                # a guess.
+                "[INFO]: vita3k: ef3e7908494127ae52a8ebc030f2007c	"
+                "fececc0a30fd7771d4606d36a00472f8",
+                "[INFO]: vita3k: [copy_license]: Success copy license file to: "
+                "\"/home/deck/.local/share/Vita3K/Vita3K/ux0/license/app/"
+                "PCSA00011/UP9000-PCSA00011_00-GRAVITYRUSH000000.rif\"",
+                "[INFO]: Wrote launcher /home/deck/homebrew/data/deckyemu/"
+                "launchers/a-private-game-6ac73bd4.sh",
                 "[INFO]: sgdb request with key %s" % _SGDB,
                 "[INFO]: cheevos token=%s" % _CHEEVOS,
                 "[INFO]: installing with --zrif %s" % _ZRIF,
@@ -85,6 +96,9 @@ _LIBRARY = {
     "1": {
         "app_id": 1, "title": "A Private Game", "platform": "SNES", "collection": "x",
         "rom_path": "/home/deck/deckyemu/roms/snes/A Private Game (USA).sfc",
+        # A real entry carries this, and the name is a slug of the title.
+        "launcher_path":
+            "/home/deck/homebrew/data/deckyemu/launchers/a-private-game-6ac73bd4.sh",
     },
     "2": {"app_id": 2, "title": "Another One", "platform": "SNES", "collection": "x"},
     "3": {"app_id": 3, "title": "A Third", "platform": "N64", "collection": "y"},
@@ -122,6 +136,11 @@ check("nor is a licence key that only ever appeared in the log",
       _ZRIF in _REPORT, False)
 check("nor is anything the log called a password",
       "hunter2seventeen" in _REPORT, False)
+# The rule for this went in without a check, and shipped inert: a shell turned
+# its `` into a real backspace on the way into the file, so it compiled, type
+# checked, and matched nothing. Only a real device noticed.
+check("nor a long run of hex an emulator printed",
+      "ef3e7908494127ae52a8ebc030f2007c" in _REPORT, False)
 # Struck out rather than dropped: a reader has to be able to tell that a line
 # was edited, or the report reads as though nothing was there.
 check("and what went is visible as having gone",
@@ -175,6 +194,14 @@ check("nor the name inside an artwork lookup that failed",
 # sent is only knowable from the inbox it is still sitting in.
 check("the name of a file waiting in the inbox is not published",
       "gravity rush" in _REPORT.lower(), False)
+# The launcher is named after the title, slugified. Striking the title does not
+# touch it, and "Wrote launcher .../a-private-game-6ac73bd4.sh" names the game
+# as surely as the title does.
+check("nor the launcher named after it",
+      "a-private-game" in _REPORT, False)
+# And squashed, which is how a title appears inside a Vita content id.
+check("nor the title squashed into a content id",
+      "APRIVATEGAME" in _REPORT.upper().replace("[REMOVED]", ""), False)
 check("and neither is the RetroAchievements username",
       "somebodyknown" in _REPORT, False)
 check("but the count is", "3 game(s)" in _REPORT, True)

@@ -89,6 +89,12 @@ _SECRET_SHAPES = (
     # the transfer one is live on the network at the moment the report is read.
     # The host is kept, because which host it was is the useful half.
     re.compile(r"(://[^/\s]+/)[A-Za-z0-9_\-]{16,}"),
+    # A long run of hex. Vita3K prints two 128-bit values of its own while
+    # installing a package, immediately before it copies the licence into place;
+    # what they are is not documented anywhere this project can check, and key
+    # material beside a licence copy is not something to publish on a guess. The
+    # cost of being wrong this way is a line of a log nobody needed.
+    re.compile(r"\b[0-9a-fA-F]{32,}\b"),
 )
 
 REDACTED = "[removed]"
@@ -114,9 +120,9 @@ def _redact(text, secrets):
         if secret and len(secret) >= 8:
             text = text.replace(secret, REDACTED)
     for shape in _SECRET_SHAPES:
-        # a captured group keeps whatever the rule chose to preserve -- the URL rule keeps
-        # the host, because which host it was is the useful half and the token
-        # after it is the part that must not travel.
+        # A rule that captures a group keeps it. The URL one keeps the host,
+        # because which host it was is the useful half and the token after it is
+        # the part that must not travel.
         text = shape.sub(lambda found: (found.group(1) if found.groups() else "") + REDACTED, text)
     return text
 
@@ -223,8 +229,19 @@ def build(version, install, emulators_registered, library, catalog_installed=(),
     except OSError:
         pass
     for entry in library.values():
-        personal.append(str(entry.get("title") or ""))
+        title = str(entry.get("title") or "")
+        personal.append(title)
         personal.append(str(entry.get("rom_path") or ""))
+        # The launcher is named after the title, slugified -- "Wrote launcher
+        # .../gravity-rush-6ac73bd4.sh" names the game as surely as the title
+        # does, and striking the title does not touch it.
+        launcher = str(entry.get("launcher_path") or "")
+        personal.append(launcher)
+        personal.append(os.path.basename(launcher))
+        personal.append(os.path.splitext(os.path.basename(launcher))[0])
+        # And squashed, which is how it appears inside a Vita content id:
+        # UP9000-PCSA00011_00-GRAVITYRUSH000000.
+        personal.append(re.sub(r"[^A-Za-z0-9]", "", title).upper())
         # Its own name too: a ROM is filed under one and the folder is not it.
         personal.append(os.path.basename(str(entry.get("rom_path") or "")))
 
