@@ -2136,6 +2136,27 @@ class Plugin(
         decky.logger.info("Diagnostic report ready (%d characters)", len(report))
         return {"ok": True, **await self._run(fileserver.status)}
 
+    async def end_report(self):
+        """Withdraw the report, and stop the server if it was only serving that.
+
+        Pressing Done means done: the report is the tail of a log, and leaving it
+        on the network afterwards is exposure nobody asked for. The page already
+        open on the other device keeps working -- it is one load, and its text is
+        in that browser rather than fetched again -- so ending this costs the
+        reader nothing they are looking at.
+
+        The server itself only stops when nothing is arriving. `start_report`
+        will have started it if it was down, but it may equally have been up for
+        a transfer that is still running, and cutting a multi-gigabyte ROM off
+        because somebody closed an unrelated dialog is the failure this guard
+        exists for. The transfer's own dialog uses the same rule.
+        """
+        await self._run(fileserver.offer_report, "")
+        status = await self._run(fileserver.status)
+        if status.get("running") and not status.get("uploading"):
+            return await self.stop_file_server()
+        return {"ok": True, **await self._run(fileserver.status)}
+
     @staticmethod
     def _installed_catalog_ids():
         """Which catalog emulators are actually on the device, as `id (channel)`.

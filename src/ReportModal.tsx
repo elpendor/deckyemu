@@ -1,8 +1,8 @@
 import { DialogButton, Focusable, ModalRoot, Spinner } from "@decky/ui";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import qrcode from "qrcode-generator";
 
-import { startReport, type FileServerStatus } from "./backend";
+import { endReport, startReport, type FileServerStatus } from "./backend";
 
 /**
  * Reading a diagnostic report off the Deck, from a device with a keyboard.
@@ -52,21 +52,46 @@ interface Props {
 export function ReportModal({ closeModal }: Props) {
   const [status, setStatus] = useState<Partial<FileServerStatus> | null>(null);
   const [error, setError] = useState("");
+  // Whether there is something to withdraw on the way out. A ref rather than
+  // state: the cleanup below reads it after the last render, where state would
+  // still be whatever it was when the effect was created.
+  const offered = useRef(false);
 
   useEffect(() => {
     let live = true;
     void startReport()
       .then((result) => {
-        if (!live) return;
-        if (!result.ok) setError(result.error ?? "The report could not be prepared.");
-        else setStatus(result);
+        if (!result.ok) {
+          if (live) setError(result.error ?? "The report could not be prepared.");
+          return;
+        }
+        // Set even if this modal has since closed, or a report offered by a
+        // call that landed late would be left being served with nothing to
+        // withdraw it.
+        offered.current = true;
+        if (live) setStatus(result);
       })
       .catch((startError) => {
         console.error("[deckyemu] could not prepare the report", startError);
         if (live) setError("The report could not be prepared.");
       });
+
     return () => {
       live = false;
+      /*
+       * Every way out, not just the Done button. A modal is also dismissed with
+       * B and with the X, and hanging the withdrawal off one button would leave
+       * the log served on the network for anyone who left by either of the
+       * other two -- which is most people.
+       *
+       * Only when something was actually offered: with no report of ours out
+       * there, `end_report` would still consider stopping a server that may be
+       * up for a transfer somebody else started.
+       */
+      if (!offered.current) return;
+      void endReport().catch((endError) =>
+        console.error("[deckyemu] could not stop sharing the report", endError),
+      );
     };
   }, []);
 
@@ -113,25 +138,27 @@ export function ReportModal({ closeModal }: Props) {
       )}
 
       {/*
-        Closing leaves the server up, which is the opposite of what the transfer
-        dialog does and is deliberate: you are reading the report on the other
-        device, and pulling the page out from under yourself because you
-        dismissed a dialog on the Deck would be exactly wrong.
+        Done means done: the report is the tail of a log and it stops being
+        served the moment this closes.
 
-        So there is one button, not a choice between closing and stopping. It
-        stops on its own, the panel says so while it is up, and stopping early is
-        already a control that exists -- Receiving files -> Show transfer, then
-        close that. A second button here would have been a third way to reach it
-        and a decision to make on the way out.
+        An earlier version left it up, on the reasoning that stopping would pull
+        the page out from under somebody still reading it. That reasoning was
+        wrong -- the report is a single page load, so once it is open its text is
+        in that browser and nothing is fetched again. Stopping prevents a
+        reload, which is not the same as taking it away, and is a poor trade
+        against leaving a log served on the network after the user said they had
+        finished.
       */}
       {url && (
         <div style={{ ...LABEL, marginTop: "14px" }}>
-          Stays readable for {Math.round((status?.idle_timeout ?? 1800) / 60)} minutes, then
-          stops. The panel shows it while it is up.
+          Open it before pressing Done — it stops being shared then, and in any case
+          after {Math.round((status?.idle_timeout ?? 1800) / 60)} minutes.
         </div>
       )}
 
       <Focusable style={{ display: "flex", gap: "8px", marginTop: "12px" }}>
+        {/* Just closes. Withdrawing the report is the effect's cleanup above,
+            so B and the X do it too. */}
         <DialogButton onClick={() => closeModal?.()}>Done</DialogButton>
       </Focusable>
     </ModalRoot>

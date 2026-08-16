@@ -243,6 +243,15 @@ export const startReport = callable<
   [],
   { ok: boolean; error?: string } & Partial<FileServerStatus>
 >("start_report");
+/**
+ * Done with the report: withdraw it, and stop the server if it was only there
+ * for that. Left running when an upload is in flight, so closing this dialog
+ * cannot cut off an unrelated transfer.
+ */
+export const endReport = callable<
+  [],
+  { ok: boolean } & Partial<FileServerStatus>
+>("end_report");
 export const stopFileServer = callable<
   [],
   { ok: boolean } & Partial<FileServerStatus>

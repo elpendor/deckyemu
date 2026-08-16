@@ -4105,6 +4105,31 @@ else:
     # and return its answer, not a coroutine that will never be awaited.
     check("the catalog probe returns a list, not a coroutine",
           isinstance(plugin._installed_catalog_ids(), list), True)
+
+    # Done means done. The report is the tail of a log, and leaving it served on
+    # the network after the user closed the dialog is exposure nobody asked for.
+    _ended = run(plugin.end_report())
+    check("ending it withdraws the report", _ended["ok"], True)
+    check("and takes the address with it", fileserver.status()["report_url"], "")
+    check("and stops the server it started", fileserver.status()["running"], False)
+
+    # But not while something is arriving. `start_report` starts the server if
+    # it is down, and it may equally have been up for a transfer that is still
+    # running -- cutting off a multi-gigabyte ROM because somebody closed an
+    # unrelated dialog is the failure this guard is for.
+    run(plugin.start_report())
+    # The same shape a real upload registers, or `status()` cannot describe it.
+    fileserver._in_flight[999] = {
+        "name": "big.iso", "received": 1, "total": 2, "at": 0, "cancelled": False,
+    }
+    try:
+        _kept = run(plugin.end_report())
+        check("with a transfer running, the report still goes",
+              fileserver.status()["report_url"], "")
+        check("but the server stays up", _kept["running"], True)
+    finally:
+        fileserver._in_flight.pop(999, None)
+
     # Serving it is checked above, against the server this test started and
     # still knows the port of. This one bound its own.
     fileserver.stop()
