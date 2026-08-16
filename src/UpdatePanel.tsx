@@ -355,8 +355,14 @@ export function UpdatePanel() {
 
         After the update check on purpose: those are the two things you do when
         something is wrong, and they are in the right order, because being a
-        version behind is one of the answers. */}
-    <PanelSection title="Something wrong">
+        version behind is one of the answers.
+
+        Titled for the thing rather than for the situation: "Something wrong" is
+        a sentence fragment where every other group on this page is a noun --
+        Launching, Naming, Install cores. "Reporting a problem" would fit that
+        and then say the button's own words back at it, and this is already what
+        the report calls itself on the page it is served on. */}
+    <PanelSection title="Diagnostics">
       <PanelSectionRow>
         <ButtonItem
           layout="below"
