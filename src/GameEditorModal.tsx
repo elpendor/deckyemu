@@ -196,23 +196,47 @@ export function GameEditorModal({ game, onSaved, closeModal }: Props) {
         coreId={coreId}
         onApplied={(result) => {
           void (async () => {
-            const applied = await applyArtwork(game.app_id, result.art);
-            setArtApplied(applied);
+            try {
+              const applied = await applyArtwork(game.app_id, result.art);
+              setArtApplied(applied);
 
-            // And the name, by the same rule the add flow uses -- see
-            // titleFromArt.ts. The shortcut is renamed on Save, like every
-            // other edit here; artwork applies immediately because it needs
-            // nothing else to happen first.
-            const nextTitle = titleAfterArtPick(title, game.title, result.suggested_title);
-            if (nextTitle !== title) {
-              setTitle(nextTitle);
-              setNote("Name taken from the artwork you picked. Save to apply it.");
+              // And the name, by the same rule the add flow uses -- see
+              // titleFromArt.ts. The shortcut is renamed on Save, like every
+              // other edit here; artwork applies immediately because it needs
+              // nothing else to happen first.
+              const nextTitle = titleAfterArtPick(title, game.title, result.suggested_title);
+              if (nextTitle !== title) {
+                setTitle(nextTitle);
+                setNote("Name taken from the artwork you picked. Save to apply it.");
+              } else {
+                // Picking a game and watching only the artwork change is the
+                // shape of two separate faults -- an empty suggestion, or a
+                // name the rule declined to overwrite -- and from the outside
+                // they look identical. Neither is an error, so nothing was
+                // written down and the report of it could not be diagnosed.
+                logError(
+                  "art pick left the name alone",
+                  "",
+                  `suggested=${JSON.stringify(result.suggested_title)} ` +
+                    `current=${JSON.stringify(title)} ` +
+                    `automatic=${JSON.stringify(game.title)}`,
+                );
+              }
+
+              toaster.toast({
+                title: applied > 0 ? "Artwork updated" : "Artwork could not be applied",
+                body: result.art_game_name || `${applied} image(s)`,
+              });
+            } catch (error) {
+              // Everything above ran unguarded, so a throw anywhere in it left
+              // the artwork applied, the name unchanged, and no toast -- which
+              // is precisely the symptom being chased, reported as silence.
+              logError("could not finish applying the picked game", error);
+              toaster.toast({
+                title: "Artwork could not be applied",
+                body: "Something went wrong applying that game.",
+              });
             }
-
-            toaster.toast({
-              title: applied > 0 ? "Artwork updated" : "Artwork could not be applied",
-              body: result.art_game_name || `${applied} image(s)`,
-            });
           })();
         }}
       />,

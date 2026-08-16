@@ -1308,6 +1308,10 @@ class Plugin(
             # but it is no longer the only way to know.
             name = await self._run(sgdb.game_name, api_key, game_id)
             name = name or (picked_name or "").strip()[:120]
+            decky.logger.info(
+                "Picked SteamGridDB %s: named %r by the database, %r on the row",
+                game_id, name, picked_name,
+            )
             return {
                 "ok": True,
                 "art": art,
