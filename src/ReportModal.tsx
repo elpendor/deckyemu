@@ -2,7 +2,7 @@ import { DialogButton, Focusable, ModalRoot, Spinner } from "@decky/ui";
 import { useEffect, useMemo, useState } from "react";
 import qrcode from "qrcode-generator";
 
-import { startReport, stopFileServer, type FileServerStatus } from "./backend";
+import { startReport, type FileServerStatus } from "./backend";
 
 /**
  * Reading a diagnostic report off the Deck, from a device with a keyboard.
@@ -70,18 +70,6 @@ export function ReportModal({ closeModal }: Props) {
     };
   }, []);
 
-  /*
-   * The server is left running when this closes.
-   *
-   * It stops on its own after half an hour, and stopping it here would pull the
-   * page out from under somebody who is still reading it -- the whole point is
-   * that they are looking at another device, not at this one. The Transfer row
-   * in the panel shows it is up, and stops it on demand.
-   */
-  const finish = () => {
-    closeModal?.();
-  };
-
   const url = status?.report_url ?? "";
 
   return (
@@ -117,22 +105,34 @@ export function ReportModal({ closeModal }: Props) {
             {/* The code lands on the transfer page, which is the same server.
                 Saying so is cheaper than the alternative, which is somebody
                 typing six digits and wondering why they are looking at an
-                upload form. */}
-            <div style={LABEL}>then follow "Open the diagnostic report".</div>
+                upload form. Quoted exactly as the button reads, so what is on
+                this screen and what is on the other one are the same words. */}
+            <div style={LABEL}>then press "Diagnostic report" at the top.</div>
           </div>
         </Focusable>
       )}
 
-      <Focusable style={{ display: "flex", gap: "8px", marginTop: "16px" }}>
-        <DialogButton onClick={finish}>Done</DialogButton>
-        <DialogButton
-          onClick={() => {
-            void stopFileServer().catch(() => undefined);
-            closeModal?.();
-          }}
-        >
-          Done, and stop sharing now
-        </DialogButton>
+      {/*
+        Closing leaves the server up, which is the opposite of what the transfer
+        dialog does and is deliberate: you are reading the report on the other
+        device, and pulling the page out from under yourself because you
+        dismissed a dialog on the Deck would be exactly wrong.
+
+        So there is one button, not a choice between closing and stopping. It
+        stops on its own, the panel says so while it is up, and stopping early is
+        already a control that exists -- Receiving files -> Show transfer, then
+        close that. A second button here would have been a third way to reach it
+        and a decision to make on the way out.
+      */}
+      {url && (
+        <div style={{ ...LABEL, marginTop: "14px" }}>
+          Stays readable for {Math.round((status?.idle_timeout ?? 1800) / 60)} minutes, then
+          stops. The panel shows it while it is up.
+        </div>
+      )}
+
+      <Focusable style={{ display: "flex", gap: "8px", marginTop: "12px" }}>
+        <DialogButton onClick={() => closeModal?.()}>Done</DialogButton>
       </Focusable>
     </ModalRoot>
   );

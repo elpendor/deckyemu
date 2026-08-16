@@ -4076,7 +4076,12 @@ else:
     check("with the report in the page", "nothing secret here" in _report_page[1], True)
     # Somebody who came in by code lands on the upload page, so the door has to
     # be there too or the keyboard route reaches everything except the report.
-    check("and the upload page links to it", "/report" in get("/%s/" % token)[1], True)
+    _upload_page = get("/%s/" % token)[1]
+    check("and the upload page offers it", "/%s/report" % token in _upload_page, True)
+    # On the header row rather than as a line of prose, so it reads as the other
+    # thing you can do here rather than as something to skim past.
+    check("as a button beside the heading",
+          '<div class="head">' in _upload_page and 'class="report"' in _upload_page, True)
     # Still behind the token: it holds the tail of a log.
     check("it is not reachable without the token", get("/report")[0], 404)
 

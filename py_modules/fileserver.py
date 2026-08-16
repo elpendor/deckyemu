@@ -614,6 +614,20 @@ _STYLE = """
   }
   main { width: 100%; max-width: 620px; margin: 0 auto; }
   h1 { font-size: 22px; margin: 0 0 4px; letter-spacing: -0.01em; }
+  /* The heading and whatever second action the page has, on one line. `gap`
+     rather than a margin so the row collapses to just the heading when there is
+     no button, and `wrap` so a narrow phone drops the button below rather than
+     squeezing the title into two words. */
+  .head { display: flex; align-items: baseline; justify-content: space-between;
+          gap: 10px 14px; flex-wrap: wrap; }
+  /* Looks like a button, is a link: it navigates, and making it a <button> that
+     sets location is more moving parts for the same result -- and one that
+     stops working with scripting off. */
+  a.report { flex: none; font-size: 13px; font-weight: 600; text-decoration: none;
+             padding: 7px 12px; border-radius: 8px; white-space: nowrap;
+             color: var(--text); background: var(--card);
+             border: 1px solid var(--line); }
+  a.report:hover { border-color: var(--accent); background: var(--accent-soft); }
   h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .08em;
        color: var(--muted); margin: 24px 0 8px; font-weight: 600; }
   p.dir { color: var(--muted); font-size: 13px; margin: 0 0 18px;
@@ -905,10 +919,12 @@ def _page():
 <style>%(style)s</style>
 </head><body>
 <main>
-  <h1>Transfer to Deck</h1>
+  <div class="head">
+    <h1>Transfer to Deck</h1>
+%(report)s
+  </div>
   <p class="dir">Saving into %(dir)s</p>
 %(keep)s
-%(report)s
   <label class="pick" id="zone">
     <b>Choose files</b>
     <span>or drag them here</span>
@@ -944,9 +960,13 @@ const UPLOAD_BASE = '/%(token)s/upload/';
         # QR code. Somebody who came the other way -- short address, six digits
         # -- lands here instead, so the door has to be on this page too or the
         # keyboard route reaches everything except the thing they came for.
+        # A button beside the heading rather than a line of text under it.
+        # This page is a place you were sent to do one thing -- send files -- and
+        # the report is the other reason somebody is here at all, so it belongs
+        # where a second action belongs: on the header row, out of the way of the
+        # thing the page is for, and not dressed up as prose to be read past.
         "report": (
-            '  <p class="dir"><a href="/%s/report">Open the diagnostic report</a></p>'
-            % token
+            '    <a class="report" href="/%s/report">Diagnostic report</a>' % token
         ) if report else "",
         "style": _STYLE,
         "script": _SCRIPT,
