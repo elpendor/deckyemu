@@ -108,8 +108,6 @@ export function CoreInstallPanel({ onCoresChanged, reloadKey = 0 }: Props) {
   // div rather than a ref on PanelSection: that is Steam's component and
   // forwards nothing, so there is no node of its own to reach.
   const section = useRef<HTMLDivElement>(null);
-  // The install row, when there is one -- see the arrival effect.
-  const installRow = useRef<HTMLDivElement>(null);
   const [error, setError] = useState("");
 
   const load = useCallback(async (refresh: boolean) => {
@@ -184,44 +182,23 @@ export function CoreInstallPanel({ onCoresChanged, reloadKey = 0 }: Props) {
     // Steam settles focus, and the last write wins.
     //
     // After paint, or the section is measured where it has not been drawn yet.
-    // Two frames, not one: the state set just above has to render before the
-    // install row exists to be focused, and a single frame can run before that
-    // commit has painted.
-    requestAnimationFrame(() => requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
       const node = section.current;
       if (!node) return;
       // The install button, which is why anyone arrived. Falling back to the
       // section's first control when the core turns out to be installed
       // already -- the row is absent then, and the alternative is Remove.
-      const target = installRow.current ?? node;
-      const focusable = target.querySelector<HTMLElement>(".Focusable, button, [tabindex]");
-
-      /*
-       * Claimed repeatedly until it sticks, because Steam settles focus on the
-       * sidebar tab as part of the navigation and does it *after* these two
-       * frames -- so a single call is made and then overwritten, leaving the
-       * gamepad on the tab selector while the page below it looks right.
-       *
-       * Checked a beat later rather than straight away: `focus()` updates
-       * `activeElement` synchronously, so asking immediately always says yes
-       * and tells us nothing about whether it survived.
-       *
-       * Bounded, and it stops the moment focus is inside the section. Eight
-       * tries is under a second; past that something is deliberately holding
-       * focus elsewhere and taking it would be the wrong thing to do.
-       */
-      const claim = (attempt: number) => {
-        // The panel went away -- a detached node is nothing to focus, and the
-        // user has moved on.
-        if (attempt > 8 || !node.isConnected || !focusable) return;
-        focusable.focus();
-        setTimeout(() => {
-          if (node.contains(document.activeElement)) return;
-          claim(attempt + 1);
-        }, 100);
-      };
-      claim(0);
-
+      // No focus is moved, deliberately. Steam's gamepad ring is a separate
+      // system from DOM focus -- `element.focus()` moves `document.activeElement`
+      // and the ring stays where it was, which is how three attempts at this
+      // passed a probe and did nothing on the device. The documented way in,
+      // `m_navNode.TakeFocus()`, is from an older client: measured on this
+      // build, not one element in the whole document carries `m_navNode`.
+      //
+      // Steam's own components scroll into view when the controller navigates
+      // to them, so focus is meant to follow the user rather than be taken from
+      // them. Scrolling puts the install button on screen; one press of down
+      // reaches it. That is the whole of what is safely available.
       // Then the scroll position, by hand. `scrollIntoView` does not move this
       // page: measured over CEF, the section sat at y=290 with the scroller at
       // scrollTop 68, and calling it with `block: "start"` left both exactly
@@ -232,7 +209,7 @@ export function CoreInstallPanel({ onCoresChanged, reloadKey = 0 }: Props) {
         scroller.scrollTop +=
           node.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
       }
-    }));
+    });
   }, []);
 
   // Arriving by mount, or by catalog finally loading under a request that was
@@ -393,16 +370,11 @@ export function CoreInstallPanel({ onCoresChanged, reloadKey = 0 }: Props) {
       )}
 
       {selected && !selected.installed && (
-        // Wrapped so an arrival can put the gamepad straight on it. Only the
-        // install row: focusing "Remove this core" would leave the cursor on a
-        // destructive button nobody asked for.
-        <div ref={installRow}>
-          <PanelSectionRow>
-            <ButtonItem layout="below" onClick={doInstall} disabled={Boolean(busy)}>
-              {busy === selected.id ? "Installing..." : `Install ${selected.display_name}`}
-            </ButtonItem>
-          </PanelSectionRow>
-        </div>
+        <PanelSectionRow>
+          <ButtonItem layout="below" onClick={doInstall} disabled={Boolean(busy)}>
+            {busy === selected.id ? "Installing..." : `Install ${selected.display_name}`}
+          </ButtonItem>
+        </PanelSectionRow>
       )}
 
       {selected?.installed && (
