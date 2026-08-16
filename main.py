@@ -1289,6 +1289,16 @@ class Plugin(
         silently did half of itself. The name was never something to go and
         find: the user read it off the row before choosing it.
         """
+        # What was pressed, before anything is done about it. A pick that names
+        # the game wrongly and a pick that does not name it at all are the same
+        # report from the outside, and telling them apart afterwards meant
+        # inferring the choice from the artwork request it caused -- which is
+        # not the same thing and read wrongly twice.
+        decky.logger.info(
+            "apply_art_candidate: source=%s ref=%r system=%r row=%r",
+            source, ref, system, picked_name,
+        )
+
         settings = await self._run(store.get_settings)
         api_key = (settings.get("sgdb_api_key") or "").strip()
 
@@ -1309,8 +1319,8 @@ class Plugin(
             name = await self._run(sgdb.game_name, api_key, game_id)
             name = name or (picked_name or "").strip()[:120]
             decky.logger.info(
-                "Picked SteamGridDB %s: named %r by the database, %r on the row",
-                game_id, name, picked_name,
+                "apply_art_candidate -> %d image(s), named %r (database) / %r (row)",
+                len(art), name, picked_name,
             )
             return {
                 "ok": True,
@@ -1329,6 +1339,9 @@ class Plugin(
                 return {"ok": False, "error": "That thumbnail could not be downloaded."}
             # The thumbnail's own name is the label the row showed, so there
             # is nothing to fall back to and nothing that can fail.
+            decky.logger.info(
+                "apply_art_candidate -> %d image(s), named %r (thumbnail)", len(art), ref,
+            )
             return {
                 "ok": True,
                 "art": art,
