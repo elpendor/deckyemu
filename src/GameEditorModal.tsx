@@ -46,6 +46,15 @@ interface Props {
   game: AddedGame;
   onSaved: () => void;
   closeModal?: () => void;
+  /**
+   * Close whatever opened this, when leaving for another screen entirely.
+   *
+   * This modal is opened from the added-games list, which is itself a modal, so
+   * closing only this one navigates to the setup page and leaves that list
+   * stacked over it. Not called on save or cancel -- going back to the list is
+   * right then, and it is the only reason the list is still open.
+   */
+  onLeave?: () => void;
 }
 
 const FIELD = { display: "flex", flexDirection: "column" as const, gap: "4px" };
@@ -106,7 +115,7 @@ function Label({ children, hint }: { children: string; hint?: string }) {
  * launcher or collection work, and seeing the new capsule immediately is the
  * point of the picker. Everything else is written when Save is pressed.
  */
-export function GameEditorModal({ game, onSaved, closeModal }: Props) {
+export function GameEditorModal({ game, onSaved, closeModal, onLeave }: Props) {
   const [title, setTitle] = useState(game.title);
   const [romPath, setRomPath] = useState(game.rom_path);
   const [coreId, setCoreId] = useState(game.core_id);
@@ -447,6 +456,9 @@ export function GameEditorModal({ game, onSaved, closeModal }: Props) {
                   openManagePage("retroarch");
                 }
                 closeModal?.();
+                // And the list this was opened from, which would otherwise be
+                // left sitting over the page just navigated to.
+                onLeave?.();
               }}
             >
               {isEmulator ? "Set up this emulator" : "Install this core"}

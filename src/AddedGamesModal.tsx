@@ -106,7 +106,15 @@ export function AddedGamesModal({ closeModal, onChanged }: Props) {
                     // Stacked on this one: Steam nests modals, so closing the
                     // editor comes back here rather than to the panel.
                     onClick={() =>
-                      showModal(<GameEditorModal game={game} onSaved={changed} />)
+                      showModal(
+                        <GameEditorModal
+                          game={game}
+                          onSaved={changed}
+                          // Only for a jump to another screen: this list is
+                          // where saving and cancelling should land.
+                          onLeave={closeModal}
+                        />,
+                      )
                     }
                     style={{ minWidth: "auto", width: "auto", padding: "6px 12px" }}
                   >
