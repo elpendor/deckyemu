@@ -344,12 +344,27 @@ def game_name(api_key, game_id):
     return data.get("name") or ""
 
 
-# The four artwork slots, and the endpoint each comes from.
+# The four artwork slots: the endpoint each comes from, the query that asks for
+# the shape Steam wants, and a second query to try when the first finds nothing.
+#
+# The wide one is asked for at both of SteamGridDB's horizontal sizes, and that
+# is not a widening of the net -- 920x430 is 460x215 at twice the resolution,
+# the identical aspect. Asking for the small one alone meant a game with only
+# large wide grids had none at all: Gravity Rush has ten, every one 920x430, and
+# the panel showed no wide capsule for it while a perfect title match sat in the
+# log. Mario Tennis happened to have both sizes, which is why this looked fine.
+#
+# The capsule keeps 600x900 as the ask, because that is Steam's own shape and
+# there are usually dozens. The other two vertical sizes SteamGridDB publishes
+# are a slightly taller ratio, so they are a fallback rather than a peer: worth
+# having when the alternative is no cover, not worth preferring over the right
+# shape. `capsuleFit` redraws whatever arrives to fit.
 _ART_SLOTS = (
-    ("capsule", "grids", "?dimensions=600x900&types=static"),
-    ("header", "grids", "?dimensions=460x215&types=static"),
-    ("hero", "heroes", "?types=static"),
-    ("logo", "logos", "?types=static"),
+    ("capsule", "grids", "?dimensions=600x900&types=static",
+     "?dimensions=342x482,660x930&types=static"),
+    ("header", "grids", "?dimensions=460x215,920x430&types=static", ""),
+    ("hero", "heroes", "?types=static", ""),
+    ("logo", "logos", "?types=static", ""),
 )
 
 
@@ -359,9 +374,16 @@ def art_urls(api_key, game_id):
         return {}
 
     def fetch(slot):
-        _name, path, query = slot
-        url = "%s/%s/game/%d%s" % (API_BASE, path, game_id, query)
-        return _first_url(net.get_json(url, _headers(api_key)))
+        _name, path, query, fallback = slot
+
+        def ask(where):
+            url = "%s/%s/game/%d%s" % (API_BASE, path, game_id, where)
+            return _first_url(net.get_json(url, _headers(api_key)))
+
+        # The fallback costs a second round trip and only pays it when the first
+        # asked for a shape this game does not have, which is the case where the
+        # alternative is an empty slot.
+        return ask(query) or (ask(fallback) if fallback else "")
 
     # Four independent lookups that tell each other nothing. Run one after
     # another they stack four round trips to steamgriddb.com in front of the
