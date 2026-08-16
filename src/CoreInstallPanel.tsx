@@ -78,6 +78,27 @@ function take() {
   return wanted;
 }
 
+/**
+ * The nearest ancestor that actually scrolls, or null.
+ *
+ * Steam's page is a stack of `overflow: visible` divs with one `DialogContent`
+ * doing the scrolling several levels up, so "the scroll container" has to be
+ * found rather than assumed.
+ */
+function scrollableAncestor(node: HTMLElement): HTMLElement | null {
+  let parent = node.parentElement;
+  while (parent) {
+    const style = getComputedStyle(parent);
+    // The height test matters: a container can be `auto` and have nothing to
+    // scroll, and scrolling that one does nothing while looking like success.
+    if (/(auto|scroll)/.test(style.overflowY) && parent.scrollHeight > parent.clientHeight + 4) {
+      return parent;
+    }
+    parent = parent.parentElement;
+  }
+  return null;
+}
+
 export function CoreInstallPanel({ onCoresChanged, reloadKey = 0 }: Props) {
   const [catalog, setCatalog] = useState<InstallableCore[] | null>(cachedCatalog);
   const [system, setSystem] = useState(lastSystem);
@@ -174,9 +195,17 @@ export function CoreInstallPanel({ onCoresChanged, reloadKey = 0 }: Props) {
       // already -- the row is absent then, and the alternative is Remove.
       const target = installRow.current ?? node;
       target.querySelector<HTMLElement>(".Focusable, button, [tabindex]")?.focus();
-      // Focus scrolls the button into view; this puts the heading at the top.
-      // The section is short enough to hold both, so they do not disagree.
-      node.scrollIntoView({ block: "start" });
+
+      // Then the scroll position, by hand. `scrollIntoView` does not move this
+      // page: measured over CEF, the section sat at y=290 with the scroller at
+      // scrollTop 68, and calling it with `block: "start"` left both exactly
+      // where they were. Assigning the offset directly puts the heading at the
+      // top of the scrollport and it stays there.
+      const scroller = scrollableAncestor(node);
+      if (scroller) {
+        scroller.scrollTop +=
+          node.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
+      }
     }));
   }, []);
 
