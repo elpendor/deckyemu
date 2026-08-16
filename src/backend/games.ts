@@ -307,8 +307,13 @@ export const listArtCandidates = callable<
   [romPath: string, coreId: string, query: string],
   ArtCandidates
 >("list_art_candidates");
+/**
+ * `pickedName` is the label on the row that was pressed. The SteamGridDB branch
+ * asks its API for the name too, and that call answers nothing on any failure --
+ * which produced artwork with no name, and a rename that did half of itself.
+ */
 export const applyArtCandidate = callable<
-  [source: string, ref: string, system: string],
+  [source: string, ref: string, system: string, pickedName: string],
   AppliedArt
 >("apply_art_candidate");
 

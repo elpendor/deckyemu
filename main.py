@@ -1270,7 +1270,9 @@ class Plugin(
             "sgdb_available": bool(api_key),
         }
 
-    async def apply_art_candidate(self, source: str, ref: str, system: str = ""):
+    async def apply_art_candidate(
+        self, source: str, ref: str, system: str = "", picked_name: str = ""
+    ):
         """Fetch artwork for a candidate the user picked by hand.
 
         `suggested_title` comes back with it. Reaching for the picker means the
@@ -1279,6 +1281,13 @@ class Plugin(
         heuristic that produced the name, and the only answer at all when the
         filename is junk. The caller decides whether to take it; nothing here
         renames anything.
+
+        `picked_name` is the label on the row that was pressed. It exists
+        because the SteamGridDB branch used to go and *ask* for the name after
+        fetching the art -- a second request, which answers "" on any failure,
+        so a flaky moment produced artwork with no name and a rename that
+        silently did half of itself. The name was never something to go and
+        find: the user read it off the row before choosing it.
         """
         settings = await self._run(store.get_settings)
         api_key = (settings.get("sgdb_api_key") or "").strip()
@@ -1294,7 +1303,11 @@ class Plugin(
             art = await self._download_art(urls)
             if not art:
                 return {"ok": False, "error": "That game has no usable artwork on SteamGridDB."}
+            # Asked for, then fallen back to what the user clicked. The
+            # request is still worth making -- it is the canonical spelling --
+            # but it is no longer the only way to know.
             name = await self._run(sgdb.game_name, api_key, game_id)
+            name = name or (picked_name or "").strip()[:120]
             return {
                 "ok": True,
                 "art": art,
@@ -1310,6 +1323,8 @@ class Plugin(
             art = await self._download_art({"capsule": url})
             if not art:
                 return {"ok": False, "error": "That thumbnail could not be downloaded."}
+            # The thumbnail's own name is the label the row showed, so there
+            # is nothing to fall back to and nothing that can fail.
             return {
                 "ok": True,
                 "art": art,

@@ -217,7 +217,11 @@ export function GameEditorModal({ game, onSaved, closeModal }: Props) {
         }}
       />,
     );
-  }, [romPath, game.app_id, coreId]);
+    // `title` is in here because the rule above reads it. Without it the
+    // callback keeps the name the field had when the editor opened, so typing
+    // a name and *then* picking a game threw the typed name away -- the one
+    // case the rule exists to protect.
+  }, [romPath, game.app_id, coreId, game.title, title]);
 
   /**
    * Re-run the normal name and artwork lookup for the current core.

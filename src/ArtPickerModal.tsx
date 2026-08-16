@@ -77,7 +77,9 @@ export function ArtPickerModal({ romPath, coreId, onApplied, closeModal }: Props
       setApplying(row.key);
       setError("");
       try {
-        const result = await applyArtCandidate(row.source, row.ref, row.system);
+        const result = await applyArtCandidate(
+          row.source, row.ref, row.system, row.label,
+        );
         if (!result.ok) {
           setError(result.error);
           return;
