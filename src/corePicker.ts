@@ -49,18 +49,34 @@ export function coreOptions(cores: Core[]): DropdownOption[] {
 }
 
 /**
+ * The core's own name, out of libretro's "<system> (<core>)" display name.
+ *
+ * Every core for one system shares the system half, so a list of them is a
+ * column of the same words -- and `DropdownItem` gives the value the right-hand
+ * half of the row, where it is truncated. Collapsed, all twenty Game Boy cores
+ * read "Nintendo - Game Boy / C...", which is every option looking identical
+ * until the list is opened. The parenthetical is the only part that differs, so
+ * it is the part worth showing.
+ *
+ * Greedy to the last bracket, because the name itself can contain brackets:
+ * "Nintendo - SNES / SFC (bsnes C++98 (v085))" is one core called
+ * "bsnes C++98 (v085)", and taking the innermost match would call it "v085".
+ * Names with no bracket at all -- "ROM Cleaner" -- are already the core's name.
+ */
+const CORE_IN_BRACKETS = /^[^(]*\((.+)\)$/;
+
+export const coreShortName = (displayName: string) =>
+  displayName.match(CORE_IN_BRACKETS)?.[1] ?? displayName;
+
+/**
  * The same list, for cores that are not installed yet.
  *
  * Flat, with no grouping: everything here comes from the libretro buildbot, so
- * the distinction the list above draws does not exist among these.
- *
- * `display_name` alone, *not* the rule above -- which is what the Cores tab
- * does, and for the same reason. Every core in this list runs the one file
- * being added, so the system is already settled by the question; appending it
- * gave "Nintendo - Game Boy / Color (DoubleCherryGB) - Game Boy/Game Boy Color",
- * seventy characters naming Game Boy Color twice. On a Deck that wraps into a
- * paragraph and stops reading as a control at all.
+ * the distinction the list above draws does not exist among these. And short
+ * names rather than the rule above: every core offered runs the one file being
+ * added, so the system is settled by the question rather than a thing to tell
+ * options apart by.
  */
 export function installableOptions(cores: InstallableCore[]): DropdownOption[] {
-  return cores.map((core) => ({ data: core.id, label: core.display_name }));
+  return cores.map((core) => ({ data: core.id, label: coreShortName(core.display_name) }));
 }

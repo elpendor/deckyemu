@@ -57,23 +57,17 @@ describe("coreOptions", () => {
 });
 
 describe("installableOptions", () => {
-  it("does not append the system, which the question has already settled", () => {
-    // Every core here runs the one file being added, so the system is not in
-    // doubt. libretro's own display_name already carries it -- appending
-    // system_name produced "Nintendo - Game Boy / Color (DoubleCherryGB) -
-    // Game Boy/Game Boy Color", which names the system twice in seventy
-    // characters and wraps out of the control on a Deck.
-    const [labelled] = installableOptions([
+  it("leads with the part that differs between the options", () => {
+    // Every core for one system shares the system half of its name, and the
+    // dropdown truncates the value to half the row -- so the shared half is
+    // all that survives and every option reads the same until it is opened.
+    const labels = (installableOptions([
       installable("DoubleCherryGB", "Nintendo - Game Boy / Color (DoubleCherryGB)",
         "Game Boy/Game Boy Color"),
-    ]) as { label: string }[];
-    expect(labelled.label).toBe("Nintendo - Game Boy / Color (DoubleCherryGB)");
-  });
-
-  it("labels the same way the Cores tab does", () => {
-    // Consistency with the other place a core is picked before being installed.
-    const [a] = installableOptions([installable("mame", "MAME", "Arcade")]) as { label: string }[];
-    expect(a.label).toBe("MAME");
+      installable("gambatte", "Nintendo - Game Boy / Color (Gambatte)"),
+      installable("mesen-s", "Nintendo - SNES / SFC / Game Boy / Color (Mesen-S)"),
+    ]) as { label: string }[]).map((o) => o.label);
+    expect(labels).toEqual(["DoubleCherryGB", "Gambatte", "Mesen-S"]);
   });
 
   it("offers every suggestion, in the order the backend ranked them", () => {
@@ -88,6 +82,20 @@ describe("installableOptions", () => {
       installable("e", "E"),
     ]);
     expect(options.map((o) => o.data)).toEqual(["a", "b", "c", "d", "e"]);
+  });
+
+  it("keeps brackets that belong to the core's own name", () => {
+    // One core called "bsnes C++98 (v085)". Matching the innermost bracket
+    // would label it "v085", which names a version and no core at all.
+    const [a] = installableOptions([
+      installable("bsnes_cplusplus98", "Nintendo - SNES / SFC (bsnes C++98 (v085))"),
+    ]) as { label: string }[];
+    expect(a.label).toBe("bsnes C++98 (v085)");
+  });
+
+  it("leaves a name that has no system prefix alone", () => {
+    const [a] = installableOptions([installable("romcleaner", "ROM Cleaner")]) as { label: string }[];
+    expect(a.label).toBe("ROM Cleaner");
   });
 
   it("stays flat, since everything installable is a libretro core", () => {

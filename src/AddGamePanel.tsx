@@ -1014,7 +1014,9 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
               <Field
                 label="No core installed for this ROM"
                 // Names it here because there is no dropdown above the button
-                // saying which one, and the button is only the verb.
+                // saying which one, and the button is only the verb. Full name
+                // rather than the short one: a description is full width, and
+                // this is the one place the system is not already established.
                 description={`${chosenInstallable.display_name} can run .${probe?.match_extension}.`}
               />
             </PanelSectionRow>
