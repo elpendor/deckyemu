@@ -6257,6 +6257,17 @@ check("a prefix picks the section", changelog.classify("feat: add a thing"), ("N
 check("and is accepted with a scope", changelog.classify("fix(store): tidy")[0], "Fixed")
 check("and with a breaking marker", changelog.classify("perf!: hurry")[0], "Faster")
 check("case does not matter", changelog.classify("FEAT: shout")[0], "New")
+# The three that were being written without this file knowing them. An unlisted
+# prefix does not fall into "Other" tidily -- it reaches the notes with the
+# prefix still attached, which is what shipped for twelve releases.
+check("a documentation commit is grouped, not printed raw",
+      changelog.classify("docs: rewrite the README"), ("Under the hood", "Rewrite the README"))
+check("so is a chore", changelog.classify("chore: quieten a log line")[0], "Under the hood")
+check("so is a refactor", changelog.classify("refactor: split the panel")[0], "Under the hood")
+# The failure this prevents, stated as the thing a user would have seen.
+check("no accepted prefix survives into the entry text",
+      [changelog.classify("%s: a thing" % name)[1] for name, _title in changelog.SECTIONS],
+      ["A thing"] * len(changelog.SECTIONS))
 # Grouping, not filtering: the whole point is that nothing is ever dropped, so a
 # forgotten prefix is visible rather than a silent omission from the notes.
 check("an unprefixed subject is kept, not dropped",
@@ -6275,6 +6286,7 @@ _rendered = changelog.render([
     "Unprefixed work",
     "fix: stop a crash",
     "perf: go faster",
+    "docs: explain the thing",
     "feat: add a thing",
 ])
 check(
@@ -6282,11 +6294,17 @@ check(
     [line[3:] for line in _rendered.splitlines() if line.startswith("## ")],
     ["New", "Fixed", "Faster", "Under the hood", "Other"],
 )
+# Three prefixes feed one heading, and a heading printed once per prefix would
+# split its entries across repeated blocks of the same name.
+check("a heading shared by several prefixes is printed once",
+      _rendered.count("## Under the hood"), 1)
+check("with every prefix that feeds it underneath",
+      "- Tidy the build" in _rendered and "- Explain the thing" in _rendered, True)
 check("the same entry is not listed twice", _rendered.count("- Add a thing"), 1)
 check(
     "every commit that was not skipped appears",
     len([line for line in _rendered.splitlines() if line.startswith("- ")]),
-    5,
+    6,
 )
 check("nothing is rendered for nothing", changelog.render([]), "")
 check("nor for only skippable commits", changelog.render(["Release v1.0.0"]), "")

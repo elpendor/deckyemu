@@ -4,8 +4,9 @@
     python scripts/changelog.py v0.3.0..HEAD
 
 Fully generated: there is no CHANGELOG.md to keep in step, and the subject line
-written at commit time *is* the changelog entry. A `feat:`/`fix:`/`perf:`/
-`internal:` prefix only decides which heading it sits under.
+written at commit time *is* the changelog entry. The prefix only decides which
+heading it sits under; SECTIONS below is the list of prefixes that means
+anything here.
 
 Grouping rather than filtering is the point. Nothing is ever dropped, so a
 forgotten prefix is not a silent omission -- the commit turns up under "Other",
@@ -27,12 +28,27 @@ import subprocess
 import sys
 
 # Order is the order they appear in the notes: what someone reads first should be
-# what they most likely came for.
+# what they most likely came for. Several prefixes may share a heading -- the
+# prefix is what the writer types, the heading is what the reader gets.
+#
+# `docs`, `chore` and `refactor` are here because they were being written anyway.
+# A prefix this file does not know is not merely untidy: it fails the match
+# below and the subject reaches the notes with `docs: ` still on the front,
+# which is machine syntax in front of a user. Twelve releases' worth went out
+# that way. So an accepted prefix must be listed, and a prefix nobody should
+# write must stay unlisted -- "Other" is only self-correcting for a subject
+# that has no prefix at all.
 SECTIONS = (
     ("feat", "New"),
     ("fix", "Fixed"),
     ("perf", "Faster"),
     ("internal", "Under the hood"),
+    # Nothing a user acts on, and the notes are read in the Updates tab where a
+    # documentation change is not reachable. Grouped with the rest of the work
+    # that is worth recording and not worth reading.
+    ("docs", "Under the hood"),
+    ("chore", "Under the hood"),
+    ("refactor", "Under the hood"),
 )
 
 # Where an unprefixed subject goes. Last, so it reads as the leftovers it is.
@@ -81,7 +97,9 @@ def render(subjects):
         if text not in grouped.setdefault(title, []):
             grouped[title].append(text)
 
-    order = [title for _name, title in SECTIONS] + [OTHER]
+    # Deduplicated, because several prefixes share a heading and a heading must
+    # be printed once with everything under it, not once per prefix that feeds it.
+    order = list(dict.fromkeys([title for _name, title in SECTIONS] + [OTHER]))
     blocks = []
     for title in order:
         entries = grouped.get(title)
