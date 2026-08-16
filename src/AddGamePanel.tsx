@@ -20,7 +20,7 @@ import {
   toaster,
   useQuickAccessVisible,
 } from "@decky/api";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
   getSettings,
@@ -28,7 +28,6 @@ import {
   installPs3Package,
   installPs4Package,
   installVitaPackage,
-  saveVitaKey,
   listAdded,
   listInstalledPs3Games,
   listInstalledPs4Games,
@@ -61,7 +60,6 @@ import { PackagedGamesModal } from "./PackagedGamesModal";
 import { TransferModal } from "./TransferModal";
 import { VitaGamesModal } from "./VitaGamesModal";
 import { logError } from "./logError";
-import { pasteInto } from "./pasteText";
 
 
 const MATCH_LABELS: Record<ResolvedGame["match_kind"], string> = {
@@ -90,11 +88,7 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
   // see `chosenKey`, which is what makes a stale choice impossible rather than
   // something to remember to clear when the ROM changes.
   const [keyChoice, setKeyChoice] = useState("");
-  // A licence key pasted rather than sent. Held here only until it is saved
-  // beside the package, which is where both routes end.
-  const [pastedKey, setPastedKey] = useState("");
-  const [savingKey, setSavingKey] = useState(false);
-  const keyBoxRef = useRef<HTMLDivElement>(null);
+
   // How many games RPCS3 has installed, so the route to them is offered only
   // when there is something behind it.
   const [ps3Count, setPs3Count] = useState(0);
@@ -464,53 +458,6 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
     );
   }, [romPath, coreId, title]);
 
-  /**
-   * Take a licence key off the clipboard and save it beside the package.
-   *
-   * A zRIF is a few hundred characters of base64. Nobody is typing that on an
-   * on-screen keyboard, so without this the only route is to send the key from
-   * another device -- which is fine when there is another device to hand, and
-   * useless when the key is open in Steam's own browser on the Deck.
-   *
-   * The paste itself is `pasteText.ts`: the text has to come off the event
-   * rather than the clipboard API, and through the element's own window rather
-   * than this module's, and both of those were learned the hard way for the
-   * SteamGridDB key.
-   */
-  const pasteLicenceKey = useCallback(async () => {
-    const input = keyBoxRef.current?.querySelector("input");
-    if (!romPath || !input) return;
-
-    const text = (await pasteInto(input)).trim();
-    if (!text) {
-      toaster.toast({
-        title: "Nothing to paste",
-        body: "Copy the key first, then press this.",
-      });
-      return;
-    }
-
-    setSavingKey(true);
-    try {
-      const result = await saveVitaKey(romPath, text);
-      if (!result.ok) {
-        toaster.toast({ title: "That key was not saved", body: result.error ?? "" });
-        return;
-      }
-      setPastedKey("");
-      // Re-probe rather than assume: the panel's whole state for this package
-      // comes from the backend, and the key having landed is exactly the thing
-      // it needs to notice.
-      updateDraft({ probe: await probeRom(romPath) });
-      toaster.toast({ title: "Licence key saved", body: result.name ?? "" });
-    } catch (saveError) {
-      logError("could not save the licence key", saveError);
-      toaster.toast({ title: "That key was not saved", body: "See the plugin log." });
-    } finally {
-      setSavingKey(false);
-    }
-  }, [romPath]);
-
   const addToSteam = useCallback(async () => {
     if (!romPath || !coreId) return;
     updateDraft({ adding: true, error: "" });
@@ -860,35 +807,6 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
           {/* The same shape as "Run with" above: choose, then press the one
               install button, which names the choice so the filename is still
               readable without opening the list. */}
-          {/* Pasting, for the key that is on this device rather than another
-              one. Offered whatever else is on screen: a candidate list is a
-              guess between files somebody else named, and a pasted key is the
-              user saying which it is. */}
-          {!unpacking && (
-            <>
-              <PanelSectionRow>
-                <div ref={keyBoxRef}>
-                  <TextField
-                    label="Or paste the key"
-                    description="A zRIF, beginning KO5if. Saved beside the package under its title id."
-                    value={pastedKey}
-                    onChange={(event) => setPastedKey(event.target.value)}
-                    disabled={savingKey || adding}
-                  />
-                </div>
-              </PanelSectionRow>
-              <PanelSectionRow>
-                <ButtonItem
-                  layout="below"
-                  disabled={savingKey || adding}
-                  onClick={() => void pasteLicenceKey()}
-                >
-                  {savingKey ? "Saving..." : "Paste from the clipboard"}
-                </ButtonItem>
-              </PanelSectionRow>
-            </>
-          )}
-
           {!unpacking && keyCandidates.length > 0 && (
             <PanelSectionRow>
               <DropdownItem

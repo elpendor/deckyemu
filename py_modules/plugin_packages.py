@@ -280,6 +280,15 @@ class PackagedGames(plugin_base.PluginContext):
 
         It lands where a key sent by transfer would land, named after the title
         id, so both routes end at the same search.
+
+        **Nothing calls this today, on purpose.** The panel had a paste field and
+        it was taken out again: a zRIF travels with the download rather than
+        sitting on a web page, so the case where somebody has one on the Deck's
+        own clipboard is rarer than the field implied. That is a judgement about
+        where keys come from, not a fault in the route -- the endpoint and its
+        checks are kept so reinstating the field is a UI change rather than this
+        being written twice. `src/pasteText.ts` holds the other half and is used
+        by the SteamGridDB key, which does live on a web page.
         """
         if not await self._run(vita_games.is_package, pkg_path):
             return {"ok": False, "error": "That file is not a PlayStation Vita package."}
