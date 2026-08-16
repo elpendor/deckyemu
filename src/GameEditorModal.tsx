@@ -448,6 +448,16 @@ export function GameEditorModal({ game, onSaved, closeModal, onLeave }: Props) {
             <DialogButton
               style={BUTTON}
               onClick={() => {
+                // Modals first, navigation last, and the order is the whole of
+                // it: `openManagePage` closes the Quick Access panel on its way
+                // out, and Steam re-reveals that panel as each modal above it
+                // dismisses. Navigating first meant arriving at the page with
+                // the panel open again over it.
+                closeModal?.();
+                // The list this was opened from, which would otherwise be left
+                // sitting over the page just navigated to.
+                onLeave?.();
+
                 if (isEmulator) {
                   // Not a libretro core, so the core list cannot install it.
                   openManagePage("emulators");
@@ -455,10 +465,6 @@ export function GameEditorModal({ game, onSaved, closeModal, onLeave }: Props) {
                   preselectCore(coreId);
                   openManagePage("retroarch");
                 }
-                closeModal?.();
-                // And the list this was opened from, which would otherwise be
-                // left sitting over the page just navigated to.
-                onLeave?.();
               }}
             >
               {isEmulator ? "Set up this emulator" : "Install this core"}

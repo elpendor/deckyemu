@@ -8,7 +8,7 @@ import {
   type SingleDropdownOption,
 } from "@decky/ui";
 import { toaster } from "@decky/api";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   installCore,
@@ -60,6 +60,10 @@ export function CoreInstallPanel({ onCoresChanged, reloadKey = 0 }: Props) {
   const [system, setSystem] = useState(lastSystem);
   const [coreId, setCoreId] = useState(lastCoreId);
   const [busy, setBusy] = useState("");
+  // The section wrapper, so a deliberate arrival can scroll to it. A plain
+  // div rather than a ref on PanelSection: that is Steam's component and
+  // forwards nothing, so there is no node of its own to reach.
+  const section = useRef<HTMLDivElement>(null);
   const [error, setError] = useState("");
 
   const load = useCallback(async (refresh: boolean) => {
@@ -104,6 +108,17 @@ export function CoreInstallPanel({ onCoresChanged, reloadKey = 0 }: Props) {
     lastSystem = wanted.system_name;
     setCoreId(wanted.id);
     lastCoreId = wanted.id;
+
+    // Bring it into view. This section sits below RetroArch's status and its
+    // launch settings, so on a Deck it is off-screen when the tab opens --
+    // arriving here from "Install this core" would land on a page that looks
+    // like it ignored the request. Only on a deliberate arrival: scrolling a
+    // tab somebody opened themselves would take it away from the top.
+    //
+    // After paint, or the row is measured where it has not been drawn yet.
+    requestAnimationFrame(() => {
+      section.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+    });
   }, [catalog]);
 
   const systems = useMemo(() => {
@@ -203,6 +218,7 @@ export function CoreInstallPanel({ onCoresChanged, reloadKey = 0 }: Props) {
   }
 
   return (
+    <div ref={section}>
     <PanelSection title="Install cores">
       <PanelSectionRow>
         <DropdownItem
@@ -267,5 +283,6 @@ export function CoreInstallPanel({ onCoresChanged, reloadKey = 0 }: Props) {
         </ButtonItem>
       </PanelSectionRow>
     </PanelSection>
+    </div>
   );
 }
