@@ -967,7 +967,17 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
         </>
       )}
 
-      {probe && !pendingPackage && probe.matching_cores.length === 0 && (
+      {/* Nothing claims this file, but something is installed -- so offer the
+          lot, since forcing a core that does not advertise the extension is
+          sometimes right and is the only way to do it.
+
+          Not rendered when there is nothing installed at all. It was, disabled
+          and empty, and directly above the list of cores that *could* be
+          installed: two "choose a core" rows where one of them can never
+          answer. An empty control is not a lesser control, it is a question the
+          panel cannot mean. */}
+      {probe && !pendingPackage && probe.matching_cores.length === 0
+        && coreOptions.length > 0 && (
         <PanelSectionRow>
           <DropdownItem
             label="Run with"
@@ -975,7 +985,7 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
             rgOptions={coreOptions}
             selectedOption={coreId}
             onChange={onCoreChange}
-            disabled={adding || coreOptions.length === 0}
+            disabled={adding}
           />
         </PanelSectionRow>
       )}
