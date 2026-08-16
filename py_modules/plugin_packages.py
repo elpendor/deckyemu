@@ -270,6 +270,27 @@ class PackagedGames(plugin_base.PluginContext):
         games = await self._run(ps4_games.installed_games)
         return {"ok": True, "games": games}
 
+    async def save_vita_key(self, pkg_path: str, key: str):
+        """Save a licence key pasted from the clipboard beside its package.
+
+        The other way in for the one thing this console needs and the plugin
+        will never carry. A zRIF is a few hundred characters of base64, so
+        typing it on the on-screen keyboard is not a route anybody would take --
+        but pasting is, if the key is open in Steam's own browser on the Deck.
+
+        It lands where a key sent by transfer would land, named after the title
+        id, so both routes end at the same search.
+        """
+        if not await self._run(vita_games.is_package, pkg_path):
+            return {"ok": False, "error": "That file is not a PlayStation Vita package."}
+
+        title_id = await self._run(vita_games.package_title_id, pkg_path)
+        saved, error = await self._run(vita_games.write_zrif, pkg_path, key, title_id)
+        if error:
+            return {"ok": False, "error": error}
+        return {"ok": True, "name": os.path.basename(saved)}
+
+
     async def install_vita_package(self, path: str, key_name: str = ""):
         """Install a Vita .pkg with the key that came with it. No window at all.
 

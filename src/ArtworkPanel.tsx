@@ -20,6 +20,7 @@ import {
   type PluginSettings,
 } from "./backend";
 import { callWithRetry } from "./timeout";
+import { pasteInto } from "./pasteText";
 
 const ART_SOURCE_OPTIONS: SingleDropdownOption[] = [
   { data: "auto", label: "Auto (SteamGridDB, then libretro)" },
@@ -196,39 +197,10 @@ export function ArtworkPanel() {
       return;
     }
 
-    // Resolves with whatever the paste carries, or "" if none arrives. One
-    // second because the event lands within a frame or two when it lands at all.
-    const pasted = new Promise<string>((resolve) => {
-      const onPaste = (event: ClipboardEvent) => {
-        event.preventDefault();
-        window.clearTimeout(timer);
-        resolve(event.clipboardData?.getData("text") ?? "");
-      };
-      const timer = window.setTimeout(() => {
-        input.removeEventListener("paste", onPaste);
-        resolve("");
-      }, 1000);
-      input.addEventListener("paste", onPaste, { once: true });
-    });
-
-    input.focus();
-    try {
-      // Paste through the window the input actually lives in, not this module's
-      // `window`. Plugin code is evaluated in SharedJSContext but renders into
-      // the Big Picture window, and each window is a separate browser with its
-      // own clipboard -- pasting through SharedJSContext's fires a real paste
-      // event carrying nothing, which is why the on-screen keyboard's own paste
-      // key worked when this button did not. Steam's context menu does exactly
-      // this: focus the element, then call Paste on the element's own window.
-      const view = input.ownerDocument.defaultView as
-        /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
-        (Window & { SteamClient?: any }) | null;
-      view?.SteamClient?.Browser?.Paste?.();
-    } catch (pasteError) {
-      console.error("[deckyemu] Steam paste failed", pasteError);
-    }
-
-    const text = (await pasted).trim();
+    // Every hard part of this -- reading the text off the event rather than
+    // the clipboard API, and pasting through the element's own window -- is in
+    // pasteText.ts, because the Vita licence key needs the same thing.
+    const text = (await pasteInto(input)).trim();
     if (text) {
       await commitKey(text);
       return;

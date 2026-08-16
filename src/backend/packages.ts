@@ -117,6 +117,19 @@ export const installVitaPackage = callable<
   [path: string, keyName?: string],
   { ok: boolean; error?: string; title?: string; title_id?: string }
 >("install_vita_package");
+/**
+ * Save a licence key pasted from the clipboard beside its package.
+ *
+ * The other way in for the one thing this console needs and the plugin will
+ * never carry. A zRIF is a few hundred characters of base64, so typing it on
+ * the on-screen keyboard is not a route anybody would take — but pasting is, if
+ * the key is open in Steam's own browser on the Deck. It lands where a key sent
+ * by transfer would land, so both routes end at the same search.
+ */
+export const saveVitaKey = callable<
+  [pkgPath: string, key: string],
+  { ok: boolean; error?: string; name?: string }
+>("save_vita_key");
 export const prepareVitaGame = callable<
   [titleId: string],
   PreparedShortcut & { rom_path?: string; core_id?: string; title_id?: string }

@@ -179,6 +179,49 @@ def zrif_candidates(folder):
     return found
 
 
+def is_zrif(text):
+    """Whether `text` looks like a licence key rather than something pasted by
+    accident.
+
+    The same two things `_read_zrif` looks for in a file: the fixed prefix every
+    zRIF starts with, and base64 after it. This is the whole of the validation
+    and it is deliberately shallow -- Vita3K is the only thing that can say
+    whether a key actually decrypts a package, and it says so by failing.
+    """
+    text = (text or "").strip()
+    return bool(text.startswith(ZRIF_PREFIX) and _ZRIF_RE.match(text))
+
+
+def write_zrif(pkg_path, key, title_id=""):
+    """Save a pasted key beside its package. Returns (path, error).
+
+    Named after the title id, which is what `locate_zrif` looks for first and
+    what the panel tells the user to name a file they send. A key that arrives
+    by clipboard should land exactly where one that arrived by transfer would,
+    or the two routes would need two different searches.
+    """
+    key = (key or "").strip()
+    if not is_zrif(key):
+        return "", "That does not look like a zRIF. They begin %s." % ZRIF_PREFIX
+
+    folder = os.path.dirname(pkg_path or "")
+    if not folder or not os.path.isdir(folder):
+        return "", "That package is no longer where it was."
+
+    name = "%s.zrif" % (title_id or os.path.splitext(os.path.basename(pkg_path))[0])
+    target = os.path.join(folder, name)
+    try:
+        # Written whole, not appended: a second paste replaces the first, which
+        # is what somebody correcting a wrong key expects to happen.
+        with open(target, "w", encoding="utf-8") as handle:
+            handle.write(key + "\n")
+    except OSError as error:
+        return "", "Could not save the key: %s" % error
+
+    decky.logger.info("Saved a pasted licence key as %s", name)
+    return target, ""
+
+
 def zrif_report(pkg_path, title_id=""):
     """{key, file, candidates} -- this package's licence, and what else is here.
 

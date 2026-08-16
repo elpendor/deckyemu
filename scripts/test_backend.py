@@ -5071,6 +5071,33 @@ check("and nothing else is offered once one matches", _named["candidates"], [])
 for _leftover in ("tennis.zrif", "a-third-game.txt", "PCSA00045.zrif"):
     os.remove(os.path.join(TMP, _leftover))
 
+# A key that arrives on the clipboard rather than as a file. A zRIF is a few
+# hundred base64 characters, so typing one on an on-screen keyboard is not a
+# route anybody takes -- but pasting is, when the key is open in Steam's own
+# browser on the Deck.
+check("a well-shaped key is accepted", vita_games.is_zrif(_ZRIF), True)
+check("and one that is merely long is not",
+      vita_games.is_zrif("x" * 80), False)
+check("nor a URL somebody pasted by mistake",
+      vita_games.is_zrif("https://example.invalid/keys/PCSA00045"), False)
+check("nor nothing at all", vita_games.is_zrif("   "), False)
+
+_written, _write_error = vita_games.write_zrif(_vpkg, _ZRIF, "PCSA00045")
+check("a pasted key is saved without complaint", _write_error, "")
+# Named after the title id, which is the first thing `locate_zrif` looks for --
+# so a key that arrives by clipboard lands exactly where one sent by transfer
+# would, and both routes end at the same search.
+check("under the name the file route would have used",
+      os.path.basename(_written), "PCSA00045.zrif")
+check("and the package finds it immediately",
+      vita_games.find_zrif(_vpkg, "PCSA00045"), _ZRIF)
+# Vita3K is the only thing that can say whether a key decrypts a package, so
+# this refuses only what is not a key at all.
+check("something that is not a key is refused rather than written",
+      vita_games.write_zrif(_vpkg, "not a key", "PCSA00045")[1].startswith("That does not"),
+      True)
+os.remove(_written)
+
 # Removing a Vita game can clear it from the emulator, like the other two.
 _vita_info = vita_games.game_info(os.path.join(_vita_game, "eboot.bin"), _vita_root)
 # What the install button can call a package before anything has decrypted it.
