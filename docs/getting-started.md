@@ -3,9 +3,9 @@
 From a plugin you have just installed to a game running, in order, with nothing
 that needs Desktop Mode or a keyboard.
 
-The [README](../README.md) is the reference — every setting, every table, every
-option. This is the walkthrough: what to do first, second and third, and what to
-do when one of them does not work.
+The rest of [docs/](.) is the reference — every setting, every table, every
+option, a page per subject. This is the walkthrough: what to do first, second
+and third, and what to do when one of them does not work.
 
 **Contents** — [Before you start](#before-you-start) ·
 [1. Get a game onto the Deck](#1-get-a-game-onto-the-deck) ·
@@ -222,5 +222,5 @@ Everything the plugin puts on the device that is yours to keep is under
 library when you add its game, and a ROM you picked from anywhere else — an SD
 card, your home folder, an existing library — is left exactly where it is. That
 also decides what removing a game can delete: only ROMs the plugin filed itself.
-Full detail in the README under
-[Where a ROM ends up](../README.md#where-a-rom-ends-up).
+Full detail under
+[Where a ROM ends up](transfers.md#where-a-rom-ends-up).

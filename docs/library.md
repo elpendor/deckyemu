@@ -1,0 +1,120 @@
+# Your library
+
+Editing a game after it is added, how games are grouped in Big Picture, and
+putting things back in order.
+
+Back to [the README](../README.md).
+
+**Contents** — [Editing a game](#editing-a-game) ·
+[Collections](#collections) · [Orphaned entries](#orphaned-entries) ·
+[Removing everything](#removing-everything)
+
+## Editing a game
+
+The pencil on each row in **Added games** opens an editor for a game already in
+Steam, so its playtime and its place in a collection survive.
+
+- **Name** — renaming moves the launcher, since its filename embeds the title.
+- **ROM file** — repoint an entry at a moved file, an SD card or a better dump.
+  The launcher filename also embeds a hash of the ROM path, so this relocates the
+  script too. A ROM the chosen core cannot read is refused.
+- **Core or emulator** — changing it changes the system, so the platform label
+  and the per-platform collection follow.
+- **Artwork** — the picker applies immediately, with no need to save.
+  **Re-fetch name and artwork** is worth running after a core change, since the
+  core decides the system and the system decides which thumbnail directory is
+  searched.
+- **Launch options** — override the global fullscreen or notification setting for
+  one game, and append extra arguments. They are appended rather than inserted,
+  because several argument templates end in the ROM path. An override left on
+  *follow the global setting* still picks up later changes to it.
+- **Save and test launch** — starts the game through Steam, so gamescope, Steam
+  Input and the overlay behave as they do in normal play. It saves first, since
+  the launcher on disk is what Steam runs.
+
+## Collections
+
+Added games are filed under a Steam collection so they are findable in Big
+Picture. The collection is called `DeckyEmu` unless you rename it.
+
+**One collection per system** is on by default: each system gets its own shelf,
+named by a selectable format. Turn it off and every system shares the one
+collection.
+
+| Format | Result |
+| --- | --- |
+| `[{name}] {platform}` (default) | `[DeckyEmu] SNES` |
+| `{platform}` | `SNES` |
+| `{name}: {platform}` | `DeckyEmu: SNES` |
+| `{name} · {platform}` | `DeckyEmu · SNES` |
+| `{name} - {platform}` | `DeckyEmu - SNES` |
+| `{platform} ({name})` | `SNES (DeckyEmu)` |
+| `{name}\n{platform}` | two lines — but Steam renders collection titles on one line, so expect a space |
+
+An install that already has games keeps whichever layout those games were filed
+under, so an upgrade never moves them. Only a new install takes the default.
+
+**Platform names** are short by default: `SNES` rather than `Super Nintendo
+Entertainment System`, which is 46 characters of shelf header. Unlisted systems
+fall back to dropping the manufacturer prefix (`Acme - Wonder Machine` →
+`Wonder Machine`).
+
+Renaming the collection, or toggling per-platform naming, **moves games that were
+already added** rather than only affecting the next one. An old collection is
+deleted only once it is empty, never while it still holds games dragged in by
+hand.
+
+## Orphaned entries
+
+**Check for orphaned entries** on the Library tab reports everything that has
+drifted out of sync — a ROM or launcher that has gone, a record whose Steam
+shortcut was deleted, launcher scripts nothing references, and games left behind
+by a previous install under a different plugin name.
+
+It also reports the other direction: shortcuts **Steam** has that the plugin's
+records do not account for, read from Steam's own `shortcuts.vdf`. They are split
+by what can be done about each:
+
+| | |
+| --- | --- |
+| **Cannot start** | The launcher script is gone, so the entry does nothing when launched. Removing it is all there is to do |
+| **Duplicate** | A tracked game already runs this same launcher, so it appears twice in Steam. Removing it keeps the tracked copy |
+| **Untracked** | It still plays, but the plugin has no record of it, so editing and removing from the plugin will not work |
+
+Ownership is decided by the executable being one of the plugin's launcher
+scripts, never by the name — two shortcuts called *Super Mario 3D World* could be
+one of these and one a real Steam game.
+
+When any are found, the Quick Access panel says so and offers the way through,
+since none of this is visible by looking at your library: an entry whose launcher
+was deleted looks like an ordinary game that happens to do nothing.
+
+Forgetting a record also takes the game out of the collection it was filed into,
+deleting that collection once it is empty.
+
+Collections are checked here too, in all three directions — games **missing**
+from the shelf they belong to, games still on one they have **left**, and shelves
+left **empty**. None of the three is answerable from the plugin's own records: a
+game recorded as filed can simply not be there, because the collection was
+deleted in Steam or because filing it failed as it was added. Each is reported
+before anything is done about it, and the list is rebuilt after every fix.
+
+A previous install can be **discarded** as well as adopted. Games with no
+surviving shortcut are not offered for adoption at all, and discarding deletes
+only the old record — the launcher scripts stay, because they are why any
+still-working shortcut works.
+
+## Removing everything
+
+**Remove all DeckyEmu games from Steam**, at the bottom of the Library tab,
+undoes everything the plugin has added: every shortcut, every launcher script,
+and any collection it created that ends up empty. It also deletes **the games it
+put on this Deck** — ROMs filed under a system, and games unpacked into an
+emulator — for the same reason removing a single game does. A ROM you keep
+somewhere of your own was never the plugin's to move and is left alone.
+
+A collection is deleted only once it is empty, so one holding games dragged in by
+hand survives. Shelves left empty by anything else — a shortcut deleted in Steam,
+an earlier reset — are swept at the end.
+
+It can take a while, so it reports what it is deleting as it goes.
