@@ -731,6 +731,7 @@ class Plugin(
             "installed": bool(game),
             "title": game["title"] if game else "",
             "eboot": game["eboot"] if game else "",
+            "sent_name": Plugin._sent_name(pkg_path),
             # The content id is reported alongside the verdict because it is
             # the name the licence ends up under, and the one the user can be
             # told to use if the search below found nothing to rename.
@@ -758,7 +759,28 @@ class Plugin(
             "installed": bool(game),
             "title": game["title"] if game else "",
             "eboot": game["eboot"] if game else "",
+            "sent_name": Plugin._sent_name(pkg_path),
         }
+
+    @staticmethod
+    def _sent_name(path):
+        """What to call a package before anything has decrypted it.
+
+        A package header carries a content id and nothing else worth reading:
+        the title lives in a PARAM.SFO the emulator cannot get at until it
+        installs the thing. So the button said "Install PCSA00011", which names
+        a product code rather than a game.
+
+        The filename is the one name that exists at this point, and it is the
+        one the user chose -- "GRAVITY RUSH (PCSA00011) (v01.00).vpk" cleans up
+        to "GRAVITY RUSH" through the same tidier that names a ROM. Empty when
+        the file is named after its content id anyway, since repeating that back
+        is no better than the code it replaced.
+        """
+        name = libretro_meta.display_title(libretro_meta.rom_stem(path or ""))
+        # A name that still holds the product code is the code again in a longer
+        # coat. `_TITLE_ID_RE` is what reads one out of a header.
+        return "" if vita_games._TITLE_ID_RE.search(name.replace(" ", "")) else name
 
     @staticmethod
     def _vita_package_state(pkg_path):
@@ -789,6 +811,9 @@ class Plugin(
             "installed": bool(game),
             "title": game["title"] if game else "",
             "eboot": game["eboot"] if game else "",
+            # What to call it before it is installed, when the only name that
+            # exists is the one on the file.
+            "sent_name": Plugin._sent_name(pkg_path),
             "licence": bool(licence["key"]),
             "licence_candidates": licence["candidates"],
             # The name that would end the ambiguity, so the panel can quote it

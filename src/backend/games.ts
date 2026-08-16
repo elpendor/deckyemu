@@ -82,8 +82,17 @@ export interface PackageState {
   title_id: string;
   /** Already unpacked, so `title` and `eboot` are filled and it can be added. */
   installed: boolean;
-  /** From the game's own param.sfo, e.g. "Braid". */
+  /** From the game's own param.sfo, e.g. "Braid". Empty until it is installed. */
   title: string;
+  /**
+   * What to call it before then: the name of the file that was sent, tidied by
+   * the same thing that names a ROM. A package header carries a content id and
+   * nothing else worth reading — the title inside is encrypted until the
+   * emulator installs it — so this is the only name that exists beforehand, and
+   * it is the one the user chose. Empty when the file is named after its
+   * product code anyway, since repeating that back is no better than the code.
+   */
+  sent_name?: string;
   eboot: string;
   /**
    * Vita only: whether the zRIF that decrypts this package was found beside

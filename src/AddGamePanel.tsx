@@ -885,7 +885,14 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
                   extractor literally unpack anything -- Vita3K installs -- and
                   the word the user cares about is the same in every case: the
                   game ends up in the emulator. */}
-              {`Install ${pendingPackage.state.title_id || "this package"}`}
+              {/* The name on the file first: "Install PCSA00011" is a product
+                  code, and the button that spends ten minutes and a gigabyte
+                  should say which game it is about. */}
+              {`Install ${
+                pendingPackage.state.sent_name ||
+                pendingPackage.state.title_id ||
+                "this package"
+              }`}
             </ButtonItem>
           )}
         </PanelSectionRow>
