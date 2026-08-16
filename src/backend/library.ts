@@ -8,6 +8,16 @@ import { type PluginSettings, type PluginVersion } from "./games";
 
 export const pluginVersion = callable<[], PluginVersion>("plugin_version");
 
+/**
+ * Put a frontend failure in the plugin log, where the diagnostic report can
+ * carry it. Go through `logError` rather than calling this: it writes to the
+ * console too, and it cannot throw.
+ */
+export const logFrontendError = callable<
+  [where: string, message: string, detail: string],
+  { ok: boolean }
+>("log_frontend_error");
+
 /** A release the plugin could install, as found on GitHub. */
 export interface ReleaseInfo {
   version: string;

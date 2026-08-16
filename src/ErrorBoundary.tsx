@@ -2,6 +2,7 @@ import { DialogButton } from "@decky/ui";
 import { Component, type ErrorInfo, type ReactNode } from "react";
 
 import { crashMessage } from "./crashMessage";
+import { logError } from "./logError";
 
 /**
  * Stops one broken render from taking anything else down with it.
@@ -45,9 +46,12 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: unknown, info: ErrorInfo) {
-    // The component stack is the only thing that names which panel it was, and
-    // it is not in the error itself.
-    console.error(`[deckyemu] ${this.props.where} failed to render`, error, info?.componentStack);
+    // Into the plugin log as well as the console. This is the failure a user is
+    // most likely to report and least able to describe -- the panel went blank
+    // -- and until now the only account of it was in a console that needs a
+    // second machine to open. The component stack goes too: it is the one thing
+    // that names which panel it was, and it is not in the error itself.
+    logError(`${this.props.where} failed to render`, error, info?.componentStack ?? "");
   }
 
   private retry = () => this.setState({ message: "" });

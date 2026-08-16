@@ -18,6 +18,7 @@ import { InstallProgress } from "./InstallProgress";
 import { OrphanModal } from "./OrphanModal";
 import { callWithRetry } from "./timeout";
 import { humanSize } from "./TransferModal";
+import { logError } from "./logError";
 
 interface Props {
   onRefresh: () => void;
@@ -76,7 +77,7 @@ export function LibraryPanel({ onRefresh }: Props) {
     try {
       setGames(await callWithRetry(listAdded));
     } catch (error) {
-      console.error("[deckyemu] could not list added games", error);
+      logError("could not list added games", error);
       setGames(null);
     }
   }, []);
@@ -145,7 +146,7 @@ export function LibraryPanel({ onRefresh }: Props) {
       void loadGames();
       onRefresh();
     } catch (error) {
-      console.error("[deckyemu] could not clear the library", error);
+      logError("could not clear the library", error);
       toaster.toast({
         title: "Could not clear the library",
         body: "Nothing may have been removed. Check the plugin log.",
@@ -173,7 +174,7 @@ export function LibraryPanel({ onRefresh }: Props) {
       setGames(current);
       count = current.length;
     } catch (error) {
-      console.error("[deckyemu] could not count games before clearing", error);
+      logError("could not count games before clearing", error);
     }
 
     if (!shouldConfirmClear(count)) {

@@ -29,6 +29,7 @@ import { deleteEmptied, forgetDeleted, unfileGames } from "./collections";
 import { humanSize } from "./TransferModal";
 import { emptyCollectionMatcher } from "./collectionMatch";
 import { callWithRetry } from "./timeout";
+import { logError } from "./logError";
 
 interface Props {
   onChanged: () => void;
@@ -110,7 +111,7 @@ export function OrphanModal({ onChanged, closeModal }: Props) {
       setUnfiled(findUnfiledGames(targets));
       setStale(findStaleCollections(targets));
     } catch (loadError) {
-      console.error("[deckyemu] audit failed", loadError);
+      logError("audit failed", loadError);
       setError("Could not check the library.");
     }
   }, []);
@@ -130,7 +131,7 @@ export function OrphanModal({ onChanged, closeModal }: Props) {
         onChanged();
         await load();
       } catch (runError) {
-        console.error("[deckyemu] fix failed", runError);
+        logError("fix failed", runError);
         setError("That could not be completed — see the plugin log.");
       } finally {
         setBusy("");

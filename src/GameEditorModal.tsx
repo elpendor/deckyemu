@@ -31,6 +31,7 @@ import { unfileGames } from "./collections";
 import { ArtPickerModal } from "./ArtPickerModal";
 import { coreOptions as buildCoreOptions, isEmulatorId } from "./corePicker";
 import { callWithRetry } from "./timeout";
+import { logError } from "./logError";
 
 interface Props {
   game: AddedGame;
@@ -128,7 +129,7 @@ export function GameEditorModal({ game, onSaved, closeModal }: Props) {
       })
       .catch((probeError) => {
         if (!current) return;
-        console.error("[deckyemu] could not probe ROM for editing", probeError);
+        logError("could not probe ROM for editing", probeError);
         setError("Could not read that ROM, so the core list is unavailable.");
         setCores({ matching: [], all: [] });
       });
@@ -167,7 +168,7 @@ export function GameEditorModal({ game, onSaved, closeModal }: Props) {
       );
     } catch (pickError) {
       if (!String(pickError ?? "").toLowerCase().includes("cancel")) {
-        console.error("[deckyemu] file picker failed", pickError);
+        logError("file picker failed", pickError);
         setError("Could not open the file browser.");
       }
       return;
@@ -230,7 +231,7 @@ export function GameEditorModal({ game, onSaved, closeModal }: Props) {
             : "No artwork found for this system.",
       });
     } catch (refetchError) {
-      console.error("[deckyemu] could not re-fetch metadata", refetchError);
+      logError("could not re-fetch metadata", refetchError);
       setError("Could not look that game up again.");
     } finally {
       setRefreshing(false);
@@ -292,7 +293,7 @@ export function GameEditorModal({ game, onSaved, closeModal }: Props) {
       onSaved();
       closeModal?.();
     } catch (saveError) {
-      console.error("[deckyemu] could not save game", saveError);
+      logError("could not save game", saveError);
       setError("Could not save those changes.");
     } finally {
       setSaving(false);

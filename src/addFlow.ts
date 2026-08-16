@@ -19,6 +19,7 @@ import {
   suggestCoresForExtension,
 } from "./backend";
 import { updateDraft } from "./romDraft";
+import { logError } from "./logError";
 
 /**
  * The two consoles whose games arrive as packages rather than as ROMs.
@@ -69,7 +70,7 @@ export async function lookupArtwork(
     const result = await resolveGame(romPath, coreId, title);
     updateDraft({ resolved: result, title: result.title || title, looking: false });
   } catch (error) {
-    console.error("[deckyemu] lookup failed", error);
+    logError("lookup failed", error);
     updateDraft({
       resolved: null,
       looking: false,
@@ -124,7 +125,7 @@ export async function selectPackagedGame(
     await lookupArtwork(game.eboot, core.core_id, game.title);
     return true;
   } catch (error) {
-    console.error("[deckyemu] could not select the installed game", error);
+    logError("could not select the installed game", error);
     updateDraft({ error: `Could not read the game ${name} installed.` });
     return false;
   }
@@ -195,10 +196,10 @@ export async function selectRom(romPath: string): Promise<void> {
     try {
       updateDraft({ installable: await suggestCoresForExtension(info.match_extension) });
     } catch (suggestError) {
-      console.error("[deckyemu] could not fetch core suggestions", suggestError);
+      logError("could not fetch core suggestions", suggestError);
     }
   } catch (probeError) {
-    console.error("[deckyemu] could not inspect the ROM", probeError);
+    logError("could not inspect the ROM", probeError);
     updateDraft({
       error: `Could not inspect that file: ${
         probeError instanceof Error ? probeError.message : String(probeError)

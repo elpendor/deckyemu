@@ -37,6 +37,7 @@ import { selectRom } from "./addFlow";
  */
 const DEFINITION_SUFFIX = ".deckyemu.json";
 import { DANGER_CLASS, DANGER_CSS } from "./danger";
+import { logError } from "./logError";
 
 /** How often to re-check while running, to pick up newly arrived files. */
 const POLL_MS = 3000;
@@ -245,7 +246,7 @@ export function TransferModal({
       setStatus(result);
       setDir((current) => current || result.target_dir || result.suggested_dir || "");
     } catch (loadError) {
-      console.error("[deckyemu] could not read file server status", loadError);
+      logError("could not read file server status", loadError);
     }
   }, []);
 
@@ -280,7 +281,7 @@ export function TransferModal({
       if (path) setDir(path);
     } catch (pickError) {
       if (!String(pickError ?? "").toLowerCase().includes("cancel")) {
-        console.error("[deckyemu] folder picker failed", pickError);
+        logError("folder picker failed", pickError);
       }
     }
   }, [dir, status?.suggested_dir, status?.target_dir]);
@@ -296,7 +297,7 @@ export function TransferModal({
       }
       await load();
     } catch (startError) {
-      console.error("[deckyemu] could not start file server", startError);
+      logError("could not start file server", startError);
       setError("Could not start the server.");
     } finally {
       setBusy(false);
@@ -320,7 +321,7 @@ export function TransferModal({
       try {
         await stopFileServer();
       } catch (stopError) {
-        console.error("[deckyemu] could not stop the file server", stopError);
+        logError("could not stop the file server", stopError);
       }
     }
     // Nothing is announced when a transfer is left running. A toast here was
@@ -352,7 +353,7 @@ export function TransferModal({
         }
         await load();
       } catch (rememberError) {
-        console.error("[deckyemu] could not change the remembered link", rememberError);
+        logError("could not change the remembered link", rememberError);
         setError("Could not change that setting.");
       } finally {
         setBusy(false);
@@ -377,7 +378,7 @@ export function TransferModal({
         body: "Saved bookmarks no longer work. Scan or type the new one to pair again.",
       });
     } catch (resetError) {
-      console.error("[deckyemu] could not reset the transfer link", resetError);
+      logError("could not reset the transfer link", resetError);
       setError("Could not reset the link.");
     } finally {
       setBusy(false);
@@ -397,7 +398,7 @@ export function TransferModal({
       try {
         setStatus(await cancelUpload(uploadId) as FileServerStatus);
       } catch (cancelError) {
-        console.error("[deckyemu] could not cancel the upload", cancelError);
+        logError("could not cancel the upload", cancelError);
         // Fall back to a plain read, so the row reflects reality either way.
         void load();
       }
@@ -455,7 +456,7 @@ export function TransferModal({
       });
       await load();
     } catch (installError) {
-      console.error("[deckyemu] could not install firmware", installError);
+      logError("could not install firmware", installError);
       setError("Could not install that file.");
     } finally {
       setBusy(false);

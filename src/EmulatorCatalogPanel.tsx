@@ -46,6 +46,7 @@ import { emulatorRowActions } from "./emulatorActions";
 import { byName } from "./order";
 import { openSetupShortcut } from "./setupShortcut";
 import { callWithRetry } from "./timeout";
+import { logError } from "./logError";
 
 interface Props {
   /** Re-read cores and emulators, so a new install becomes selectable. */
@@ -118,7 +119,7 @@ export function EmulatorCatalogPanel({ onChanged }: Props) {
   const load = useCallback(() => {
     callWithRetry(listEmulatorCatalog)
       .then(setEntries)
-      .catch((loadError) => console.error("[deckyemu] could not read the catalog", loadError))
+      .catch((loadError) => logError("could not read the catalog", loadError))
       .finally(() => setLoading(false));
     // Separate call, and a failure here must not blank the catalog: not knowing
     // whether an update is waiting is a missing button, while not knowing what
@@ -128,7 +129,7 @@ export function EmulatorCatalogPanel({ onChanged }: Props) {
         setBuilds(Object.fromEntries(rows.map((row) => [row.id, row]))),
       )
       .catch((buildError) =>
-        console.error("[deckyemu] could not read emulator builds", buildError),
+        logError("could not read emulator builds", buildError),
       );
   }, []);
 
@@ -194,7 +195,7 @@ export function EmulatorCatalogPanel({ onChanged }: Props) {
         setBusyId("");
       }
     } catch (startError) {
-      console.error("[deckyemu] emulator install could not start", startError);
+      logError("emulator install could not start", startError);
       setError("Could not start the install.");
       setBusyId("");
     }
@@ -329,7 +330,7 @@ export function EmulatorCatalogPanel({ onChanged }: Props) {
           }
           onChanged();
         } catch (openError) {
-          console.error("[deckyemu] could not open the emulator", openError);
+          logError("could not open the emulator", openError);
           toaster.toast({ title: "Could not open", body: `${openError}` });
         } finally {
           setBusyId("");

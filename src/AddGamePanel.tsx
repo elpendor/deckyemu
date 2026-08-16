@@ -59,6 +59,7 @@ import { InstallProgress } from "./InstallProgress";
 import { PackagedGamesModal } from "./PackagedGamesModal";
 import { TransferModal } from "./TransferModal";
 import { VitaGamesModal } from "./VitaGamesModal";
+import { logError } from "./logError";
 
 
 const MATCH_LABELS: Record<ResolvedGame["match_kind"], string> = {
@@ -209,7 +210,7 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
       .catch((probeError) => {
         // A failed re-check leaves what is on screen, which is the truth as of
         // the last read. Nothing here is worth an error row.
-        console.error("[deckyemu] could not re-check the licence key", probeError);
+        logError("could not re-check the licence key", probeError);
       });
     return () => {
       live = false;
@@ -285,7 +286,7 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
         });
         await selectPackagedGame(system, result.title_id);
       } catch (installError) {
-        console.error("[deckyemu] PS3 package install failed", installError);
+        logError("PS3 package install failed", installError);
         updateDraft({
           error:
             installError instanceof Error
@@ -329,7 +330,7 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
       if (message.toLowerCase().includes("cancel")) {
         console.log("[deckyemu] ROM selection cancelled");
       } else {
-        console.error("[deckyemu] file picker failed", pickError);
+        logError("file picker failed", pickError);
         updateDraft({ error: "Could not open the file browser." });
       }
       return;
@@ -417,7 +418,7 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
           body: "Ready to add this game.",
         });
       } catch (installError) {
-        console.error("[deckyemu] core install failed", installError);
+        logError("core install failed", installError);
         updateDraft({ error: "Could not install that core.", installingCore: "" });
       }
     },
@@ -505,7 +506,7 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
       onGameAdded();
       resetDraft();
     } catch (addError) {
-      console.error("[deckyemu] add failed", addError);
+      logError("add failed", addError);
       updateDraft({
         adding: false,
         error:
@@ -532,7 +533,7 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
         });
       }
     } catch (transferError) {
-      console.error("[deckyemu] could not start the file server", transferError);
+      logError("could not start the file server", transferError);
     }
     showModal(<TransferModal />);
   }, []);

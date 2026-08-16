@@ -1,5 +1,6 @@
 import { shortcutForLauncher } from "./backend";
 import { createShortcut, repointShortcut, renameShortcut, shortcutExists } from "./steam";
+import { logError } from "./logError";
 
 /**
  * Make a shortcut for a launcher, or take back over the one already there.
@@ -38,7 +39,7 @@ export async function createOrReuseShortcut(args: {
     // A failed lookup must not stop a game being added: the cost of missing a
     // duplicate is a second entry the cleanup screen can remove, and the cost
     // of refusing here is that the game cannot be added at all.
-    console.error("[deckyemu] could not check for an existing shortcut", error);
+    logError("could not check for an existing shortcut", error);
   }
 
   // Steam is the authority on whether it still has it. shortcuts.vdf is

@@ -151,6 +151,31 @@ check("so is one a mixin defines",
 check("without Plugin claiming to define it",
       "audit_library" in vars(plugin_main.Plugin), False)
 
+section("and the other half of the plugin can say so too")
+
+# A frontend failure goes to a CEF console that needs a second machine to open,
+# so in Game Mode nobody sees it -- including the person reporting the bug. The
+# same log now takes both halves, which is also what puts a broken panel into a
+# diagnostic report.
+_capture.records.clear()
+run(plugin_main.Plugin.log_frontend_error(
+    plugin_main.Plugin(), "The DeckyEmu panel failed to render",
+    "TypeError: x is not a function", "at Foo / at Bar",
+))
+_reported = _capture.text()
+check("it names the surface", "The DeckyEmu panel failed to render" in _reported, True)
+check("and what went wrong", "TypeError: x is not a function" in _reported, True)
+check("and the component stack, which names the panel", "at Foo" in _reported, True)
+
+# Reachable by anything running in Steam's JS context, and a component stack is
+# long. The log is a shared resource that a report reads two hundred lines of.
+_capture.records.clear()
+run(plugin_main.Plugin.log_frontend_error(
+    plugin_main.Plugin(), "x" * 500, "y" * 9000, "z" * 9000,
+))
+check("a caller cannot flood the log",
+      len(_capture.text()) < 2 * plugin_main.Plugin._FRONTEND_ERROR_LIMIT + 500, True)
+
 decky.logger.setLevel(_log_level)
 decky.logger.removeHandler(_capture)
 _loop.close()

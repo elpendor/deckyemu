@@ -31,6 +31,7 @@ import { DANGER_CLASS, DANGER_CSS } from "./danger";
 import { EmulatorVersionModal } from "./EmulatorVersionModal";
 import { InstallRetroArchPanel } from "./InstallRetroArchPanel";
 import { callWithRetry } from "./timeout";
+import { logError } from "./logError";
 
 const HIDE_OSD_OPTIONS: SingleDropdownOption[] = [
   { data: "startup", label: "Hide the startup banner" },
@@ -150,7 +151,7 @@ export function RetroArchPanel({ status, onRefresh, reloadKey = 0 }: Props) {
     callWithRetry(emulatorBuilds)
       .then((rows) => setBuild(rows.find((row) => row.id === "retroarch") ?? null))
       .catch((error) => {
-        console.error("[deckyemu] could not read the RetroArch build", error);
+        logError("could not read the RetroArch build", error);
         setBuild(null);
       });
   }, [status.found]);
@@ -177,7 +178,7 @@ export function RetroArchPanel({ status, onRefresh, reloadKey = 0 }: Props) {
       setDeleteData(false);
       onRefresh();
     } catch (error) {
-      console.error("[deckyemu] uninstall failed", error);
+      logError("uninstall failed", error);
       toaster.toast({
         title: "Could not remove RetroArch",
         body: "The backend did not answer. Check the plugin log.",
@@ -218,7 +219,7 @@ export function RetroArchPanel({ status, onRefresh, reloadKey = 0 }: Props) {
     try {
       setLocalSettings(await setSettings(changes));
     } catch (error) {
-      console.error("[deckyemu] failed to save settings", error);
+      logError("failed to save settings", error);
     }
   }, []);
 

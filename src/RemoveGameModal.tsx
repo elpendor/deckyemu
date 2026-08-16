@@ -12,6 +12,7 @@ import {
 import { removeShortcut } from "./steam";
 import { unfileGames } from "./collections";
 import { humanSize } from "./TransferModal";
+import { logError } from "./logError";
 
 interface Props {
   closeModal?: () => void;
@@ -67,7 +68,7 @@ export function RemoveGameModal({ closeModal, game, onRemoved }: Props) {
           folder: info.folder,
         });
       })
-      .catch((error) => console.error("[deckyemu] could not read game info", error));
+      .catch((error) => logError("could not read game info", error));
     return () => {
       live = false;
     };
@@ -142,7 +143,7 @@ export function RemoveGameModal({ closeModal, game, onRemoved }: Props) {
             });
             onRemoved();
           } catch (error) {
-            console.error("[deckyemu] remove failed", error);
+            logError("remove failed", error);
             toaster.toast({ title: "Could not remove the game", body: game.title });
           }
         })();

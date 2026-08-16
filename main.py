@@ -2506,6 +2506,33 @@ class Plugin(
 
     # ----------------------------------------------------------------- settings
 
+    #: How much of a frontend error to keep. A component stack is long, and the
+    #: log is a shared resource read two hundred lines at a time.
+    _FRONTEND_ERROR_LIMIT = 2000
+
+    async def log_frontend_error(self, where: str, message: str, detail: str = ""):
+        """Write a frontend failure into the plugin log.
+
+        The two halves of this plugin fail into different places and only one of
+        them is reachable. A backend exception lands in the log, and now names
+        its own method; a frontend one goes to a CEF console that needs a second
+        machine, an IP address and a port to read -- so in Game Mode nobody sees
+        it, including the person it happened to and the person they report it
+        to. There were eighty-odd `console.error` calls on that side.
+
+        The same log, so the diagnostic report carries both halves. Truncated,
+        because a component stack is long and this is reachable by anything
+        running in Steam's JS context; and logged rather than acted on, because
+        nothing here should be steered by a string from that side.
+        """
+        where = (where or "the interface")[:120]
+        message = (message or "")[:self._FRONTEND_ERROR_LIMIT]
+        detail = (detail or "")[:self._FRONTEND_ERROR_LIMIT]
+        decky.logger.error(
+            "frontend: %s: %s%s", where, message, ("\n" + detail) if detail else ""
+        )
+        return {"ok": True}
+
     async def plugin_version(self):
         """What this backend is, for display and for spotting a stale frontend.
 

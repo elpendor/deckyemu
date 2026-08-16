@@ -21,6 +21,7 @@ import { callWithRetry } from "./timeout";
 import { canInstallUpdates, installUpdate } from "./updater";
 import { describe, FRONTEND_BUILD, FRONTEND_VERSION, isStale } from "./version";
 import { ReportModal } from "./ReportModal";
+import { logError } from "./logError";
 
 /**
  * Two halves side by side rather than stacked: they are one fact -- which build
@@ -133,7 +134,7 @@ export function UpdatePanel() {
     try {
       setBackend(await callWithRetry(pluginVersion));
     } catch (error) {
-      console.error("[deckyemu] could not read version", error);
+      logError("could not read version", error);
     }
   }, []);
 
@@ -153,7 +154,7 @@ export function UpdatePanel() {
       // The real message, not a guess at what went wrong. Two rounds were spent
       // on "the backend did not answer" while the actual error sat in a console
       // nobody was reading.
-      console.error("[deckyemu] update check failed", error);
+      logError("update check failed", error);
       const detail =
         error instanceof Error ? error.message : String(error ?? "no detail");
       // The *end* of a Python traceback, not the start: decky returns the whole
@@ -201,7 +202,7 @@ export function UpdatePanel() {
         body: "Decky will confirm and show progress.",
       });
     } catch (error) {
-      console.error("[deckyemu] could not start the update", error);
+      logError("could not start the update", error);
       toaster.toast({
         title: "Could not start the update",
         body: error instanceof Error ? error.message : "Decky did not accept the request.",

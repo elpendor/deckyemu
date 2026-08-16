@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import qrcode from "qrcode-generator";
 
 import { endReport, startReport, type FileServerStatus } from "./backend";
+import { logError } from "./logError";
 
 /**
  * Reading a diagnostic report off the Deck, from a device with a keyboard.
@@ -72,7 +73,7 @@ export function ReportModal({ closeModal }: Props) {
         if (live) setStatus(result);
       })
       .catch((startError) => {
-        console.error("[deckyemu] could not prepare the report", startError);
+        logError("could not prepare the report", startError);
         if (live) setError("The report could not be prepared.");
       });
 
@@ -90,7 +91,7 @@ export function ReportModal({ closeModal }: Props) {
        */
       if (!offered.current) return;
       void endReport().catch((endError) =>
-        console.error("[deckyemu] could not stop sharing the report", endError),
+        logError("could not stop sharing the report", endError),
       );
     };
   }, []);

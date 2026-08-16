@@ -23,6 +23,7 @@ import {
 import { buildDate } from "./buildDate";
 import { InstallProgress } from "./InstallProgress";
 import { humanSize } from "./TransferModal";
+import { logError } from "./logError";
 
 interface Props {
   closeModal?: () => void;
@@ -77,7 +78,7 @@ export function EmulatorVersionModal({ closeModal, emulator, onChanged }: Props)
           [commit]: result.ok ? result.details : "failed",
         }));
       } catch (detailError) {
-        console.error("[deckyemu] could not read build details", detailError);
+        logError("could not read build details", detailError);
         setDetails((current) => ({ ...current, [commit]: "failed" }));
       }
     },
@@ -91,7 +92,7 @@ export function EmulatorVersionModal({ closeModal, emulator, onChanged }: Props)
       setBuilds(result.builds ?? []);
       if (!result.ok) setListError(result.error ?? "Could not read the build history.");
     } catch (loadError) {
-      console.error("[deckyemu] could not list builds", loadError);
+      logError("could not list builds", loadError);
       setBuilds([]);
       setListError("Could not read the build history.");
     }
@@ -177,7 +178,7 @@ export function EmulatorVersionModal({ closeModal, emulator, onChanged }: Props)
           setStatus("");
         }
       } catch (startError) {
-        console.error("[deckyemu] could not change build", startError);
+        logError("could not change build", startError);
         setError("Could not start.");
         setBusy("");
         setStatus("");
@@ -202,7 +203,7 @@ export function EmulatorVersionModal({ closeModal, emulator, onChanged }: Props)
         setHeld(Boolean(result.held));
         onChanged();
       } catch (holdError) {
-        console.error("[deckyemu] could not hold", holdError);
+        logError("could not hold", holdError);
         setHeld(!next);
         setError("Could not change the hold.");
       }

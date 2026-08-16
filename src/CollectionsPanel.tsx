@@ -27,6 +27,7 @@ import { findFiledGames, migrateCollections, type CollectionMove } from "./steam
 import { forgetDeleted } from "./collections";
 import { callWithRetry } from "./timeout";
 import { countFiled, strandedSummary, unfileWarning } from "./unfileWarning";
+import { logError } from "./logError";
 
 const PLATFORM_NAME_OPTIONS: SingleDropdownOption[] = [
   { data: "short", label: "Short (SNES, N64, GBA)" },
@@ -80,7 +81,7 @@ export function CollectionsPanel() {
     try {
       setTemplates((await collectionTemplates()).templates);
     } catch (error) {
-      console.error("[deckyemu] could not read the naming formats", error);
+      logError("could not read the naming formats", error);
     }
   }, []);
 
@@ -99,7 +100,7 @@ export function CollectionsPanel() {
       // One name per game found, so the counter sees both numbers it needs.
       setFiled(countFiled(groups.flatMap((group) => group.appIds.map(() => group.tag))));
     } catch (error) {
-      console.error("[deckyemu] could not count filed games", error);
+      logError("could not count filed games", error);
     }
   }, []);
 
@@ -122,7 +123,7 @@ export function CollectionsPanel() {
         setLocalSettings(await setSettings(changes));
         await refreshTemplates();
       } catch (error) {
-        console.error("[deckyemu] failed to save settings", error);
+        logError("failed to save settings", error);
       }
     },
     [refreshTemplates],
@@ -157,7 +158,7 @@ export function CollectionsPanel() {
         });
         return moved;
       } catch (error) {
-        console.error("[deckyemu] collection migration failed", error);
+        logError("collection migration failed", error);
         toaster.toast({
           title: "Could not update collections",
           body: "The setting was saved but existing games were not moved.",
@@ -202,7 +203,7 @@ export function CollectionsPanel() {
         const plan = await planCollectionMigration(previous);
         await applyMoves(plan.moves);
       } catch (error) {
-        console.error("[deckyemu] collection migration failed", error);
+        logError("collection migration failed", error);
         toaster.toast({
           title: "Could not update collections",
           body: "The setting was saved but existing games were not moved.",
@@ -238,7 +239,7 @@ export function CollectionsPanel() {
       );
       await applyMoves(moves);
     } catch (error) {
-      console.error("[deckyemu] could not take games out of their collections", error);
+      logError("could not take games out of their collections", error);
       toaster.toast({
         title: "Could not update collections",
         body: "Collections are off, but the games already added are still in them.",

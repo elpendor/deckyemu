@@ -1,6 +1,7 @@
 import { collectionShape, forgetCollections } from "./backend";
 import { emptyCollectionMatcher } from "./collectionMatch";
 import { deleteCollections, findEmptyCollections, removeAppsFromCollection } from "./steam";
+import { logError } from "./logError";
 
 /**
  * Taking games off their shelves, and clearing away shelves left holding
@@ -80,7 +81,7 @@ export async function forgetDeleted(tags: string[]): Promise<void> {
   try {
     await forgetCollections(tags);
   } catch (error) {
-    console.error("[deckyemu] could not stop claiming deleted collections", error);
+    logError("could not stop claiming deleted collections", error);
   }
 }
 
