@@ -60,12 +60,19 @@ jobs:
       contents: write
     steps:
       # On a dispatch, the branch rather than the detached commit: a release
-      # commits the bump back to it. On a pull request that ref is `<n>/merge`,
-      # which is not a branch and not what is under review -- so the default
-      # checkout is taken instead, which is the merge result GitHub prepared.
+      # commits the bump back to it. On a pull request `github.ref_name` is
+      # `<n>/merge`, which is not a branch and cannot be checked out -- and
+      # `github.sha` on that event is already the merge commit GitHub prepared,
+      # which is the thing under review.
+      #
+      # Written with `github.sha` rather than an empty string meaning "take the
+      # default", because `a && '' || b` does not do that: an empty string is
+      # falsy, so the `&&` fails and it yields `b`. That is how this shipped
+      # broken the first time -- it asked for `1/merge` and stopped there. Both
+      # arms of this idiom have to be truthy or it silently picks the wrong one.
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event_name == 'pull_request' && '' || github.ref_name }}
+          ref: ${{ github.event_name == 'pull_request' && github.sha || github.ref_name }}
           # The release notes are generated from the commits since the previous
           # tag, and the default shallow clone has neither the tags nor the
           # history to walk. It would only fail on the run that matters.
