@@ -28,6 +28,16 @@ export interface RomDraft {
   resolved: ResolvedGame | null;
   title: string;
   installable: InstallableCore[];
+  /**
+   * Which of `installable` the install button would install. "" means the first.
+   *
+   * Here rather than in component state because a Steam dropdown opens a
+   * ContextMenu, and that unmounts the panel behind it exactly as a modal does
+   * -- so a selection held in `useState` is discarded on the way back and the
+   * list snaps to its first entry. Picking anything but the default was
+   * impossible until this moved.
+   */
+  installableId: string;
   looking: boolean;
   adding: boolean;
   installingCore: string;
@@ -43,6 +53,7 @@ export const EMPTY_DRAFT: RomDraft = {
   resolved: null,
   title: "",
   installable: [],
+  installableId: "",
   looking: false,
   adding: false,
   installingCore: "",

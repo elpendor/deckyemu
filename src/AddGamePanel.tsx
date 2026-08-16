@@ -175,6 +175,7 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
     resolved,
     title,
     installable,
+    installableId,
     looking,
     adding,
     installingCore,
@@ -370,15 +371,14 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
   );
 
   /**
-   * Which suggested core the install button would install.
+   * Which suggested core the install button would install; "" means the first.
    *
-   * Held locally rather than in the draft, and empty means "the first one" --
-   * so a selection lost to Steam unmounting the panel behind a modal comes back
-   * as the backend's own best suggestion rather than as nothing. Falling back by
-   * lookup rather than by index also covers the list changing underneath a
-   * selection, which happens when a different ROM is picked.
+   * Read from the draft, not from component state: opening this dropdown opens a
+   * ContextMenu, which unmounts the panel behind it the way a modal does, so a
+   * `useState` selection is gone by the time the menu closes and the list snaps
+   * back to its first entry. Resolved by lookup rather than by index so a stale
+   * id from a previous ROM falls back instead of picking the wrong core.
    */
-  const [installableId, setInstallableId] = useState("");
   const chosenInstallable = useMemo(
     () => installable.find((core) => core.id === installableId) || installable[0],
     [installable, installableId],
@@ -433,6 +433,7 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
         updateDraft({
           probe: info,
           installable: [],
+          installableId: "",
           coreId: nextCore,
           installingCore: "",
         });
@@ -1010,7 +1011,7 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
                 description={`These can run .${probe?.match_extension} — install one to continue.`}
                 rgOptions={installableOptions(installable)}
                 selectedOption={chosenInstallable.id}
-                onChange={(option) => setInstallableId(String(option.data))}
+                onChange={(option) => updateDraft({ installableId: String(option.data) })}
                 disabled={Boolean(installingCore) || adding}
               />
             </PanelSectionRow>

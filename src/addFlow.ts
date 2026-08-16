@@ -194,7 +194,12 @@ export async function selectRom(romPath: string): Promise<void> {
     // Nothing installed can run this, so offer the cores that could.
     updateDraft({ coreId: "" });
     try {
-      updateDraft({ installable: await suggestCoresForExtension(info.match_extension) });
+      // The selection goes with the list it belonged to: a core chosen for the
+      // last ROM is not a choice anyone made about this one.
+      updateDraft({
+        installable: await suggestCoresForExtension(info.match_extension),
+        installableId: "",
+      });
     } catch (suggestError) {
       logError("could not fetch core suggestions", suggestError);
     }
