@@ -367,7 +367,7 @@ export function UpdatePanel() {
         <ButtonItem
           layout="below"
           onClick={() => showModal(<ReportModal />)}
-          description="Gathers what a bug report needs — this build, what is installed, and the end of the log — and puts it where a phone or PC can read it. No keys, tokens or game titles."
+          description="Gathers what a bug report needs — this build, what is installed, and the end of the log — and puts it where a phone or PC can read it. Keys, tokens and your game names are removed from it."
         >
           Report a problem
         </ButtonItem>

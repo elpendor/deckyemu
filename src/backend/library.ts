@@ -236,8 +236,9 @@ export const startFileServer = callable<
  * Mode and a device with a keyboard. Scan `report_url`, or type `short_url` and
  * the code and follow the link on the page.
  *
- * The report holds no keys, tokens or game titles — see py_modules/diagnostics.py,
- * where the striking out is the whole point of the module rather than a courtesy.
+ * Keys, tokens and the user's game names are struck out of the report — see
+ * py_modules/diagnostics.py, where that is the whole point of the module rather
+ * than a courtesy.
  */
 export const startReport = callable<
   [],

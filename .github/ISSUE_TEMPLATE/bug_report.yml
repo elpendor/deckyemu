@@ -13,9 +13,10 @@ body:
         and six digits on a phone or PC. Copy the text and paste it below.
 
         It carries versions, what is installed, your settings and the end of the
-        log. It does **not** carry API keys, account tokens or the names of your
-        games — see `py_modules/diagnostics.py`, where removing them is the
-        point of the module rather than a courtesy.
+        log. API keys, account tokens and the names of your games are removed
+        from it — see `py_modules/diagnostics.py`, where removing them is the
+        point of the module rather than a courtesy. Read it before pasting
+        anyway; that is why it is shown to you rather than sent.
 
         No Deck to hand, or the panel will not open far enough to reach it? Fill
         in what you can and say so; the report is a shortcut, not a requirement.

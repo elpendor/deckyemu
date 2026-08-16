@@ -23,12 +23,19 @@ any of those if something logged one. Two rules, and both are needed:
   notices;
 * every known secret value is struck out of the *whole* report by value, so a
   key that reached the log by another route goes too.
+
+The same goes for what is merely personal. The log names games as it works --
+the title and the path when one is added, the name inside an artwork URL when a
+lookup fails -- so leaving the library listing out of the report did not stop
+the report listing somebody's library. Titles and ROM paths are struck by value
+too, in their plain and percent-encoded forms.
 """
 
 import glob
 import json
 import os
 import re
+import urllib.parse
 
 import decky
 
@@ -60,6 +67,12 @@ SECRET_SETTINGS = ("sgdb_api_key", "cheevos_token", "transfer_token", "github_to
 #: startup before it; not so much that nobody reads it.
 LOG_LINES = 200
 
+#: How much of the file to read to find those lines. Generous for 200 ordinary
+#: lines and a hard ceiling on the work regardless of how big the log has grown
+#: -- which it does: an emulator's own output is streamed into it a line per
+#: file unpacked, so one large game can write thousands.
+TAIL_BYTES = 256 * 1024
+
 #: A last defence over the log, for a secret this plugin does not hold and so
 #: cannot strike out by value -- a zRIF in a path, a token some other tool
 #: logged. Deliberately crude: a false positive costs a line of a log, and a
@@ -68,21 +81,43 @@ _SECRET_SHAPES = (
     # A zRIF licence key, which is what `find_zrif` looks for.
     re.compile(r"KO5if[A-Za-z0-9+/=]{20,}"),
     # Anything calling itself a token, key or password with a value after it.
-    re.compile(r"(?i)\b(token|api[_-]?key|password|secret)\b\s*[=:]\s*\S+"),
+    re.compile(r"(?i)\b(?:token|api[_-]?key|password|secret)\b\s*[=:]\s*\S+"),
+    # A token sitting in a URL path, which is how both of this plugin's own
+    # servers address themselves: the transfer server mints one per session and
+    # `stage_update` logs the loopback address it offers a download at, token
+    # and all. Neither is in the settings, so no value could strike them -- and
+    # the transfer one is live on the network at the moment the report is read.
+    # The host is kept, because which host it was is the useful half.
+    re.compile(r"(://[^/\s]+/)[A-Za-z0-9_\-]{16,}"),
 )
 
 REDACTED = "[removed]"
 
 
 def _redact(text, secrets):
-    """`text` with every known secret and secret-shaped run struck out."""
+    """`text` with every known secret and secret-shaped run struck out.
+
+    Each value is struck in the forms it can appear in. A game's name reaches
+    the log as itself and, when an artwork lookup fails, inside the URL that
+    failed -- where it is percent-encoded and a literal match walks straight
+    past it.
+    """
+    wanted = []
     for secret in secrets:
+        wanted.append(secret)
+        wanted.append(urllib.parse.quote(secret))
+        wanted.append(urllib.parse.quote_plus(secret))
+
+    for secret in dict.fromkeys(wanted):
         # Short values are not secrets worth striking, and striking a one or two
         # character string would redact half the report.
         if secret and len(secret) >= 8:
             text = text.replace(secret, REDACTED)
     for shape in _SECRET_SHAPES:
-        text = shape.sub(REDACTED, text)
+        # a captured group keeps whatever the rule chose to preserve -- the URL rule keeps
+        # the host, because which host it was is the useful half and the token
+        # after it is the part that must not travel.
+        text = shape.sub(lambda found: (found.group(1) if found.groups() else "") + REDACTED, text)
     return text
 
 
@@ -99,13 +134,26 @@ def _log_tail(lines=LOG_LINES):
         return "No log file found."
 
     try:
-        with open(paths[-1], "r", encoding="utf-8", errors="replace") as handle:
-            # Read it all and keep the end: a plugin log is a few hundred
-            # kilobytes at worst, and seeking backwards for N lines is more code
-            # than the saving is worth.
-            found = handle.read().splitlines()
+        with open(paths[-1], "rb") as handle:
+            # Read the end, not the file. An earlier version read all of it on
+            # the reasoning that a plugin log is a few hundred kilobytes at
+            # worst -- which is wrong, and observably so: `_run_emulator_tool`
+            # streams every line an emulator prints, and Vita3K's installer
+            # prints one per file in the package, so a single large game writes
+            # thousands of lines. Pulling all of that into memory to keep the
+            # last two hundred is work that grows with how much somebody has
+            # installed, on the device least able to afford it.
+            handle.seek(0, os.SEEK_END)
+            size = handle.tell()
+            handle.seek(max(0, size - TAIL_BYTES))
+            raw = handle.read()
     except OSError as error:
         return "Could not read %s: %s" % (os.path.basename(paths[-1]), error)
+
+    found = raw.decode("utf-8", "replace").splitlines()
+    # The first line is a fragment whenever the seek landed mid-line.
+    if size > TAIL_BYTES and found:
+        found = found[1:]
 
     return "\n".join(found[-lines:]) or "The log is empty."
 
@@ -139,6 +187,25 @@ def build(version, install, emulators_registered, library, catalog_installed=())
     settings = store.get_settings()
     secrets = [str(settings.get(key) or "") for key in SECRET_SETTINGS]
 
+    # The log names games, and the report carries the log.
+    #
+    # `prepare_shortcut` logs the title and the ROM path, `register_game` logs
+    # the title, `probe_rom` logs the path, and a failed SteamGridDB lookup logs
+    # a URL with the game's name in it. So a report that merely left the library
+    # section out still listed somebody's games, several lines at a time --
+    # while the dialog offering it promised the opposite.
+    #
+    # Struck by value, the same way the secrets are, out of what the registry
+    # already knows. A title shorter than the length guard survives, and so does
+    # a game probed but never added, because neither is a value this can know:
+    # the wording says titles are removed rather than that none can appear.
+    personal = [str(settings.get("cheevos_username") or "")]
+    for entry in library.values():
+        personal.append(str(entry.get("title") or ""))
+        personal.append(str(entry.get("rom_path") or ""))
+        # Its own name too: a ROM is filed under one and the folder is not it.
+        personal.append(os.path.basename(str(entry.get("rom_path") or "")))
+
     systems = {}
     for entry in library.values():
         systems[entry.get("platform") or "?"] = systems.get(entry.get("platform") or "?", 0) + 1
@@ -146,8 +213,8 @@ def build(version, install, emulators_registered, library, catalog_installed=())
     parts = [
         "# DeckyEmu diagnostic report",
         "",
-        "Paste this into the issue. It carries no keys, tokens or game titles --",
-        "see py_modules/diagnostics.py for exactly what is gathered and removed.",
+        "Paste this into the issue. Keys, tokens, and the names of the games in",
+        "your library are removed -- see py_modules/diagnostics.py for the rules.",
         "",
         _section(
             "Build",
@@ -208,7 +275,7 @@ def build(version, install, emulators_registered, library, catalog_installed=())
         _section("Log (last %d lines)" % LOG_LINES, _log_tail()),
     ]
 
-    return _redact("\n".join(parts), secrets)
+    return _redact("\n".join(parts), secrets + personal)
 
 
 def as_page(report):

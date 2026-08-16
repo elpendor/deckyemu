@@ -2183,9 +2183,15 @@ class Plugin(
 
         status = await self._run(fileserver.status)
         if not status.get("running"):
-            started = await self.start_file_server()
-            if not started.get("ok"):
-                return started
+            # Started to hand a report out, and nothing else: a server brought up
+            # for this does not accept files. Showing somebody a report should
+            # not also hand them somewhere to write, and they could not tell
+            # they had been given one.
+            started = await self._run(
+                fileserver.start, await self._run(fileserver.default_dir), 0, "", False
+            )
+            if started.get("error"):
+                return {"ok": False, "error": started["error"]}
 
         await self._run(fileserver.offer_report, report)
         decky.logger.info("Diagnostic report ready (%d characters)", len(report))
@@ -2247,6 +2253,10 @@ class Plugin(
         )
         if result.get("error"):
             return {"ok": False, "error": result["error"]}
+
+        # The server may already have been up to hand out a report, which does
+        # not accept files. This is a transfer, so it does now.
+        await self._run(fileserver.allow_uploads)
 
         if remember:
             # Whatever was actually bound and minted, not what was asked for: a

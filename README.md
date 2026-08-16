@@ -664,11 +664,18 @@ It carries the plugin version and build, what RetroArch is and how it was
 installed, which emulators are registered, how many games are in the library and
 under which systems, your settings, and the last 200 lines of the log.
 
-It does **not** carry your SteamGridDB key, your RetroAchievements token, the
-transfer token, or the names of your games. Those are struck out by value across
-the whole report, so one that reached the log by some other route goes too, and
-settings are read through a list of what may be reported rather than a list of
-what may not.
+Your SteamGridDB key, your RetroAchievements token, the transfer token, your
+RetroAchievements username and the names and paths of your games are struck out
+of it. By value, across the whole text rather than only the section they belong
+to — the log names games as it works, so removing the library listing alone
+would not have been enough. Settings are read through a list of what may be
+reported rather than a list of what may not, so a setting added later is absent
+until somebody lists it.
+
+Two things it cannot catch, since neither is a value it knows: a game you probed
+but never added, and a title too short to strike without mangling the rest of
+the report. Read it before you paste it — it is shown to you first for that
+reason.
 
 The report lives in memory and goes when the transfer server stops — half an
 hour idle, or **Done, and stop sharing now**.

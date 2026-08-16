@@ -103,8 +103,8 @@ export function ReportModal({ closeModal }: Props) {
         Report a problem
       </div>
       <div style={{ ...LABEL, marginBottom: "12px" }}>
-        Open this on a phone or PC, copy the text, and paste it into the issue. It carries no
-        keys, tokens or game titles.
+        Open this on a phone or PC, copy the text, and paste it into the issue. Keys, tokens
+        and the names of your games are removed from it.
       </div>
 
       {error && <div style={{ color: "#e35d5d", fontSize: "13px" }}>{error}</div>}

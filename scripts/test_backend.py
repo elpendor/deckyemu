@@ -4106,6 +4106,46 @@ else:
     check("the catalog probe returns a list, not a coroutine",
           isinstance(plugin._installed_catalog_ids(), list), True)
 
+    # A server brought up to hand out a report does not take files. The token is
+    # the same one, so anyone shown the report could otherwise write into the ROM
+    # folder -- which is not what showing somebody a report offers, and not
+    # something they could tell they had been handed.
+    _report_only = fileserver.status()
+    _port = _report_only["port"]
+    _tok = _report_only["url"].rstrip("/").rsplit("/", 1)[-1]
+
+    def _put(path, body=b"x"):
+        connection = _http_client.HTTPConnection("127.0.0.1", _port, timeout=5)
+        try:
+            connection.request("PUT", path, body=body)
+            return connection.getresponse().status
+        finally:
+            connection.close()
+
+    check("a report-only server refuses an upload",
+          _put("/%s/upload/sneaky.sfc" % _tok), 404)
+    check("and nothing was written",
+          os.path.exists(os.path.join(fileserver.default_dir(), "sneaky.sfc")), False)
+    # The six-digit code lands on the page, and an upload form whose PUT refuses
+    # would be a lie -- so the report is the page.
+    _root = urllib.request.urlopen(
+        "http://127.0.0.1:%d/%s/" % (_port, _tok), timeout=5
+    ).read().decode()
+    check("and the page it serves is the report, not an upload form",
+          "DeckyEmu diagnostic report" in _root and "Choose files" not in _root, True)
+
+    # A transfer is exactly the case where files are wanted, and it may find the
+    # server already up for a report.
+    run(plugin.start_file_server())
+    # Re-read both: starting a transfer may rebind, and a stale port is a
+    # refused connection that looks like the refusal under test.
+    _after = fileserver.status()
+    _port = _after["port"]
+    _tok = _after["url"].rstrip("/").rsplit("/", 1)[-1]
+    check("starting a transfer takes the refusal off",
+          _put("/%s/upload/wanted.sfc" % _tok) in (200, 201, 204), True)
+    os.remove(os.path.join(fileserver.default_dir(), "wanted.sfc"))
+
     # Done means done. The report is the tail of a log, and leaving it served on
     # the network after the user closed the dialog is exposure nobody asked for.
     _ended = run(plugin.end_report())

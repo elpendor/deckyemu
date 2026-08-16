@@ -73,6 +73,14 @@ _received: list = []
 # code for a camera and six digits for anything else. A second server for the
 # other direction would be a second thing to bind, expire and lock out.
 _report = ""
+# Whether this server accepts files, as opposed to only handing one out.
+#
+# It exists because "show somebody a report" must not also mean "let them write
+# into the ROM folder". Reading a report needs a server, and starting one for
+# that reason used to open the upload endpoint with it -- so handing over a QR
+# code handed over a writable inbox nobody asked to offer. A transfer turns it
+# back on, since that is the whole point of a transfer.
+_uploads = True
 
 # A short code, so the server can be reached from a keyboard as well as a camera.
 #
@@ -301,6 +309,14 @@ class _Handler(BaseHTTPRequestHandler):
 
         _touch()
         if not rest or rest == ["index.html"]:
+            with _state_lock:
+                report_only = not _uploads and bool(_report)
+            # Whoever came in by the six-digit code lands here. On a server that
+            # exists only to hand out a report, an upload form is both wrong and
+            # a lie -- the PUT behind it refuses -- so the report is the page.
+            if report_only:
+                self._send(200, diagnostics.as_page(_report), "text/html; charset=utf-8")
+                return
             self._send(200, _page(), "text/html; charset=utf-8")
         elif rest == ["files"]:
             with _state_lock:
@@ -320,6 +336,15 @@ class _Handler(BaseHTTPRequestHandler):
             self._deny()
 
     def do_PUT(self):
+        # A server started to hand out a report does not take files. The token
+        # is the same one, so anyone shown the report could otherwise write into
+        # the ROM folder -- which is not what showing somebody a report is meant
+        # to offer, and not something they could tell they had been given.
+        with _state_lock:
+            if not _uploads:
+                self._deny()
+                return
+
         rest = self._authorised()
         # Exactly /<token>/upload/<name>: no deeper paths to reason about.
         if rest is None or len(rest) != 2 or rest[0] != "upload":
@@ -1059,7 +1084,18 @@ def _bind(port):
     return None, "Could not start the server: %s" % last
 
 
-def start(target_dir, port=0, token=""):
+def allow_uploads():
+    """Let a server started for a report accept files after all.
+
+    Called when a transfer begins on a server that is already up. Without it,
+    reading a report first and sending a ROM second would refuse the ROM.
+    """
+    global _uploads
+    with _state_lock:
+        _uploads = True
+
+
+def start(target_dir, port=0, token="", uploads=True):
     """Start the server, returning the same shape as `status()`.
 
     `port` and `token` are how a bookmarked link keeps working. Both default to
@@ -1070,7 +1106,7 @@ def start(target_dir, port=0, token=""):
     back, since a requested port may have been taken and fallen back from.
     """
     global _server, _thread, _token, _target_dir, _last_activity, _host_ip
-    global _pin, _pin_attempts, _pin_locked, _durable
+    global _pin, _pin_attempts, _pin_locked, _durable, _uploads
 
     if not target_dir or not os.path.isdir(target_dir):
         return {"error": "Choose a folder that exists to receive files into."}
@@ -1106,6 +1142,7 @@ def start(target_dir, port=0, token=""):
         _pin = "".join(str(secrets.randbelow(10)) for _ in range(PIN_DIGITS))
         _pin_attempts = 0
         _pin_locked = False
+        _uploads = bool(uploads)
         # The one place this is cleared. Nothing uploaded to the previous server
         # is still in flight against this one, so a leftover entry would show a
         # transfer that no longer exists and hold the panel open on it.

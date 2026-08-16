@@ -36,7 +36,7 @@ store.set_settings({
     "sgdb_api_key": _SGDB,
     "cheevos_token": _CHEEVOS,
     "transfer_token": _TRANSFER,
-    "cheevos_username": "somebody",
+    "cheevos_username": "somebodyknown",
     "collection_name": "DeckyEmu",
     "hide_osd": "all",
 })
@@ -50,6 +50,18 @@ with open(_LOG, "w", encoding="utf-8") as _handle:
         "\n".join(
             [
                 "[INFO]: DeckyEmu starting",
+                # Exactly what main.py writes. A fixture tidier than the real
+                # log would let every check below pass on a report that still
+                # leaks in production.
+                "[INFO]: prepare_shortcut: title='A Private Game' core=bsnes "
+                "rom=/home/deck/deckyemu/roms/snes/A Private Game (USA).sfc",
+                "[INFO]: register_game: app_id=1 title='A Private Game'",
+                "[INFO]: probe_rom: /home/deck/deckyemu/transfer/A Private Game (USA).sfc",
+                "[WARNING]: GET failed for https://www.steamgriddb.com/api/v2/"
+                "search/autocomplete/A%20Private%20Game: timed out",
+                # A live token in a URL, which is what stage_update logs.
+                "[INFO]: Staged 1.2.3 for decky at "
+                "http://127.0.0.1:41234/tHiSiSaLiVeToKeN123456/deckyemu.zip",
                 "[INFO]: sgdb request with key %s" % _SGDB,
                 "[INFO]: cheevos token=%s" % _CHEEVOS,
                 "[INFO]: installing with --zrif %s" % _ZRIF,
@@ -61,7 +73,10 @@ with open(_LOG, "w", encoding="utf-8") as _handle:
     )
 
 _LIBRARY = {
-    "1": {"app_id": 1, "title": "A Private Game", "platform": "SNES", "collection": "x"},
+    "1": {
+        "app_id": 1, "title": "A Private Game", "platform": "SNES", "collection": "x",
+        "rom_path": "/home/deck/deckyemu/roms/snes/A Private Game (USA).sfc",
+    },
     "2": {"app_id": 2, "title": "Another One", "platform": "SNES", "collection": "x"},
     "3": {"app_id": 3, "title": "A Third", "platform": "N64", "collection": "y"},
 }
@@ -94,6 +109,14 @@ check("nor is anything the log called a password",
 check("and what went is visible as having gone",
       diagnostics.REDACTED in _REPORT, True)
 
+# A token in a URL path is how both of this plugin's own servers address
+# themselves, and neither is in the settings -- so no value could strike them.
+# The transfer one is live on the network at the moment the report is read.
+check("a token in a URL path does not travel",
+      "tHiSiSaLiVeToKeN123456" in _REPORT, False)
+check("though which host it was still does",
+      "http://127.0.0.1:41234/" in _REPORT, True)
+
 # The allowlist is the reason a setting added later is absent until somebody
 # lists it, rather than exported until somebody notices.
 check("settings are reported from an allowlist",
@@ -110,6 +133,21 @@ section("and the user's library is not somebody else's business")
 # is theirs, and this text is going somewhere public.
 for _title in ("A Private Game", "Another One", "A Third"):
     check("the title %r is not in the report" % _title, _title in _REPORT, False)
+# The half that was wrong. Leaving the library section out did not stop the log
+# naming games: prepare_shortcut logs the title and the path, register_game logs
+# the title, probe_rom logs the path, and a failed artwork lookup logs a URL
+# with the name in it -- four lines in this fixture, while the dialog offering
+# the report promised no game titles.
+check("nor is it in the log the report carries",
+      "prepare_shortcut: title='[removed]'" in _REPORT, True)
+check("nor is the path a ROM was filed at",
+      "roms/snes/A Private Game" in _REPORT, False)
+check("nor the name inside an artwork lookup that failed",
+      "autocomplete/A%20Private%20Game" in _REPORT, False)
+# The account name is not a secret and is not the user's to have published
+# either.
+check("and neither is the RetroAchievements username",
+      "somebodyknown" in _REPORT, False)
 check("but the count is", "3 game(s)" in _REPORT, True)
 check("and so are the systems", "SNES" in _REPORT and "N64" in _REPORT, True)
 
@@ -136,6 +174,33 @@ check("a closing tag in the report does not close the element",
       "</textarea><script>alert(1)" in _PAGE, False)
 check("and the escape survives as data", "<\\/textarea>" in _PAGE, True)
 check("the page still carries the report", "document.querySelector" in _PAGE, True)
+
+
+section("a log that has grown is read from the end, not swallowed whole")
+
+# `_run_emulator_tool` streams every line an emulator prints, and Vita3K's
+# installer prints one per file in the package -- so one large game writes
+# thousands of lines and the file is not the few hundred kilobytes an earlier
+# version of this assumed. Reading all of it to keep the last two hundred is
+# work that grows with how much somebody has installed.
+_BIG = os.path.join(decky.DECKY_PLUGIN_LOG_DIR, "big.log")
+with open(_BIG, "w", encoding="utf-8") as _handle:
+    for _line in range(120000):
+        # A plain "\n" in text mode, which Python turns into whatever this
+        # platform uses. Writing `os.linesep` here instead gets translated a
+        # second time on Windows, producing "\r\r\n" -- and `splitlines` counts
+        # that stray carriage return as a line of its own.
+        _handle.write("[INFO]: vita3k: [install_pkg]: sce_sys/manual/%d.png\n" % _line)
+check("the log really is bigger than the cap",
+      os.path.getsize(_BIG) > diagnostics.TAIL_BYTES * 4, True)
+_tail = diagnostics._log_tail()
+check("only the last lines are kept", len(_tail.splitlines()), diagnostics.LOG_LINES)
+check("and they are the end of the file, not the start",
+      "sce_sys/manual/119999.png" in _tail, True)
+# A seek into the middle of the file lands mid-line as often as not.
+check("the partial line the seek landed in is dropped",
+      _tail.splitlines()[0].startswith("[INFO]"), True)
+os.remove(_BIG)
 
 
 section("a missing log is a line, not a failure")
