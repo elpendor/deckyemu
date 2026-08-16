@@ -194,7 +194,33 @@ export function CoreInstallPanel({ onCoresChanged, reloadKey = 0 }: Props) {
       // section's first control when the core turns out to be installed
       // already -- the row is absent then, and the alternative is Remove.
       const target = installRow.current ?? node;
-      target.querySelector<HTMLElement>(".Focusable, button, [tabindex]")?.focus();
+      const focusable = target.querySelector<HTMLElement>(".Focusable, button, [tabindex]");
+
+      /*
+       * Claimed repeatedly until it sticks, because Steam settles focus on the
+       * sidebar tab as part of the navigation and does it *after* these two
+       * frames -- so a single call is made and then overwritten, leaving the
+       * gamepad on the tab selector while the page below it looks right.
+       *
+       * Checked a beat later rather than straight away: `focus()` updates
+       * `activeElement` synchronously, so asking immediately always says yes
+       * and tells us nothing about whether it survived.
+       *
+       * Bounded, and it stops the moment focus is inside the section. Eight
+       * tries is under a second; past that something is deliberately holding
+       * focus elsewhere and taking it would be the wrong thing to do.
+       */
+      const claim = (attempt: number) => {
+        // The panel went away -- a detached node is nothing to focus, and the
+        // user has moved on.
+        if (attempt > 8 || !node.isConnected || !focusable) return;
+        focusable.focus();
+        setTimeout(() => {
+          if (node.contains(document.activeElement)) return;
+          claim(attempt + 1);
+        }, 100);
+      };
+      claim(0);
 
       // Then the scroll position, by hand. `scrollIntoView` does not move this
       // page: measured over CEF, the section sat at y=290 with the scroller at
