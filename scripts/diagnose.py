@@ -21,9 +21,9 @@ the wrong one for anybody else's: paste the redacted form into an issue. The
 flag exists because a name struck out of a log is a name you cannot grep for,
 and half of debugging is grepping for the name.
 
-Needs SSH keys set up, which the deploy script needs anyway. It copies nothing
-and installs nothing: the script it runs is written to the Deck's /tmp, run
-once, and left there to be overwritten next time.
+Needs SSH keys set up, which the deploy script needs anyway. It leaves nothing
+behind: the script below goes over stdin to the Deck's own Python and is never
+written to its disk.
 """
 
 import argparse
@@ -73,11 +73,17 @@ for name in ("build.json", "package.json"):
     except (OSError, ValueError):
         pass
 
-try:
-    import emulators
-    registered = emulators.load()
-except Exception:
-    registered = []
+# `list_emulators`, not a guess at the name. The first version of this called
+# `emulators.load()`, which does not exist, and the bare `except` below it
+# turned that into an empty list -- so a Deck with two registered emulators
+# reported none, and said so as confidently as if it had looked.
+import emulators
+registered = emulators.list_emulators()
+
+# Actually detected, rather than passed as None and printed as "not found".
+# Reporting an absence nobody checked for is worse than reporting nothing.
+import ra_detect
+install = ra_detect.detect()
 
 diagnostics.LOG_LINES = __LOG_LINES__
 if __RAW__:
@@ -85,7 +91,7 @@ if __RAW__:
     diagnostics._redact = lambda text, secrets, words=(): text
 
 print(diagnostics.build(
-    version, None, registered, store.get_library(), [], [],
+    version, install, registered, store.get_library(), [], [],
     os.path.join(home, "deckyemu", "transfer"),
 ))
 '''
