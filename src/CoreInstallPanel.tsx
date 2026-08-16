@@ -145,14 +145,27 @@ export function CoreInstallPanel({ onCoresChanged, reloadKey = 0 }: Props) {
     // like it ignored the request. Only on a deliberate arrival: scrolling a
     // tab somebody opened themselves would take it away from the top.
     //
-    // `start`, not `center`: centring the section puts its heading halfway down
-    // the screen with the controls below it and nothing above but the tab the
-    // user just left. The heading belongs at the top, where a section that was
-    // scrolled to looks like the top of what you came for.
+    // Focus first, then scroll, and the order is the point. Steam's gamepad
+    // focus manager scrolls whatever is focused into view, and after this
+    // navigation that is the sidebar near the top of the page -- so a scroll
+    // on its own was performed and then undone, leaving the section halfway
+    // down the screen. Measured over CEF: scrollTop moved to 68 and came back
+    // to 75 with `document.activeElement` reading "RetroArch".
     //
-    // After paint, or the row is measured where it has not been drawn yet.
+    // Moving focus into the section makes Steam's scroll agree with this one
+    // instead of fighting it, and it is where the gamepad should be anyway --
+    // the user came here to pick a core, not to read a heading.
+    //
+    // `start` rather than `center`, so the heading lands at the top of what
+    // was scrolled to. No `smooth`: an animated scroll is still running when
+    // Steam settles focus, and the last write wins.
+    //
+    // After paint, or the section is measured where it has not been drawn yet.
     requestAnimationFrame(() => {
-      section.current?.scrollIntoView({ block: "start", behavior: "smooth" });
+      const node = section.current;
+      if (!node) return;
+      node.querySelector<HTMLElement>(".Focusable, button, [tabindex]")?.focus();
+      node.scrollIntoView({ block: "start" });
     });
   }, []);
 
