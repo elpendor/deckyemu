@@ -97,16 +97,34 @@ class Audit(plugin_base.PluginContext):
         rather than "yes" wrongly, which is the right way round: a missed
         duplicate is a row in the cleanup screen, while a wrong match would
         rewrite a shortcut belonging to something else.
+
+        **The ROM is the identity, not the filename.** A launcher is named
+        `<title>-<hash of the ROM path>.sh`, so renaming a game renames its
+        launcher -- and an exact match then misses the shortcut that game
+        already has. That is not hypothetical: identifying a game through the
+        artwork picker renames it, and re-adding one afterwards produced a
+        second Steam entry beside the first, with the original left dead in the
+        cleanup screen once its launcher went.
+
+        So the digest is compared and the slug ignored. Two launchers sharing a
+        digest are two names for the same file, which is one game.
         """
         wanted = (exe or "").strip().strip('"')
         if not wanted:
             return {"app_id": 0}
 
         def look():
+            digest = launchers.rom_digest(wanted)
+            fallback = 0
             for item in steam_shortcuts.ours():
                 if os.path.normpath(item["exe"]) == os.path.normpath(wanted):
                     return item["app_id"]
-            return 0
+                # Kept rather than returned, so an exact match later in the file
+                # still wins: the same ROM under two names is one game, but the
+                # one actually asked for is the better answer.
+                if digest and launchers.rom_digest(item["exe"]) == digest:
+                    fallback = item["app_id"]
+            return fallback
 
         return {"app_id": await self._run(look)}
 
@@ -137,6 +155,16 @@ class Audit(plugin_base.PluginContext):
             for entry in (library or {}).values()
         }
         registered_launchers.discard("")
+        # By ROM as well as by path, for the same reason `shortcut_for_launcher`
+        # matches that way: renaming a game renames its launcher, so a leftover
+        # shortcut for a game still in the library is a duplicate whatever it is
+        # called. Reported as an orphan otherwise -- which reads as "this still
+        # plays and nothing tracks it" and would send somebody looking for a
+        # game they already have.
+        registered_roms = {
+            launchers.rom_digest(path) for path in registered_launchers
+        }
+        registered_roms.discard("")
 
         report = []
         for item in steam_shortcuts.ours():
@@ -144,7 +172,10 @@ class Audit(plugin_base.PluginContext):
                 continue
             if not item["launcher_exists"]:
                 kind = "dead"
-            elif item["exe"] in registered_launchers:
+            elif (
+                item["exe"] in registered_launchers
+                or launchers.rom_digest(item["exe"]) in registered_roms
+            ):
                 kind = "duplicate"
             else:
                 kind = "orphan"

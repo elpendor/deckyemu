@@ -271,10 +271,38 @@ def _flat(text):
     return re.sub(r"[\x00-\x1f\x7f]", " ", str(text or "")).strip()
 
 
+#: How much of the hash goes in a launcher's name. Long enough that two ROMs
+#: will not collide, short enough to leave the title readable.
+DIGEST_LENGTH = 8
+
+
 def launcher_path(title, rom_path):
-    digest = hashlib.sha1(rom_path.encode("utf-8")).hexdigest()[:8]
     os.makedirs(LAUNCHER_DIR, exist_ok=True)
-    return os.path.join(LAUNCHER_DIR, "%s-%s.sh" % (_slug(title), digest))
+    return os.path.join(
+        LAUNCHER_DIR, "%s-%s.sh" % (_slug(title), _digest(rom_path))
+    )
+
+
+def _digest(rom_path):
+    return hashlib.sha1(rom_path.encode("utf-8")).hexdigest()[:DIGEST_LENGTH]
+
+
+def rom_digest(launcher):
+    """The ROM half of a launcher's name, or "" if it does not have one.
+
+    A launcher is `<title>-<digest>.sh`, so the digest is what says which game
+    it runs and the slug is only what it was called at the time. Anything that
+    wants to know whether two launchers are the same game asks this rather than
+    comparing filenames -- renaming a game changes the slug and nothing else.
+    """
+    stem = os.path.splitext(os.path.basename(launcher or ""))[0]
+    tail = stem.rsplit("-", 1)[-1] if "-" in stem else ""
+    # Only a hex run of the right length. A game called "Sonic 3" would
+    # otherwise offer "3" as its digest and match every other game ending in a
+    # short word.
+    if len(tail) != DIGEST_LENGTH:
+        return ""
+    return tail.lower() if all(c in "0123456789abcdef" for c in tail.lower()) else ""
 
 
 def split_extra_args(extra_args):
