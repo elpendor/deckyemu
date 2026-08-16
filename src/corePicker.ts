@@ -71,6 +71,51 @@ export function coreOptions(cores: Core[]): DropdownOption[] {
 }
 
 /**
+ * `visible`, with the game's own core in it whether or not it belongs there.
+ *
+ * A dropdown whose `selectedOption` is not among its options draws nothing at
+ * all -- no name, no placeholder -- so the editor for a game showed an empty
+ * control and no hint of what it was set to. Two ways in, both real:
+ *
+ * - The filtered list excludes it. A Vita game's path is `.../eboot.bin`, so
+ *   the extension is `bin`, and the cores claiming `bin` are DuckStation,
+ *   PCSX2 and RPCS3. Vita3K claims `vpk`, `zip` and `pkg` -- it is installed,
+ *   it is what the game runs on, and it is not in the match list. Something
+ *   matched, so "show everything" stayed off, and the emulator the game
+ *   actually uses was hidden from its own editor.
+ * - It is not installed any more. An uninstalled core is in no list at all,
+ *   which `pinnedLabel` answers instead.
+ *
+ * Front, not sorted in: it is the current value, and a reader looking for what
+ * this game runs on should not have to hunt for it.
+ */
+export function withCurrentCore<T extends { id: string }>(
+  visible: T[], all: T[], coreId: string,
+): T[] {
+  if (!coreId || visible.some((core) => core.id === coreId)) return visible;
+  const current = all.find((core) => core.id === coreId);
+  return current ? [current, ...visible] : visible;
+}
+
+/**
+ * What to show when the selected core is in no list, because it is not there.
+ *
+ * Uninstalling RetroArch takes its cores with it, and every game that ran on
+ * one keeps a `core_id` naming something now absent. The editor cannot offer
+ * it and must not pretend it is gone unnoticed: a blank control reads as a bug
+ * in the editor, where "mupen64plus_next (not installed)" reads as the thing
+ * that actually happened and can be acted on.
+ *
+ * "" when the core is present, since Steam only shows this when nothing is
+ * selected and an unnecessary one would replace a real name.
+ */
+export function pinnedLabel<T extends { id: string }>(all: T[], coreId: string): string {
+  if (!coreId || all.some((core) => core.id === coreId)) return "";
+  const name = isEmulatorId(coreId) ? coreId.slice("emu:".length) : coreId;
+  return `${name} (not installed)`;
+}
+
+/**
  * The same list, for cores that are not installed yet.
  *
  * Short names, because every core offered runs the one file being added: the

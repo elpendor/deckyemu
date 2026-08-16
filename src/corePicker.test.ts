@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import { type Core, type InstallableCore } from "./backend";
-import { coreOptions, installableOptions, isEmulatorId } from "./corePicker";
+import {
+  coreOptions,
+  installableOptions,
+  isEmulatorId,
+  pinnedLabel,
+  withCurrentCore,
+} from "./corePicker";
 
 const core = (id: string, display_name: string, system_name = ""): Core =>
   ({ id, display_name, system_name } as Core);
@@ -167,5 +173,64 @@ describe("isEmulatorId", () => {
     // core, and treating it as an emulator would file it under the wrong group.
     expect(isEmulatorId("nemu:thing")).toBe(false);
     expect(isEmulatorId("")).toBe(false);
+  });
+});
+
+describe("withCurrentCore", () => {
+  const c = (id: string) => ({ id });
+
+  it("puts the game's core back when the filter dropped it", () => {
+    // A Vita game's path is .../eboot.bin, so the extension is bin and the
+    // matching cores are DuckStation, PCSX2 and RPCS3. Vita3K claims vpk, zip
+    // and pkg -- installed, the thing the game runs on, and not in the list.
+    // Something matched, so "show everything" stayed off, and the emulator was
+    // hidden from its own game's editor.
+    const matching = [c("duckstation"), c("pcsx2"), c("rpcs3")];
+    const all = [...matching, c("emu:vita3k")];
+    expect(withCurrentCore(matching, all, "emu:vita3k").map((x) => x.id)).toEqual([
+      "emu:vita3k", "duckstation", "pcsx2", "rpcs3",
+    ]);
+  });
+
+  it("leaves the list alone when the core is already in it", () => {
+    const list = [c("gambatte"), c("sameboy")];
+    expect(withCurrentCore(list, list, "gambatte")).toBe(list);
+  });
+
+  it("cannot invent a core that is not installed", () => {
+    // An uninstalled core is in no list at all. Adding a fake entry would let
+    // it be re-selected, which would write a launcher pointing at nothing.
+    const list = [c("gambatte")];
+    expect(withCurrentCore(list, list, "mupen64plus_next").map((x) => x.id)).toEqual([
+      "gambatte",
+    ]);
+  });
+
+  it("does nothing when no core is set", () => {
+    const list = [c("gambatte")];
+    expect(withCurrentCore(list, list, "")).toBe(list);
+  });
+});
+
+describe("pinnedLabel", () => {
+  const c = (id: string) => ({ id });
+
+  it("names a core that is no longer installed", () => {
+    // Uninstalling RetroArch takes its cores with it, and every game that ran
+    // on one keeps a core_id naming something absent. Blank reads as a broken
+    // editor; this reads as the thing that actually happened.
+    expect(pinnedLabel([c("gambatte")], "mupen64plus_next"))
+      .toBe("mupen64plus_next (not installed)");
+  });
+
+  it("drops the namespace from an emulator id, which is ours and not a name", () => {
+    expect(pinnedLabel([c("gambatte")], "emu:vita3k")).toBe("vita3k (not installed)");
+  });
+
+  it("says nothing when the core is there", () => {
+    // Steam shows this only when nothing is selected, so an unnecessary one
+    // would sit where a real core name belongs.
+    expect(pinnedLabel([c("gambatte")], "gambatte")).toBe("");
+    expect(pinnedLabel([c("gambatte")], "")).toBe("");
   });
 });

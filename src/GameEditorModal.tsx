@@ -29,7 +29,12 @@ import {
 } from "./steam";
 import { unfileGames } from "./collections";
 import { ArtPickerModal } from "./ArtPickerModal";
-import { coreOptions as buildCoreOptions, isEmulatorId } from "./corePicker";
+import {
+  coreOptions as buildCoreOptions,
+  isEmulatorId,
+  pinnedLabel,
+  withCurrentCore,
+} from "./corePicker";
 import { callWithRetry } from "./timeout";
 import { logError } from "./logError";
 import { sentence } from "./sentence";
@@ -142,8 +147,11 @@ export function GameEditorModal({ game, onSaved, closeModal }: Props) {
 
   const visible = useMemo(() => {
     if (!cores) return [];
-    return showAll || cores.matching.length === 0 ? cores.all : cores.matching;
-  }, [cores, showAll]);
+    const base = showAll || cores.matching.length === 0 ? cores.all : cores.matching;
+    // The game's own core belongs in its own editor even when the filter would
+    // drop it -- see withCurrentCore for the two ways that happens.
+    return withCurrentCore(base, cores.all, coreId);
+  }, [cores, showAll, coreId]);
 
   // Shared with the add panel rather than built again here: this list had
   // already drifted once, staying flat after the panel learned to separate
@@ -400,6 +408,11 @@ export function GameEditorModal({ game, onSaved, closeModal }: Props) {
             <Dropdown
               rgOptions={coreOptions}
               selectedOption={coreId}
+              // Shown only when nothing is selected, which here means the core
+              // this game runs on is no longer installed. Without it the
+              // control is simply blank, which reads as the editor being
+              // broken rather than as the core having been removed.
+              strDefaultLabel={pinnedLabel(cores.all, coreId) || undefined}
               onChange={(option) => setCoreId(String(option.data))}
             />
           )}
