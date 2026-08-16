@@ -16,6 +16,7 @@ import { clearWarning, shouldConfirmClear } from "./clearWarning";
 import { DANGER_CLASS, DANGER_CSS } from "./danger";
 import { InstallProgress } from "./InstallProgress";
 import { OrphanModal } from "./OrphanModal";
+import { ReportModal } from "./ReportModal";
 import { callWithRetry } from "./timeout";
 import { humanSize } from "./TransferModal";
 
@@ -248,6 +249,20 @@ export function LibraryPanel({ onRefresh }: Props) {
             description="Finds games whose ROM or launcher has gone missing, records with no Steam shortcut, empty collections, and games left behind by a previous install."
           >
             Check the library
+          </ButtonItem>
+        </PanelSectionRow>
+
+        {/* Next to the library check because it is the same kind of act -- both
+            are what you press when something is wrong -- and because this is
+            the one the check cannot help with. Nothing else on the device can
+            show you a log. */}
+        <PanelSectionRow>
+          <ButtonItem
+            layout="below"
+            onClick={() => showModal(<ReportModal />)}
+            description="Gathers what a bug report needs — versions, what is installed, and the end of the log — and puts it where a phone or PC can read it. No keys, tokens or game titles."
+          >
+            Report a problem
           </ButtonItem>
         </PanelSectionRow>
 

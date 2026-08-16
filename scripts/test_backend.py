@@ -4060,6 +4060,30 @@ else:
     # The token URL is unaffected: the code only opens the door.
     check("the token path still works", get("/%s/" % token)[0], 200)
 
+    # A diagnostic report is read off the device through the same server, in the
+    # other direction: same token, same lockout, same idle timeout. A second
+    # server for the way out would be a second thing to bind and expire.
+    check("with no report waiting, the address is not there",
+          fileserver.status()["report_url"], "")
+    check("and asking for one is refused rather than answered blank",
+          get("/%s/report" % token)[0], 404)
+
+    fileserver.offer_report("# report\nnothing secret here\n")
+    check("offering one puts it at a token-gated address",
+          fileserver.status()["report_url"].endswith("/%s/report" % token), True)
+    _report_page = get("/%s/report" % token)
+    check("which serves it", _report_page[0], 200)
+    check("with the report in the page", "nothing secret here" in _report_page[1], True)
+    # Somebody who came in by code lands on the upload page, so the door has to
+    # be there too or the keyboard route reaches everything except the report.
+    check("and the upload page links to it", "/report" in get("/%s/" % token)[1], True)
+    # Still behind the token: it holds the tail of a log.
+    check("it is not reachable without the token", get("/report")[0], 404)
+
+    fileserver.offer_report("")
+    check("withdrawing it takes the address away",
+          fileserver.status()["report_url"], "")
+
     fileserver.stop()
     check("stopping leaves nothing running", fileserver.status()["running"], False)
     check("and reports no code once stopped", fileserver.status()["pin"], "")

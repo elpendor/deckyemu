@@ -654,6 +654,25 @@ a shortcut deleted in Steam, an earlier reset — are swept at the end.
 
 It can take a while, so it reports what it is deleting as it goes.
 
+## Reporting a problem
+
+**Library → Report a problem** gathers what a bug report needs and puts it where
+you can read it: scan the QR code with a phone, or type the short address and the
+six digits on anything with a keyboard. Copy the text, paste it into the issue.
+
+It carries the plugin version and build, what RetroArch is and how it was
+installed, which emulators are registered, how many games are in the library and
+under which systems, your settings, and the last 200 lines of the log.
+
+It does **not** carry your SteamGridDB key, your RetroAchievements token, the
+transfer token, or the names of your games. Those are struck out by value across
+the whole report, so one that reached the log by some other route goes too, and
+settings are read through a list of what may be reported rather than a list of
+what may not.
+
+The report lives in memory and goes when the transfer server stops — half an
+hour idle, or **Done, and stop sharing now**.
+
 ## Updates and what changed
 
 The **Updates** tab shows which build is running, checks GitHub for a newer one,

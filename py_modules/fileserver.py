@@ -44,6 +44,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import decky
 
+import diagnostics
 import sysenv
 
 # Long enough that guessing is hopeless, short enough to scan reliably.
@@ -64,6 +65,14 @@ _token = ""
 _target_dir = ""
 _last_activity = 0.0
 _received: list = []
+# A diagnostic report waiting to be read off the device, or "".
+#
+# Served from the same token-gated server as the uploads because the problem is
+# the same one and it is already solved here: getting something between a Deck
+# in Game Mode and a device with a keyboard, over the local network, with a QR
+# code for a camera and six digits for anything else. A second server for the
+# other direction would be a second thing to bind, expire and lock out.
+_report = ""
 
 # A short code, so the server can be reached from a keyboard as well as a camera.
 #
@@ -297,6 +306,16 @@ class _Handler(BaseHTTPRequestHandler):
             with _state_lock:
                 names = [entry["name"] for entry in _received]
             self._send(200, json.dumps(names), "application/json")
+        elif rest == ["report"]:
+            with _state_lock:
+                report = _report
+            # 404 rather than an empty page when nothing is waiting: the address
+            # is guessable to anyone holding the token, and "there is no report"
+            # is the honest answer rather than a blank one that looks broken.
+            if not report:
+                self._deny()
+                return
+            self._send(200, diagnostics.as_page(report), "text/html; charset=utf-8")
         else:
             self._deny()
 
@@ -867,6 +886,7 @@ def _page():
         arrived = [(entry["name"], entry["size"]) for entry in _received]
         token = _token
         durable = _durable
+        report = bool(_report)
 
     listed = "".join(
         '<li class="done"><div class="row"><div class="name">%s</div>'
@@ -888,6 +908,7 @@ def _page():
   <h1>Transfer to Deck</h1>
   <p class="dir">Saving into %(dir)s</p>
 %(keep)s
+%(report)s
   <label class="pick" id="zone">
     <b>Choose files</b>
     <span>or drag them here</span>
@@ -919,10 +940,31 @@ const UPLOAD_BASE = '/%(token)s/upload/';
         "listed": listed,
         "hide": "" if arrived else ' style="display:none"',
         "keep": _BOOKMARK_HINT if durable else "",
+        # The report is reached by its own address, which a camera gets from the
+        # QR code. Somebody who came the other way -- short address, six digits
+        # -- lands here instead, so the door has to be on this page too or the
+        # keyboard route reaches everything except the thing they came for.
+        "report": (
+            '  <p class="dir"><a href="/%s/report">Open the diagnostic report</a></p>'
+            % token
+        ) if report else "",
         "style": _STYLE,
         "script": _SCRIPT,
         "icon": _FAVICON,
     }
+
+
+def offer_report(report):
+    """Make a diagnostic report readable at `/<token>/report`. "" withdraws it.
+
+    Held in memory only. It is a snapshot of a moment worth reporting, not a
+    file the plugin owns, and writing it down would leave a copy of the log tail
+    on the device for nobody to clean up.
+    """
+    global _report
+    with _state_lock:
+        _report = report or ""
+    return bool(report)
 
 
 def status():
@@ -930,6 +972,11 @@ def status():
         running = _server is not None
         return {
             "running": running,
+            # Where the report is, when there is one. Given as a whole address
+            # rather than as a flag so the panel has nothing to assemble.
+            "report_url": ("http://%s:%d/%s/report" % (_host_ip, _server.server_port, _token))
+            if running and _host_ip and _report
+            else "",
             # Trailing slash so the address also works if typed by hand and any
             # relative link on the page resolves inside the token path.
             "url": ("http://%s:%d/%s/" % (_host_ip, _server.server_port, _token))
@@ -1079,7 +1126,7 @@ def _watch_idle():
 
 
 def stop():
-    global _server, _thread, _token, _pin
+    global _server, _thread, _token, _pin, _report
     with _state_lock:
         server = _server
         _server = None
@@ -1087,6 +1134,10 @@ def stop():
         # Cleared as well, so a stopped server never reports a code that would
         # still be shown on screen next to a dead address.
         _pin = ""
+        # And the report goes with the server that was serving it. It holds the
+        # tail of a log, so keeping it in memory past the moment somebody asked
+        # for it is a copy of that sitting around for no reason.
+        _report = ""
         # _in_flight is deliberately left alone. Clearing it here while a PUT was
         # still running would drop an entry its own handler is about to remove --
         # the counter version of this bug drove the count to -1, and since start()

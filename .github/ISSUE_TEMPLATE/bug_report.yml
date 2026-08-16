@@ -1,0 +1,54 @@
+name: Something is broken
+description: A game will not add, will not launch, or the panel does something unexpected.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before anything else: **the plugin can gather most of what is needed for you.**
+
+        On the Deck, open the Quick Access panel → the DeckyEmu settings page →
+        **Library** → **Report a problem**. It puts a report on your local
+        network, reachable by scanning a QR code or by typing a short address
+        and six digits on a phone or PC. Copy the text and paste it below.
+
+        It carries versions, what is installed, your settings and the end of the
+        log. It does **not** carry API keys, account tokens or the names of your
+        games — see `py_modules/diagnostics.py`, where removing them is the
+        point of the module rather than a courtesy.
+
+        No Deck to hand, or the panel will not open far enough to reach it? Fill
+        in what you can and say so; the report is a shortcut, not a requirement.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+      placeholder: |
+        I picked a .iso and chose Dolphin, pressed Add to Steam, and the game
+        appeared in Steam but launching it closes straight back to the library.
+    validations:
+      required: true
+
+  - type: input
+    id: game
+    attributes:
+      label: Which system and emulator
+      description: The console, and the core or emulator you chose. Skip if it is not about one game.
+      placeholder: GameCube, Dolphin (flatpak)
+
+  - type: textarea
+    id: report
+    attributes:
+      label: Diagnostic report
+      description: Pasted from "Report a problem". Skip if you could not get to it.
+      render: text
+
+  - type: checkboxes
+    id: checked
+    attributes:
+      label: Before submitting
+      options:
+        - label: I have checked that the report below has nothing in it I would not want public.
+        - label: The plugin's own **Library → Check the library** did not fix it.

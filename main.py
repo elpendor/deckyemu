@@ -11,6 +11,7 @@ import decky
 
 import cheevos
 import devreset
+import diagnostics
 import emu_config
 import emu_firmware
 import emu_install
@@ -2101,6 +2102,51 @@ class Plugin(
         # fileserver.default_dir.
         status["suggested_dir"] = await self._run(fileserver.default_dir)
         return status
+
+    async def start_report(self):
+        """Gather a diagnostic report and put it where another device can read it.
+
+        The plugin logs plenty and none of it is reachable from Game Mode, so the
+        best report a user can give is "it didn't work" -- which is also the
+        least useful one. This is the same problem the transfer server already
+        solves in the other direction, so it is the same server: a QR code for a
+        camera, six digits for anything with a keyboard.
+
+        What is gathered and what is struck out of it is `diagnostics`, and the
+        striking out is the part that matters -- the settings hold a
+        RetroAchievements token that is password-equivalent, and this text is
+        going into a public issue.
+        """
+        report = await self._run(
+            diagnostics.build,
+            await self.plugin_version(),
+            self._install,
+            self._emulators,
+            await self._run(store.get_library),
+            await self._run(self._installed_catalog_ids),
+        )
+
+        status = await self._run(fileserver.status)
+        if not status.get("running"):
+            started = await self.start_file_server()
+            if not started.get("ok"):
+                return started
+
+        await self._run(fileserver.offer_report, report)
+        decky.logger.info("Diagnostic report ready (%d characters)", len(report))
+        return {"ok": True, **await self._run(fileserver.status)}
+
+    async def _installed_catalog_ids(self):
+        """Which catalog emulators are actually on the device, as `id (channel)`."""
+        found = []
+        for entry in emulator_catalog.CATALOG:
+            source = entry.get("source") or {}
+            kind = source.get("kind")
+            if kind == "flatpak" and emu_install.flatpak_installed(source.get("id", "")):
+                found.append("%s (flatpak)" % entry["id"])
+            elif kind == "github" and emu_install.installed_appimage(entry["id"]):
+                found.append("%s (appimage)" % entry["id"])
+        return found
 
     async def start_file_server(self, target_dir: str = ""):
         # Empty means the default folder. Lets a caller start receiving in one call

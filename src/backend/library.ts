@@ -215,6 +215,11 @@ export interface FileServerStatus {
   idle_seconds: number;
   idle_timeout: number;
   suggested_dir?: string;
+  /**
+   * Where a diagnostic report is waiting to be read, or "" when none is. Also
+   * carries the token, so the same caution applies as to `url`.
+   */
+  report_url?: string;
 }
 
 export const fileServerStatus = callable<[], FileServerStatus>("file_server_status");
@@ -223,6 +228,21 @@ export const startFileServer = callable<
   [targetDir: string],
   { ok: boolean; error?: string } & Partial<FileServerStatus>
 >("start_file_server");
+/**
+ * Gather a diagnostic report and put it where another device can read it.
+ *
+ * Starts the transfer server if it is not already running, because it is the
+ * same problem in the other direction: getting something between a Deck in Game
+ * Mode and a device with a keyboard. Scan `report_url`, or type `short_url` and
+ * the code and follow the link on the page.
+ *
+ * The report holds no keys, tokens or game titles — see py_modules/diagnostics.py,
+ * where the striking out is the whole point of the module rather than a courtesy.
+ */
+export const startReport = callable<
+  [],
+  { ok: boolean; error?: string } & Partial<FileServerStatus>
+>("start_report");
 export const stopFileServer = callable<
   [],
   { ok: boolean } & Partial<FileServerStatus>
