@@ -1,0 +1,8 @@
+# Every issue goes through the form.
+#
+# The form asks for the diagnostic report, and the report is the difference
+# between a bug that can be reproduced and one that reads "it didn't work" --
+# which is what a blank issue tends to become on a device with no keyboard and a
+# log nobody can reach. The plugin can produce that report in two taps, so the
+# form asks for something it costs almost nothing to give.
+blank_issues_enabled: false
