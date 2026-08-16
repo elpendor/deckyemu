@@ -71,12 +71,41 @@ export const coreShortName = (displayName: string) =>
 /**
  * The same list, for cores that are not installed yet.
  *
- * Flat, with no grouping: everything here comes from the libretro buildbot, so
- * the distinction the list above draws does not exist among these. And short
- * names rather than the rule above: every core offered runs the one file being
- * added, so the system is settled by the question rather than a thing to tell
- * options apart by.
+ * Short names, because every core offered runs the one file being added: the
+ * system is settled by the question rather than a thing to tell options apart
+ * by, and libretro's full name spends its first half saying it.
+ *
+ * Grouped by system when more than one appears, and this is not the same
+ * "system" the file belongs to. Ten of the twenty cores offered for a Game Boy
+ * Color ROM are SNES cores -- bsnes and friends claim .gbc because they emulate
+ * the Super Game Boy. They will run it; they are not what anyone means. The
+ * short name alone gives no hint of that, so the heading is what puts it back.
+ *
+ * One heading over a list where everything is the same system is a row of noise,
+ * which is the rule `coreOptions` follows for the same reason.
  */
 export function installableOptions(cores: InstallableCore[]): DropdownOption[] {
-  return cores.map((core) => ({ data: core.id, label: coreShortName(core.display_name) }));
+  const option = (core: InstallableCore) => ({
+    data: core.id,
+    label: coreShortName(core.display_name),
+  });
+
+  // Nothing in today's catalog is missing a system, but a heading is only worth
+  // having if every option can be filed under one -- otherwise the odd core out
+  // lands under a blank heading, which is a row that says nothing and cannot be
+  // read as anything. Flat is the honest answer then.
+  if (cores.some((core) => !core.system_name.trim())) return cores.map(option);
+
+  // First appearance, not sorted: the backend already ordered the catalog by
+  // system, and its order is its answer to which of these is most likely right.
+  const systems: string[] = [];
+  for (const core of cores) {
+    if (!systems.includes(core.system_name)) systems.push(core.system_name);
+  }
+  if (systems.length < 2) return cores.map(option);
+
+  return systems.map((system) => ({
+    label: system,
+    options: cores.filter((core) => core.system_name === system).map(option),
+  }));
 }

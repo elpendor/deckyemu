@@ -1001,6 +1001,11 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
           {installable.length > 1 ? (
             <PanelSectionRow>
               <DropdownItem
+                // Below rather than beside: an inline Item gives the value the
+                // right-hand half of the row and truncates it there, which is
+                // where a core name goes to be unreadable. Full width costs one
+                // line and shows the whole name.
+                layout="below"
                 label="No core installed for this ROM"
                 description={`These can run .${probe?.match_extension} — install one to continue.`}
                 rgOptions={installableOptions(installable)}

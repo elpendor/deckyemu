@@ -62,10 +62,9 @@ describe("installableOptions", () => {
     // dropdown truncates the value to half the row -- so the shared half is
     // all that survives and every option reads the same until it is opened.
     const labels = (installableOptions([
-      installable("DoubleCherryGB", "Nintendo - Game Boy / Color (DoubleCherryGB)",
-        "Game Boy/Game Boy Color"),
-      installable("gambatte", "Nintendo - Game Boy / Color (Gambatte)"),
-      installable("mesen-s", "Nintendo - SNES / SFC / Game Boy / Color (Mesen-S)"),
+      installable("DoubleCherryGB", "Nintendo - Game Boy / Color (DoubleCherryGB)", "Game Boy"),
+      installable("gambatte", "Nintendo - Game Boy / Color (Gambatte)", "Game Boy"),
+      installable("mesen-s", "Nintendo - SNES / SFC / Game Boy / Color (Mesen-S)", "Game Boy"),
     ]) as { label: string }[]).map((o) => o.label);
     expect(labels).toEqual(["DoubleCherryGB", "Gambatte", "Mesen-S"]);
   });
@@ -84,6 +83,15 @@ describe("installableOptions", () => {
     expect(options.map((o) => o.data)).toEqual(["a", "b", "c", "d", "e"]);
   });
 
+  it("stays flat when a core has no system to file it under", () => {
+    // A blank heading is a row that says nothing and cannot be read as anything.
+    const options = installableOptions([
+      installable("gambatte", "Nintendo - Game Boy / Color (Gambatte)", "Game Boy"),
+      installable("mystery", "Mystery Core"),
+    ]);
+    expect(options.some((o) => "options" in o)).toBe(false);
+  });
+
   it("keeps brackets that belong to the core's own name", () => {
     // One core called "bsnes C++98 (v085)". Matching the innermost bracket
     // would label it "v085", which names a version and no core at all.
@@ -98,9 +106,35 @@ describe("installableOptions", () => {
     expect(a.label).toBe("ROM Cleaner");
   });
 
-  it("stays flat, since everything installable is a libretro core", () => {
-    const options = installableOptions([installable("snes9x", "Snes9x")]);
+  it("stays flat when every core is for the same system", () => {
+    // A heading over a list where everything is the same kind is a row of noise.
+    const options = installableOptions([
+      installable("gambatte", "Nintendo - Game Boy / Color (Gambatte)", "Game Boy"),
+      installable("sameboy", "Nintendo - Game Boy / Color (SameBoy)", "Game Boy"),
+    ]);
     expect(options.some((o) => "options" in o)).toBe(false);
+  });
+
+  it("groups by system when more than one is offered", () => {
+    // Ten of the twenty cores offered for a .gbc ROM are SNES cores, which
+    // claim the extension because they emulate the Super Game Boy. The short
+    // name gives no hint of that; the heading is what puts it back.
+    const options = installableOptions([
+      installable("gambatte", "Nintendo - Game Boy / Color (Gambatte)", "Game Boy"),
+      installable("bsnes", "Nintendo - SNES / SFC (bsnes)", "Super Nintendo"),
+    ]) as { label: string; options: { label: string }[] }[];
+    expect(options.map((o) => o.label)).toEqual(["Game Boy", "Super Nintendo"]);
+    expect(options[1].options.map((o) => o.label)).toEqual(["bsnes"]);
+  });
+
+  it("keeps the backend's order rather than sorting the headings", () => {
+    // The catalog is already ordered by system, and that order is its answer to
+    // which of these is most likely the right one for the file.
+    const options = installableOptions([
+      installable("bsnes", "Nintendo - SNES / SFC (bsnes)", "Super Nintendo"),
+      installable("gambatte", "Nintendo - Game Boy / Color (Gambatte)", "Game Boy"),
+    ]) as { label: string }[];
+    expect(options.map((o) => o.label)).toEqual(["Super Nintendo", "Game Boy"]);
   });
 });
 
