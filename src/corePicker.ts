@@ -2,17 +2,29 @@ import { type DropdownOption } from "@decky/ui";
 
 import { type Core, type InstallableCore } from "./backend";
 
-/**
- * How a core reads in a picker: its name, and the system it is for when known.
- *
- * One function because the two lists that show cores must not disagree about
- * what a core is called -- which is the same reason this module exists.
- */
-const coreLabel = (core: { display_name: string; system_name: string }) =>
-  core.system_name ? `${core.display_name} - ${core.system_name}` : core.display_name;
-
 /** Whether a picker entry is a standalone emulator rather than a libretro core. */
 export const isEmulatorId = (id: string) => id.startsWith("emu:");
+
+/**
+ * The core's own name, out of libretro's "<system> (<core>)" display name.
+ *
+ * Every core for one system shares the system half, so a list of them is a
+ * column of the same words -- and `DropdownItem` gives the value the right-hand
+ * half of the row, where it is truncated. Collapsed, all twenty Game Boy cores
+ * read "Nintendo - Game Boy / C...", which is every option looking identical
+ * until the list is opened. The parenthetical is the only part that differs, so
+ * it is the part worth showing.
+ *
+ * Greedy to the last bracket, because the name itself can contain brackets:
+ * "Nintendo - SNES / SFC (bsnes C++98 (v085))" is one core called
+ * "bsnes C++98 (v085)", and taking the innermost match would call it "v085".
+ * Names with no bracket at all -- "ROM Cleaner", and every standalone emulator
+ * -- are already the core's name and come through untouched.
+ */
+const CORE_IN_BRACKETS = /^[^(]*\((.+)\)$/;
+
+export const coreShortName = (displayName: string) =>
+  displayName.match(CORE_IN_BRACKETS)?.[1] ?? displayName;
 
 /**
  * The "run with" list, with cores and standalone emulators told apart.
@@ -31,9 +43,19 @@ export const isEmulatorId = (id: string) => id.startsWith("emu:");
  * two had already drifted once -- the editor kept the flat list after the panel
  * was grouped -- and a rule about what things *are* should not have two
  * implementations to disagree with each other.
+ *
+ * Short names, the same as the installable list. This used to append the system
+ * -- "Snes9x - Super Nintendo" -- which reads well until the dropdown truncates
+ * it to the right-hand half of a Quick Access row, at which point the half that
+ * survives is libretro's shared "Nintendo - ..." opening and every option looks
+ * the same. A standalone emulator has no bracketed name to take, so "Dolphin"
+ * and "PCSX2" come through as they are.
  */
 export function coreOptions(cores: Core[]): DropdownOption[] {
-  const option = (core: Core) => ({ data: core.id, label: coreLabel(core) });
+  const option = (core: Core) => ({
+    data: core.id,
+    label: coreShortName(core.display_name),
+  });
 
   const emulators = cores.filter((core) => isEmulatorId(core.id));
   const libretro = cores.filter((core) => !isEmulatorId(core.id));
@@ -47,26 +69,6 @@ export function coreOptions(cores: Core[]): DropdownOption[] {
     { label: "RetroArch cores", options: libretro.map(option) },
   ];
 }
-
-/**
- * The core's own name, out of libretro's "<system> (<core>)" display name.
- *
- * Every core for one system shares the system half, so a list of them is a
- * column of the same words -- and `DropdownItem` gives the value the right-hand
- * half of the row, where it is truncated. Collapsed, all twenty Game Boy cores
- * read "Nintendo - Game Boy / C...", which is every option looking identical
- * until the list is opened. The parenthetical is the only part that differs, so
- * it is the part worth showing.
- *
- * Greedy to the last bracket, because the name itself can contain brackets:
- * "Nintendo - SNES / SFC (bsnes C++98 (v085))" is one core called
- * "bsnes C++98 (v085)", and taking the innermost match would call it "v085".
- * Names with no bracket at all -- "ROM Cleaner" -- are already the core's name.
- */
-const CORE_IN_BRACKETS = /^[^(]*\((.+)\)$/;
-
-export const coreShortName = (displayName: string) =>
-  displayName.match(CORE_IN_BRACKETS)?.[1] ?? displayName;
 
 /**
  * The same list, for cores that are not installed yet.

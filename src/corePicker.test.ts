@@ -32,6 +32,19 @@ describe("coreOptions", () => {
     expect(headings(coreOptions([]))).toEqual([]);
   });
 
+  it("shortens inside the groups too", () => {
+    // The grouped path builds its options separately, so it can drift from the
+    // flat one -- which is the drift this module exists to prevent.
+    const groups = coreOptions([
+      core("emu:dolphin", "Dolphin", "GameCube/Wii"),
+      core("gambatte", "Nintendo - Game Boy / Color (Gambatte)", "Game Boy"),
+    ]) as { label: string; options: { label: string }[] }[];
+    expect(groups.map((g) => g.options.map((o) => o.label))).toEqual([
+      ["Dolphin"],
+      ["Gambatte"],
+    ]);
+  });
+
   it("loses nothing when it groups", () => {
     const cores = [
       core("snes9x", "Snes9x"),
@@ -46,13 +59,21 @@ describe("coreOptions", () => {
     );
   });
 
-  it("appends the system to the label only when there is one", () => {
-    const [withSystem, without] = coreOptions([
-      core("snes9x", "Snes9x", "Super Nintendo"),
-      core("mame", "MAME"),
+  it("shows the core's own name, not libretro's system prefix", () => {
+    // The system used to be appended here. It reads well until the dropdown
+    // truncates the value to half a Quick Access row, at which point the half
+    // that survives is the "Nintendo - ..." every option shares.
+    // One kind at a time, so the list stays flat and these are options rather
+    // than group headings.
+    const [libretro] = coreOptions([
+      core("gambatte", "Nintendo - Game Boy / Color (Gambatte)", "Game Boy"),
     ]) as { label: string }[];
-    expect(withSystem.label).toBe("Snes9x - Super Nintendo");
-    expect(without.label).toBe("MAME");
+    expect(libretro.label).toBe("Gambatte");
+    // A standalone emulator has no bracketed name to take, so it is untouched.
+    const [emulator] = coreOptions([
+      core("emu:dolphin", "Dolphin", "GameCube/Wii"),
+    ]) as { label: string }[];
+    expect(emulator.label).toBe("Dolphin");
   });
 });
 
