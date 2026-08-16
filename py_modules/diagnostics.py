@@ -177,12 +177,19 @@ def _section(title, body):
     return "## %s\n%s\n" % (title, body if body else "(nothing)")
 
 
-def build(version, install, emulators_registered, library, catalog_installed=()):
+def build(version, install, emulators_registered, library, catalog_installed=(),
+          live_secrets=(), inbox=""):
     """The report, as text.
 
     Everything it needs is passed in: this module reads settings and the log,
     and asks nothing of the Plugin class, so the whole thing is testable without
     starting one.
+
+    `live_secrets` is anything secret that exists only in memory right now --
+    the transfer server's token above all. It is minted per session, so it is in
+    no settings file for a value strike to find, and it appears in the log as a
+    bare request path (`PUT /<token>/upload/...`) that no URL rule catches. It is
+    also live on the network at the moment somebody reads the report.
     """
     settings = store.get_settings()
     secrets = [str(settings.get(key) or "") for key in SECRET_SETTINGS]
@@ -200,6 +207,21 @@ def build(version, install, emulators_registered, library, catalog_installed=())
     # a game probed but never added, because neither is a value this can know:
     # the wording says titles are removed rather than that none can appear.
     personal = [str(settings.get("cheevos_username") or "")]
+    # What is sitting in the inbox. A transferred file is logged by name --
+    # "Received gravity rush.pkg" -- and its name is the game's name, which the
+    # registry cannot supply: what it records for an installed title is the
+    # eboot the emulator boots, not the package the user sent.
+    #
+    # The folder is passed in rather than asked of `fileserver`, which imports
+    # this module to serve the report: the cycle happens to work today because
+    # neither touches the other at import time, and that is not a thing to leave
+    # for somebody to discover by moving one line.
+    try:
+        for name in os.listdir(inbox or ""):
+            personal.append(name)
+            personal.append(os.path.splitext(name)[0])
+    except OSError:
+        pass
     for entry in library.values():
         personal.append(str(entry.get("title") or ""))
         personal.append(str(entry.get("rom_path") or ""))
@@ -275,7 +297,7 @@ def build(version, install, emulators_registered, library, catalog_installed=())
         _section("Log (last %d lines)" % LOG_LINES, _log_tail()),
     ]
 
-    return _redact("\n".join(parts), secrets + personal)
+    return _redact("\n".join(parts), list(live_secrets) + secrets + personal)
 
 
 def as_page(report):

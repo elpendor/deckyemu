@@ -2172,6 +2172,11 @@ class Plugin(
         RetroAchievements token that is password-equivalent, and this text is
         going into a public issue.
         """
+        # The session's own transfer token is struck by value: it is minted per
+        # session so no settings file holds it, it reaches the log as a bare
+        # request path that no URL rule catches, and it is live on the network
+        # at the moment somebody reads the report.
+        serving = await self._run(fileserver.status)
         report = await self._run(
             diagnostics.build,
             await self.plugin_version(),
@@ -2179,10 +2184,11 @@ class Plugin(
             self._emulators,
             await self._run(store.get_library),
             await self._run(self._installed_catalog_ids),
+            [serving.get("url", "").rstrip("/").rsplit("/", 1)[-1]],
+            await self._run(fileserver.default_dir, False),
         )
 
-        status = await self._run(fileserver.status)
-        if not status.get("running"):
+        if not serving.get("running"):
             # Started to hand a report out, and nothing else: a server brought up
             # for this does not accept files. Showing somebody a report should
             # not also hand them somewhere to write, and they could not tell

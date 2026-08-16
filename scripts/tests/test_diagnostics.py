@@ -19,7 +19,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from harness import check, section, summary  # noqa: E402
+from harness import TMP, check, section, summary  # noqa: E402
 
 import decky  # noqa: E402
 import diagnostics  # noqa: E402
@@ -62,6 +62,15 @@ with open(_LOG, "w", encoding="utf-8") as _handle:
                 # A live token in a URL, which is what stage_update logs.
                 "[INFO]: Staged 1.2.3 for decky at "
                 "http://127.0.0.1:41234/tHiSiSaLiVeToKeN123456/deckyemu.zip",
+                # Verbatim from a real device. Synthetic fixtures missed both
+                # of these: the token here is a bare request path, which no URL
+                # rule matches, and the filename is the game's name in a form
+                # the registry cannot supply -- what it records for an installed
+                # title is the eboot the emulator boots, not the package sent.
+                "[INFO]: Received gravity rush.pkg (1522876960 bytes) into "
+                "/home/deck/deckyemu/transfer",
+                "[INFO]: fileserver: \"PUT /GcMnhBhWcdNuNWo7EY_aVg/upload/"
+                "gravity%20rush.pkg HTTP/1.1\" 200 -",
                 "[INFO]: sgdb request with key %s" % _SGDB,
                 "[INFO]: cheevos token=%s" % _CHEEVOS,
                 "[INFO]: installing with --zrif %s" % _ZRIF,
@@ -81,12 +90,21 @@ _LIBRARY = {
     "3": {"app_id": 3, "title": "A Third", "platform": "N64", "collection": "y"},
 }
 
+# An inbox holding the package that was sent, which is how its name reaches the
+# log at all.
+_INBOX = os.path.join(TMP, "inbox")
+os.makedirs(_INBOX, exist_ok=True)
+with open(os.path.join(_INBOX, "gravity rush.pkg"), "wb") as _handle:
+    _handle.write(b"PKG")
+
 _REPORT = diagnostics.build(
     {"version": "1.2.3", "build": "abc1234", "built_at": "2026-01-01"},
     {"kind": "flatpak", "exe": "/usr/bin/flatpak", "scope": "user"},
     [{"id": "pcsx2", "kind": "flatpak", "target": "net.pcsx2.PCSX2"}],
     _LIBRARY,
     ["vita3k (appimage)"],
+    ["GcMnhBhWcdNuNWo7EY_aVg"],
+    _INBOX,
 )
 
 
@@ -116,6 +134,12 @@ check("a token in a URL path does not travel",
       "tHiSiSaLiVeToKeN123456" in _REPORT, False)
 check("though which host it was still does",
       "http://127.0.0.1:41234/" in _REPORT, True)
+# The form the shape rule cannot see: a logged request line is a bare path, with
+# no scheme and host in front of the token. It is also the token of the very
+# server handing the report out, so it is live while somebody reads it. Struck
+# by value instead, from what the server has in memory.
+check("a token logged as a bare request path goes too",
+      "GcMnhBhWcdNuNWo7EY_aVg" in _REPORT, False)
 
 # The allowlist is the reason a setting added later is absent until somebody
 # lists it, rather than exported until somebody notices.
@@ -146,6 +170,11 @@ check("nor the name inside an artwork lookup that failed",
       "autocomplete/A%20Private%20Game" in _REPORT, False)
 # The account name is not a secret and is not the user's to have published
 # either.
+# The registry could not supply this one: what it records for an installed Vita
+# title is the eboot the emulator boots, so the name of the package that was
+# sent is only knowable from the inbox it is still sitting in.
+check("the name of a file waiting in the inbox is not published",
+      "gravity rush" in _REPORT.lower(), False)
 check("and neither is the RetroAchievements username",
       "somebodyknown" in _REPORT, False)
 check("but the count is", "3 game(s)" in _REPORT, True)
