@@ -374,10 +374,8 @@ Not offered for:
 | A system-wide Flatpak | Root-owned, and the plugin has no way to answer a password prompt |
 | RetroArch from a package or an AppImage | Neither was installed from here and neither has builds to move between |
 
-There is no changelog behind any of this, and it would be misleading to imply
-otherwise: what each build carries is a one-line note about its *packaging* —
-"Restrict nvidia-cg-toolkit to x86_64" — not the emulator's own release notes.
-Those live on the project's own site.
+The note on each build describes its *packaging* — "Restrict nvidia-cg-toolkit to
+x86_64" — not the emulator's own release notes, which live on the project's site.
 
 ## Adding your own emulator
 
@@ -463,12 +461,10 @@ hand.
 ## Artwork sources
 
 **libretro thumbnails** need no setup and no API key. They are scans of the
-physical box, so their shape is whatever that console's boxes were: SNES and N64
-scans are landscape, PlayStation and Game Boy Advance ones are square. Steam's
-capsule is 600x900 portrait and stretches whatever it is given, so a scan more
-than a little off that shape is redrawn first — whole, centred, at its true
-proportions, on a blurred copy of itself. Art already made for the slot is
-passed through untouched, whichever source it came from.
+physical box, so their shape varies by console while Steam's capsule is 600x900
+portrait. A scan far off that shape is redrawn to fit rather than stretched —
+whole, centred, at its true proportions, on a blurred copy of itself. Art already
+made for the slot is passed through untouched, whichever source it came from.
 
 **SteamGridDB** (optional) gives purpose-made Steam art — capsule, wide header,
 hero and logo.
@@ -479,26 +475,17 @@ default costs nothing and starts using the better source the moment there is one
 
 SteamGridDB's search is fuzzy and confidently wrong — *Super Mario Brothers*
 returns **Super Mario Galaxy 2** ahead of the NES game — so candidates are scored
-and a weak winner is discarded in favour of libretro's thumbnail:
-
-- **Name similarity**, after normalising away region tags, leading articles and
-  spelling differences (`Brothers` ↔ `Bros.`).
-- **Release era.** SteamGridDB has no console filter — its `types` field lists
-  *stores*, not hardware — so the release date stands in for one. A 2010 game
-  scores badly as an NES title. An unrecognised system applies no constraint.
-
-Below the threshold nothing is returned at all, since no artwork beats the wrong
-artwork. The chosen title is shown next to the preview, so a bad match is visible
-rather than silent.
+on title and release era, and a weak winner is discarded in favour of libretro's
+thumbnail. Below the threshold nothing is returned at all, since no artwork beats
+the wrong artwork. The chosen title is shown next to the preview, so a bad match
+is visible rather than silent.
 
 Typing a long API key on a touchscreen is unpleasant, so getting one in is three
 steps, none of them needing the keyboard:
 
-1. **Sign in to SteamGridDB.** SteamGridDB's own *Login via Steam* button cannot
-   work here — it launches with `window.open()`, which Steam's in-app browser
-   ignores — so the plugin builds the same OpenID URL and navigates to it in the
-   current tab. It ends on a blank page; that is the sign-in finishing, not an
-   error.
+1. **Sign in to SteamGridDB.** Use the plugin's own sign-in button rather than
+   SteamGridDB's *Login via Steam*, which Steam's in-app browser ignores. It ends
+   on a blank page; that is the sign-in finishing, not an error.
 2. **Open the API key page.** Hold on the key until Steam's context menu appears
    and choose Copy.
 3. **Paste key and save.** Nothing else to press.
@@ -529,14 +516,11 @@ notifications** suppresses that for games launched from this plugin:
 | `Hide all on-screen messages` | Also sets `video_font_enable = false`, silencing save-state confirmations and errors too |
 | `Keep RetroArch's notifications` | RetroArch behaves exactly as it does on its own |
 
-These are passed per-launch with `--appendconfig` rather than written into your
-own `retroarch.cfg`. **That is not as isolated as it sounds.** RetroArch ships
-`config_save_on_exit = "true"` and saves the *merged* configuration on quit, so
-anything appended would become a permanent global change — Decks were found
-carrying this plugin's settings as their own defaults. The override file
-therefore ends with `config_save_on_exit = "false"`. The trade-off is that
-changes made from RetroArch's own menu during a game launched from here are not
-saved either; *Save Current Configuration* still works if you want them kept.
+These are passed per-launch rather than written into your own `retroarch.cfg`,
+and the override turns RetroArch's save-on-exit off so they cannot settle into it
+as permanent defaults. The trade-off is that changes made from RetroArch's own
+menu during a game launched from here are not saved either; *Save Current
+Configuration* still works if you want them kept.
 
 Because launch behaviour is baked into each game's launcher script, changing this
 rewrites the launchers of games already added.
@@ -576,11 +560,9 @@ RetroArch has achievement support built in; this turns it on for games launched
 from here and signs you in.
 
 Signing in asks for your retroachievements.org password **once**, and only the
-Connect token it returns is stored. There is no way around that one login: their
-API has no production-ready OAuth2, the web API key on their settings page reads
-public data only, and the login endpoint sends no CORS headers. What *is*
-avoidable is doing it twice — if RetroArch already has a login stored, it is
-offered as a one-tap adopt with nothing to type.
+Connect token it returns is stored; their API offers no way around that one
+login. If RetroArch already has a login stored it is offered as a one-tap adopt
+instead, with nothing to type.
 
 **Hardcore mode is off by default, a deliberate disagreement with RetroArch**,
 which defaults it on. Hardcore disables save states, rewind, slowdown and cheats
@@ -604,10 +586,8 @@ shortcut was deleted, launcher scripts nothing references, and games left behind
 by a previous install under a different plugin name.
 
 It also reports the other direction: shortcuts **Steam** has that the plugin's
-records do not account for. These are read from Steam's own `shortcuts.vdf`,
-because a shortcut whose record *and* launcher script are both gone leaves no
-trace anywhere else — and that is exactly what wiping the plugin's records
-produces. They are split by what can be done about each:
+records do not account for, read from Steam's own `shortcuts.vdf`. They are split
+by what can be done about each:
 
 | | |
 | --- | --- |
@@ -647,10 +627,9 @@ put on this Deck** — ROMs filed under a system, and games unpacked into an
 emulator — for the same reason removing a single game does. A ROM you keep
 somewhere of your own was never the plugin's to move and is left alone.
 
-Collections are emptied first, while the app overviews Steam needs to identify
-those apps still exist. A collection is deleted only once it is empty, so one
-holding games dragged in by hand survives. Shelves left empty by anything else —
-a shortcut deleted in Steam, an earlier reset — are swept at the end.
+A collection is deleted only once it is empty, so one holding games dragged in by
+hand survives. Shelves left empty by anything else — a shortcut deleted in Steam,
+an earlier reset — are swept at the end.
 
 It can take a while, so it reports what it is deleting as it goes.
 
@@ -686,21 +665,12 @@ The **Updates** tab shows which build is running, checks GitHub for a newer one,
 and installs it. It also shows **what's new** for both the release being offered
 and the build already installed.
 
-The notes are generated rather than written: `scripts/changelog.py` groups commit
-subjects since the previous tag by their prefix — `feat:` under New, `fix:` under
-Fixed, `perf:` under Faster, `internal:` under Under the hood, anything else
-under Other. The prefix groups, it never filters, so a commit without one is
-visible rather than quietly dropped.
+The notes are generated from commit subjects, grouped under New, Fixed, Faster
+and Under the hood. They ship inside the build as well as on the release, so the
+tab shows the running version's changelog with no network at all.
 
-The same text goes into the GitHub release body *and* into a `build.json` shipped
-beside `main.py`, which is what lets the tab show the running version's changelog
-with no network at all.
-
-**This plugin cannot install its own updates.** The backend runs as `deck` while
-`~/homebrew/plugins/deckyemu` is root-owned, so the install goes through decky's
-own loader, which runs as root. The release is downloaded here and re-offered on
-`127.0.0.1` for decky to install from, so the digest it checks is computed from
-the bytes actually received rather than from a second trip to the network.
+Installing goes through decky's own loader, which has permissions this plugin
+does not. The download is checked against the digest published with the release.
 
 ## TODO
 
