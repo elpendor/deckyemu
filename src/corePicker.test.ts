@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { type Core } from "./backend";
-import { coreOptions, isEmulatorId } from "./corePicker";
+import { type Core, type InstallableCore } from "./backend";
+import { coreOptions, installableOptions, isEmulatorId } from "./corePicker";
 
 const core = (id: string, display_name: string, system_name = ""): Core =>
   ({ id, display_name, system_name } as Core);
+
+const installable = (id: string, display_name: string, system_name = ""): InstallableCore =>
+  ({ id, display_name, system_name } as InstallableCore);
 
 /** Group headings only; a flat list has none. */
 const headings = (options: ReturnType<typeof coreOptions>) =>
@@ -50,6 +53,38 @@ describe("coreOptions", () => {
     ]) as { label: string }[];
     expect(withSystem.label).toBe("Snes9x - Super Nintendo");
     expect(without.label).toBe("MAME");
+  });
+});
+
+describe("installableOptions", () => {
+  it("labels a core the same way it will be labelled once installed", () => {
+    // A core offered as "Snes9x" and then listed as "Snes9x - Super Nintendo"
+    // reads as two different things. One label rule, used by both lists.
+    const [withSystem, without] = installableOptions([
+      installable("snes9x", "Snes9x", "Super Nintendo"),
+      installable("mame", "MAME"),
+    ]) as { label: string }[];
+    expect(withSystem.label).toBe("Snes9x - Super Nintendo");
+    expect(without.label).toBe("MAME");
+  });
+
+  it("offers every suggestion, in the order the backend ranked them", () => {
+    // The buttons this replaced showed only the first four, silently. A
+    // dropdown has room for all of them, and the backend's order is its answer
+    // to "which of these is most likely right".
+    const options = installableOptions([
+      installable("a", "A"),
+      installable("b", "B"),
+      installable("c", "C"),
+      installable("d", "D"),
+      installable("e", "E"),
+    ]);
+    expect(options.map((o) => o.data)).toEqual(["a", "b", "c", "d", "e"]);
+  });
+
+  it("stays flat, since everything installable is a libretro core", () => {
+    const options = installableOptions([installable("snes9x", "Snes9x")]);
+    expect(options.some((o) => "options" in o)).toBe(false);
   });
 });
 

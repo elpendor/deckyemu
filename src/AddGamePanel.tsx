@@ -51,7 +51,7 @@ import {
   selectRom,
   type Console,
 } from "./addFlow";
-import { coreOptions as buildCoreOptions } from "./corePicker";
+import { coreOptions as buildCoreOptions, installableOptions } from "./corePicker";
 import { ArtPickerModal } from "./ArtPickerModal";
 import { openManagePage } from "./ManagePage";
 import { SGDB_PROMPT, sgdbKeyJustAppeared, shouldOfferSgdb } from "./sgdbPrompt";
@@ -367,6 +367,21 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
   const coreOptions: DropdownOption[] = useMemo(
     () => buildCoreOptions(visibleCores),
     [visibleCores],
+  );
+
+  /**
+   * Which suggested core the install button would install.
+   *
+   * Held locally rather than in the draft, and empty means "the first one" --
+   * so a selection lost to Steam unmounting the panel behind a modal comes back
+   * as the backend's own best suggestion rather than as nothing. Falling back by
+   * lookup rather than by index also covers the list changing underneath a
+   * selection, which happens when a different ROM is picked.
+   */
+  const [installableId, setInstallableId] = useState("");
+  const chosenInstallable = useMemo(
+    () => installable.find((core) => core.id === installableId) || installable[0],
+    [installable, installableId],
   );
 
   /*
@@ -965,27 +980,29 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
         </PanelSectionRow>
       )}
 
-      {installable.length > 0 && (
+      {installable.length > 0 && chosenInstallable && (
         <>
           <PanelSectionRow>
-            <Field
+            <DropdownItem
               label="No core installed for this ROM"
-              description={`These cores can run .${probe?.match_extension} — install one to continue.`}
+              description={`These can run .${probe?.match_extension} — install one to continue.`}
+              rgOptions={installableOptions(installable)}
+              selectedOption={chosenInstallable.id}
+              onChange={(option) => setInstallableId(String(option.data))}
+              disabled={Boolean(installingCore) || adding}
             />
           </PanelSectionRow>
-          {installable.slice(0, 4).map((core) => (
-            <PanelSectionRow key={core.id}>
-              <ButtonItem
-                layout="below"
-                onClick={() => void installAndUse(core)}
-                disabled={Boolean(installingCore) || adding}
-              >
-                {installingCore === core.id
-                  ? `Installing ${core.display_name}...`
-                  : `Install ${core.display_name}`}
-              </ButtonItem>
-            </PanelSectionRow>
-          ))}
+          <PanelSectionRow>
+            <ButtonItem
+              layout="below"
+              onClick={() => void installAndUse(chosenInstallable)}
+              disabled={Boolean(installingCore) || adding}
+            >
+              {installingCore
+                ? `Installing ${chosenInstallable.display_name}...`
+                : `Install ${chosenInstallable.display_name}`}
+            </ButtonItem>
+          </PanelSectionRow>
         </>
       )}
 
