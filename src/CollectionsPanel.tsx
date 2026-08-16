@@ -14,6 +14,7 @@ import { toaster } from "@decky/api";
 import { useCallback, useEffect, useState } from "react";
 
 import {
+  collectionShape,
   collectionTemplates,
   getSettings,
   listAdded,
@@ -25,6 +26,7 @@ import {
 } from "./backend";
 import { findFiledGames, migrateCollections, type CollectionMove } from "./steam";
 import { forgetDeleted } from "./collections";
+import { ownedCollectionMatcher } from "./collectionMatch";
 import { callWithRetry } from "./timeout";
 import { countFiled, strandedSummary, unfileWarning } from "./unfileWarning";
 import { logError } from "./logError";
@@ -96,7 +98,11 @@ export function CollectionsPanel() {
   const refreshFiled = useCallback(async () => {
     try {
       const added = await listAdded();
-      const groups = findFiledGames(added.map((game) => game.app_id));
+      // Only shelves this plugin made count towards the number, or a game the
+      // user also keeps on a collection of their own is counted twice and the
+      // dialog quotes a total it is not about to act on.
+      const owns = ownedCollectionMatcher(await collectionShape());
+      const groups = findFiledGames(added.map((game) => game.app_id), owns);
       // One name per game found, so the counter sees both numbers it needs.
       setFiled(countFiled(groups.flatMap((group) => group.appIds.map(() => group.tag))));
     } catch (error) {
@@ -229,7 +235,10 @@ export function CollectionsPanel() {
       // ones stranded here are precisely those whose entry did not.
       const added = await listAdded();
       const titles = new Map(added.map((game) => [game.app_id, game.title]));
-      const moves = findFiledGames(added.map((game) => game.app_id)).flatMap((group) =>
+      // Turning the feature off empties the shelves this plugin made. A game of
+      // ours sitting on somebody else's stays exactly where it is.
+      const owns = ownedCollectionMatcher(await collectionShape());
+      const moves = findFiledGames(added.map((game) => game.app_id), owns).flatMap((group) =>
         group.appIds.map((appId) => ({
           app_id: appId,
           title: titles.get(appId) ?? "",

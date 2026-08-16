@@ -24,15 +24,21 @@ import { type CollectionShape } from "./backend";
  * bare base name, which is what the *non*-per-platform setting produces and may
  * well be a collection the user still curates.
  *
- * A union, never an intersection. Either answer saying "ours" is enough, and
- * both are narrowed by the caller to collections that are also empty — which is
- * what keeps a wrong yes from costing anything somebody would miss.
+ * A union, never an intersection. Either answer saying "ours" is enough.
+ *
+ * **Every path that touches a collection asks this first.** It used to gate
+ * only the deletion of empty ones, so the checks that take games *out* of a
+ * collection ran against whatever Steam listed -- and a game of ours sitting on
+ * somebody else's shelf read as misplaced. A Unifideck collection was reported
+ * as one our games had "left", and turning collections off emptied it. Nothing
+ * here may reach a collection this plugin did not make, so the rule cannot be
+ * the caller's to remember.
  *
  * Its own module rather than a helper inside OrphanModal, because what it
- * decides is whether a collection gets deleted, and a rule with that
+ * decides is whether a collection gets deleted or emptied, and a rule with that
  * consequence has to be reachable by a test.
  */
-export function emptyCollectionMatcher(shape: CollectionShape): (name: string) => boolean {
+export function ownedCollectionMatcher(shape: CollectionShape): (name: string) => boolean {
   const known = new Set(shape.known ?? []);
   const byPattern = patternMatcher(shape);
   return (name) => known.has(name) || byPattern(name);

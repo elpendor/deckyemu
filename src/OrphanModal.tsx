@@ -27,7 +27,7 @@ import {
 } from "./steam";
 import { deleteEmptied, forgetDeleted, unfileGames } from "./collections";
 import { humanSize } from "./TransferModal";
-import { emptyCollectionMatcher } from "./collectionMatch";
+import { ownedCollectionMatcher } from "./collectionMatch";
 import { callWithRetry } from "./timeout";
 import { logError } from "./logError";
 
@@ -100,16 +100,20 @@ export function OrphanModal({ onChanged, closeModal }: Props) {
       setReport(result);
       // A shortcut deleted directly in Steam leaves our registry entry behind.
       setMissingShortcuts(result.registry.filter((entry) => !shortcutExists(entry.app_id)));
+      // One ownership answer for every collection question below: a shelf this
+      // plugin did not make is neither ours to delete nor ours to take games
+      // out of.
+      const owns = ownedCollectionMatcher(await collectionShape());
       // Shelves with nothing left on them. Not derivable from the registry --
       // an empty collection is one no registered game names any more.
-      setEmptyCollections(findEmptyCollections(emptyCollectionMatcher(await collectionShape())));
+      setEmptyCollections(findEmptyCollections(owns));
 
       // Where each game belongs, against where Steam actually has it. Empty
       // when collections are switched off, so both checks below fall away with
       // the feature rather than reporting a library-wide fault.
       const { targets } = await collectionTargets();
       setUnfiled(findUnfiledGames(targets));
-      setStale(findStaleCollections(targets));
+      setStale(findStaleCollections(targets, owns));
     } catch (loadError) {
       logError("audit failed", loadError);
       setError("Could not check the library.");
@@ -418,7 +422,7 @@ export function OrphanModal({ onChanged, closeModal }: Props) {
         `${stale.map((entry) => `${entry.tag} (${entry.appIds.length})`).join(", ")} — ` +
         `held here but belonging elsewhere now, usually after the naming was changed. ` +
         `They are removed from these collections only; any collection left empty is ` +
-        `deleted. One of these could be a collection you fill by hand, so check the names.`,
+        `deleted. Only collections this plugin made are listed.`,
       action: `Remove ${count}`,
       destructive: true,
       run: async () => {

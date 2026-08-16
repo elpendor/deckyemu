@@ -1,6 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { deleteCollections, findEmptyCollections, findUnfiledGames } from "./steam";
+import {
+  deleteCollections,
+  findEmptyCollections,
+  findFiledGames,
+  findStaleCollections,
+  findUnfiledGames,
+} from "./steam";
 
 /**
  * The two functions that delete a Steam collection.
@@ -69,6 +75,77 @@ describe("findEmptyCollections", () => {
   it("answers nothing rather than throwing when Steam is not there", () => {
     delete (globalThis as any).collectionStore;
     expect(findEmptyCollections(ours)).toEqual([]);
+  });
+});
+
+/**
+ * The check that finds our games on a shelf they have left.
+ *
+ * It considered every collection Steam listed, so a game of ours that the user
+ * also keeps on somebody else's shelf read as misplaced: another plugin's
+ * collection was reported as one our games had "left", and the offered fix took
+ * them out of it. Ownership is now asked before anything else, and these pin
+ * that -- the finding is destructive and the shelf belongs to someone else.
+ */
+describe("findStaleCollections", () => {
+  const ours = (name: string) => name.startsWith("DeckyEmu");
+  const holding = (displayName: string, appIds: number[]): FakeCollection => ({
+    displayName,
+    apps: { has: (appId: number) => appIds.includes(appId) },
+  });
+
+  it("reports our game on a shelf of ours it no longer belongs to", () => {
+    install([holding("DeckyEmu - SNES", [7])]);
+    expect(findStaleCollections({ "7": "DeckyEmu - N64" }, ours)).toEqual([
+      { tag: "DeckyEmu - SNES", appIds: [7] },
+    ]);
+  });
+
+  it("never reports a collection this plugin did not make", () => {
+    install([holding("Unifideck", [7])]);
+    expect(findStaleCollections({ "7": "DeckyEmu - N64" }, ours)).toEqual([]);
+  });
+
+  it("leaves a hand-curated shelf alone even when the game belongs nowhere", () => {
+    install([holding("Favourites", [7])]);
+    expect(findStaleCollections({ "7": "" }, ours)).toEqual([]);
+  });
+
+  it("still finds ours when both kinds hold the same game", () => {
+    install([holding("Unifideck", [7]), holding("DeckyEmu - SNES", [7])]);
+    expect(findStaleCollections({ "7": "" }, ours)).toEqual([
+      { tag: "DeckyEmu - SNES", appIds: [7] },
+    ]);
+  });
+
+  it("does not report the shelf a game is supposed to be on", () => {
+    install([holding("DeckyEmu - SNES", [7])]);
+    expect(findStaleCollections({ "7": "DeckyEmu - SNES" }, ours)).toEqual([]);
+  });
+});
+
+/**
+ * Turning collections off, which empties the shelves the games sit on.
+ *
+ * The same ownership question as above and the more costly answer: this one
+ * runs without a confirmation listing every name, so a foreign collection
+ * reaching it is emptied rather than merely reported.
+ */
+describe("findFiledGames", () => {
+  const ours = (name: string) => name.startsWith("DeckyEmu");
+  const holding = (displayName: string, appIds: number[]): FakeCollection => ({
+    displayName,
+    apps: { has: (appId: number) => appIds.includes(appId) },
+  });
+
+  it("finds ours whatever the registry recorded", () => {
+    install([holding("DeckyEmu - SNES", [7])]);
+    expect(findFiledGames([7], ours)).toEqual([{ tag: "DeckyEmu - SNES", appIds: [7] }]);
+  });
+
+  it("leaves another plugin's collection out of the unfiling", () => {
+    install([holding("Unifideck", [7]), holding("DeckyEmu - SNES", [7])]);
+    expect(findFiledGames([7], ours)).toEqual([{ tag: "DeckyEmu - SNES", appIds: [7] }]);
   });
 });
 

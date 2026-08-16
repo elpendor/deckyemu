@@ -144,6 +144,8 @@ describe("migrateCollections, unfiling", () => {
 });
 
 describe("findFiledGames", () => {
+  const ours = (name: string) => name.startsWith("[DeckyEmu]");
+
   /**
    * The failure this exists for: a game sitting in a collection whose entry
    * records no collection at all -- added by a build that did not store it, or
@@ -154,25 +156,32 @@ describe("findFiledGames", () => {
   it("finds a collection holding a game the registry forgot", () => {
     install({ "[DeckyEmu] SNES": [61] });
 
-    expect(findFiledGames([61])).toEqual([{ tag: "[DeckyEmu] SNES", appIds: [61] }]);
+    expect(findFiledGames([61], ours)).toEqual([{ tag: "[DeckyEmu] SNES", appIds: [61] }]);
   });
 
-  it("reports every collection a game is in", () => {
+  /**
+   * This asserted the opposite -- that "Favourites" was reported alongside ours
+   * -- and turning collections off duly emptied it. Reporting every collection
+   * a game is in is the same question as which are ours to empty only when the
+   * user keeps our games nowhere else, and they do: a shelf of their own, or
+   * another plugin's, holding a game we added is ordinary.
+   */
+  it("reports only collections this plugin made, not every one a game is in", () => {
     install({ "[DeckyEmu] SNES": [62], "Favourites": [62] });
 
-    const found = findFiledGames([62]);
-    expect(found.map((group) => group.tag).sort()).toEqual(["Favourites", "[DeckyEmu] SNES"]);
+    const found = findFiledGames([62], ours);
+    expect(found.map((group) => group.tag)).toEqual(["[DeckyEmu] SNES"]);
   });
 
   it("ignores collections holding nothing of ours", () => {
     install({ "Someone else's shelf": [99] });
 
-    expect(findFiledGames([63])).toEqual([]);
+    expect(findFiledGames([63], ours)).toEqual([]);
   });
 
   it("is empty when no games are registered", () => {
     install({ "[DeckyEmu] SNES": [64] });
 
-    expect(findFiledGames([])).toEqual([]);
+    expect(findFiledGames([], ours)).toEqual([]);
   });
 });

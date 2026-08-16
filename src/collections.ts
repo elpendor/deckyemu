@@ -1,5 +1,5 @@
 import { collectionShape, forgetCollections } from "./backend";
-import { emptyCollectionMatcher } from "./collectionMatch";
+import { ownedCollectionMatcher } from "./collectionMatch";
 import { deleteCollections, findEmptyCollections, removeAppsFromCollection } from "./steam";
 import { logError } from "./logError";
 
@@ -99,7 +99,7 @@ export async function forgetDeleted(tags: string[]): Promise<void> {
  * first is what handles those; this catches what earlier sessions left.
  */
 export async function sweepEmptyCollections(): Promise<number> {
-  return deleteEmptied(findEmptyCollections(emptyCollectionMatcher(await collectionShape())));
+  return deleteEmptied(findEmptyCollections(ownedCollectionMatcher(await collectionShape())));
 }
 
 /**

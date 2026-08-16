@@ -144,18 +144,6 @@ export interface StaleCollection {
 }
 
 /**
- * Collections holding our games that those games no longer belong to.
- *
- * Needed because games added by an older build did not record their collection,
- * so a rename could not know where to remove them from and left the old
- * collection populated. Rather than guessing a name, this looks at what Steam
- * actually contains.
- *
- * Only collections holding a game we registered are considered, and the caller
- * is expected to show the list for confirmation before anything is removed --
- * one of these could be a collection the user curates by hand.
- */
-/**
  * Which collections actually hold our games, whatever the registry believes.
  *
  * Asked of Steam rather than of `library.json`, because the two can disagree
@@ -168,14 +156,30 @@ export interface StaleCollection {
  * Expressed as "every game belongs nowhere", which is what makes any collection
  * holding one of them stale.
  */
-export function findFiledGames(appIds: number[]): StaleCollection[] {
+export function findFiledGames(
+  appIds: number[],
+  owns: (name: string) => boolean,
+): StaleCollection[] {
   const nowhere: Record<string, string> = {};
   for (const appId of appIds) nowhere[String(appId)] = "";
-  return findStaleCollections(nowhere);
+  return findStaleCollections(nowhere, owns);
 }
 
+/**
+ * Collections of ours holding our games that those games no longer belong to.
+ *
+ * Needed because games added by an older build did not record their collection,
+ * so a rename could not know where to remove them from and left the old
+ * collection populated. Rather than guessing a name, this looks at what Steam
+ * actually contains.
+ *
+ * `owns` is not optional and not a confirmation step. This used to consider
+ * every collection Steam listed and leave the judgement to a warning in the
+ * dialog, which reported another plugin's shelf as one our games had left.
+ */
 export function findStaleCollections(
   targets: Record<string, string>,
+  owns: (name: string) => boolean,
 ): StaleCollection[] {
   const store = collectionStore();
   if (!store) return [];
@@ -185,6 +189,10 @@ export function findStaleCollections(
     for (const collection of allCollections()) {
       const tag = collection.displayName;
       if (!tag) continue;
+      // Ours to reason about, or not ours to touch. A game can sit on a shelf
+      // somebody else made -- another plugin's, or one the user curates -- and
+      // that is not this plugin's business to report or undo.
+      if (!owns(tag)) continue;
 
       const misplaced: number[] = [];
       for (const [appIdText, target] of Object.entries(targets)) {

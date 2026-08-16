@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { emptyCollectionMatcher } from "./collectionMatch";
+import { ownedCollectionMatcher } from "./collectionMatch";
 
 /**
  * The rule that decides whether a Steam collection gets deleted.
@@ -13,9 +13,9 @@ import { emptyCollectionMatcher } from "./collectionMatch";
 const shape = (base: string, per_platform = true, template = "{name} - {platform}") =>
   ({ base, per_platform, template });
 
-describe("emptyCollectionMatcher", () => {
+describe("ownedCollectionMatcher", () => {
   it("matches a name it would have produced", () => {
-    const matches = emptyCollectionMatcher(shape("DeckyEmu"));
+    const matches = ownedCollectionMatcher(shape("DeckyEmu"));
     expect(matches("DeckyEmu - Nintendo 64")).toBe(true);
     expect(matches("DeckyEmu - SNES")).toBe(true);
   });
@@ -25,7 +25,7 @@ describe("emptyCollectionMatcher", () => {
   // matcher stops recognising its own collections and starts recognising
   // somebody else's.
   it("treats a base full of regex characters as text", () => {
-    const matches = emptyCollectionMatcher(shape("Emu (Deck) [v2]"));
+    const matches = ownedCollectionMatcher(shape("Emu (Deck) [v2]"));
     expect(matches("Emu (Deck) [v2] - Nintendo 64")).toBe(true);
     expect(matches("Emu xDeckx [v2] - Nintendo 64")).toBe(false);
     expect(matches("Emu D [v2] - Nintendo 64")).toBe(false);
@@ -35,32 +35,32 @@ describe("emptyCollectionMatcher", () => {
   // bare base name, which is what per-platform *off* produces and may be a
   // collection the user curates by hand.
   it("does not match the bare base name when per-platform is on", () => {
-    expect(emptyCollectionMatcher(shape("DeckyEmu"))("DeckyEmu")).toBe(false);
+    expect(ownedCollectionMatcher(shape("DeckyEmu"))("DeckyEmu")).toBe(false);
   });
 
   it("matches only the exact name when per-platform is off", () => {
-    const matches = emptyCollectionMatcher(shape("DeckyEmu", false));
+    const matches = ownedCollectionMatcher(shape("DeckyEmu", false));
     expect(matches("DeckyEmu")).toBe(true);
     expect(matches("DeckyEmu - SNES")).toBe(false);
   });
 
   it("never matches anything when no name is configured", () => {
     for (const base of ["", "   "]) {
-      const matches = emptyCollectionMatcher(shape(base));
+      const matches = ownedCollectionMatcher(shape(base));
       expect(matches("DeckyEmu - SNES")).toBe(false);
       expect(matches("")).toBe(false);
     }
   });
 
   it("leaves collections it did not make alone", () => {
-    const matches = emptyCollectionMatcher(shape("DeckyEmu"));
+    const matches = ownedCollectionMatcher(shape("DeckyEmu"));
     for (const other of ["Favourites", "Emulation", "DeckyEmu2 - SNES", "deckyemu - SNES"]) {
       expect(matches(other)).toBe(false);
     }
   });
 
   it("follows a custom template rather than assuming the default", () => {
-    const matches = emptyCollectionMatcher(shape("Emu", true, "{platform} ({name})"));
+    const matches = ownedCollectionMatcher(shape("Emu", true, "{platform} ({name})"));
     expect(matches("SNES (Emu)")).toBe(true);
     expect(matches("Emu - SNES")).toBe(false);
   });
@@ -68,7 +68,7 @@ describe("emptyCollectionMatcher", () => {
   // A template with no platform placeholder cannot distinguish one system from
   // another; it must still not match everything.
   it("survives a template that uses no placeholders", () => {
-    const matches = emptyCollectionMatcher(shape("Emu", true, "Games"));
+    const matches = ownedCollectionMatcher(shape("Emu", true, "Games"));
     expect(matches("Games")).toBe(true);
     expect(matches("Games - SNES")).toBe(false);
   });
@@ -99,11 +99,11 @@ const RENDERED: Array<[template: string, name: string]> = [
   ["{name}\\n{platform}", "DeckyEmu\nNintendo 64"],
 ];
 
-describe("emptyCollectionMatcher, against names the backend really produces", () => {
+describe("ownedCollectionMatcher, against names the backend really produces", () => {
   it.each(RENDERED)("recognises what %s renders", (template, name) => {
     // The shape arrives with the newline already real, because collection_shape
     // unescapes it before sending -- so the matcher never sees the escape.
-    const matches = emptyCollectionMatcher(
+    const matches = ownedCollectionMatcher(
       shape("DeckyEmu", true, template.replace("\\n", "\n")),
     );
     expect(matches(name)).toBe(true);
@@ -113,7 +113,7 @@ describe("emptyCollectionMatcher, against names the backend really produces", ()
   // must not accept a name built by another -- that is what would let a rename
   // delete a shelf still holding the games it was renamed away from.
   it("does not accept a name another format produced", () => {
-    const matches = emptyCollectionMatcher(shape("DeckyEmu", true, "[{name}] {platform}"));
+    const matches = ownedCollectionMatcher(shape("DeckyEmu", true, "[{name}] {platform}"));
     expect(matches("DeckyEmu - Nintendo 64")).toBe(false);
     expect(matches("DeckyEmu: Nintendo 64")).toBe(false);
   });
@@ -128,9 +128,9 @@ describe("emptyCollectionMatcher, against names the backend really produces", ()
  * silently, and with no way back, because nothing else remembered they were
  * ours.
  */
-describe("emptyCollectionMatcher, what the backend recorded", () => {
+describe("ownedCollectionMatcher, what the backend recorded", () => {
   const withKnown = (known: string[], base = "DeckyEmu", per_platform = true) =>
-    emptyCollectionMatcher({ ...shape(base, per_platform), known });
+    ownedCollectionMatcher({ ...shape(base, per_platform), known });
 
   it("claims a shelf the current naming would never produce", () => {
     const matches = withKnown(["[DeckyEmu] N64"]);
@@ -164,11 +164,11 @@ describe("emptyCollectionMatcher, what the backend recorded", () => {
   // The union runs the other way too: an install from before the record existed
   // has nothing in it, and its shelves are still recognised by the pattern.
   it("falls back to the pattern when nothing was recorded", () => {
-    const matches = emptyCollectionMatcher({ ...shape("DeckyEmu"), known: [] });
+    const matches = ownedCollectionMatcher({ ...shape("DeckyEmu"), known: [] });
     expect(matches("DeckyEmu - SNES")).toBe(true);
   });
 
   it("and when the backend is old enough not to send one", () => {
-    expect(emptyCollectionMatcher(shape("DeckyEmu"))("DeckyEmu - SNES")).toBe(true);
+    expect(ownedCollectionMatcher(shape("DeckyEmu"))("DeckyEmu - SNES")).toBe(true);
   });
 });

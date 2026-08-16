@@ -365,7 +365,7 @@ export const updateGame = callable<
 >("update_game");
 /**
  * What a collection name made by this plugin looks like, for recognising the
- * ones it left behind empty. See `collection_shape` and `emptyCollectionMatcher`.
+ * ones it left behind empty. See `collection_shape` and `ownedCollectionMatcher`.
  */
 /** The pieces a collection name is built from, as the settings have them. */
 export interface CollectionShape {
