@@ -982,16 +982,31 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
 
       {installable.length > 0 && chosenInstallable && (
         <>
-          <PanelSectionRow>
-            <DropdownItem
-              label="No core installed for this ROM"
-              description={`These can run .${probe?.match_extension} — install one to continue.`}
-              rgOptions={installableOptions(installable)}
-              selectedOption={chosenInstallable.id}
-              onChange={(option) => setInstallableId(String(option.data))}
-              disabled={Boolean(installingCore) || adding}
-            />
-          </PanelSectionRow>
+          {/* Only when there is a choice to make. A dropdown holding one option
+              is a control that does nothing -- it reads as a choice and offers
+              none, and for several systems one is the true answer: exactly one
+              libretro core claims .wux, and none claims .pkg. The button below
+              already names what it would install, so a single suggestion is
+              fully described without a row above it. */}
+          {installable.length > 1 ? (
+            <PanelSectionRow>
+              <DropdownItem
+                label="No core installed for this ROM"
+                description={`These can run .${probe?.match_extension} — install one to continue.`}
+                rgOptions={installableOptions(installable)}
+                selectedOption={chosenInstallable.id}
+                onChange={(option) => setInstallableId(String(option.data))}
+                disabled={Boolean(installingCore) || adding}
+              />
+            </PanelSectionRow>
+          ) : (
+            <PanelSectionRow>
+              <Field
+                label="No core installed for this ROM"
+                description={`One core can run .${probe?.match_extension}.`}
+              />
+            </PanelSectionRow>
+          )}
           <PanelSectionRow>
             <ButtonItem
               layout="below"
