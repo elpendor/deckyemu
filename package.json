@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "rollup -c",
-    "check": "tsc --noEmit && rollup -c && vitest run && python -m mypy py_modules main.py && python scripts/test_backend.py --offline && python scripts/check_release_build.py",
+    "check": "tsc --noEmit && rollup -c && vitest run && python -m mypy py_modules main.py && python scripts/test_backend.py --offline && python -m compileall -q main.py py_modules && python scripts/check_release_build.py",
     "deploy": "bash scripts/deploy.sh",
     "dev": "rollup -c && bash scripts/deploy.sh",
     "test": "python scripts/test_backend.py",

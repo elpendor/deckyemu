@@ -105,6 +105,37 @@ The live checks are the valuable ones: they assert that real ROM filenames
 resolve to real cover art, including the awkward cases. Run them before
 deploying — they catch far more than poking at the UI does.
 
+New backend checks go in `scripts/tests/`, one file per subject, each runnable on
+its own. The frontend suite is vitest (`pnpm run test:ui`) and covers the pure
+logic and the Steam calls that delete things; there is no DOM environment, so it
+does not cover rendering.
+
+## Before you commit
+
+```sh
+pnpm run check
+```
+
+That is the whole gate: typecheck, bundle, both test suites, mypy, and the
+release-build guard. CI runs the same things, so a green `check` is a green CI.
+
+**Prefix the commit subject** with one of `feat:`, `fix:`, `perf:`, `internal:`,
+`docs:`, `chore:` or `refactor:`. Release notes are generated from these subjects
+by `scripts/changelog.py` and the prefix decides which heading the line appears
+under, so the subject should read as the sentence a user would want:
+
+    fix: a renamed game takes back its own shortcut instead of making a second
+
+A scope or a `!` is accepted and ignored (`fix(store):`, `perf!:`). `SECTIONS` in
+that script is the list of prefixes that means anything — a prefix that is not in
+it reaches the notes with the prefix still attached, which is not a tidy fallback
+but machine syntax in front of a reader.
+
+There is no changelog file to update and no release notes to write: they come
+from the log. CI is dispatched by hand (`gh workflow run ci.yml -f publish=true
+-f bump=patch`), which is what bumps the version, tags it and publishes the zip
+the plugin's own updater reads.
+
 ## Layout
 
 Every backend module is listed. The frontend is grouped by role instead, because
