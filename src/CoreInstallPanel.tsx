@@ -145,9 +145,14 @@ export function CoreInstallPanel({ onCoresChanged, reloadKey = 0 }: Props) {
     // like it ignored the request. Only on a deliberate arrival: scrolling a
     // tab somebody opened themselves would take it away from the top.
     //
+    // `start`, not `center`: centring the section puts its heading halfway down
+    // the screen with the controls below it and nothing above but the tab the
+    // user just left. The heading belongs at the top, where a section that was
+    // scrolled to looks like the top of what you came for.
+    //
     // After paint, or the row is measured where it has not been drawn yet.
     requestAnimationFrame(() => {
-      section.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+      section.current?.scrollIntoView({ block: "start", behavior: "smooth" });
     });
   }, []);
 
