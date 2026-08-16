@@ -60,6 +60,7 @@ import { PackagedGamesModal } from "./PackagedGamesModal";
 import { TransferModal } from "./TransferModal";
 import { VitaGamesModal } from "./VitaGamesModal";
 import { logError } from "./logError";
+import { sentence } from "./sentence";
 import { titleAfterArtPick } from "./titleFromArt";
 
 
@@ -517,7 +518,7 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
 
       toaster.toast({
         title: `Added ${prepared.title}`,
-        body: notes.join(" - "),
+        body: sentence(notes.join(" - ")),
       });
 
       onGameAdded();

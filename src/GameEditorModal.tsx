@@ -32,6 +32,7 @@ import { ArtPickerModal } from "./ArtPickerModal";
 import { coreOptions as buildCoreOptions, isEmulatorId } from "./corePicker";
 import { callWithRetry } from "./timeout";
 import { logError } from "./logError";
+import { sentence } from "./sentence";
 import { titleAfterArtPick } from "./titleFromArt";
 
 interface Props {
@@ -300,7 +301,9 @@ export function GameEditorModal({ game, onSaved, closeModal }: Props) {
 
       toaster.toast({
         title: result.title,
-        body: notes.length ? notes.join(", ") : "Saved.",
+        // Each note reads correctly in the middle of a list and wrongly at the
+        // front of one, and only the join knows which it ended up as.
+        body: notes.length ? sentence(notes.join(", ")) : "Saved.",
       });
       onSaved();
       closeModal?.();
