@@ -979,17 +979,22 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
         </>
       )}
 
-      {/* Nothing claims this file, but something is installed -- so offer the
-          lot, since forcing a core that does not advertise the extension is
-          sometimes right and is the only way to do it.
+      {/* Nothing claims this file. Forcing something installed is sometimes
+          right and this is the only way to do it -- but only when there is
+          nothing better to offer.
 
-          Not rendered when there is nothing installed at all. It was, disabled
-          and empty, and directly above the list of cores that *could* be
-          installed: two "choose a core" rows where one of them can never
-          answer. An empty control is not a lesser control, it is a question the
-          panel cannot mean. */}
+          Suppressed while there are cores to install, because those are the
+          answer to this file and this row is not: with five emulators
+          registered and no cores, it offered Cemu, Dolphin, DuckStation, PCSX2
+          and Ryujinx as ways to run a Game Boy Color ROM, above the twenty
+          cores that actually could. Not an empty control -- a full one, whose
+          every entry is wrong. Two "what should run this" rows where the first
+          cannot answer is worse than one.
+
+          `coreOptions.length` as well, since with nothing registered and no
+          cores the list is empty and a disabled dropdown says even less. */}
       {probe && !pendingPackage && probe.matching_cores.length === 0
-        && coreOptions.length > 0 && (
+        && installable.length === 0 && coreOptions.length > 0 && (
         <PanelSectionRow>
           <DropdownItem
             layout="below"
