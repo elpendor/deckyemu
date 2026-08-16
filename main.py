@@ -2136,8 +2136,16 @@ class Plugin(
         decky.logger.info("Diagnostic report ready (%d characters)", len(report))
         return {"ok": True, **await self._run(fileserver.status)}
 
-    async def _installed_catalog_ids(self):
-        """Which catalog emulators are actually on the device, as `id (channel)`."""
+    @staticmethod
+    def _installed_catalog_ids():
+        """Which catalog emulators are actually on the device, as `id (channel)`.
+
+        Deliberately not async. It goes through `_run` because probing a flatpak
+        shells out, and handing `_run` a coroutine function does not run it --
+        the executor calls it, gets a coroutine object back, and nothing ever
+        awaits it. What reaches the caller is that object rather than a list,
+        and the first thing done with it raises somewhere else entirely.
+        """
         found = []
         for entry in emulator_catalog.CATALOG:
             source = entry.get("source") or {}

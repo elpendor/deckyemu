@@ -4085,6 +4085,25 @@ else:
           fileserver.status()["report_url"], "")
 
     fileserver.stop()
+
+    # The endpoint end to end, which is the check that was missing when this
+    # shipped broken: `_installed_catalog_ids` was written `async` and handed to
+    # `_run`, so the executor called it, got a coroutine object back, and nobody
+    # awaited it. The report was then built around that object and raised on the
+    # first thing done with it -- reaching the panel as "could not be prepared"
+    # and the log as "Task was destroyed but it is pending", neither of which
+    # names the cause. Every piece had a test; the wiring between them did not.
+    _prepared = run(plugin.start_report())
+    check("preparing a report succeeds", _prepared["ok"], True)
+    check("and puts it somewhere readable", bool(_prepared["report_url"]), True)
+    # The specific shape of that bug: anything `_run` is given must be callable
+    # and return its answer, not a coroutine that will never be awaited.
+    check("the catalog probe returns a list, not a coroutine",
+          isinstance(plugin._installed_catalog_ids(), list), True)
+    # Serving it is checked above, against the server this test started and
+    # still knows the port of. This one bound its own.
+    fileserver.stop()
+    check("and stopping takes the report with it", fileserver.status()["report_url"], "")
     check("stopping leaves nothing running", fileserver.status()["running"], False)
     check("and reports no code once stopped", fileserver.status()["pin"], "")
 
