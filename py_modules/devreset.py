@@ -225,11 +225,20 @@ def _wipe(path):
             decky.logger.warning("Could not delete %s: %s", target, error)
             continue
         freed += size
+    if freed:
+        decky.logger.info("Reset: emptied %s (%d bytes)", path, freed)
     return freed
 
 
 def _remove(path):
-    """Delete a directory outright. Returns bytes."""
+    """Delete a directory outright. Returns bytes.
+
+    Says what it deleted. Every one of these is somebody's install, ROM library
+    or configuration, and the log is the only record afterwards -- a reset is
+    the one action on this plugin whose effects are most easily mistaken for a
+    bug days later. Removing RetroArch's directory here is what made a later
+    "install this core" do nothing, and nothing in the log connected the two.
+    """
     if not path or not os.path.isdir(path):
         return 0
     freed = sysenv.directory_bytes(path)
@@ -238,6 +247,7 @@ def _remove(path):
     except OSError as error:
         decky.logger.warning("Could not delete %s: %s", path, error)
         return 0
+    decky.logger.info("Reset: removed %s (%d bytes)", path, freed)
     return freed
 
 
@@ -292,14 +302,28 @@ def clear_state():
     The setup record is the one that matters and the one most easily missed: a
     fresh install that still believes every emulator is configured applies no
     setup block at all, and the bug you were testing for stays hidden.
+
+    Every file removed is named in the log, and that is not decoration. This
+    deletes settings.json, and the next startup writes part of it back:
+    `_pin_collection_layout` finds no stored `collection_per_platform` and a
+    library still full of games, so it pins the layout to one shared collection
+    -- correct on its own terms, and indistinguishable from the setting having
+    turned itself off. Chasing that took a session, because the step that
+    caused it removed the file with a bare os.remove and said nothing. A
+    destructive action nobody can see afterwards is one nobody can reason
+    about.
     """
     freed = 0
-    for path, _ in _state_files():
+    cleared = []
+    for path, label in _state_files():
         try:
             freed += os.path.getsize(path)
             os.remove(path)
         except OSError:
             continue
+        cleared.append(label)
+    if cleared:
+        decky.logger.info("Reset: cleared %s", ", ".join(cleared))
     freed += _remove(launchers.LAUNCHER_DIR)
     freed += _remove(os.path.join(decky.DECKY_PLUGIN_RUNTIME_DIR, "thumb_index"))
     # Nothing to invalidate afterwards: every one of these files is read from
