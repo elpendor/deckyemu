@@ -583,6 +583,9 @@ class Plugin(
         # two executor round trips behind one environment lookup -- on the call the
         # panel makes every time it mounts. Resolved once and used for both.
         home = await self._run(ra_detect.user_home)
+        # Where the picker should open instead, when a transferred file is still
+        # sitting unadded. "" the rest of the time, which is most of it.
+        waiting = await self._run(fileserver.waiting_dir)
         if not self._install:
             return {
                 "found": False,
@@ -593,6 +596,7 @@ class Plugin(
                 "core_dirs": [],
                 "emulator_count": len(self._emulators),
                 "default_rom_dir": home,
+                "waiting_rom_dir": waiting,
                 "home_dir": home,
             }
         return {
@@ -604,6 +608,7 @@ class Plugin(
             "core_dirs": self._install["core_dirs"],
             "emulator_count": len(self._emulators),
             "default_rom_dir": home,
+            "waiting_rom_dir": waiting,
             "home_dir": home,
         }
 

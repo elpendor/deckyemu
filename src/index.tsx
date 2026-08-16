@@ -36,6 +36,7 @@ const EMPTY_STATUS: RetroArchStatus = {
   core_dirs: [],
   emulator_count: 0,
   default_rom_dir: "",
+  waiting_rom_dir: "",
   home_dir: "",
 };
 

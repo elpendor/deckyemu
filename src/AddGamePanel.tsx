@@ -314,10 +314,16 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
     // like an error.
     let picked: { path: string; realpath: string } | undefined;
     try {
-      // Where a ROM was last picked from, else the backend's default (home).
-      // No hardcoded path: the backend resolves the real home, which is not
-      // /home/deck on every install.
-      const startPath = settings?.last_rom_dir || status.default_rom_dir;
+      // A transferred file still waiting to be added, else where a ROM was last
+      // picked from, else the backend's default (home). No hardcoded path: the
+      // backend resolves the real home, which is not /home/deck on every install.
+      //
+      // The inbox wins because the received list is the only other way back to a
+      // sent file and it does not survive a reload -- after one, the file is on
+      // disk with nothing pointing at it. It is only ever set when something is
+      // actually in there, so it cannot open an empty folder.
+      const startPath =
+        status.waiting_rom_dir || settings?.last_rom_dir || status.default_rom_dir;
       picked = await openFilePicker(
         FileSelectionType.FILE,
         startPath,
@@ -349,7 +355,7 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
     }
 
     await selectRom(path);
-  }, [settings?.last_rom_dir, status.default_rom_dir]);
+  }, [settings?.last_rom_dir, status.default_rom_dir, status.waiting_rom_dir]);
 
   const visibleCores: Core[] = useMemo(() => {
     if (!probe) return [];

@@ -14,6 +14,15 @@ export interface RetroArchStatus {
   /** Custom standalone emulators; the plugin is usable with these alone. */
   emulator_count: number;
   default_rom_dir: string;
+  /**
+   * The transfer folder when a sent file is still sitting in it unadded, else "".
+   *
+   * Takes precedence over `last_rom_dir` in the picker: a file waiting in the
+   * inbox says more about what the user is here to do than where they browsed
+   * last time. Empty the rest of the time, which is most of it -- adding a game
+   * moves its ROM out, so the folder empties itself.
+   */
+  waiting_rom_dir: string;
   /** The user's home, resolved by the backend. Never hardcode /home/deck. */
   home_dir: string;
 }

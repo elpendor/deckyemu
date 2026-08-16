@@ -154,6 +154,45 @@ def default_dir(create=True):
     return sysenv.user_dir(DEFAULT_SUBDIR, create=create)
 
 
+def waiting_dir():
+    """`default_dir()` when a file is sitting in it, otherwise "".
+
+    The ROM picker opens here when this answers, and that is the only condition
+    under which it should: this folder empties itself as games are added --
+    adding one moves its ROM into `roms/<system>/` -- so it is empty most of the
+    time, and opening a picker in an empty folder is precisely the miss that
+    `ra_detect.default_rom_dir` stopped guessing to avoid.
+
+    It exists because the received list is the only route to a transferred file
+    and that list does not survive: `start()` clears it, so a file sent before a
+    plugin reload, or one the user did not add before closing the dialog, has
+    nowhere left to be reached from. It is still on disk, three navigations away
+    from wherever the picker last opened.
+
+    `create=False`, because this only asks a question. `default_dir()` creates on
+    demand, and answering "is anything waiting?" must not be what brings the
+    folder into existence.
+    """
+    directory = default_dir(create=False)
+    try:
+        with os.scandir(directory) as entries:
+            for entry in entries:
+                # The same two exclusions the received list uses: a partial
+                # upload is not a file anyone can add, and a dotfile is not
+                # something the user sent.
+                if entry.name.startswith("."):
+                    continue
+                if entry.name.lower().endswith(_IGNORED_SUFFIXES):
+                    continue
+                if entry.is_file():
+                    return directory
+    except OSError:
+        # Missing is the normal answer before anything has ever been sent, and
+        # unreadable is not worth failing a status call over.
+        return ""
+    return ""
+
+
 def _now():
     return time.time()
 
