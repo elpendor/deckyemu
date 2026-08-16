@@ -3,14 +3,9 @@
 **Add emulated games to your Steam library as real entries — clean name, boxart,
 and a shelf of their own — without ever leaving Game Mode.**
 
-<!--
-  A screenshot or short GIF of the add flow belongs here, and it is the one
-  thing this page is still missing. Capture it on the Deck with Steam's own
-  screenshot button in Game Mode, put the file under a new images folder beside
-  the docs, and reference it here as an image. Use a homebrew or public-domain
-  ROM for the capture rather than a commercial title, so the image is as
-  distributable as the rest of the repository.
--->
+![The Quick Access panel in Game Mode, showing a ROM identified as Tobu Tobu
+Girl with its boxart, one press from being added to
+Steam.](docs/images/adding-a-game.jpg)
 
 Pick a ROM, pick a core or emulator, and the game appears in Big Picture like
 anything else you own. Works with RetroArch's libretro cores and with standalone
