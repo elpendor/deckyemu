@@ -45,6 +45,17 @@ describe("romDraft", () => {
     expect(seen).toBe("sameboy");
   });
 
+  it("keeps a chosen licence key across the same remount", () => {
+    // Worth its own check rather than trusting the one above: the wrong key
+    // installs a Vita game and then fails to decrypt it, so a choice that
+    // quietly reverts to the first candidate is one the user made and did not
+    // get -- and the failure surfaces long afterwards, at launch.
+    updateDraft({ keyChoice: "MyGame.zrif" });
+    expect(getDraft().keyChoice).toBe("MyGame.zrif");
+    resetDraft();
+    expect(getDraft().keyChoice).toBe("");
+  });
+
   it("clears the chosen core when the draft is reset", () => {
     // A core chosen for one ROM is not a choice anyone made about the next.
     updateDraft({ installableId: "gambatte" });

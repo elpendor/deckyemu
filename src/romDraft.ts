@@ -38,6 +38,16 @@ export interface RomDraft {
    * impossible until this moved.
    */
   installableId: string;
+  /**
+   * Which licence key the user said belongs to a Vita package, or "".
+   *
+   * Here for the same reason as `installableId`, and it matters more: the wrong
+   * key installs the game and then fails to decrypt it, so a choice that
+   * silently reverts to the first candidate is a choice the user made and did
+   * not get. Resolved against the candidate list, so a stale name from another
+   * ROM falls back rather than reaching the backend.
+   */
+  keyChoice: string;
   looking: boolean;
   adding: boolean;
   installingCore: string;
@@ -54,6 +64,7 @@ export const EMPTY_DRAFT: RomDraft = {
   title: "",
   installable: [],
   installableId: "",
+  keyChoice: "",
   looking: false,
   adding: false,
   installingCore: "",

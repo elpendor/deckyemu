@@ -85,11 +85,10 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
   const [unpacking, setUnpacking] = useState(false);
   const [unpackPercent, setUnpackPercent] = useState(0);
   const [unpackStatus, setUnpackStatus] = useState("");
-  // Which licence key the user said belongs to a Vita package, when nothing
-  // about its name says so. Only ever one of the names the backend offered --
-  // see `chosenKey`, which is what makes a stale choice impossible rather than
-  // something to remember to clear when the ROM changes.
-  const [keyChoice, setKeyChoice] = useState("");
+  // Which licence key the user said belongs to a Vita package lives in the
+  // draft, not here: choosing one opens a ContextMenu, which unmounts this
+  // panel, so component state was discarded on the way back and the choice
+  // reverted to the first candidate. See `installableId` for the same fault.
 
   // How many games RPCS3 has installed, so the route to them is offered only
   // when there is something behind it.
@@ -176,6 +175,7 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
     title,
     installable,
     installableId,
+    keyChoice,
     looking,
     adding,
     installingCore,
@@ -849,11 +849,15 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
           {!unpacking && keyCandidates.length > 0 && (
             <PanelSectionRow>
               <DropdownItem
+                // Filenames, and long ones -- a licence is named after the game
+                // it unlocks. Half a row truncates them where they are still
+                // identical to each other.
+                layout="below"
                 label="Licence key"
                 description="The file that came with this game. Picking the wrong one installs it and then fails to decrypt it."
                 rgOptions={keyCandidates.map((name) => ({ data: name, label: name }))}
                 selectedOption={chosenKey}
-                onChange={(option) => setKeyChoice(String(option.data))}
+                onChange={(option) => updateDraft({ keyChoice: String(option.data) })}
                 disabled={adding}
               />
             </PanelSectionRow>
@@ -940,6 +944,13 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
         <>
           <PanelSectionRow>
             <DropdownItem
+              // Below, not beside. An inline Item puts its value in the
+              // right-hand half of the row and truncates it there, and the
+              // Quick Access panel has too little width to spend half of it on
+              // a label. Core names do not survive it: every libretro name for
+              // one system shares its opening words, so the half that gets
+              // shown is the half every option has in common.
+              layout="below"
               // Not "Core": half the list is standalone emulators, which are
               // not cores and do not run inside RetroArch.
               label="Run with"
@@ -981,6 +992,7 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
         && coreOptions.length > 0 && (
         <PanelSectionRow>
           <DropdownItem
+            layout="below"
             label="Run with"
             description={`Nothing installed claims .${probe.match_extension}`}
             rgOptions={coreOptions}
