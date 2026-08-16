@@ -120,14 +120,40 @@ def parse_release(entry):
 API_HEADERS = {"X-GitHub-Api-Version": "2022-11-28"}
 
 
+def _failure_message(failure):
+    """What to tell the user when the releases API returned nothing usable.
+
+    Every failure used to read "GitHub did not answer. Check the connection.",
+    which sends someone to look at their wifi while the connection is fine. The
+    rate limit is the case that made this worth splitting: nothing here
+    authenticates, so the budget is 60 requests an hour shared by every caller
+    on the address, and a household behind one address can reach it without
+    anybody doing anything wrong.
+
+    The status is all that is used. GitHub's own rate-limit text names the
+    caller's public address, and this string is shown in the panel and travels
+    in the diagnostic report.
+    """
+    status = failure.get("status")
+    if status in (403, 429) and str(failure.get("rate_remaining")) == "0":
+        return ("GitHub is rate-limiting this network. Update checks share a "
+                "budget of 60 an hour per address; it clears on its own.")
+    if status == 404:
+        return "The releases page was not found. Check for a newer DeckyEmu by hand."
+    if status:
+        return "GitHub answered with an error (HTTP %s). Try again later." % status
+    return "GitHub did not answer. Check the connection."
+
+
 def fetch_releases(force=False):
     """Installable releases, newest first. Cached, and never raises."""
     now = time.time()
     if not force and _cache["releases"] and now - _cache["at"] < CACHE_SECONDS:
         return _cache["releases"]
 
+    failure = {}
     try:
-        raw = net.get_json(RELEASES_URL, API_HEADERS)
+        raw = net.get_json(RELEASES_URL, API_HEADERS, failure=failure)
     except Exception as error:  # noqa: BLE001 - a failed check must not break the UI
         decky.logger.warning("Could not read releases: %s", error)
         _cache["ok"] = False
@@ -135,10 +161,11 @@ def fetch_releases(force=False):
         return _cache["releases"]
 
     if raw is None:
-        # net logs the reason; say something the user can act on. There is only
-        # one cause left worth naming now that nothing here authenticates.
+        # net logs the reason; say something the user can act on, which means
+        # telling a refusal apart from silence rather than blaming the network
+        # for both.
         _cache["ok"] = False
-        _cache["error"] = "GitHub did not answer. Check the connection."
+        _cache["error"] = _failure_message(failure)
         return _cache["releases"]
 
     if not isinstance(raw, list):

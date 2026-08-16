@@ -260,8 +260,15 @@ def head_ok(url, headers=None):
     return False
 
 
-def get_bytes(url, headers=None, max_bytes=12 * 1024 * 1024):
-    """Returns (bytes, content_type) or (None, None)."""
+def get_bytes(url, headers=None, max_bytes=12 * 1024 * 1024, failure=None):
+    """Returns (bytes, content_type) or (None, None).
+
+    `failure`, when a dict is passed, is filled in on an HTTP error with the
+    `status` and the rate-limit headers that came with it. Without it a caller
+    gets None for every kind of failure and can only guess which one it was --
+    which is how a refusal from the server came to be reported as no answer at
+    all. Only callers that will say something different per status need it.
+    """
     if not is_web_url(url):
         decky.logger.warning("Refusing to fetch non-HTTP url %s", url)
         return None, None
@@ -272,6 +279,19 @@ def get_bytes(url, headers=None, max_bytes=12 * 1024 * 1024):
                 decky.logger.warning("Refusing oversized download: %s", url)
                 return None, None
             return payload, response.headers.get("Content-Type", "")
+    except urllib.error.HTTPError as error:
+        # Before URLError, which this subclasses: caught together, an answered
+        # request carrying a status is indistinguishable from one that never
+        # arrived. The body is deliberately not read -- GitHub's rate-limit
+        # message names the caller's public address, and this text reaches the
+        # log and the diagnostic report a user is asked to share.
+        decky.logger.warning("GET failed for %s: %s", url, error)
+        if failure is not None:
+            headers_out = error.headers or {}
+            failure["status"] = error.code
+            failure["retry_after"] = headers_out.get("Retry-After", "")
+            failure["rate_remaining"] = headers_out.get("X-RateLimit-Remaining", "")
+        return None, None
     except (urllib.error.URLError, OSError) as error:
         decky.logger.warning("GET failed for %s: %s", url, error)
         return None, None
@@ -376,8 +396,8 @@ def post_json(url, fields, headers=None, timeout=DEFAULT_TIMEOUT):
         return None
 
 
-def get_json(url, headers=None):
-    payload, _ = get_bytes(url, headers)
+def get_json(url, headers=None, failure=None):
+    payload, _ = get_bytes(url, headers, failure=failure)
     if payload is None:
         return None
     try:

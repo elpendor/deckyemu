@@ -645,7 +645,7 @@ check("accepts steamgriddb_api_key", discover({"steamgriddb_api_key": SAMPLE_KEY
 _sgdb_real_get_json = sgdb.net.get_json
 
 
-def _fake_get_json(url, headers=None):
+def _fake_get_json(url, headers=None, failure=None):
     # Answers out of order relative to the slot list, and slowest first, so an
     # implementation that zipped replies by arrival would be caught.
     if "logos" in url:
@@ -678,7 +678,7 @@ check("no key means no requests at all", sgdb.art_urls("", 1234), {})
 # valid PNG of the right shape -- so the game goes into Steam wearing a notice
 # instead of a cover. Real, and reported: Super Mario 3D World's highest-scoring
 # 600x900 grid is locked.
-def _locked_get_json(url, headers=None):
+def _locked_get_json(url, headers=None, failure=None):
     if "600x900" in url:
         # Locked first, as SteamGridDB orders it -- by score, and a takedown does
         # not change an asset's score. Taking the first url gets the notice.
@@ -1729,7 +1729,7 @@ _fake_release = {
     ],
 }
 _real_get_json = net.get_json
-net.get_json = lambda url, headers=None: _fake_release
+net.get_json = lambda url, headers=None, failure=None: _fake_release
 try:
     _asset, _error = emu_install.resolve_github_asset("Vita3K/Vita3K", r"^Vita3K-x86_64\.AppImage$")
     check("the x86_64 asset is chosen", _asset["name"], "Vita3K-x86_64.AppImage")
@@ -1740,7 +1740,7 @@ try:
 
     # Both Ryujinx mirrors answer 451: taken down, now self-hosting their git.
     # "GitHub did not respond" would send someone to check their wifi.
-    net.get_json = lambda url, headers=None: None
+    net.get_json = lambda url, headers=None, failure=None: None
     _asset, _error = emu_install.resolve_github_asset("nimbus-emu/Releases", r"^x$")
     check("a project that left GitHub says so", "moved" in _error, True)
 
@@ -6402,7 +6402,7 @@ check("a missing digest is not fatal", releases.parse_release(_release("v1.0.0")
 
 # The whole check, with the network stubbed out.
 _real_get_json = releases.net.get_json
-releases.net.get_json = lambda url, headers=None: [
+releases.net.get_json = lambda url, headers=None, failure=None: [
     _release("v0.9.0"),
     _release("v1.1.0"),
     _release("v1.2.0", body="sha256: %s" % ("b" * 64)),
@@ -6426,7 +6426,7 @@ check("being up to date offers nothing", releases.check("1.2.0", force=True)["av
 check("nor does being ahead of the release", releases.check("9.9.9", force=True)["available"], False)
 
 # A failed check must not break the panel or wipe what it already knew.
-releases.net.get_json = lambda url, headers=None: (_ for _ in ()).throw(OSError("no network"))
+releases.net.get_json = lambda url, headers=None, failure=None: (_ for _ in ()).throw(OSError("no network"))
 offline = releases.check("1.0.0", force=True)
 check("a network failure still answers", offline["available"], True)
 check("from the cache rather than crashing", offline["latest"]["version"], "1.2.0")
@@ -6437,7 +6437,7 @@ check("with a reason to show", bool(releases.check("1.0.0", force=True)["error"]
 
 # The bug this distinction exists for: a repository with nothing published yet
 # answered perfectly and was reported as unreachable.
-releases.net.get_json = lambda url, headers=None: []
+releases.net.get_json = lambda url, headers=None, failure=None: []
 releases.clear_cache()
 empty = releases.check("1.0.0", force=True)
 check("an empty release list is a successful check", empty["checked"], True)
@@ -6446,14 +6446,14 @@ check("nothing to offer", empty["available"], False)
 check("and a count that says why", empty["count"], 0)
 
 # GitHub answers errors as an object, not a list.
-releases.net.get_json = lambda url, headers=None: {"message": "Bad credentials"}
+releases.net.get_json = lambda url, headers=None, failure=None: {"message": "Bad credentials"}
 releases.clear_cache()
 refused = releases.check("1.0.0", force=True)
 check("a rejected token is not a successful check", refused["checked"], False)
 check("and GitHub's own words are passed through", refused["error"], "Bad credentials")
 
 # net returns None when the request itself failed; it logs the reason.
-releases.net.get_json = lambda url, headers=None: None
+releases.net.get_json = lambda url, headers=None, failure=None: None
 releases.clear_cache()
 failed = releases.check("1.0.0", force=True)
 check("a failed request is reported as such", failed["checked"], False)
