@@ -2,7 +2,7 @@
 """Print a Deck's diagnostic report here, without touching the Deck's screen.
 
     python scripts/diagnose.py                 # deck@steamdeck.local
-    python scripts/diagnose.py 192.168.0.223   # when .local will not resolve
+    python scripts/diagnose.py 192.168.1.42   # when .local will not resolve
     python scripts/diagnose.py --raw           # no redaction; for your own device
     python scripts/diagnose.py --log 500       # more of the log than the report keeps
 
@@ -126,7 +126,7 @@ def main():
         if "Could not resolve" in (finished.stderr or ""):
             sys.stderr.write(
                 "\n.local needs mDNS. Try the address instead:"
-                "\n    python scripts/diagnose.py 192.168.0.223\n"
+                "\n    python scripts/diagnose.py 192.168.1.42\n"
             )
         elif "Permission denied" in (finished.stderr or ""):
             sys.stderr.write("\nSSH keys are not set up for %s.\n" % target)
