@@ -886,14 +886,12 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
                   extractor literally unpack anything -- Vita3K installs -- and
                   the word the user cares about is the same in every case: the
                   game ends up in the emulator. */}
-              {/* The name on the file first: "Install PCSA00011" is a product
-                  code, and the button that spends ten minutes and a gigabyte
-                  should say which game it is about. */}
-              {`Install ${
-                pendingPackage.state.sent_name ||
-                pendingPackage.state.title_id ||
-                "this package"
-              }`}
+              {/* No name in it. It said the product code once -- "Install
+                  PCSA00011" -- and then the filename, and the row above this
+                  one is the picker, which shows the file that was chosen. A
+                  button repeating what is directly above it is one more thing
+                  to read and no more information. */}
+              Install this game
             </ButtonItem>
           )}
         </PanelSectionRow>

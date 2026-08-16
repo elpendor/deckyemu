@@ -5100,20 +5100,6 @@ os.remove(_written)
 
 # Removing a Vita game can clear it from the emulator, like the other two.
 _vita_info = vita_games.game_info(os.path.join(_vita_game, "eboot.bin"), _vita_root)
-# What the install button can call a package before anything has decrypted it.
-# "Install PCSA00011" names a product code; the file the user sent has the name
-# they would recognise, and it is the only one that exists at that point.
-check("a package is named after the file that was sent",
-      plugin._sent_name("/home/deck/deckyemu/transfer/GRAVITY RUSH (PCSA00011) (v01.00).vpk"),
-      "GRAVITY RUSH")
-check("tidied the same way a ROM is",
-      plugin._sent_name("/x/Ratchet_and_Clank_USA.pkg"), "Ratchet and Clank USA")
-# A file named after its own content id is the product code again in a longer
-# coat, and saying it back is no better than the code it was meant to replace.
-check("but a file named after its content id offers nothing",
-      plugin._sent_name("/x/UP9000-PCSA00011_00-GRAVITYRUSH000000.pkg"), "")
-check("and neither does no file at all", plugin._sent_name(""), "")
-
 check("a Vita game is recognised from its eboot path",
       (_vita_info["ok"], _vita_info["title"]), (True, "Braid"))
 check("an id that is not one deletes nothing",
