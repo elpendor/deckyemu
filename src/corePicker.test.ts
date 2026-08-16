@@ -57,15 +57,23 @@ describe("coreOptions", () => {
 });
 
 describe("installableOptions", () => {
-  it("labels a core the same way it will be labelled once installed", () => {
-    // A core offered as "Snes9x" and then listed as "Snes9x - Super Nintendo"
-    // reads as two different things. One label rule, used by both lists.
-    const [withSystem, without] = installableOptions([
-      installable("snes9x", "Snes9x", "Super Nintendo"),
-      installable("mame", "MAME"),
+  it("does not append the system, which the question has already settled", () => {
+    // Every core here runs the one file being added, so the system is not in
+    // doubt. libretro's own display_name already carries it -- appending
+    // system_name produced "Nintendo - Game Boy / Color (DoubleCherryGB) -
+    // Game Boy/Game Boy Color", which names the system twice in seventy
+    // characters and wraps out of the control on a Deck.
+    const [labelled] = installableOptions([
+      installable("DoubleCherryGB", "Nintendo - Game Boy / Color (DoubleCherryGB)",
+        "Game Boy/Game Boy Color"),
     ]) as { label: string }[];
-    expect(withSystem.label).toBe("Snes9x - Super Nintendo");
-    expect(without.label).toBe("MAME");
+    expect(labelled.label).toBe("Nintendo - Game Boy / Color (DoubleCherryGB)");
+  });
+
+  it("labels the same way the Cores tab does", () => {
+    // Consistency with the other place a core is picked before being installed.
+    const [a] = installableOptions([installable("mame", "MAME", "Arcade")]) as { label: string }[];
+    expect(a.label).toBe("MAME");
   });
 
   it("offers every suggestion, in the order the backend ranked them", () => {

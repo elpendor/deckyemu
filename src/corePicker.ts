@@ -52,10 +52,15 @@ export function coreOptions(cores: Core[]): DropdownOption[] {
  * The same list, for cores that are not installed yet.
  *
  * Flat, with no grouping: everything here comes from the libretro buildbot, so
- * the distinction the list above draws does not exist among these. Labelled by
- * the same rule, because a core should not be called one thing while it is
- * being offered and another once it is installed.
+ * the distinction the list above draws does not exist among these.
+ *
+ * `display_name` alone, *not* the rule above -- which is what the Cores tab
+ * does, and for the same reason. Every core in this list runs the one file
+ * being added, so the system is already settled by the question; appending it
+ * gave "Nintendo - Game Boy / Color (DoubleCherryGB) - Game Boy/Game Boy Color",
+ * seventy characters naming Game Boy Color twice. On a Deck that wraps into a
+ * paragraph and stops reading as a control at all.
  */
 export function installableOptions(cores: InstallableCore[]): DropdownOption[] {
-  return cores.map((core) => ({ data: core.id, label: coreLabel(core) }));
+  return cores.map((core) => ({ data: core.id, label: core.display_name }));
 }

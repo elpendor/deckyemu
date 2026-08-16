@@ -1003,7 +1003,9 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
             <PanelSectionRow>
               <Field
                 label="No core installed for this ROM"
-                description={`One core can run .${probe?.match_extension}.`}
+                // Names it here because there is no dropdown above the button
+                // saying which one, and the button is only the verb.
+                description={`${chosenInstallable.display_name} can run .${probe?.match_extension}.`}
               />
             </PanelSectionRow>
           )}
@@ -1013,9 +1015,11 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
               onClick={() => void installAndUse(chosenInstallable)}
               disabled={Boolean(installingCore) || adding}
             >
-              {installingCore
-                ? `Installing ${chosenInstallable.display_name}...`
-                : `Install ${chosenInstallable.display_name}`}
+              {/* Not the core's name again: the dropdown above already says
+                  which one, and repeating a forty-character libretro name here
+                  made the button wrap to two lines to restate it. Matches the
+                  Cores tab, where the button under the picker is just the verb. */}
+              {installingCore ? "Installing..." : "Install this core"}
             </ButtonItem>
           </PanelSectionRow>
         </>
