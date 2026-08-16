@@ -23,6 +23,7 @@ from harness import TMP, check, section, summary  # noqa: E402
 
 import decky  # noqa: E402
 import diagnostics  # noqa: E402
+import releases  # noqa: E402
 import store  # noqa: E402
 
 # Fabricated to the shape each check looks for and nothing more -- a real key of
@@ -110,6 +111,10 @@ _INBOX = os.path.join(TMP, "inbox")
 os.makedirs(_INBOX, exist_ok=True)
 with open(os.path.join(_INBOX, "gravity rush.pkg"), "wb") as _handle:
     _handle.write(b"PKG")
+# Whatever else is lying in the inbox, including something whose name is an
+# ordinary word that appears in the report's own instructions.
+with open(os.path.join(_INBOX, "template.js"), "wb") as _handle:
+    _handle.write(b"// not a game")
 
 _REPORT = diagnostics.build(
     {"version": "1.2.3", "build": "abc1234", "built_at": "2026-01-01"},
@@ -206,6 +211,29 @@ check("and neither is the RetroAchievements username",
       "somebodyknown" in _REPORT, False)
 check("but the count is", "3 game(s)" in _REPORT, True)
 check("and so are the systems", "SNES" in _REPORT and "N64" in _REPORT, True)
+
+
+section("and it says where it is meant to go")
+
+# The report is read on a phone, away from the device that made it, by somebody
+# who then has to find the repository. Both ends carry the address so neither
+# has to be remembered.
+check("the report names the issue form", diagnostics.NEW_ISSUE_URL in _REPORT, True)
+check("and the page offers it as a link",
+      diagnostics.NEW_ISSUE_URL in diagnostics.as_page(_REPORT), True)
+# It goes through the same redaction as everything else, and the rules that
+# strike tokens out of URLs and stems out of filenames both have opinions about
+# a URL. An address the reader cannot use is worse than no address.
+check("which survives the redaction intact",
+      "github.com/elpendor/deckyemu/issues/new" in _REPORT, True)
+# It survives because it is added after the redaction rather than put through
+# it. A `template.js` sitting in the inbox put "template" on the strike list and
+# the address came out as `?[removed]=bug_report.yml` -- a report telling its
+# reader to visit a URL that does not exist.
+check("even with a file in the inbox named after a word in it",
+      "?template=bug_report.yml" in _REPORT, True)
+check("and is built from the repository the updater reads",
+      diagnostics.NEW_ISSUE_URL.startswith("https://github.com/%s/" % releases.REPO), True)
 
 
 section("what a bug actually needs is there")

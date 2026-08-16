@@ -39,6 +39,7 @@ import urllib.parse
 
 import decky
 
+import releases
 import store
 import sysenv
 
@@ -143,6 +144,11 @@ def _strike_filenames(text):
 
 
 REDACTED = "[removed]"
+
+#: Where a finished report is meant to end up. Built from `releases.REPO`, which
+#: the update check already reads, so the two cannot come to disagree about which
+#: repository this is.
+NEW_ISSUE_URL = "https://github.com/%s/issues/new?template=bug_report.yml" % releases.REPO
 
 
 def _redact(text, secrets, words=()):
@@ -282,9 +288,15 @@ def build(version, install, emulators_registered, library, catalog_installed=(),
     # for somebody to discover by moving one line.
     try:
         for name in os.listdir(inbox or ""):
+            stem = os.path.splitext(name)[0]
             personal.append(name)
-            personal.append(os.path.splitext(name)[0])
-            names.append(os.path.splitext(name)[0])
+            # `KEPT_STEMS` applies here too, not only to the word pass. A
+            # `template.js` sitting in the inbox put "template" on the
+            # strike-by-value list, and the report came back telling the reader
+            # to visit `.../issues/new?[removed]=bug_report.yml`.
+            if stem.lower() not in KEPT_STEMS:
+                personal.append(stem)
+                names.append(stem)
     except OSError:
         pass
     for entry in library.values():
@@ -313,11 +325,6 @@ def build(version, install, emulators_registered, library, catalog_installed=(),
         systems[entry.get("platform") or "?"] = systems.get(entry.get("platform") or "?", 0) + 1
 
     parts = [
-        "# DeckyEmu diagnostic report",
-        "",
-        "Paste this into the issue. Keys, tokens, and the names of the games in",
-        "your library are removed -- see py_modules/diagnostics.py for the rules.",
-        "",
         _section(
             "Build",
             "\n".join(
@@ -397,9 +404,27 @@ def build(version, install, emulators_registered, library, catalog_installed=(),
             if word.lower() not in KEPT_STEMS
         )
 
-    return _redact(
+    # The heading and the address go on *after* the redaction rather than
+    # through it. Everything below is somebody's device and is meant to be
+    # edited; this is the report explaining itself, and a rule that strikes a
+    # word out of the URL leaves a reader holding a report and no way to send
+    # it. That is not hypothetical -- a `template.js` in the inbox did exactly
+    # that to `?template=bug_report.yml`.
+    header = "\n".join([
+        "# DeckyEmu diagnostic report",
+        "",
+        "Paste this into a bug report at",
+        "    " + NEW_ISSUE_URL,
+        "",
+        "Keys, tokens, and the names of the games in your library are removed --",
+        "see py_modules/diagnostics.py for the rules. Read it before you send it.",
+        "",
+    ])
+
+    body = _redact(
         "\n".join(parts), list(live_secrets) + secrets + personal, words
     )
+    return header + body
 
 
 def as_page(report):
@@ -418,12 +443,19 @@ def as_page(report):
         "<title>DeckyEmu diagnostic report</title>"
         "<style>body{font:14px system-ui;margin:0;padding:12px;background:#1a1c22;color:#e6e6e6}"
         "h1{font-size:17px;margin:0 0 4px}p{opacity:.7;margin:0 0 10px}"
-        "textarea{width:100%;height:78vh;box-sizing:border-box;background:#0f1116;color:#dfe3ea;"
+        "a.go{display:inline-block;margin-top:10px;padding:10px 14px;border-radius:8px;"
+        "background:#3d6ecb;color:#fff;text-decoration:none;font-weight:600}"
+        "textarea{width:100%;height:68vh;box-sizing:border-box;background:#0f1116;color:#dfe3ea;"
         "border:1px solid #333;border-radius:6px;padding:10px;font:12px ui-monospace,monospace}"
         "</style>"
         "<h1>DeckyEmu diagnostic report</h1>"
-        "<p>Tap the box to select it all, then copy and paste it into the issue.</p>"
+        "<p>Tap the box to select it all and copy it, then open the issue form.</p>"
         "<textarea readonly onclick='this.select()'></textarea>"
+        # The way out, on the device that has the text on its clipboard. Without
+        # it the reader is holding a report and left to find the repository
+        # themselves, which is the one step of this that a phone is worst at.
+        "<p><a class=go target=_blank rel=noopener href='" + NEW_ISSUE_URL + "'>"
+        "Open the issue form &rarr;</a></p>"
         # Through JSON rather than into the markup: the report is a log tail and
         # can hold anything, including the closing tag of the element it would
         # otherwise be written into.
