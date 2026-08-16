@@ -79,9 +79,18 @@ add `<deck-ip>:8081` under *Discover network targets*, and inspect
 **SharedJSContext**. The deployed sourcemap points stack traces at the original
 `.tsx`.
 
-Log lines carry one of two prefixes: most say `[retroarch]`, from when this was
-named after the thing it drove, and newer files say `[deckyemu]`. The rename was
-never finished, so filter on both.
+The backend log carries no prefix of its own — decky writes the timestamp and
+level, and the message follows. Every public method on `Plugin` is wrapped, so a
+failing one appears as `<method>() failed` with its traceback, which is the first
+thing to grep for:
+
+```sh
+ssh deck@steamdeck.local 'grep -A 20 "() failed" "$(ls -t ~/homebrew/logs/deckyemu/*.log | head -1)"'
+```
+
+Frontend `console` calls are prefixed `[deckyemu]`, but nothing in Game Mode can
+see them — that is what the diagnostic report under *Updates → Report a problem*
+is for.
 
 ### Backend logic tests
 
@@ -98,59 +107,117 @@ deploying — they catch far more than poking at the UI does.
 
 ## Layout
 
+Every backend module is listed. The frontend is grouped by role instead, because
+`src/` is mostly one file per panel or modal and naming each of them here would
+be a second copy of the directory listing. What is worth knowing about `src/` is
+which files are *not* a panel, and why they sit where they do.
+
 ```
-main.py                     Plugin class; thin async wrapper over py_modules
-py_modules/
+main.py                     The Plugin class decky calls into. Mostly thin
+                            wrappers, but the add and update flows are here.
+py_modules/                 Backend logic. Plain Python, stdlib only -- it runs
+                            on decky's frozen interpreter and cannot grow deps.
   ra_detect.py              Find RetroArch (flatpak/native/AppImage), build argv
-  ra_cores.py               Enumerate cores, parse .info, look inside archives
-  libretro_meta.py          Name cleanup + boxart matching
-  emulators.py              User-registered standalone emulators
-  platforms.py              Short system names (SNES, N64, ...)
-  installer.py              Install RetroArch and cores from the buildbot
-  sgdb.py                   Optional SteamGridDB lookups
-  cheevos.py                RetroAchievements login and per-launch config
-  launchers.py              Per-game launch scripts + the --appendconfig override
-  store.py                  Settings + added-games registry
-  net.py                    stdlib-only HTTP helpers
-  fileserver.py             Upload server for other devices (token-scoped)
-  sysenv.py                 Strip Steam's runtime libs from subprocesses
-  releases.py               Find newer releases on GitHub (looks only)
+  ra_cores.py               Scan cores, parse .info, match extensions, peek in zips
+  libretro_meta.py          Name cleanup and libretro thumbnail resolution
+  sgdb.py                   SteamGridDB search, scoring, era filtering, key discovery
+  platforms.py              libretro database -> short name and folder name
+  installer.py              Install RetroArch (flatpak) and cores (buildbot)
+  launchers.py              One .sh per game; the RetroArch override files
+  cheevos.py                RetroAchievements login, and the per-launch config
+  store.py                  settings / library / emulators / collections records
+  romshelf.py               File a ROM under roms/<system>, and delete it again
+  net.py                    stdlib-only HTTP, with a system-CA fallback
+  sysenv.py                 Strip Steam's runtime; user_home(); user_dir()
+  fileserver.py             Upload from another device: QR, or short URL + code
+  releases.py               Find newer releases on GitHub. Looks only.
   handoff.py                Serve one staged update to decky over loopback
-  steam_shortcuts.py        Read Steam's shortcuts.vdf (the records outlive ours)
-src/
-  index.tsx                 Quick Access panel root (status, add, added games)
-  ManagePage.tsx            Full-screen setup page; one route per tab
-  AddGamePanel.tsx          The pick-ROM / pick-core / add flow
-  AddedGamesPanel.tsx       Added games, with removal
-  CoreInstallPanel.tsx      Browse and install cores by system
-  EmulatorsPanel.tsx        Register standalone emulators
-  EmulatorEditorModal.tsx   Add/edit an emulator, including its system
-  ArtPickerModal.tsx        Correct a wrong artwork match
-  GameEditorModal.tsx       Rename, change core, or re-pick artwork
-  OrphanModal.tsx           Entries that drifted out of sync, and the fix for each
-  TransferModal.tsx         QR code, arriving files, received files
-  TransferStatusPanel.tsx   Transfer state in the panel, once the dialog is gone
-  addFlow.ts                Shared ROM selection, picker and transfer
-  romDraft.ts               Module-scope draft; survives Steam unmounting the panel
-  timeout.ts                withTimeout + callWithRetry, for calls lost to a reload
-  InstallRetroArchPanel.tsx First-run install, with streamed progress
-  ArtworkPanel.tsx          Artwork source and the SteamGridDB key flow
-  CollectionsPanel.tsx      Collection naming and the per-system split
-  RetroArchPanel.tsx        RetroArch status, install/uninstall, cores, launching
-  AchievementsPanel.tsx     RetroAchievements sign-in and per-launch settings
-  LibraryPanel.tsx          Orphan check and removing every added game
-  UpdatePanel.tsx           Installed build, its changelog, and installing a newer
-  updater.ts                Hand an update to decky's installer (frontend half)
+  diagnostics.py            The redacted report behind Report a problem
+  devreset.py               Development-only resets. Gated twice; absent from a
+                            release build and refused by the backend in one.
+  steam_shortcuts.py        Read Steam's shortcuts.vdf (records outlive ours)
+
+  emulators.py              Registered standalone emulators: CRUD, launch argv
+  emulator_catalog/         The one-click catalog: one module per emulator, each
+                            exporting ENTRY. schema.py is the reference when
+                            adding one; imported.py loads user-supplied
+                            definitions, which are validated far more strictly.
+  emu_install.py            Install a catalog emulator (flatpak, GitHub AppImage)
+  emu_config.py             Recommended settings written into the emulator's own
+                            config, and the rule for when that is allowed
+  emu_firmware.py           Match a BIOS or key file by name and put it where the
+                            emulator reads it
+
+  sfo.py                    PARAM.SFO, the container PS3, PS4 and Vita share
+  ps3_games.py              RPCS3: .pkg headers, unpacked games, .rap licences
+  ps4_games.py              shadPS4: CNT packages, unpacked games
+  vita_games.py             Vita3K: PKG type 2, installed titles, zRIF keys
+  vita_release.py           Recognise a NoNpDrm .zip by the param.sfo inside it
+  xbox_disc.py              Read XDVDFS enough to say whether a disc can boot
+
+  plugin_base.py            What every mixin may assume about the composed
+                            Plugin -- declarations only, no implementations.
+  plugin_accounts.py        Signing in to somebody else's service
+  plugin_audit.py           Drift between records, launchers, ROMs and shortcuts
+  plugin_emulators.py       Installing and registering emulators
+  plugin_firmware.py        Putting BIOS files and keys where they are read
+  plugin_packages.py        Games that arrive as a .pkg
+                            These five are mixins: decky exposes the methods it
+                            finds on the plugin object, so the names must stay
+                            on Plugin while the code lives somewhere findable.
+                            None of them may be instantiated alone.
+
+src/                        Frontend (React + TypeScript, bundled by rollup).
+  index.tsx                 Quick Access panel root, and route registration
+  ManagePage.tsx            The settings page. One route per tab -- Steam's
+                            SidebarNavigation picks its tab from the URL.
+  ErrorBoundary.tsx         One per surface. A throw during render is not
+                            contained otherwise: it unmounts to whatever
+                            boundary Steam happens to have, which is an empty
+                            Game Mode screen.
+  backend/                  Every callable() binding and its types, in five
+                            files by subject. index.ts re-exports, so importers
+                            still write `from "./backend"`.
+  steam/                    All undocumented SteamClient / appStore /
+                            collectionStore use, in four files by subject.
+                            Kept free of backend imports so the Node tests can
+                            load it -- anything needing both halves lives one
+                            level up (addGame.ts, collections.ts,
+                            reuseShortcut.ts, setupShortcut.ts).
+  *Panel.tsx                One per Quick Access row or settings tab
+  *Modal.tsx                Transient flows. Preferred over a tab: a modal opens
+                            over the panel, a tab costs a navigation out and back.
+  <name>.ts + <name>.test.ts
+                            Pure logic pulled out of a component so it can be
+                            tested -- there is no DOM environment, deliberately.
+                            capsuleFit/fitArtwork is the pattern: the geometry
+                            is testable, the canvas next door is not.
+  romDraft.ts               Module-scope draft state. Steam unmounts the panel
+                            when a modal opens, so anything that must survive
+                            that cannot live in component state.
+  timeout.ts                withTimeout + callWithRetry, for calls lost when the
+                            plugin reloads mid-flight
   version.ts                Build stamps compiled in by rollup; isStale()
-  danger.ts                 Shared styling for destructive controls
-  steam.ts                  SteamClient shortcut + artwork + collection calls
-  backend.ts                Typed callables into main.py
+  updater.ts                Hand an update to decky's own installer
+
 scripts/
-  deploy.sh                 Push to a Deck over ssh (no Docker, no rsync)
-  test_backend.py           Backend tests with a stubbed decky module
+  harness.py                The stub decky and the scratch dir. Import it before
+                            anything from py_modules.
+  test_backend.py           The backend suite, and it runs scripts/tests/ too
+  tests/                    One file per subject, each runnable on its own.
+                            New backend tests go here.
+  check_release_build.py    Assert a release bundle carries no development-only
+                            code, and that a development one still does
   changelog.py              Release notes from commit subjects, grouped by prefix
+  deploy.sh                 Push to a Deck over ssh (no Docker, no rsync)
   loaded_frontend.py        Ask Steam how old the bundle it is running is
+  diagnose.py               Read a diagnostic report off a device over the network
 ```
+
+`scripts/tests/test_docs_layout.py` checks that every path named above exists.
+That block spent several releases pointing at `src/steam.ts` and `src/backend.ts`
+after both became directories, which is worse than an omission: a gap is
+something to look up, a wrong path is something to go looking for.
 
 ## Steam's runtime breaks system binaries
 
@@ -174,7 +241,7 @@ recording:
 - `AddShortcut(name, exe, dir, launchOptions)` accepts four arguments but only
   reliably acts on the first two. The rest have to be re-applied with
   `SetShortcut*`, and those only stick once Steam has registered the app in
-  `appStore` — hence the overview poll in `steam.ts`.
+  `appStore` — hence the overview poll in `src/steam/shortcuts.ts`.
 - `SetCustomArtworkForApp` wants bare base64, not a data URI; the image type is a
   separate argument. Asset types are `Capsule=0, Hero=1, Logo=2, Header=3,
   Icon=4, HeroBlur=5`; this plugin writes the first four.
