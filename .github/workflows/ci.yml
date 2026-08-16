@@ -3,10 +3,20 @@ name: CI
 # The same commands the deploy loop runs by hand: both test suites, typecheck,
 # bundle, plus an installable plugin to download.
 #
-# Run on request only -- from the Actions tab, or `gh workflow run ci.yml`. Not on
-# push: most commits here are already validated locally before they leave the
-# machine, and a build per push is noise rather than a signal. It also means the
-# release commit this workflow pushes cannot retrigger it.
+# Dispatched by hand, and run on every pull request. Still not on push: commits
+# that land directly are validated before they leave the machine, a build per
+# push is noise rather than a signal, and the release commit this workflow makes
+# cannot retrigger it.
+#
+# A pull request is the case none of that covers -- a branch from somebody else
+# has never been near that machine, and with no trigger the only way to learn
+# whether it builds is to fetch it and run the checks by hand. It is also what
+# "do not merge unless the checks pass" would be built on: a required status
+# check has to be one that actually runs.
+#
+# The publishing half is inert here without any guard of its own. Every step
+# from the version bump down is `if: inputs.publish`, and a pull request has no
+# inputs, so they all skip. Nothing about a release can happen on this path.
 on:
   workflow_dispatch:
     inputs:
@@ -19,19 +29,43 @@ on:
         type: choice
         default: patch
         options: [patch, minor, major, none]
+  pull_request:
+    branches: [main]
+
+# One run per pull request. Pushing three fixes in a minute should leave one
+# answer, not three, and the two it cancels were about to be superseded anyway.
+# Keyed so a dispatched run is never cancelled by a pull request or the reverse.
+concurrency:
+  group: ci-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
     runs-on: ubuntu-latest
     # Committing the version bump and creating a release both need write access;
     # the rest of the job does not.
+    #
+    # This cannot be narrowed per event: `permissions` takes no expressions --
+    # it is absent from the context-availability table, unlike `concurrency`
+    # above, which is why the trick that looks obvious here does not parse. What
+    # keeps a pull request away from the write half is that every step from the
+    # bump down is `if: inputs.publish`, and a pull request has no inputs. A
+    # branch from a fork is narrower still: GitHub issues those a read-only
+    # token whatever this file asks for.
+    #
+    # Splitting the checks into their own job with `contents: read` and leaving
+    # the release half `needs:` it would make that structural rather than
+    # argued. Worth doing if this path ever grows a step that writes.
     permissions:
       contents: write
     steps:
-      # The branch, not the detached commit: a release commits the bump back to it.
+      # On a dispatch, the branch rather than the detached commit: a release
+      # commits the bump back to it. On a pull request that ref is `<n>/merge`,
+      # which is not a branch and not what is under review -- so the default
+      # checkout is taken instead, which is the merge result GitHub prepared.
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.ref_name }}
+          ref: ${{ github.event_name == 'pull_request' && '' || github.ref_name }}
           # The release notes are generated from the commits since the previous
           # tag, and the default shallow clone has neither the tags nor the
           # history to walk. It would only fail on the run that matters.
