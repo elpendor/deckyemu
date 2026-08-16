@@ -35,6 +35,8 @@ import {
   pinnedLabel,
   withCurrentCore,
 } from "./corePicker";
+import { preselectCore } from "./CoreInstallPanel";
+import { openManagePage } from "./manageRoute";
 import { callWithRetry } from "./timeout";
 import { logError } from "./logError";
 import { sentence } from "./sentence";
@@ -159,6 +161,11 @@ export function GameEditorModal({ game, onSaved, closeModal }: Props) {
   const coreOptions: DropdownOption[] = useMemo(() => buildCoreOptions(visible), [visible]);
 
   const isEmulator = isEmulatorId(coreId);
+
+  // The core this game runs on is in no list, so it is not installed. Same
+  // condition `pinnedLabel` reports on, kept as one expression so the label and
+  // the button that answers it cannot disagree about whether it is missing.
+  const missingCore = Boolean(cores) && Boolean(pinnedLabel(cores?.all ?? [], coreId));
 
   const pickRom = useCallback(async () => {
     setError("");
@@ -419,6 +426,30 @@ export function GameEditorModal({ game, onSaved, closeModal }: Props) {
           {cores && cores.matching.length > 0 && (
             <DialogButton onClick={() => setShowAll((previous) => !previous)} style={BUTTON}>
               {showAll ? "Show matching only" : "Show everything installed"}
+            </DialogButton>
+          )}
+
+          {/* The core this game runs on is gone -- uninstalling RetroArch takes
+              its cores with it. Sends the user to the tab that installs one,
+              with this core already chosen, rather than installing it here:
+              that tab already handles RetroArch being absent too, and a second
+              place that installs cores is the duplication this project has
+              twice watched drift. One tap instead of six navigations. */}
+          {cores && missingCore && (
+            <DialogButton
+              style={BUTTON}
+              onClick={() => {
+                if (isEmulator) {
+                  // Not a libretro core, so the core list cannot install it.
+                  openManagePage("emulators");
+                } else {
+                  preselectCore(coreId);
+                  openManagePage("retroarch");
+                }
+                closeModal?.();
+              }}
+            >
+              {isEmulator ? "Set up this emulator" : "Install this core"}
             </DialogButton>
           )}
         </div>

@@ -1,7 +1,6 @@
 import {
   ButtonItem,
   Field,
-  Navigation,
   PanelSection,
   PanelSectionRow,
   SidebarNavigation,
@@ -20,38 +19,12 @@ import { UpdatePanel } from "./UpdatePanel";
 import { callWithRetry } from "./timeout";
 import { IS_DEV_BUILD } from "./version";
 
-export const MANAGE_ROUTE = "/deckyemu/manage";
 
-/**
- * A route per tab, because the route *is* the selection.
- *
- * SidebarNavigation has no "selected page" prop, whatever `@decky/ui`'s types
- * suggest. Steam's own component picks the tab by matching the current URL
- * against each page's `route` and falls back to the first page, then navigates
- * with `history.replace` when a tab is tapped. Pages carrying no route all
- * compare equal to "no route", which is why supplying `page`/`onPageRequested`
- * made every tab a no-op.
- *
- * Selection living in the URL is also what fixes the tab being lost: opening
- * SteamGridDB pushes the browser route, and pressing B pops back to this exact
- * URL rather than to a bare page that starts over at the first tab.
- *
- * `MANAGE_ROUTE` must be registered non-exact for these to resolve (see
- * `index.tsx`).
- */
-const tabRoute = (tab: string) => `${MANAGE_ROUTE}/${tab}`;
-
-/**
- * Navigate to the setup page, optionally straight to one tab.
- *
- * Naming a tab works for the same reason the tabs work at all: the selection is
- * the URL, so arriving at a tab's route selects it. Bare `MANAGE_ROUTE` matches
- * no page and falls back to the first, which is the wanted default.
- */
-export function openManagePage(tab?: "artwork" | "retroarch") {
-  Navigation.Navigate(tab ? tabRoute(tab) : MANAGE_ROUTE);
-  Navigation.CloseSideMenus();
-}
+// The route helpers live in manageRoute.ts, which imports no components --
+// this module renders the panels that want to navigate here, so holding them
+// made the import graph a loop. Re-exported, so importers read the same.
+export { MANAGE_ROUTE, openManagePage } from "./manageRoute";
+import { tabRoute } from "./manageRoute";
 
 const PAGE: React.CSSProperties = {
   // Steam's own pages inset their content; matching that keeps the page from

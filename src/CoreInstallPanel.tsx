@@ -37,6 +37,24 @@ let cachedCatalog: InstallableCore[] | null = null;
 let lastSystem = "";
 let lastCoreId = "";
 
+/**
+ * A core to open this panel on, set by whoever is about to navigate here.
+ *
+ * The game editor uses it: a game whose core was uninstalled cannot offer to
+ * reinstall it in place -- installing belongs here, and a second install path
+ * is the kind of duplication that has already drifted twice in this project --
+ * so it sends the user here instead, with the core it needs already chosen.
+ *
+ * Held rather than applied, because the catalog is very likely not loaded yet:
+ * this panel caches it at module scope and the tab may never have been opened.
+ * The effect below resolves the name once there is a catalog to resolve it in.
+ */
+let pendingCoreId = "";
+
+export function preselectCore(coreId: string) {
+  pendingCoreId = coreId;
+}
+
 export function CoreInstallPanel({ onCoresChanged, reloadKey = 0 }: Props) {
   const [catalog, setCatalog] = useState<InstallableCore[] | null>(cachedCatalog);
   const [system, setSystem] = useState(lastSystem);
@@ -73,6 +91,20 @@ export function CoreInstallPanel({ onCoresChanged, reloadKey = 0 }: Props) {
   useEffect(() => {
     if (reloadKey) void load(false);
   }, [reloadKey, load]);
+
+  // Somebody navigated here asking for a particular core. Consumed rather than
+  // remembered: it describes one arrival, and leaving it set would drag the
+  // list back to that core every time the tab is opened afterwards.
+  useEffect(() => {
+    if (!pendingCoreId || !catalog) return;
+    const wanted = catalog.find((core) => core.id === pendingCoreId);
+    pendingCoreId = "";
+    if (!wanted) return;
+    setSystem(wanted.system_name);
+    lastSystem = wanted.system_name;
+    setCoreId(wanted.id);
+    lastCoreId = wanted.id;
+  }, [catalog]);
 
   const systems = useMemo(() => {
     if (!catalog) return [];

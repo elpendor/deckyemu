@@ -53,7 +53,7 @@ import {
 } from "./addFlow";
 import { coreOptions as buildCoreOptions, installableOptions } from "./corePicker";
 import { ArtPickerModal } from "./ArtPickerModal";
-import { openManagePage } from "./ManagePage";
+import { openManagePage } from "./manageRoute";
 import { SGDB_PROMPT, sgdbKeyJustAppeared, shouldOfferSgdb } from "./sgdbPrompt";
 import { InstallProgress } from "./InstallProgress";
 import { PackagedGamesModal } from "./PackagedGamesModal";
