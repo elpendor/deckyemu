@@ -1008,7 +1008,31 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
         </PanelSectionRow>
       )}
 
-      {installable.length > 0 && chosenInstallable && (
+      {/* Cores exist for this file, but there is no RetroArch to put one in.
+          Offering the picker anyway gives a button whose only possible outcome
+          is "RetroArch was not found on this system." in red at the bottom of
+          the panel, which on a Deck is below the fold -- so pressing it reads
+          as nothing happening at all. Say what is missing, and go there. */}
+      {installable.length > 0 && !status.found && (
+        <>
+          <PanelSectionRow>
+            <Field
+              label="RetroArch is not installed"
+              description={
+                `${installable.length} core${installable.length === 1 ? "" : "s"}` +
+                ` can run .${probe?.match_extension}, and a core needs RetroArch to run in.`
+              }
+            />
+          </PanelSectionRow>
+          <PanelSectionRow>
+            <ButtonItem layout="below" onClick={() => openManagePage("retroarch")}>
+              Install RetroArch
+            </ButtonItem>
+          </PanelSectionRow>
+        </>
+      )}
+
+      {installable.length > 0 && status.found && chosenInstallable && (
         <>
           {/* Only when there is a choice to make. A dropdown holding one option
               is a control that does nothing -- it reads as a choice and offers

@@ -48,7 +48,7 @@ const tabRoute = (tab: string) => `${MANAGE_ROUTE}/${tab}`;
  * the URL, so arriving at a tab's route selects it. Bare `MANAGE_ROUTE` matches
  * no page and falls back to the first, which is the wanted default.
  */
-export function openManagePage(tab?: "artwork") {
+export function openManagePage(tab?: "artwork" | "retroarch") {
   Navigation.Navigate(tab ? tabRoute(tab) : MANAGE_ROUTE);
   Navigation.CloseSideMenus();
 }
