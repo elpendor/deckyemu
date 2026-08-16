@@ -16,6 +16,7 @@ import {
   uninstallCore,
   type InstallableCore,
 } from "./backend";
+import { takeGamepadFocus } from "./steam";
 import { callWithRetry } from "./timeout";
 
 interface Props {
@@ -188,17 +189,20 @@ export function CoreInstallPanel({ onCoresChanged, reloadKey = 0 }: Props) {
       // The install button, which is why anyone arrived. Falling back to the
       // section's first control when the core turns out to be installed
       // already -- the row is absent then, and the alternative is Remove.
-      // No focus is moved, deliberately. Steam's gamepad ring is a separate
-      // system from DOM focus -- `element.focus()` moves `document.activeElement`
-      // and the ring stays where it was, which is how three attempts at this
-      // passed a probe and did nothing on the device. The documented way in,
-      // `m_navNode.TakeFocus()`, is from an older client: measured on this
-      // build, not one element in the whole document carries `m_navNode`.
+      // The gamepad ring onto the install button, which is why anyone arrived.
+      // Not `element.focus()`: that moves DOM focus and leaves the ring where
+      // it was. See src/steam/focus.ts for what this actually reaches.
       //
-      // Steam's own components scroll into view when the controller navigates
-      // to them, so focus is meant to follow the user rather than be taken from
-      // them. Scrolling puts the install button on screen; one press of down
-      // reaches it. That is the whole of what is safely available.
+      // The install button by text rather than by ref, because the row it sits
+      // in is conditional and a ref can still be empty on the frame after the
+      // state above was set. Nothing else in this section starts with
+      // "Install", and if the core is somehow already installed there is no
+      // such button and the ring is left alone -- which is right, since the
+      // only other one is Remove.
+      const install = [...node.querySelectorAll("button")].find((button) =>
+        (button.innerText || "").trim().startsWith("Install "),
+      );
+      takeGamepadFocus(install);
       // Then the scroll position, by hand. `scrollIntoView` does not move this
       // page: measured over CEF, the section sat at y=290 with the scroller at
       // scrollTop 68, and calling it with `block: "start"` left both exactly

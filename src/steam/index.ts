@@ -20,3 +20,4 @@
 export * from "./shortcuts";
 export * from "./artwork";
 export * from "./collections";
+export * from "./focus";
