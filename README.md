@@ -122,7 +122,7 @@ see what has been added — and a settings page for everything configured once:
 | **Artwork** | Artwork source and the SteamGridDB key |
 | **Collections** | How added games are grouped in Big Picture |
 | **Library** | Orphan check, and removing every game the plugin added |
-| **Updates** | Which build is installed, what changed in it, and installing a newer one |
+| **Updates** | Which build is installed, what changed in it, installing a newer one, and reporting a problem |
 
 Anything the plugin puts on your device that is yours to keep lives under
 `~/deckyemu`:
@@ -656,7 +656,7 @@ It can take a while, so it reports what it is deleting as it goes.
 
 ## Reporting a problem
 
-**Library → Report a problem** gathers what a bug report needs and puts it where
+**Updates → Report a problem** gathers what a bug report needs and puts it where
 you can read it: scan the QR code with a phone, or type the short address and the
 six digits on anything with a keyboard. Copy the text, paste it into the issue.
 

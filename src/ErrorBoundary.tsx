@@ -76,7 +76,8 @@ export class ErrorBoundary extends Component<Props, State> {
         </div>
         <div style={{ fontSize: "13px", opacity: 0.7 }}>
           Nothing else in the plugin is affected, and nothing has been changed on
-          the device. The plugin log has the details.
+          the device. The plugin log has the details, and Updates &rarr; Report a
+          problem will put them where you can read them.
         </div>
         <DialogButton onClick={this.retry}>Try again</DialogButton>
       </div>

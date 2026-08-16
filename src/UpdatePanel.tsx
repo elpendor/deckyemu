@@ -1,4 +1,10 @@
-import { ButtonItem, Field, PanelSection, PanelSectionRow } from "@decky/ui";
+import {
+  ButtonItem,
+  Field,
+  PanelSection,
+  PanelSectionRow,
+  showModal,
+} from "@decky/ui";
 
 import { clampNotes, countItems, parseNotes } from "./releaseNotes";
 import { toaster } from "@decky/api";
@@ -14,6 +20,7 @@ import {
 import { callWithRetry } from "./timeout";
 import { canInstallUpdates, installUpdate } from "./updater";
 import { describe, FRONTEND_BUILD, FRONTEND_VERSION, isStale } from "./version";
+import { ReportModal } from "./ReportModal";
 
 /**
  * Two halves side by side rather than stacked: they are one fact -- which build
@@ -249,8 +256,10 @@ export function UpdatePanel() {
   };
 
   return (
-    // No title: the sidebar already labels this page "Updates", and a section of
-    // the same name under it reads as the heading having been printed twice.
+    <>
+    {/* No title: the sidebar already labels this page "Updates", and a section
+        of the same name under it reads as the heading having been printed
+        twice. Any further group gets a real one -- see below. */}
     <PanelSection>
       {/* Both always shown, not only when they disagree: which build is running is
           the first question whenever something here misbehaves, and answering it
@@ -337,5 +346,27 @@ export function UpdatePanel() {
           credentials; the token this page deliberately never offered to store
           is gone from the plugin entirely. */}
     </PanelSection>
+
+    {/* Reporting a problem lives here rather than under Library, which is about
+        games added to Steam -- a bug is as likely to be in artwork, a transfer,
+        an emulator install or an update as in the library. This tab already
+        answers "which build am I running", which is the first question of any
+        bug report and the first section of the report itself.
+
+        After the update check on purpose: those are the two things you do when
+        something is wrong, and they are in the right order, because being a
+        version behind is one of the answers. */}
+    <PanelSection title="Something wrong">
+      <PanelSectionRow>
+        <ButtonItem
+          layout="below"
+          onClick={() => showModal(<ReportModal />)}
+          description="Gathers what a bug report needs — this build, what is installed, and the end of the log — and puts it where a phone or PC can read it. No keys, tokens or game titles."
+        >
+          Report a problem
+        </ButtonItem>
+      </PanelSectionRow>
+    </PanelSection>
+    </>
   );
 }
