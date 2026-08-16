@@ -51,8 +51,31 @@ let lastCoreId = "";
  */
 let pendingCoreId = "";
 
+/**
+ * Panels waiting to hear about one, because arriving is not always a mount.
+ *
+ * A route component registered with `routerHook` can stay mounted between
+ * visits, so navigating to a tab that is already showing changes nothing: no
+ * remount, no new catalog, and an effect keyed to either never runs again. The
+ * request would sit here unread and the button would look broken -- which is
+ * how an auto-start effect on the transfer page failed once, and it looked
+ * correct while doing it.
+ *
+ * So the request is announced as well as stored. Whichever of the two arrives
+ * second does the work; `take` makes sure only one of them does.
+ */
+const arrivals = new Set<() => void>();
+
 export function preselectCore(coreId: string) {
   pendingCoreId = coreId;
+  for (const listener of [...arrivals]) listener();
+}
+
+/** The pending core id, exactly once. "" for every reader after the first. */
+function take() {
+  const wanted = pendingCoreId;
+  pendingCoreId = "";
+  return wanted;
 }
 
 export function CoreInstallPanel({ onCoresChanged, reloadKey = 0 }: Props) {
@@ -96,13 +119,20 @@ export function CoreInstallPanel({ onCoresChanged, reloadKey = 0 }: Props) {
     if (reloadKey) void load(false);
   }, [reloadKey, load]);
 
-  // Somebody navigated here asking for a particular core. Consumed rather than
-  // remembered: it describes one arrival, and leaving it set would drag the
-  // list back to that core every time the tab is opened afterwards.
-  useEffect(() => {
-    if (!pendingCoreId || !catalog) return;
-    const wanted = catalog.find((core) => core.id === pendingCoreId);
-    pendingCoreId = "";
+  /**
+   * Show the core somebody navigated here to install.
+   *
+   * Consumed rather than remembered: it describes one arrival, and leaving it
+   * set would drag the list back to that core every time this tab is opened
+   * afterwards.
+   */
+  const showRequestedCore = useCallback((available: InstallableCore[] | null) => {
+    if (!pendingCoreId || !available) return;
+    // Taken once, before the search: inside the predicate it would be read per
+    // element and cleared by the first, so only a core that happened to be at
+    // the front of the catalog would ever match.
+    const wantedId = take();
+    const wanted = available.find((core) => core.id === wantedId);
     if (!wanted) return;
     setSystem(wanted.system_name);
     lastSystem = wanted.system_name;
@@ -119,7 +149,24 @@ export function CoreInstallPanel({ onCoresChanged, reloadKey = 0 }: Props) {
     requestAnimationFrame(() => {
       section.current?.scrollIntoView({ block: "center", behavior: "smooth" });
     });
-  }, [catalog]);
+  }, []);
+
+  // Arriving by mount, or by catalog finally loading under a request that was
+  // waiting for one.
+  useEffect(() => {
+    showRequestedCore(catalog);
+  }, [catalog, showRequestedCore]);
+
+  // Arriving without a mount, which is what happens when this tab was already
+  // the one showing. `cachedCatalog` rather than `catalog`: this closes over
+  // the value at subscribe time, and the cache is the current one.
+  useEffect(() => {
+    const listener = () => showRequestedCore(cachedCatalog);
+    arrivals.add(listener);
+    return () => {
+      arrivals.delete(listener);
+    };
+  }, [showRequestedCore]);
 
   const systems = useMemo(() => {
     if (!catalog) return [];
