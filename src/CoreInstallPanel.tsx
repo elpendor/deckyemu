@@ -87,6 +87,8 @@ export function CoreInstallPanel({ onCoresChanged, reloadKey = 0 }: Props) {
   // div rather than a ref on PanelSection: that is Steam's component and
   // forwards nothing, so there is no node of its own to reach.
   const section = useRef<HTMLDivElement>(null);
+  // The install row, when there is one -- see the arrival effect.
+  const installRow = useRef<HTMLDivElement>(null);
   const [error, setError] = useState("");
 
   const load = useCallback(async (refresh: boolean) => {
@@ -161,12 +163,21 @@ export function CoreInstallPanel({ onCoresChanged, reloadKey = 0 }: Props) {
     // Steam settles focus, and the last write wins.
     //
     // After paint, or the section is measured where it has not been drawn yet.
-    requestAnimationFrame(() => {
+    // Two frames, not one: the state set just above has to render before the
+    // install row exists to be focused, and a single frame can run before that
+    // commit has painted.
+    requestAnimationFrame(() => requestAnimationFrame(() => {
       const node = section.current;
       if (!node) return;
-      node.querySelector<HTMLElement>(".Focusable, button, [tabindex]")?.focus();
+      // The install button, which is why anyone arrived. Falling back to the
+      // section's first control when the core turns out to be installed
+      // already -- the row is absent then, and the alternative is Remove.
+      const target = installRow.current ?? node;
+      target.querySelector<HTMLElement>(".Focusable, button, [tabindex]")?.focus();
+      // Focus scrolls the button into view; this puts the heading at the top.
+      // The section is short enough to hold both, so they do not disagree.
       node.scrollIntoView({ block: "start" });
-    });
+    }));
   }, []);
 
   // Arriving by mount, or by catalog finally loading under a request that was
@@ -327,11 +338,16 @@ export function CoreInstallPanel({ onCoresChanged, reloadKey = 0 }: Props) {
       )}
 
       {selected && !selected.installed && (
-        <PanelSectionRow>
-          <ButtonItem layout="below" onClick={doInstall} disabled={Boolean(busy)}>
-            {busy === selected.id ? "Installing..." : `Install ${selected.display_name}`}
-          </ButtonItem>
-        </PanelSectionRow>
+        // Wrapped so an arrival can put the gamepad straight on it. Only the
+        // install row: focusing "Remove this core" would leave the cursor on a
+        // destructive button nobody asked for.
+        <div ref={installRow}>
+          <PanelSectionRow>
+            <ButtonItem layout="below" onClick={doInstall} disabled={Boolean(busy)}>
+              {busy === selected.id ? "Installing..." : `Install ${selected.display_name}`}
+            </ButtonItem>
+          </PanelSectionRow>
+        </div>
       )}
 
       {selected?.installed && (
