@@ -60,6 +60,7 @@ import { PackagedGamesModal } from "./PackagedGamesModal";
 import { TransferModal } from "./TransferModal";
 import { VitaGamesModal } from "./VitaGamesModal";
 import { logError } from "./logError";
+import { titleAfterArtPick } from "./titleFromArt";
 
 
 const MATCH_LABELS: Record<ResolvedGame["match_kind"], string> = {
@@ -434,11 +435,24 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
         romPath={romPath}
         coreId={coreId}
         onApplied={(result) => {
-          const current = getDraft().resolved;
+          const draft = getDraft();
+          const current = draft.resolved;
+
+          // The name comes with the artwork, unless the user wrote their own.
+          // See titleFromArt.ts, which the editor uses for the same decision.
+          const nextTitle = titleAfterArtPick(
+            draft.title,
+            current?.title ?? "",
+            result.suggested_title,
+          );
+
           updateDraft({
+            title: nextTitle,
             resolved: {
-              // Keep the rest of the resolution; only the artwork changed.
-              title: current?.title ?? title,
+              // The lookup's own title, not the one above: `matched_name` and
+              // `match_kind` describe how the *name* was found, and rewriting
+              // them here would claim the database matched something it did not.
+              title: current?.title ?? nextTitle,
               system: current?.system ?? "",
               matched_name: current?.matched_name ?? "",
               match_kind: current?.match_kind ?? "none",
@@ -449,8 +463,10 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
               art_game_name: result.art_game_name,
             },
           });
+
           toaster.toast({
-            title: "Artwork updated",
+            title:
+              nextTitle === draft.title ? "Artwork updated" : "Artwork and name updated",
             body: result.art_game_name || "New artwork applied.",
           });
         }}

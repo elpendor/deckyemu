@@ -294,6 +294,13 @@ export type AppliedArt =
       art: ResolvedGame["art"];
       art_source: "libretro" | "steamgriddb";
       art_game_name: string;
+      /**
+       * What the game should be called, if the caller has nothing better. The
+       * picked name through the same tidier a filename goes through — a
+       * libretro thumbnail is named like one, and "Super Mario World (USA)" is
+       * the right artwork with the wrong shortcut name.
+       */
+      suggested_title: string;
     };
 
 export const listArtCandidates = callable<

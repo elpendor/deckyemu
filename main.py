@@ -1271,7 +1271,15 @@ class Plugin(
         }
 
     async def apply_art_candidate(self, source: str, ref: str, system: str = ""):
-        """Fetch artwork for a candidate the user picked by hand."""
+        """Fetch artwork for a candidate the user picked by hand.
+
+        `suggested_title` comes back with it. Reaching for the picker means the
+        automatic match was wrong, and choosing an entry there is the user
+        saying which game this is -- which is a better answer than the filename
+        heuristic that produced the name, and the only answer at all when the
+        filename is junk. The caller decides whether to take it; nothing here
+        renames anything.
+        """
         settings = await self._run(store.get_settings)
         api_key = (settings.get("sgdb_api_key") or "").strip()
 
@@ -1287,7 +1295,13 @@ class Plugin(
             if not art:
                 return {"ok": False, "error": "That game has no usable artwork on SteamGridDB."}
             name = await self._run(sgdb.game_name, api_key, game_id)
-            return {"ok": True, "art": art, "art_source": "steamgriddb", "art_game_name": name}
+            return {
+                "ok": True,
+                "art": art,
+                "art_source": "steamgriddb",
+                "art_game_name": name,
+                "suggested_title": libretro_meta.display_title(name),
+            }
 
         if source == "libretro":
             if not system:
@@ -1296,7 +1310,16 @@ class Plugin(
             art = await self._download_art({"capsule": url})
             if not art:
                 return {"ok": False, "error": "That thumbnail could not be downloaded."}
-            return {"ok": True, "art": art, "art_source": "libretro", "art_game_name": ref}
+            return {
+                "ok": True,
+                "art": art,
+                "art_source": "libretro",
+                "art_game_name": ref,
+                # Through the same tidier a filename goes through, because a
+                # libretro thumbnail is named like one: "Super Mario World
+                # (USA)" is the right artwork and the wrong shortcut name.
+                "suggested_title": libretro_meta.display_title(ref),
+            }
 
         return {"ok": False, "error": "Unknown artwork source %r." % source}
 

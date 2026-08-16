@@ -32,6 +32,7 @@ import { ArtPickerModal } from "./ArtPickerModal";
 import { coreOptions as buildCoreOptions, isEmulatorId } from "./corePicker";
 import { callWithRetry } from "./timeout";
 import { logError } from "./logError";
+import { titleAfterArtPick } from "./titleFromArt";
 
 interface Props {
   game: AddedGame;
@@ -196,6 +197,17 @@ export function GameEditorModal({ game, onSaved, closeModal }: Props) {
           void (async () => {
             const applied = await applyArtwork(game.app_id, result.art);
             setArtApplied(applied);
+
+            // And the name, by the same rule the add flow uses -- see
+            // titleFromArt.ts. The shortcut is renamed on Save, like every
+            // other edit here; artwork applies immediately because it needs
+            // nothing else to happen first.
+            const nextTitle = titleAfterArtPick(title, game.title, result.suggested_title);
+            if (nextTitle !== title) {
+              setTitle(nextTitle);
+              setNote("Name taken from the artwork you picked. Save to apply it.");
+            }
+
             toaster.toast({
               title: applied > 0 ? "Artwork updated" : "Artwork could not be applied",
               body: result.art_game_name || `${applied} image(s)`,
