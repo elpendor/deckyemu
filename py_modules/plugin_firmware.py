@@ -31,6 +31,78 @@ import launchers
 import store
 import sysenv
 
+#: How many lines of a repeating run reach the log before it is summarised.
+#: Enough to see what the run is; few enough that it cannot bury anything else.
+REPEATS_SHOWN = 3
+
+#: A timestamp and a log level at the front of a line, which every one of these
+#: emulators writes and none of which says what the line is about.
+_LINE_PREFIX = re.compile(r"^\[[^\]]*\]\s*(?:\|[A-Z]\|\s*)?")
+_DIGITS = re.compile(r"\d")
+
+
+def _repetitive(text):
+    """What a line is *about*, for deciding whether the next one is more of it.
+
+    An emulator unpacking a package prints
+
+        [23:32:43.245] |I| [install_pkg]: sce_sys/manual/17/033.png
+
+    and then a thousand more that differ in the time and the file. So the time
+    and level go, the digits are blanked, and what is kept is the part before
+    the first `:` or `/` -- the tag the emulator put on the line, not the thing
+    the line happened to name.
+
+    Keying on the first N characters instead was tried and is too fine: it
+    groups `033.png` with `034.png`, because the digits are blanked, and refuses
+    to group `a.png` with `b.png`, which is the same run to anyone reading it.
+    """
+    body = _DIGITS.sub("#", _LINE_PREFIX.sub("", text))
+    return re.split(r"[:/]", body, 1)[0].strip()[:48]
+
+
+class CollapsedLog:
+    """Logs an emulator's output, counting runs instead of repeating them.
+
+    An emulator's output goes into the log verbatim, and some of it is one line
+    per file: installing a 1.5GB package wrote 183 `Decrypted:` lines into the
+    last 200, which is a log that has recorded the weather rather than the news.
+    It also pushed everything the plugin itself said out of the diagnostic
+    report, where those twelve lines were the entire point.
+
+    So the first few of a run go in, then the run is counted and summarised when
+    it ends. What is lost is the middle of a list of filenames; what is kept is
+    that the list happened and how long it was.
+
+    Its own class rather than a closure inside the reader, so a test can drive
+    it without reimplementing the loop around it -- which would test the copy.
+    """
+
+    def __init__(self, label):
+        self._label = label
+        self._key = ""
+        self._count = 0
+
+    def write(self, text):
+        key = _repetitive(text)
+        if key and key == self._key:
+            self._count += 1
+            if self._count > REPEATS_SHOWN:
+                return
+        else:
+            self.finish()
+            self._key, self._count = key, 1
+        decky.logger.info("%s: %s", self._label, text)
+
+    def finish(self):
+        """Summarise a run still in progress. Called when it ends, and at the end."""
+        if self._count > REPEATS_SHOWN:
+            decky.logger.info(
+                "%s: ... and %d more like the above",
+                self._label, self._count - REPEATS_SHOWN,
+            )
+        self._key, self._count = "", 0
+
 
 class Firmware(plugin_base.PluginContext):
     """Firmware endpoints. See the module docstring."""
@@ -271,6 +343,9 @@ class Firmware(plugin_base.PluginContext):
             return False, "Could not run %s: %s" % (emulator.get("name", "emulator"), error)
 
         tail = []
+        # An emulator that prints a line per file would otherwise fill the log
+        # with one install. See CollapsedLog.
+        collapsed = CollapsedLog(emulator.get("id", "emu"))
 
         async def _read():
             buffer = ""
@@ -285,11 +360,15 @@ class Firmware(plugin_base.PluginContext):
                     text = segment.strip()
                     if not text:
                         continue
-                    decky.logger.info("%s: %s", emulator.get("id", "emu"), text)
+                    collapsed.write(text)
                     tail.append(text)
                     del tail[:-5]
+                    # Never collapsed: this drives the progress bar, and a bar
+                    # that stops moving during the longest part of an install is
+                    # indistinguishable from one that has died.
                     if on_line:
                         await on_line(text)
+            collapsed.finish()
             return await process.wait()
 
         try:

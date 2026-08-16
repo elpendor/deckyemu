@@ -97,10 +97,55 @@ _SECRET_SHAPES = (
     re.compile(r"\b[0-9a-fA-F]{32,}\b"),
 )
 
+#: Extensions that mean "a file the user chose the name of", which is to say a
+#: file whose name is usually the name of a game.
+#:
+#: The inbox is searched by value, but that only reaches what is still in it --
+#: and a successful install deletes the package it installed, so the one name
+#: guaranteed to be in the log is the one guaranteed to be gone from the folder.
+#: "Installed gravity rush.pkg as ..." survived every value strike for exactly
+#: that reason.
+CONTENT_SUFFIXES = (
+    "pkg", "vpk", "iso", "chd", "rvz", "wbfs", "gcz", "cso", "zso", "nsp",
+    "xci", "nsz", "sfc", "smc", "nes", "gba", "gb", "gbc", "n64", "z64", "v64",
+    "md", "gg", "pce", "cue", "m3u", "bin", "img", "zip", "7z", "rar", "zrif",
+    "rap", "3ds", "cci", "xex", "wud", "wux",
+)
+
+#: Stems that are not somebody's game: the plugin's own release, the file every
+#: Vita title boots, the names an emulator gives its own furniture. Struck out
+#: of the rule rather than the rule out of the report -- losing "eboot.bin" from
+#: a path costs a reader the one word that told them what they were looking at.
+KEPT_STEMS = frozenset(
+    ("eboot", "deckyemu", "work", "param", "config", "template", "index")
+)
+
+_CONTENT_FILE = re.compile(
+    r"\b([A-Za-z0-9][^\s'\"\\/]{3,})\.(%s)\b" % "|".join(CONTENT_SUFFIXES),
+    re.IGNORECASE,
+)
+
+
+def _strike_filenames(text):
+    """Replace the stem of every content filename, keeping the extension.
+
+    The extension is the half worth reading -- it says what kind of thing the
+    line was about -- and the stem is the half the user typed, or the shop did.
+    """
+
+    def replace(found):
+        stem, suffix = found.group(1), found.group(2)
+        if stem.lower() in KEPT_STEMS:
+            return found.group(0)
+        return "%s.%s" % (REDACTED, suffix)
+
+    return _CONTENT_FILE.sub(replace, text)
+
+
 REDACTED = "[removed]"
 
 
-def _redact(text, secrets):
+def _redact(text, secrets, words=()):
     """`text` with every known secret and secret-shaped run struck out.
 
     Each value is struck in the forms it can appear in. A game's name reaches
@@ -119,6 +164,17 @@ def _redact(text, secrets):
         # character string would redact half the report.
         if secret and len(secret) >= 8:
             text = text.replace(secret, REDACTED)
+    # And the words those names are made of, case-insensitively. A filename
+    # with a space in it is two words, and the filename rule only ever catches
+    # the side carrying the extension -- "gravity rush.pkg" came out as
+    # "gravity [removed].pkg". Widening that rule across spaces would eat the
+    # sentence in front of it, since "Installed gravity rush.pkg" puts no
+    # delimiter between the verb and the name.
+    for word in dict.fromkeys(words):
+        if len(word) >= 5:
+            text = re.sub(re.escape(word), REDACTED, text, flags=re.IGNORECASE)
+
+    text = _strike_filenames(text)
     for shape in _SECRET_SHAPES:
         # A rule that captures a group keeps it. The URL one keeps the host,
         # because which host it was is the useful half and the token after it is
@@ -213,6 +269,8 @@ def build(version, install, emulators_registered, library, catalog_installed=(),
     # a game probed but never added, because neither is a value this can know:
     # the wording says titles are removed rather than that none can appear.
     personal = [str(settings.get("cheevos_username") or "")]
+    # The same values, minus the paths: what the word pass below may look at.
+    names = [str(settings.get("cheevos_username") or "")]
     # What is sitting in the inbox. A transferred file is logged by name --
     # "Received gravity rush.pkg" -- and its name is the game's name, which the
     # registry cannot supply: what it records for an installed title is the
@@ -226,6 +284,7 @@ def build(version, install, emulators_registered, library, catalog_installed=(),
         for name in os.listdir(inbox or ""):
             personal.append(name)
             personal.append(os.path.splitext(name)[0])
+            names.append(os.path.splitext(name)[0])
     except OSError:
         pass
     for entry in library.values():
@@ -242,6 +301,10 @@ def build(version, install, emulators_registered, library, catalog_installed=(),
         # And squashed, which is how it appears inside a Vita content id:
         # UP9000-PCSA00011_00-GRAVITYRUSH000000.
         personal.append(re.sub(r"[^A-Za-z0-9]", "", title).upper())
+
+        names.append(title)
+        names.append(os.path.splitext(os.path.basename(str(entry.get("rom_path") or "")))[0])
+        names.append(os.path.splitext(os.path.basename(launcher))[0])
         # Its own name too: a ROM is filed under one and the folder is not it.
         personal.append(os.path.basename(str(entry.get("rom_path") or "")))
 
@@ -314,7 +377,29 @@ def build(version, install, emulators_registered, library, catalog_installed=(),
         _section("Log (last %d lines)" % LOG_LINES, _log_tail()),
     ]
 
-    return _redact("\n".join(parts), list(live_secrets) + secrets + personal)
+    # Every word of every *name*, for the pass above -- not of every path.
+    #
+    # Paths were fed in first and the result was a report 1129 redactions deep:
+    # every directory on the way to a ROM became a word worth striking, so
+    # `local`, `share` and `Vita3K` went, and "built locally" came out as "built
+    # [removed]ly". A path is not a name. Its last component is, and so is the
+    # title.
+    #
+    # Five characters and up, and never one of the stems that belong to the
+    # plugin or the emulator rather than to a game: shorter or commoner than
+    # that and the word is ordinary English, which would take the report with
+    # it.
+    words = []
+    for value in names:
+        words.extend(
+            word
+            for word in re.split(r"[^A-Za-z0-9]+", value)
+            if word.lower() not in KEPT_STEMS
+        )
+
+    return _redact(
+        "\n".join(parts), list(live_secrets) + secrets + personal, words
+    )
 
 
 def as_page(report):
