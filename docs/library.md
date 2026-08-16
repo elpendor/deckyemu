@@ -20,8 +20,11 @@ Steam, so its playtime and its place in a collection survive.
   script too. A ROM the chosen core cannot read is refused.
 - **Core or emulator** — changing it changes the system, so the platform label
   and the per-platform collection follow.
-- **Artwork** — the picker applies immediately, with no need to save.
-  **Re-fetch name and artwork** is worth running after a core change, since the
+- **Name and artwork** — **Choose the right game** is how you say which game
+  this is when the automatic match got it wrong; it sets the name as well as
+  the cover, unless you have written a name of your own. Artwork lands
+  immediately; a name change waits for Save, like every other edit here.
+  **Look up name and artwork again** is worth running after a core change, since the
   core decides the system and the system decides which thumbnail directory is
   searched.
 - **Launch options** — override the global fullscreen or notification setting for

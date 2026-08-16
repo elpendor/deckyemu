@@ -384,7 +384,7 @@ export function GameEditorModal({ game, onSaved, closeModal }: Props) {
             hint={
               artApplied > 0
                 ? `${artApplied} image(s) applied. Artwork lands immediately; a name change waits for Save.`
-                : "Artwork lands immediately, a name change waits for Save. Re-fetch uses the current core, which decides where boxart is looked up."
+                : "Artwork lands immediately, a name change waits for Save. Looking up again uses the current core, which decides where boxart comes from."
             }
           >
             Name and artwork
@@ -393,8 +393,15 @@ export function GameEditorModal({ game, onSaved, closeModal }: Props) {
             <DialogButton onClick={pickArtwork} style={BUTTON} disabled={busy}>
               Choose the right game
             </DialogButton>
+            {/* "Name and artwork" stays in the label, and is not padding: this
+                one *does* replace a name you typed, where the picker beside it
+                leaves it alone. The difference is defensible only while the
+                button says which it is -- the picker identifies a game and the
+                name follows, this asks for the lookup to be run again, and the
+                name is what it was asked for. "Re-fetch" was the only jargon
+                left on the page. */}
             <DialogButton onClick={() => void refetch()} style={BUTTON} disabled={busy}>
-              {refreshing ? "Looking up..." : "Re-fetch name and artwork"}
+              {refreshing ? "Looking up..." : "Look up name and artwork again"}
             </DialogButton>
           </div>
         </div>
