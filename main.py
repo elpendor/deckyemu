@@ -6,6 +6,7 @@ import inspect
 import json
 import os
 import re
+import sys
 from typing import Optional
 
 import decky
@@ -46,6 +47,34 @@ import xbox_disc
 ROM_EXTENSION_BLOCKLIST = {"srm", "state", "sav", "png", "jpg", "cfg", "txt", "xml"}
 
 
+def own_module_names(root):
+    """The module names py_modules/ provides, imported on this run or not.
+
+    Read off the directory rather than listed by hand. The list this replaces was
+    written out in full and drifted twice: eight modules the first time,
+    `diagnostics` the second. Both went unnoticed for the same reason -- a guard
+    that covers some of the names produces exactly the output of a clean run, so
+    there is nothing to notice.
+    """
+    names = set()
+    package = os.path.join(root, "py_modules")
+    try:
+        entries = os.listdir(package)
+    except OSError:
+        # Nothing to check is not a failure worth raising during startup; the
+        # caller is one step of `_main` and the plugin has to come up regardless.
+        return names
+    for entry in entries:
+        # Dotfiles, `.keep` and `__pycache__`: not modules anyone imports.
+        if entry.startswith((".", "_")):
+            continue
+        if entry.endswith(".py"):
+            names.add(entry[:-3])
+        elif os.path.isfile(os.path.join(package, entry, "__init__.py")):
+            names.add(entry)
+    return names
+
+
 def _check_own_modules():
     """Warn if one of our modules was shadowed by decky's.
 
@@ -54,25 +83,23 @@ def _check_own_modules():
     silently, and only for the parts that use it. `updater.py` did exactly that:
     everything loaded, and one feature failed with "module 'decky_loader.updater'
     has no attribute 'check'". Cheap to check, and it names the problem outright.
+
+    Every name py_modules offers is checked, not only the ones main.py imports:
+    a module reached through another module can be shadowed just as quietly, and
+    deriving the set means neither list has to be kept.
     """
     here = os.path.dirname(os.path.abspath(__file__))
-    # Every project module this file imports. The list had drifted -- eight
-    # modules added since it was written were not in it, and a guard that covers
-    # some of the names is a guard that reports nothing for the rest.
-    for module in (
-        cheevos, devreset, emu_config, emu_firmware, emu_install, emulator_catalog,
-        emulators, fileserver, handoff, installer, launchers, libretro_meta, net,
-        platforms, plugin_accounts, plugin_audit, plugin_emulators, plugin_firmware,
-        plugin_packages,
-        ps3_games,
-        ps4_games, ra_cores, ra_detect, releases, romshelf, sgdb, store, sysenv,
-        vita_games, vita_release, xbox_disc,
-    ):
-        path = getattr(module, "__file__", "") or ""
-        if not os.path.abspath(path).startswith(here):
+    for name in sorted(own_module_names(here)):
+        module = sys.modules.get(name)
+        if module is None:
+            # Not imported on this run, so nothing has resolved the name yet and
+            # there is nothing to have resolved it wrongly.
+            continue
+        path = os.path.abspath(getattr(module, "__file__", "") or "")
+        if not path.startswith(here):
             decky.logger.error(
                 "Module %r is %s, not ours -- the name collides with something decky "
-                "already imported. Rename it.", module.__name__, path or "built in",
+                "already imported. Rename it.", name, path or "built in",
             )
 
 # Where package.json and CI's build.json live. A module constant rather than an
