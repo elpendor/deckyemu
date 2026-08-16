@@ -85,6 +85,19 @@ jobs:
       - name: Compile every backend module
         run: python -m compileall -q main.py py_modules
 
+      # Both directions of the development-only guarantee: absent from a release
+      # build, and *still present* in a development one. The second half is what
+      # stops the check passing because the panel was renamed or deleted, and CI
+      # did not have it -- the grep further down tests one direction only, so a
+      # rename would have gone green while the guarantee it stands for was no
+      # longer being tested at all.
+      #
+      # Here rather than beside that grep because it builds its own bundles and
+      # leaves dist/ holding the development one; the release bundle that ships
+      # is built after the version bump, below.
+      - name: Check the development-only guard still discriminates
+        run: python scripts/check_release_build.py
+
       # --- version ------------------------------------------------------------
       #
       # package.json is the single source of truth. Bumping happens here rather
@@ -153,20 +166,35 @@ jobs:
       - name: Check the bundle is not empty
         run: test -s dist/index.js
 
+      # The same guarantee again, against the bytes that actually ship. The step
+      # above proves the mechanism works; it cannot prove anything about this
+      # bundle, because it builds its own with a placeholder stamp. This one is
+      # the artifact going into the zip.
+      #
       # Development-only code must be absent from a release, not merely
       # unreachable in it -- the Reset panel deletes save games. This was
       # already false once: the build stamp used to be prepended after
       # tree-shaking, so the panel could never be folded away and shipped
       # intact. Checked against the bundle itself rather than trusted.
+      #
+      # What counts as development-only is read from check_release_build.py
+      # rather than written out again here: two copies of the list is one that
+      # gets a new entry and one that does not, and the one that does not is
+      # this one -- the only check that sees the published bytes.
       - name: Check no development-only code shipped
         run: |
-          for needle in "Forget everything the plugin knows" "dev_reset"; do
-            if grep -qF -- "$needle" dist/index.js; then
-              echo "Release bundle contains development-only code: $needle"
-              exit 1
-            fi
-          done
-          echo "No development-only code in the bundle."
+          python - <<'PY'
+          import pathlib, sys
+          sys.path.insert(0, "scripts")
+          from check_release_build import FORBIDDEN
+          bundle = pathlib.Path("dist/index.js").read_text(encoding="utf-8", errors="replace")
+          found = [needle for needle in FORBIDDEN if needle in bundle]
+          for needle in found:
+              print("::error::Release bundle contains development-only code: %s" % needle)
+          if found:
+              sys.exit(1)
+          print("No development-only code in the bundle (%d checked)." % len(FORBIDDEN))
+          PY
 
       # Only what the plugin needs at runtime, nested under the directory name
       # decky expects -- DECKY_PLUGIN_SETTINGS_DIR and friends derive from the
