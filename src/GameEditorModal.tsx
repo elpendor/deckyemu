@@ -415,7 +415,7 @@ export function GameEditorModal({ game, onSaved, closeModal }: Props) {
             hint={
               artApplied > 0
                 ? `${artApplied} image(s) applied. Artwork lands immediately; a name change waits for Save.`
-                : "Artwork lands immediately, a name change waits for Save. Looking up again uses the current core, which decides where boxart comes from."
+                : "Artwork lands immediately, a name change waits for Save. Looking up by filename also uses the current core, which decides where boxart comes from."
             }
           >
             Name and artwork
@@ -424,15 +424,18 @@ export function GameEditorModal({ game, onSaved, closeModal }: Props) {
             <DialogButton onClick={pickArtwork} style={BUTTON} disabled={busy}>
               Choose the right game
             </DialogButton>
-            {/* "Name and artwork" stays in the label, and is not padding: this
-                one *does* replace a name you typed, where the picker beside it
-                leaves it alone. The difference is defensible only while the
-                button says which it is -- the picker identifies a game and the
-                name follows, this asks for the lookup to be run again, and the
-                name is what it was asked for. "Re-fetch" was the only jargon
-                left on the page. */}
+            {/* Named after what it looks the game up *by*, because that is the
+                whole difference between these two buttons: one takes the game
+                you point at, the other takes the file's name and guesses. Both
+                produce a name and artwork -- which is what the label above the
+                pair says -- so "again" was the only thing distinguishing them,
+                and "again" describes when it runs rather than what it uses.
+
+                It matters because this one *does* replace a name you typed and
+                the picker beside it does not. A button that says which input it
+                trusts explains that; one that says "again" does not. */}
             <DialogButton onClick={() => void refetch()} style={BUTTON} disabled={busy}>
-              {refreshing ? "Looking up..." : "Look up name and artwork again"}
+              {refreshing ? "Looking up..." : "Look up by filename"}
             </DialogButton>
           </div>
         </div>
