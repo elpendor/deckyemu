@@ -64,6 +64,14 @@ _logged = _feed(
 
 check("the first few go in", len([line for line in _logged if "install_pkg" in line]),
       plugin_firmware.REPEATS_SHOWN)
+# Nothing here knows anything about Vita3K's log format, and that is the point:
+# tuning a key to one emulator's output is a thing there is no prospect of doing
+# for the dozen in the catalog. Digit runs are blanked and the rest is compared
+# as text.
+check("and the rule needs no knowledge of the emulator",
+      plugin_firmware._same_kind("[1] |I| [x]: a/001.png", "[2] |I| [x]: a/002.png"), True)
+check("while two different messages are not a run",
+      plugin_firmware._same_kind("Decrypted: /ux0/app/X", "Fatal: could not mount ux0"), False)
 check("and the rest are one line",
       any("and 397 more like the above" in line for line in _logged), True)
 # Four lines for four hundred. The ratio is not the point -- the point is that a
