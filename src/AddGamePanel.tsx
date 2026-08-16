@@ -1109,7 +1109,14 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
       {romPath && !looking && (
         <PanelSectionRow>
           <ButtonItem layout="below" onClick={openArtPicker} disabled={adding}>
-            {resolved?.art?.capsule ? "Wrong game? Pick artwork" : "Find artwork manually"}
+            {/* The words on the screen this opens, which has always called
+                itself "Choose the right game" -- and is right, now that picking
+                an entry sets the name as well as the cover. Two states because
+                the situations differ: a wrong cover is visible and worth
+                questioning, no cover at all is just missing. */}
+            {resolved?.art?.capsule
+              ? "Wrong game? Choose the right one"
+              : "Choose the right game"}
           </ButtonItem>
         </PanelSectionRow>
       )}

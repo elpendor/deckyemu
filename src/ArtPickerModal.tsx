@@ -122,7 +122,8 @@ export function ArtPickerModal({ romPath, coreId, onApplied, closeModal }: Props
         Choose the right game
       </div>
       <div style={{ opacity: 0.7, fontSize: "13px", marginBottom: "12px" }}>
-        Search by name if the correct game is not listed.
+        The name comes from what you choose here, unless you have already
+        written your own. Search by name if the right game is not listed.
       </div>
 
       <Focusable style={{ display: "flex", gap: "8px", marginBottom: "12px" }}>

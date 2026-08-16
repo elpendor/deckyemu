@@ -138,8 +138,9 @@ Back in the Quick Access panel, under **Add a game**:
    offered, with the one you used last for it first. A toggle reveals everything
    installed, for when the right answer is not in the short list.
 3. **Check the name and the cover.** `Super Mario World (USA) [!].smc` becomes
-   *Super Mario World*. If the cover is wrong, **Wrong game? Pick artwork** lets
-   you choose another — or **Find artwork manually**, when nothing was found at
+   *Super Mario World*. If the cover is wrong, **Wrong game? Choose the right
+   one** lets you say which game it is — that sets the name as well as the
+   cover — or **Choose the right game**, when nothing was found at
    all. Worth a glance either way: title matching is fuzzy, and a wrong cover is
    easier to fix now than later.
 4. **Press Add to Steam.** The shortcut is created, the artwork applied, and the
@@ -196,7 +197,7 @@ survive the change.
 | A game will not boot and the system needs firmware | Check **BIOS and firmware** — a missing file looks exactly like a game failing |
 | A bookmarked transfer link stopped working | Either **Remember trusted devices** is off, so every session issues a new one, or **Reset link** was pressed — which invalidates all of them at once |
 | A ROM stayed in `transfer/` after adding | Something was unaccounted for: a disc a playlist names, or a different dump of the same name already filed |
-| The cover is wrong | **Wrong game? Pick artwork** on the add panel, or the pencil on an added game |
+| The cover or the name is wrong | **Wrong game? Choose the right one** on the add panel, or the pencil on an added game |
 | A collection is left holding nothing | **Settings → Collections** tidies stale ones |
 | A game you removed is still in Steam | **Settings → Library** finds entries that drifted apart, and offers the fix for each |
 

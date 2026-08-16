@@ -383,15 +383,15 @@ export function GameEditorModal({ game, onSaved, closeModal }: Props) {
           <Label
             hint={
               artApplied > 0
-                ? `${artApplied} image(s) applied. Artwork applies immediately, with no need to save.`
-                : "Applies immediately. Re-fetch uses the current core, which decides where boxart is looked up."
+                ? `${artApplied} image(s) applied. Artwork lands immediately; a name change waits for Save.`
+                : "Artwork lands immediately, a name change waits for Save. Re-fetch uses the current core, which decides where boxart is looked up."
             }
           >
             Name and artwork
           </Label>
           <div style={FIELD}>
             <DialogButton onClick={pickArtwork} style={BUTTON} disabled={busy}>
-              Choose artwork
+              Choose the right game
             </DialogButton>
             <DialogButton onClick={() => void refetch()} style={BUTTON} disabled={busy}>
               {refreshing ? "Looking up..." : "Re-fetch name and artwork"}
