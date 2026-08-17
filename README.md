@@ -78,6 +78,7 @@ symptom-by-symptom list for when one of them misbehaves.
 | [Updates and problems](docs/updates.md) | Keeping it current, and what to send when something breaks |
 | [Emulator definitions](docs/emulator-definitions.md) | The JSON format for setting up an emulator this plugin does not ship |
 | [Development](docs/development.md) | Building it, running it against a real Deck, and the layout of the tree |
+| [Contributing](CONTRIBUTING.md) | What is worth sending, and what to know before opening a pull request |
 
 ## Not implemented yet
 
