@@ -490,11 +490,15 @@ def resolve_release_list(repo, pattern, host="", limit=12):
 
     api = SELF_HOSTED_RELEASES % (host, repo) if host else GITHUB_RELEASES % repo
     label = "%s on %s" % (repo, host) if host else repo
-    payload = net.get_json(api)
+    failure = {}
+    payload = net.get_json(api, failure=failure)
     if not isinstance(payload, list):
+        # Same reasoning as `_resolve_asset`: the build list is the other place
+        # a rate limit surfaced as a claim about the project having moved.
         return [], (
-            "No releases came back for %s. The project may have moved off GitHub."
-            % label
+            net.failure_message(failure, "the builds of %s" % label)
+            or "No releases came back for %s. The project may have moved off "
+               "GitHub." % label
         )
 
     try:
@@ -536,13 +540,22 @@ def resolve_github_asset(repo, pattern):
 
 
 def _resolve_asset(api_url, pattern, label):
-    payload = net.get_json(api_url)
+    failure = {}
+    payload = net.get_json(api_url, failure=failure)
     if payload is None:
-        # 451 is what the Ryujinx mirrors answer, and "GitHub did not
-        # respond" would send someone looking at their own connection.
+        # Which failure it was decides what to say, and saying the wrong one is
+        # worse than saying little: a rate-limited address was reported as the
+        # project having moved off GitHub, which is a confident wrong answer
+        # about somebody else's repository and sends the reader nowhere useful.
+        # It cost an evening on xemu's hard disk image, which was never missing.
+        #
+        # 451 is what the Ryujinx mirrors answer and it has no status branch of
+        # its own, so it falls to the line below -- which is still the right
+        # thing for it, and better than blaming the connection.
         return None, (
-            "No release came back for %s. The project may have moved off "
-            "GitHub." % label
+            net.failure_message(failure, "the latest release of %s" % label)
+            or "No release came back for %s. The project may have moved off "
+               "GitHub." % label
         )
     if not isinstance(payload, dict) or payload.get("message"):
         return None, payload.get("message", "Unexpected reply from %s." % label) if isinstance(

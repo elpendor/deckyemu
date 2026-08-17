@@ -130,19 +130,18 @@ def _failure_message(failure):
     on the address, and a household behind one address can reach it without
     anybody doing anything wrong.
 
-    The status is all that is used. GitHub's own rate-limit text names the
-    caller's public address, and this string is shown in the panel and travels
-    in the diagnostic report.
+    The reading of the dict is `net.failure_message`, because the dict is net's
+    and two callers reading it independently is how the same 403 came to be
+    reported here as a rate limit and, in the emulator downloads, as the
+    project having moved off GitHub. Only the wording either side of it belongs
+    to a caller: this one knows the 404 means the plugin's own releases page,
+    and that "check by hand" is a thing the reader can actually do.
     """
-    status = failure.get("status")
-    if status in (403, 429) and str(failure.get("rate_remaining")) == "0":
-        return ("GitHub is rate-limiting this network. Update checks share a "
-                "budget of 60 an hour per address; it clears on its own.")
-    if status == 404:
-        return "The releases page was not found. Check for a newer DeckyEmu by hand."
-    if status:
-        return "GitHub answered with an error (HTTP %s). Try again later." % status
-    return "GitHub did not answer. Check the connection."
+    return net.failure_message(
+        failure,
+        "a newer DeckyEmu",
+        not_found="The releases page was not found. Check for a newer DeckyEmu by hand.",
+    ) or "GitHub did not answer. Check the connection."
 
 
 def fetch_releases(force=False):

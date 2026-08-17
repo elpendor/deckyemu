@@ -407,6 +407,45 @@ def get_json(url, headers=None, failure=None):
         return None
 
 
+def failure_message(failure, subject, not_found=""):
+    """What to tell the user about a filled-in `failure` dict.
+
+    The dict's shape is this module's, so reading it is too. Every caller that
+    passes `failure` was otherwise going to invent its own reading of the same
+    three keys, and the first two that did disagreed: the update check told
+    people GitHub was rate-limiting them while the emulator downloads told
+    people, for the identical status, that the project had moved off GitHub.
+
+    `subject` names what was being fetched, so the sentence can be about the
+    thing the user pressed. `not_found` replaces the 404 line where the caller
+    has something more useful to say than that it was not there.
+
+    The status is all that is used. GitHub's own rate-limit text names the
+    caller's public address, and this string is shown in the panel and travels
+    in the diagnostic report.
+    """
+    status = failure.get("status")
+    if status in (403, 429) and str(failure.get("rate_remaining")) == "0":
+        # Nothing here authenticates, so the budget is 60 requests an hour for
+        # the whole address -- which a household, or a Deck beside the machine
+        # its developer is working on, can reach without anybody doing anything
+        # wrong. Worth saying plainly, because the state is temporary and
+        # nothing the user does will speed it up.
+        return ("GitHub is rate-limiting this network, so %s could not be "
+                "looked up. Unauthenticated requests share a budget of 60 an "
+                "hour per address; it clears on its own within the hour."
+                % subject)
+    if status == 404:
+        if not_found:
+            return not_found
+        return "%s was not found." % (subject[:1].upper() + subject[1:])
+    if status:
+        return "GitHub answered with an error (HTTP %s) for %s. Try again later." % (
+            status, subject,
+        )
+    return ""
+
+
 def get_data_uri(url, headers=None):
     """Fetch an image and return (data_uri, 'png'|'jpg') for the Steam client."""
     payload, content_type = get_bytes(url, headers)
