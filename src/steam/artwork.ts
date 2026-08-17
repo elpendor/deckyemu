@@ -7,7 +7,7 @@
  */
 import type { ArtImage } from "../backend";
 import { fitToSlot } from "../fitArtwork";
-import { LibraryAssetType, steamClient } from "./client";
+import { LibraryAssetType, sleep, steamClient } from "./client";
 
 /** Strips the `data:image/png;base64,` prefix -- Steam wants bare base64. */
 function toBareBase64(dataUri: string): string {
@@ -83,6 +83,64 @@ async function fitAll(art: ResolvedArt): Promise<{ ready: Ready[]; abandoned: Li
   }
 
   return { ready, abandoned };
+}
+
+/**
+ * Long enough to be sure the clock has turned over, and to spare.
+ *
+ * `Date.now() % 1000` says how far into the current second we are; the wait is
+ * the rest of it plus this. Steam's own publish of the change lags the write by
+ * about 100 ms, measured, and that lag is on the right side -- the file is
+ * complete before the page is told -- so this margin only has to cover the
+ * turnover itself.
+ */
+const NEXT_SECOND_MARGIN_MS = 250;
+
+/**
+ * Write one slot again, in a later second than everything before it.
+ *
+ * This exists because of what the version token in the URL actually is.
+ * `rt_custom_image_mtime` is an mtime **in whole seconds**, and it is the only
+ * thing that changes the URL of every slot at once. Four writes inside one
+ * second therefore produce one single token: the page re-renders on the first
+ * change, fetches all four URLs at that instant, and then never re-fetches,
+ * because no later write moves the token. Whatever it caught mid-sequence is
+ * what it keeps -- a slot cleared but not yet rewritten is a blank, and a slot
+ * not yet reached still serves the previous game's picture.
+ *
+ * That is the whole of "sometimes it refreshes and sometimes it doesn't": it
+ * depends on nothing more than whether the writes happened to straddle a second
+ * boundary. Measured on the device, with the token values in hand: capsule and
+ * header landed in second 7503, the hero's clear moved the token to 7504 and the
+ * page re-rendered there -- backdrop already deleted, logo still the old file --
+ * and the hero's write and the logo's clear and write all landed inside 7504 too,
+ * so the page was never told again.
+ *
+ * So: once every file is final, wait for the clock to turn and write one of them
+ * a second time. The bytes are identical, so nothing moves on screen except the
+ * token, and one clean re-render puts the whole set on screen at once. The
+ * cheapest slot is chosen because the only cost that matters here is the size of
+ * the base64 crossing to Steam.
+ */
+async function republish(appId: number, apps: any, written: Ready[]): Promise<void> {
+  const cheapest = written.reduce((best, slot) => (slot.data.length < best.data.length ? slot : best));
+
+  await sleep(1000 - (Date.now() % 1000) + NEXT_SECOND_MARGIN_MS);
+
+  try {
+    // Deliberately no clear. A clear here would delete the file to write it back
+    // again, which is exactly the gap this whole function exists to close.
+    await apps.SetCustomArtworkForApp(
+      appId,
+      toBareBase64(cheapest.data),
+      cheapest.kind,
+      cheapest.assetType,
+    );
+  } catch (error) {
+    // The artwork is already on disk and correct; all that is lost is the
+    // re-render, which re-opening the page would have done anyway.
+    console.error("[deckyemu] could not republish artwork", error);
+  }
 }
 
 /**
@@ -173,6 +231,13 @@ export async function applyArtwork(appId: number, art: ResolvedArt): Promise<num
         console.error(`[deckyemu] could not clear art slot ${assetType}`, error);
       }
     }
+  }
+
+  // Last of all, and only if something was written: one more token, in a second
+  // of its own, so a page already on screen re-reads the finished set. See
+  // `republish` -- without it the page keeps whatever it saw mid-sequence.
+  if (applied > 0) {
+    await republish(appId, apps, ready);
   }
 
   return applied;
