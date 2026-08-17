@@ -19,12 +19,15 @@ import {
   type RetroArchStatus,
 } from "./backend";
 import { AddGamePanel } from "./AddGamePanel";
+import { editGameMenuItem } from "./EditGameMenuItem";
+import { refreshAddedGames, rememberAddedGames } from "./addedGames";
 import { AddedGamesPanel } from "./AddedGamesPanel";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { OrphanModal } from "./OrphanModal";
 import { shortcutNudge, type ShortcutCounts } from "./shortcutNudge";
 import { TransferStatusPanel } from "./TransferStatusPanel";
 import { ManagePage, MANAGE_ROUTE, openManagePage } from "./ManagePage";
+import { patchGameContextMenu } from "./steam/contextMenu";
 import { callWithRetry } from "./timeout";
 
 const EMPTY_STATUS: RetroArchStatus = {
@@ -91,7 +94,13 @@ function Content() {
     // Retried for the same reason as the status call: a reload drops whatever was
     // in flight, and this list would otherwise silently stay empty.
     callWithRetry(listAdded)
-      .then(setGames)
+      .then((list) => {
+        setGames(list);
+        // The context menu reads this list while rendering and cannot await, so
+        // it is fed from here -- the panel already re-reads on every open and
+        // after every change, which is exactly when the menu would be wrong.
+        rememberAddedGames(list);
+      })
       .catch((error) => console.error("[deckyemu] could not list added games", error));
   }, []);
 
@@ -319,6 +328,12 @@ export default definePlugin(() => {
   // exact route leaves those unresolved, so tapping a tab navigates to nothing.
   routerHook.addRoute(MANAGE_ROUTE, GuardedManagePage);
 
+  // "Edit in DeckyEmu" behind the cog on a game's page. The cache is filled
+  // first because the item decides whether to appear by reading it, and a menu
+  // opened before the first read would show nothing for a game that is ours.
+  void refreshAddedGames();
+  const unpatchContextMenu = patchGameContextMenu(editGameMenuItem);
+
   return {
     name: "DeckyEmu",
     titleView: <TitleView />,
@@ -335,6 +350,9 @@ export default definePlugin(() => {
     icon: <FaGamepad />,
     onDismount() {
       routerHook.removeRoute(MANAGE_ROUTE);
+      // Steam keeps the patched component, so leaving this would put a dead
+      // item in every game menu until the client restarts.
+      unpatchContextMenu();
     },
   };
 });

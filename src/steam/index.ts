@@ -21,3 +21,9 @@ export * from "./shortcuts";
 export * from "./artwork";
 export * from "./collections";
 export * from "./focus";
+// contextMenu is deliberately NOT re-exported, for the same reason client.ts
+// is not: it imports @decky/ui's webpack helpers, which initialise against
+// `window.webpackChunksteamui` the moment the module loads. That global does
+// not exist under Node, so a re-export here takes every test that imports
+// from "./steam" down with it -- five of them, on the first run after it was
+// added. Import it by path from the one place that patches Steam.

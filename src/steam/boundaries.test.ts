@@ -95,7 +95,21 @@ describe("the steam package's boundaries", () => {
     const index = read(join(DIR, "index.ts"));
     for (const name of sources(DIR)) {
       const stem = name.replace(/\.ts$/, "");
-      if (stem === "index" || stem === "client") continue;
+      /*
+       * Two exceptions, for two different reasons.
+       *
+       * `client` is the one above: reaching past the defensive wrappers is the
+       * thing this package exists to prevent.
+       *
+       * `contextMenu` is the opposite problem -- it *cannot* be re-exported.
+       * It imports @decky/ui's webpack helpers, which initialise against
+       * `window.webpackChunksteamui` when the module loads, and that global
+       * does not exist under Node. Re-exporting it took five unrelated test
+       * files down on the first run after it was written, because they import
+       * from "./steam" and got the whole chain. Imported by path, from the one
+       * place that patches Steam's own components.
+       */
+      if (stem === "index" || stem === "client" || stem === "contextMenu") continue;
       expect(index, `steam/index.ts does not re-export ${name}`).toContain(
         `export * from "./${stem}"`,
       );
