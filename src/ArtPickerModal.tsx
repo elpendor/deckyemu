@@ -18,6 +18,15 @@ import { callWithRetry } from "./timeout";
 interface Props {
   romPath: string;
   coreId: string;
+  /**
+   * What to search for first, when the filename cannot say.
+   *
+   * A game installed from a package boots `eboot.bin`, so the backend's default
+   * term -- the filename -- searches for "Eboot" and finds the same nothing for
+   * every PS3, PS4 and Vita game. The name the game is already under is the
+   * only thing here that identifies it.
+   */
+  initialQuery?: string;
   /** Applied artwork, so the panel can show the corrected preview. */
   onApplied: (result: Extract<AppliedArt, { ok: true }>) => void;
   closeModal?: () => void;
@@ -40,9 +49,17 @@ interface Row {
  * The search box matters as much as the list: when both sources mis-identify a
  * ROM, typing the real name is the only way out.
  */
-export function ArtPickerModal({ romPath, coreId, onApplied, closeModal }: Props) {
+export function ArtPickerModal({
+  romPath,
+  coreId,
+  initialQuery = "",
+  onApplied,
+  closeModal,
+}: Props) {
   const [candidates, setCandidates] = useState<ArtCandidates | null>(null);
-  const [query, setQuery] = useState("");
+  // Seeded, so the box shows what was searched for and can be edited from it
+  // rather than retyped.
+  const [query, setQuery] = useState(initialQuery);
   const [searching, setSearching] = useState(true);
   const [applying, setApplying] = useState("");
   const [error, setError] = useState("");
@@ -69,8 +86,8 @@ export function ArtPickerModal({ romPath, coreId, onApplied, closeModal }: Props
   );
 
   useEffect(() => {
-    void search("");
-  }, [search]);
+    void search(initialQuery);
+  }, [search, initialQuery]);
 
   const apply = useCallback(
     async (row: Row) => {

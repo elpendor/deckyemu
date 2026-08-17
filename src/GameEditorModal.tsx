@@ -40,6 +40,7 @@ import { openManagePage } from "./manageRoute";
 import { callWithRetry } from "./timeout";
 import { logError } from "./logError";
 import { sentence } from "./sentence";
+import { filenameNamesTheGame } from "./lookupTerm";
 import { titleAfterArtPick } from "./titleFromArt";
 
 interface Props {
@@ -176,6 +177,10 @@ export function GameEditorModal({ game, onSaved, closeModal, onLeave }: Props) {
   // the button that answers it cannot disagree about whether it is missing.
   const missingCore = Boolean(cores) && Boolean(pinnedLabel(cores?.all ?? [], coreId));
 
+  // Whether the file's name is the game's name. False for anything installed
+  // from a package, which boots eboot.bin -- see lookupTerm.
+  const byFilename = filenameNamesTheGame(romPath);
+
   const pickRom = useCallback(async () => {
     setError("");
     // openFilePicker rejects when the user backs out, so a cancel has to be told
@@ -218,6 +223,8 @@ export function GameEditorModal({ game, onSaved, closeModal, onLeave }: Props) {
       <ArtPickerModal
         romPath={romPath}
         coreId={coreId}
+        // The name to open on, when the filename is not one.
+        initialQuery={byFilename ? "" : title.trim()}
         onApplied={(result) => {
           void (async () => {
             try {
@@ -282,7 +289,13 @@ export function GameEditorModal({ game, onSaved, closeModal, onLeave }: Props) {
     setRefreshing(true);
     setError("");
     try {
-      const resolved = await resolveGame(romPath, coreId);
+      // The name when the file cannot supply one -- otherwise every game
+      // installed from a package looks itself up as "Eboot".
+      const resolved = await resolveGame(
+        romPath,
+        coreId,
+        byFilename ? "" : title.trim(),
+      );
       const applied = await applyArtwork(game.app_id, resolved.art);
       setArtApplied(applied);
       if (resolved.title) setTitle(resolved.title);
@@ -477,7 +490,9 @@ export function GameEditorModal({ game, onSaved, closeModal, onLeave }: Props) {
             hint={
               artApplied > 0
                 ? `${artApplied} image(s) applied. Artwork lands immediately; a name change waits for Save.`
-                : "Artwork lands immediately, a name change waits for Save. Looking up by filename also uses the current core, which decides where boxart comes from."
+                : `Artwork lands immediately, a name change waits for Save. Looking up by ${
+                    byFilename ? "filename" : "name"
+                  } also uses the current core, which decides where boxart comes from.`
             }
           >
             Name and artwork
@@ -497,7 +512,15 @@ export function GameEditorModal({ game, onSaved, closeModal, onLeave }: Props) {
                 the picker beside it does not. A button that says which input it
                 trusts explains that; one that says "again" does not. */}
             <DialogButton onClick={() => void refetch()} style={BUTTON} disabled={busy}>
-              {refreshing ? "Looking up..." : "Look up by filename"}
+              {/* "by name" when the file has none of its own. A game installed
+                  from a package boots eboot.bin, so "Look up by filename" would
+                  be describing a search for "Eboot" -- the same search, and the
+                  same nothing, for every PS3, PS4 and Vita game. */}
+              {refreshing
+                ? "Looking up..."
+                : byFilename
+                  ? "Look up by filename"
+                  : "Look up by name"}
             </DialogButton>
           </div>
         </div>
