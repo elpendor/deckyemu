@@ -1,10 +1,23 @@
 import { callable } from "@decky/api";
-import { type PluginSettings, type PluginVersion } from "./games";
+import { type PluginSettings } from "./games";
 
 /**
  * Everything after a game is added: settings, updates, collections, the
  * library audit, and the file transfer server.
  */
+
+/** What the backend half is. Compare with FRONTEND_BUILD to spot a stale bundle. */
+export interface PluginVersion {
+  version: string;
+  /** Commit CI built from, or "dev" for a local build. */
+  build: string;
+  built_at: string;
+  /**
+   * What changed in this build, as markdown. Written into the stamp by CI, so it
+   * needs no network and no token. Empty for a local build.
+   */
+  notes: string;
+}
 
 export const pluginVersion = callable<[], PluginVersion>("plugin_version");
 
@@ -66,17 +79,6 @@ export const getSettings = callable<[], PluginSettings>("get_settings");
 export const setSettings = callable<[patch: Record<string, unknown>], PluginSettings>(
   "set_settings",
 );
-export const validateSgdbKey = callable<
-  [apiKey: string],
-  { ok: boolean; error?: string }
->("validate_sgdb_key");
-export const findExistingSgdbKey = callable<[], { found: boolean; source: string }>(
-  "find_existing_sgdb_key",
-);
-export const importExistingSgdbKey = callable<
-  [],
-  { ok: boolean; error?: string; how?: string }
->("import_existing_sgdb_key");
 export interface CollectionMigrationPlan {
   moves: Array<{ app_id: number; title: string; from: string; to: string }>;
 }

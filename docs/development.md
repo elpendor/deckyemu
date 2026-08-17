@@ -208,9 +208,11 @@ src/                        Frontend (React + TypeScript, bundled by rollup).
                             contained otherwise: it unmounts to whatever
                             boundary Steam happens to have, which is an empty
                             Game Mode screen.
-  backend/                  Every callable() binding and its types, in five
-                            files by subject. index.ts re-exports, so importers
-                            still write `from "./backend"`.
+  backend/                  Every callable() binding and its types, in seven
+                            files by subject, named after the backend module
+                            each one talks to. index.ts re-exports, so importers
+                            still write `from "./backend"` and a declaration can
+                            move between them without touching a caller.
   steam/                    All undocumented SteamClient / appStore /
                             collectionStore use, in four files by subject.
                             Kept free of backend imports so the Node tests can

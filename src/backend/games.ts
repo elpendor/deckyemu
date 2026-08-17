@@ -1,9 +1,12 @@
 import { callable } from "@decky/api";
-import { type RetroArchStatus } from "./emulators";
 
 /**
  * Adding a game: probing a ROM, resolving its name and artwork, and the
  * shortcut that comes out.
+ *
+ * `Core` lives here rather than in retroarch.ts because this is where what a
+ * core *is* matters -- it is what a probe returns and what a game records. That
+ * file imports it to talk about installing one.
  */
 
 export interface Core {
@@ -252,9 +255,6 @@ export function realCores(cores: Core[]): Core[] {
     .sort((a, b) => a.short_name.localeCompare(b.short_name, undefined, { sensitivity: "base" }));
 }
 
-export const refreshRetroArch = callable<[], RetroArchStatus>("refresh_retroarch");
-export const getStatus = callable<[], RetroArchStatus>("get_status");
-export const listCores = callable<[], Core[]>("list_cores");
 export const probeRom = callable<[romPath: string], RomProbe>("probe_rom");
 /**
  * `title` overrides the name taken from the filename, for files that are not
@@ -443,93 +443,3 @@ export interface ClearedLibrary {
  * those.
  */
 export const clearLibrary = callable<[], ClearedLibrary>("clear_library");
-/** A core from the libretro buildbot catalog, installed or not. */
-export interface InstallableCore {
-  id: string;
-  display_name: string;
-  system_name: string;
-  databases: string[];
-  extensions: string[];
-  installed: boolean;
-}
-
-export type InstallCoreResult =
-  | { ok: false; error: string }
-  | {
-      ok: true;
-      core_id: string;
-      path: string;
-      info_written: boolean;
-      cores_dir: string;
-      core_count: number;
-    };
-
-export const listInstallableCores = callable<[refresh: boolean], InstallableCore[]>(
-  "list_installable_cores",
-);
-export const suggestCoresForExtension = callable<[extension: string], InstallableCore[]>(
-  "suggest_cores_for_extension",
-);
-export const installCore = callable<[coreId: string], InstallCoreResult>("install_core");
-export const uninstallCore = callable<
-  [coreId: string],
-  { ok: boolean; error?: string; core_count?: number }
->("uninstall_core");
-export const canInstallRetroArch = callable<[], { flatpak_available: boolean }>(
-  "can_install_retroarch",
-);
-export const installRetroArch = callable<
-  [],
-  { ok: boolean; error?: string; started?: boolean }
->("install_retroarch");
-
-/**
- * Why removal is or is not on offer. `reason` is written to be shown as-is:
- * a disabled button that does not say why is worse than no button.
- */
-/** Who is signed in to RetroAchievements, and whether RetroArch has a login to adopt. */
-export interface CheevosStatus {
-  signed_in: boolean;
-  username: string;
-  enabled: boolean;
-  hardcore: boolean;
-  can_adopt: boolean;
-  retroarch_username: string;
-}
-
-export const cheevosStatus = callable<[], CheevosStatus>("cheevos_status");
-
-/** The password is used for this one call and never stored; only the token is. */
-export const cheevosLogin = callable<
-  [string, string],
-  { ok: boolean; error?: string; username?: string }
->("cheevos_login");
-
-export const cheevosAdopt = callable<[], { ok: boolean; error?: string; username?: string }>(
-  "cheevos_adopt",
-);
-
-export const cheevosSignOut = callable<[], { ok: boolean }>("cheevos_sign_out");
-
-export const canUninstallRetroArch = callable<
-  [],
-  { ok: boolean; reason?: string; kind?: string; scope?: string }
->("can_uninstall_retroarch");
-
-export const uninstallRetroArch = callable<
-  [boolean],
-  { ok: boolean; error?: string; still_installed?: boolean; deleted_data?: boolean }
->("uninstall_retroarch");
-
-/** What the backend half is. Compare with FRONTEND_BUILD to spot a stale bundle. */
-export interface PluginVersion {
-  version: string;
-  /** Commit CI built from, or "dev" for a local build. */
-  build: string;
-  built_at: string;
-  /**
-   * What changed in this build, as markdown. Written into the stamp by CI, so it
-   * needs no network and no token. Empty for a local build.
-   */
-  notes: string;
-}
