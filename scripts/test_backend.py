@@ -3785,14 +3785,20 @@ plugin._install = _saved_install
 import ra_detect as _ra_detect  # noqa: E402
 
 check(
-    "the suggested ROM directory is the user's home",
+    "the suggested ROM directory is the transfer folder",
     _ra_detect.default_rom_dir(),
-    _ra_detect.user_home(),
+    fileserver.default_dir(),
 )
+# Two fields, two answers, and they are no longer the same one. `home_dir` is
+# what stops the frontend hardcoding /home/deck; the picker default is a place
+# to start browsing. They were equal while the picker opened at home, which is
+# exactly the kind of coincidence a test should pin rather than assume.
 check(
-    "and status reports the same path for both fields",
-    status["default_rom_dir"] == status["home_dir"] == _ra_detect.user_home(),
-    True,
+    "and status keeps home as its own separate answer",
+    (status["default_rom_dir"] == fileserver.default_dir(),
+     status["home_dir"] == _ra_detect.user_home(),
+     status["default_rom_dir"] != status["home_dir"]),
+    (True, True, True),
 )
 
 # The system picker: this list is what a custom emulator is mapped onto, and the
@@ -3982,17 +3988,25 @@ os.environ["DECKY_USER_HOME"] = fake_home
 check("the home is DECKY_USER_HOME when the loader sets it", sysenv.user_home(), fake_home)
 check("and ra_detect agrees rather than resolving its own", ra_detect.user_home(), fake_home)
 
-# The ROM picker opens at home. It used to guess -- RetroArch's remembered browse
-# directory, then two ROM layouts other emulation setups lay down, and SD-card
-# variants of both -- and every guess that missed dropped the user somewhere
-# unexplained.
-check("the ROM picker default is the home directory", ra_detect.default_rom_dir(), fake_home)
+# The ROM picker opens at the transfer folder: on a device with nothing added
+# yet, that is the only place this plugin has put anything, and being dropped in
+# home to go and find a file you just sent is the friction the transfer feature
+# exists to remove. It used to guess -- RetroArch's remembered browse directory,
+# then two ROM layouts other emulation setups lay down, and SD-card variants of
+# both -- and every guess that missed dropped the user somewhere unexplained.
+_transfer = os.path.join(fake_home, sysenv.USER_DIR_NAME, "transfer")
+check("the ROM picker default is the transfer folder",
+      ra_detect.default_rom_dir(), _transfer)
+# A picker cannot open at a directory that is not there, so unlike most reads of
+# a plugin folder this one creates it.
+check("which is created, because a picker needs somewhere real to open",
+      os.path.isdir(_transfer), True)
 browsed = os.path.join(cfg_dir, "roms")
 os.makedirs(browsed, exist_ok=True)
 check(
     "even when RetroArch remembers browsing elsewhere",
     ra_detect.default_rom_dir(),
-    fake_home,
+    _transfer,
 )
 os.rmdir(browsed)
 # The literal names stay: they are the layouts the removed guessing looked for,
@@ -4000,9 +4014,9 @@ os.rmdir(browsed)
 for layout in (("Emulation", "roms"), ("retrodeck", "roms"), ("roms",)):
     os.makedirs(os.path.join(fake_home, *layout), exist_ok=True)
 check(
-    "and when one of those layouts exists -- home is above all of them",
+    "and when one of those layouts exists -- still not guessing at them",
     ra_detect.default_rom_dir(),
-    fake_home,
+    _transfer,
 )
 
 # Transfers get their own folder rather than a guess at an existing ROM library:
@@ -4020,9 +4034,9 @@ check("asking again returns the same folder", fileserver.default_dir(), transfer
 check("the plugin's user folder is separate from what decky owns",
       sysenv.user_dir() != decky.DECKY_PLUGIN_RUNTIME_DIR, True)
 check(
-    "it is not where the ROM picker opens -- browsing and receiving are different",
-    fileserver.default_dir() != ra_detect.default_rom_dir(),
-    True,
+    "and it is where the ROM picker opens when nothing else is known",
+    fileserver.default_dir(),
+    ra_detect.default_rom_dir(),
 )
 check(
     "and it can be reported without being created",

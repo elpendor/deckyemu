@@ -322,13 +322,21 @@ class Plugin(
         return await self.get_status()
 
     async def get_status(self):
-        # `default_rom_dir()` *is* `user_home()`, so asking for both separately put
-        # two executor round trips behind one environment lookup -- on the call the
-        # panel makes every time it mounts. Resolved once and used for both.
-        home = await self._run(ra_detect.user_home)
-        # Where the picker should open instead, when a transferred file is still
-        # sitting unadded. "" the rest of the time, which is most of it.
-        waiting = await self._run(fileserver.waiting_dir)
+        # Three separate answers, and they used to be two: `default_rom_dir()`
+        # was `user_home()`, so one lookup filled both fields. It is the transfer
+        # folder now, and the coupling had to go with it -- `home_dir` is what
+        # keeps /home/deck out of the frontend, while the picker default is a
+        # place to start browsing, and nothing says those are the same path.
+        #
+        # Still one executor hop each rather than one per field per call: this is
+        # the call the panel makes every time it mounts.
+        home, default_dir, waiting = await asyncio.gather(
+            self._run(ra_detect.user_home),
+            self._run(ra_detect.default_rom_dir),
+            # Where the picker should open instead, when a transferred file is
+            # still sitting unadded. "" the rest of the time, which is most of it.
+            self._run(fileserver.waiting_dir),
+        )
         if not self._install:
             return {
                 "found": False,
@@ -338,7 +346,7 @@ class Plugin(
                 "core_count": 0,
                 "core_dirs": [],
                 "emulator_count": len(self._emulators),
-                "default_rom_dir": home,
+                "default_rom_dir": default_dir,
                 "waiting_rom_dir": waiting,
                 "home_dir": home,
             }
@@ -350,7 +358,7 @@ class Plugin(
             "core_count": len(self._cores),
             "core_dirs": self._install["core_dirs"],
             "emulator_count": len(self._emulators),
-            "default_rom_dir": home,
+            "default_rom_dir": default_dir,
             "waiting_rom_dir": waiting,
             "home_dir": home,
         }

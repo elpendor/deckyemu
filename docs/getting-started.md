@@ -131,9 +131,11 @@ For an emulator not in that list, see
 
 Back in the Quick Access panel, under **Add a game**:
 
-1. **Press Choose a game** and pick the ROM. The picker opens where you last
-   picked one. A file that arrived in step 1 can also be added straight from its
-   row in the transfer dialog.
+1. **Press Choose a game** and pick the ROM. The picker opens on the transfer
+   folder to begin with, so a game you have just sent is right there; after that
+   it opens where you last picked one, and it goes back to the transfer folder
+   whenever something new is waiting in it. A file that arrived in step 1 can
+   also be added straight from its row in the transfer dialog.
 2. **Pick what runs it.** Only cores and emulators that handle that file type are
    offered, with the one you used last for it first. A toggle reveals everything
    installed, for when the right answer is not in the short list.

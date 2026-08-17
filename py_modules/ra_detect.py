@@ -14,6 +14,7 @@ import subprocess
 
 import decky
 
+import fileserver
 import sysenv
 
 FLATPAK_ID = "org.libretro.RetroArch"
@@ -235,18 +236,32 @@ def detect():
 
 
 def default_rom_dir():
-    """Where the ROM picker opens when nothing better is known: the user's home.
+    """Where the ROM picker opens when nothing better is known: the transfer folder.
 
     This used to guess -- RetroArch's remembered browse directory, then the ROM
     folders the common emulation setups lay down, then SD-card variants of those.
     Every guess that missed dropped the user somewhere unexpected with no way to
     tell why, and none of them can be right for a library spread across several of
-    those places at once. Home is one level above all of them and always exists.
+    those places at once. That guessing is not coming back.
 
-    The picker still opens where a ROM was last chosen from; that is remembered in
-    settings and takes precedence over this.
+    Home replaced it, on the grounds that it sits above all of them and always
+    exists. What that missed is the install this answer is actually for. On a
+    brand new device home holds no ROMs either, so "somewhere empty" was never
+    the thing separating the two -- and of the two empty folders, one is where
+    this plugin's own flow puts every file it receives. Sending a game from
+    another device and then being dropped in `/home/deck` to find it is the
+    friction the transfer feature exists to remove.
+
+    Two things still win over this, and between them they cover the case home was
+    kept for: `last_rom_dir` in settings, so anyone whose library is on an SD card
+    goes back to it after one visit, and `waiting_dir()`, which overrides even
+    that when something new has just arrived.
     """
-    return user_home()
+    # Created, unlike most reads of a plugin folder: this is a path handed to a
+    # file picker, and a picker opened at a directory that is not there has no
+    # good behaviour. It is one folder the plugin owns outright, not one per
+    # emulator, so there is no litter to leave.
+    return fileserver.default_dir()
 
 
 def launch_argv(install, core_path, rom_path, appendconfig=""):
