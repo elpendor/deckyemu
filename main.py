@@ -1709,30 +1709,9 @@ class Plugin(
         if not argv:
             return {"ok": False, "error": "flatpak is not available on this system."}
 
-        decky.logger.info("Running: %s", " ".join(argv))
-        try:
-            process = await asyncio.create_subprocess_exec(
-                *argv,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.STDOUT,
-                env=self._subprocess_env(),
-            )
-            output, _ = await asyncio.wait_for(process.communicate(), timeout=180)
-        except asyncio.TimeoutError:
-            return {"ok": False, "error": "flatpak did not finish within three minutes."}
-        except (OSError, NotImplementedError) as error:
-            decky.logger.exception("Could not run flatpak")
-            return {"ok": False, "error": "Could not run flatpak: %s" % error}
-
-        text = (output or b"").decode("utf-8", errors="replace").strip()
-        for line in text.splitlines():
-            decky.logger.info("flatpak: %s", line)
-
-        if process.returncode != 0:
-            # The last line is where flatpak puts the reason; the exit code alone
-            # says nothing useful.
-            tail = [line for line in text.splitlines() if line.strip()][-2:]
-            return {"ok": False, "error": " | ".join(tail) or "flatpak exited with %s" % process.returncode}
+        result = await self._run_flatpak(argv)
+        if not result.get("ok"):
+            return result
 
         # Re-detect rather than assume: this is what makes every other tab agree
         # that RetroArch is gone, and it is also how a failed-but-zero-exit
@@ -1778,6 +1757,58 @@ class Plugin(
             env.setdefault("XDG_CACHE_HOME", os.path.join(home, ".cache"))
         env.setdefault("PATH", "/usr/bin:/bin:/usr/local/bin")
         return env
+
+    async def _run_flatpak(self, argv):
+        """Run one flatpak command to completion and report what it said.
+
+        For the flatpak operations with nothing worth streaming -- removing
+        RetroArch, removing an emulator -- as opposed to `_stream_flatpak`, which
+        buffers the carriage-return redraws of a download to drive a progress
+        bar. Both exist; this is the one for a verb that either works or does
+        not.
+
+        Written once because it has already been written wrongly twice. The
+        dev-reset tab grew its own copy and left out `env=` -- and without that,
+        Steam's runtime libraries are still on the path and flatpak dies on
+        `libcrypto.so.3: version OPENSSL_3.4.0 not found` before it does
+        anything. That copy also logged nothing, so the failure arrived as a
+        toast and left no trace to read afterwards. Then the emulator uninstall
+        and the RetroArch uninstall carried two more copies, identical line for
+        line, one of them under a docstring saying this should be shared.
+
+        Every line flatpak prints is logged: a removal that fails needs its
+        reason kept somewhere the user was not required to be looking. The last
+        two lines come back as the error, because that is where flatpak puts the
+        reason and the exit code alone has cost a debugging round before.
+        """
+        decky.logger.info("Running: %s", " ".join(argv))
+        try:
+            process = await asyncio.create_subprocess_exec(
+                *argv,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+                # Steam's runtime libraries break system binaries. Without this
+                # the command never gets as far as doing anything.
+                env=self._subprocess_env(),
+            )
+            output, _ = await asyncio.wait_for(process.communicate(), timeout=180)
+        except asyncio.TimeoutError:
+            return {"ok": False, "error": "flatpak did not finish within three minutes."}
+        except (OSError, NotImplementedError) as error:
+            decky.logger.exception("Could not run flatpak")
+            return {"ok": False, "error": "Could not run flatpak: %s" % error}
+
+        text = (output or b"").decode("utf-8", errors="replace").strip()
+        for line in text.splitlines():
+            decky.logger.info("flatpak: %s", line)
+
+        if process.returncode != 0:
+            tail = [line for line in text.splitlines() if line.strip()][-2:]
+            return {
+                "ok": False,
+                "error": " | ".join(tail) or "flatpak exited with %s" % process.returncode,
+            }
+        return {"ok": True}
 
     # `(?<!\d)` matters: output is read in fixed-size chunks, so a number can be
     # split across two reads. Without the guard, "1425%" yields 425 and the

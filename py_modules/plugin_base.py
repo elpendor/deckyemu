@@ -53,6 +53,15 @@ class PluginContext:
         """Run an emulator as a command-line tool, with no window."""
         raise NotImplementedError
 
+    @staticmethod
+    def _subprocess_env() -> dict:
+        """The environment a system binary needs: Steam's runtime stripped, HOME set."""
+        raise NotImplementedError
+
+    def _run_flatpak(self, argv: list) -> Awaitable[dict]:
+        """Run one flatpak command to completion; `{"ok": ...}` and the reason if not."""
+        raise NotImplementedError
+
     def _refresh_emulators(self) -> Awaitable[list]:
         """Re-read the registered emulators and return them."""
         raise NotImplementedError

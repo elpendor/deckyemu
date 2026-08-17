@@ -1029,47 +1029,16 @@ class Emulators(plugin_base.PluginContext):
     async def _flatpak_uninstall(self, app_id):
         """Run `flatpak uninstall` for one application id.
 
-        Shared rather than written twice, which is the lesson rather than a
-        preference: the dev-reset tab grew its own copy of this and left out
-        `env=` -- and without that, Steam's runtime libraries are still on the
-        path and flatpak dies on `libcrypto.so.3: version OPENSSL_3.4.0 not
-        found` before it does anything. The copy also logged nothing, so the
-        failure arrived as a toast and left no trace to read afterwards.
-
-        Every line flatpak prints is logged. A removal that fails needs the
-        reason kept somewhere the user is not required to have been looking.
+        The argv is built here because only this side knows the id; running it
+        and reading its output is `_run_flatpak` on the composed Plugin, which
+        the RetroArch removal shares. That sharing is the point rather than a
+        tidiness preference -- see its docstring for the three copies this had
+        and what each of them got wrong.
         """
         argv = await self._run(emu_install.flatpak_uninstall_argv, app_id)
         if not argv:
             return {"ok": False, "error": "flatpak is not available on this system."}
-
-        decky.logger.info("Running: %s", " ".join(argv))
-        try:
-            process = await asyncio.create_subprocess_exec(
-                *argv,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.STDOUT,
-                # Steam's runtime libraries break system binaries. Without this
-                # the command never gets as far as uninstalling anything.
-                env=self._subprocess_env(),
-            )
-            output, _ = await asyncio.wait_for(process.communicate(), timeout=180)
-        except asyncio.TimeoutError:
-            return {"ok": False, "error": "flatpak did not finish within three minutes."}
-        except (OSError, NotImplementedError) as error:
-            decky.logger.exception("Could not run flatpak")
-            return {"ok": False, "error": "Could not run flatpak: %s" % error}
-
-        text = (output or b"").decode("utf-8", errors="replace").strip()
-        for line in text.splitlines():
-            decky.logger.info("flatpak: %s", line)
-        if process.returncode != 0:
-            tail = [line for line in text.splitlines() if line.strip()][-2:]
-            return {
-                "ok": False,
-                "error": " | ".join(tail) or "flatpak exited with %s" % process.returncode,
-            }
-        return {"ok": True}
+        return await self._run_flatpak(argv)
 
 
     async def prepare_emulator_gui(self, entry_id: str):
