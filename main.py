@@ -15,7 +15,6 @@ import cheevos
 import devreset
 import diagnostics
 import emu_config
-import emu_firmware
 import emu_install
 import emulator_catalog
 import emulators
@@ -26,7 +25,6 @@ import launchers
 import libretro_meta
 import net
 import platforms
-import ps3_games
 import ps4_games
 import plugin_accounts
 import plugin_audit
@@ -753,100 +751,6 @@ class Plugin(
             result["suggested_core_id"],
         )
         return result
-
-    @staticmethod
-    def _ps3_package_state(pkg_path):
-        """What a .pkg is, and whether RPCS3 has already unpacked it.
-
-        `installed` carries the game's real title and the path that boots, so a
-        package sent twice -- or picked again after the install -- skips straight
-        to the game instead of unpacking a second time.
-
-        `licence` says whether the .rap that decrypts this content is in place.
-        Store games need one and licence-free ones do not, so it is reported
-        rather than enforced -- but it means "Failed to decrypt content" on a
-        black screen is no longer the first time anybody hears about it.
-        """
-        title_id = ps3_games.package_title_id(pkg_path)
-        content_id = ps3_games.package_content_id(pkg_path)
-        game = None
-        if title_id:
-            game = next(
-                (item for item in ps3_games.installed_games()
-                 if item["title_id"] == title_id),
-                None,
-            )
-        return {
-            "title_id": title_id,
-            "installed": bool(game),
-            "title": game["title"] if game else "",
-            "eboot": game["eboot"] if game else "",
-            # The content id is reported alongside the verdict because it is
-            # the name the licence ends up under, and the one the user can be
-            # told to use if the search below found nothing to rename.
-            "content_id": content_id,
-            "licence_state": ps3_games.licence_state(
-                content_id,
-                ps3_games.licence_dirs(pkg_path, emu_install.firmware_dir()),
-                pkg_path,
-            ),
-        }
-
-    @staticmethod
-    def _ps4_package_state(pkg_path):
-        """What a PS4 .pkg is, and whether shadPS4 already has it unpacked."""
-        title_id = ps4_games.package_title_id(pkg_path)
-        game = None
-        if title_id:
-            game = next(
-                (item for item in ps4_games.installed_games()
-                 if item["title_id"] == title_id),
-                None,
-            )
-        return {
-            "title_id": title_id,
-            "installed": bool(game),
-            "title": game["title"] if game else "",
-            "eboot": game["eboot"] if game else "",
-        }
-
-    @staticmethod
-    def _vita_package_state(pkg_path):
-        """What a Vita .pkg is, whether it is installed, and whether its key is here.
-
-        `licence` is the one extra thing this console needs: Vita3K cannot
-        install a package without the zRIF that decrypts it, and cannot work it
-        out. The panel says so before the button is pressed rather than after
-        the install fails.
-
-        `licence_candidates` is what to say when there is no key *for this
-        game* but there are keys in the folder. Reporting that as "no key
-        found" told the user to send a file they had already sent, and the
-        thing actually needed -- a name that ties one of them to this package
-        -- was never asked for.
-        """
-        title_id = vita_games.package_title_id(pkg_path)
-        game = None
-        if title_id:
-            game = next(
-                (item for item in vita_games.installed_games()
-                 if item["title_id"] == title_id),
-                None,
-            )
-        licence = vita_games.zrif_report(pkg_path, title_id)
-        return {
-            "title_id": title_id,
-            "installed": bool(game),
-            "title": game["title"] if game else "",
-            "eboot": game["eboot"] if game else "",
-            "licence": bool(licence["key"]),
-            "licence_candidates": licence["candidates"],
-            # The name that would end the ambiguity, so the panel can quote it
-            # rather than describe it. `find_zrif` looks for the title id and
-            # for the package's own stem, and the title id is the one the user
-            # can read off the row in front of them.
-            "licence_name": "%s.zrif" % title_id if title_id else "",
-        }
 
     def _core_by_id(self, core_id):
         if emulators.is_emulator_id(core_id):
