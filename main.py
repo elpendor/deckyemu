@@ -75,6 +75,24 @@ def own_module_names(root):
     return names
 
 
+def _title_id_for(rom_path):
+    """The title id a launcher needs, or "" for a game that launches by path.
+
+    Derived from the recorded ROM rather than stored beside it, so a library
+    written before any of this still rebuilds correctly. Empty for every game
+    but Vita3K's, which are installed rather than opened: their launcher runs
+    `-r <TITLE_ID>` and must carry no path at all.
+
+    One function because two callers both need it and only one of them had it.
+    `rebuild_launchers` derived it; `update_game` passed `write_launcher` its
+    arguments positionally and stopped one short of `title_id`, so saving an
+    edit rewrote a Vita launcher to open the eboot by path -- which starts
+    Vita3K's own interface and no game. Anything that writes a launcher gets
+    the id from here, and nothing has to remember that Vita is different.
+    """
+    return vita_games.title_of(rom_path or "")
+
+
 def _check_own_modules():
     """Warn if one of our modules was shadowed by decky's.
 
@@ -1693,6 +1711,12 @@ class Plugin(
                 launch["extra_args"],
                 self._menu_combo(settings),
                 settings,
+                # The argument this list used to stop one short of. It has to be
+                # positional -- `_run` forwards *args and no keywords -- which
+                # is exactly why it was easy to miss: an eleven-argument call
+                # whose last one defaults to "a launcher that opens the eboot by
+                # path", and no error anywhere.
+                _title_id_for(rom_path),
             )
         except OSError as error:
             decky.logger.exception("Could not rewrite launcher")
@@ -1792,11 +1816,7 @@ class Plugin(
                     "hide_osd": launch["hide_osd"],
                     "fullscreen": launch["fullscreen"],
                     "extra_args": launch["extra_args"],
-                    # Derived from the recorded ROM rather than stored beside
-                    # it, so a library written before any of this still rebuilds
-                    # correctly. Empty for every game that launches by path,
-                    # which is all of them but Vita3K's.
-                    "title_id": vita_games.title_of(entry.get("rom_path", "")),
+                    "title_id": _title_id_for(entry.get("rom_path", "")),
                 }
             )
 

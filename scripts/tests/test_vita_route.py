@@ -26,6 +26,7 @@ from harness import TMP, check, section, summary  # noqa: E402
 
 import emulator_catalog  # noqa: E402
 import emulators  # noqa: E402
+import vita_games  # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from main import Plugin  # noqa: E402
@@ -150,7 +151,10 @@ check("and the message says what to do instead",
 
 # The route that works: an installed title, started by an id that cannot be
 # split because it has no spaces in it.
-_installed = os.path.join(TMP, "ux0-app", "PCSA00011")
+# Under the folder Vita3K really installs into, not a scratch one: the title id
+# a launcher needs is *derived* from the eboot's position beneath that root, so
+# a fixture parked anywhere else derives "" and quietly proves nothing.
+_installed = os.path.join(vita_games.games_dir(), "PCSA00011")
 os.makedirs(_installed, exist_ok=True)
 _eboot = os.path.join(_installed, "eboot.bin")
 with open(_eboot, "wb") as _handle:
@@ -166,6 +170,39 @@ with open(_prepared["exe"], "r", encoding="utf-8") as _handle:
 check("and its launcher starts the title by id, not by path",
       "-r PCSA00011" in _script, True)
 check("with no path to the game in it at all", _eboot in _script.split("exec")[-1], False)
+
+section("editing a Vita game leaves it still launching by id")
+
+# The editor rewrites the launcher on save, and it used to write a different
+# one from the add flow: `write_launcher` takes `title_id` last, `update_game`
+# passed its arguments positionally and stopped one short, and the default is a
+# launcher that opens the eboot by path. Vita3K opens its own interface for
+# that and no game -- so choosing new artwork and pressing Save quietly stopped
+# the game booting, with a launcher that still looked plausible.
+_APP_ID = 424242
+run(plugin.register_game(
+    _APP_ID, "Gravity Rush", _eboot, "emu:vita3k", _prepared["exe"],
+    "Sony - PlayStation Vita",
+))
+# A rename, which is the commonest edit and the one that follows picking new
+# artwork -- exactly what the user had done when the game stopped booting.
+_updated = run(plugin.update_game(_APP_ID, "Gravity Rush Remastered", "emu:vita3k"))
+check("the edit succeeds", _updated.get("ok"), True)
+
+# The rename produces a new launcher file -- the filename embeds the title --
+# so the one to read is whatever the registry now points at, not the old path.
+_entry_after = run(plugin.list_added())
+_launcher_after = next(
+    game["launcher_path"] for game in _entry_after if game["app_id"] == _APP_ID
+)
+with open(_launcher_after, "r", encoding="utf-8") as _handle:
+    _after = _handle.read()
+check("and the rewritten launcher still starts the title by id",
+      "-r PCSA00011" in _after, True)
+# The failure as the user met it: the game boots into Vita3K's interface,
+# because the eboot path is an argument Vita3K does not treat as a game.
+check("rather than handing it the eboot path",
+      _eboot in _after.split("exec")[-1], False)
 
 plugin.loop.close()
 
