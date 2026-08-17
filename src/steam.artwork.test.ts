@@ -70,8 +70,10 @@ describe("applyArtwork", () => {
   });
 
   it("clears a slot it is about to overwrite too", async () => {
-    // Not redundant: Steam does not reliably refresh a slot that already holds
-    // custom art, which is why decky-steamgriddb clears before every write.
+    // Not for refreshing -- a write over a slot holding custom art lands fine.
+    // It is for the extension: Steam keeps `_hero.jpg` and `_hero.png` as
+    // separate files and offers jpg first, so a png written over a jpg would
+    // leave the old jpg winning. Clearing drops both.
     const steam = install();
 
     await applyArtwork(7, { capsule: IMAGE, hero: IMAGE });
@@ -82,6 +84,43 @@ describe("applyArtwork", () => {
     expect(steam.order.indexOf(`clear:${HERO}`)).toBeLessThan(
       steam.order.indexOf(`set:${HERO}`),
     );
+  });
+
+  /*
+   * The blank details page, and the reason this order is not incidental.
+   *
+   * Every slot cleared up front is an app with no custom artwork at all until
+   * the writes land, and a game details page open behind the editor renders that
+   * emptiness immediately -- then recovers unevenly, the hero on its own and the
+   * logo only when the page is re-opened. Interleaving means the gap per slot is
+   * one write long.
+   */
+  it("clears each slot only immediately before its own write", async () => {
+    const steam = install();
+
+    await applyArtwork(7, { capsule: IMAGE, hero: IMAGE });
+
+    // The two slots being written, in order. The abandoned pair follows, which
+    // the test below is about.
+    expect(steam.order.slice(0, 4)).toEqual([
+      `clear:${CAPSULE}`,
+      `set:${CAPSULE}`,
+      `clear:${HERO}`,
+      `set:${HERO}`,
+    ]);
+  });
+
+  it("empties the abandoned slots only after the new art is in place", async () => {
+    const steam = install();
+
+    // A libretro pick again: the capsule is replaced, and the other three are
+    // the previous game's and have to go.
+    await applyArtwork(7, { capsule: IMAGE });
+
+    const lastWrite = steam.order.lastIndexOf(`set:${CAPSULE}`);
+    for (const slot of [HERO, LOGO, HEADER]) {
+      expect(steam.order.indexOf(`clear:${slot}`)).toBeGreaterThan(lastWrite);
+    }
   });
 
   it("counts the slots that stuck, not the ones it emptied", async () => {

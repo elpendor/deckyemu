@@ -489,17 +489,13 @@ export function GameEditorModal({ game, onSaved, closeModal, onLeave }: Props) {
           <Label
             hint={
               artApplied > 0
-                // The last sentence only while it can be seen, which is why it
-                // lives on this branch: applying clears all four slots before
-                // writing any -- see steam/artwork.ts, which has to -- so a
-                // game page open behind this genuinely has no artwork for a
-                // moment and renders that honestly. Nothing tells it when the
-                // writes land. `ReportLibraryAssetCacheMiss` looked like the
-                // answer and changed nothing on the device; decky-steamgriddb
-                // calls nothing either and avoids the whole thing by
-                // navigating away, so no page is watching. Saying so beats
-                // leaving it looking broken.
-                ? `${artApplied} image(s) applied. Artwork lands immediately; a name change waits for Save. A game page open behind this stays blank until you reopen it.`
+                // This used to warn that a game page open behind the editor
+                // would sit blank until it was re-opened, which it did: applying
+                // emptied all four slots before writing any, and a details page
+                // renders that gap. It does not any more -- `steam/artwork.ts`
+                // clears each slot immediately before its own write -- so the
+                // warning is gone rather than reworded.
+                ? `${artApplied} image(s) applied. Artwork lands immediately; a name change waits for Save.`
                 : `Artwork lands immediately, a name change waits for Save. Looking up by ${
                     byFilename ? "filename" : "name"
                   } also uses the current core, which decides where boxart comes from.`

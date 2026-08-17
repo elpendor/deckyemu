@@ -7,7 +7,7 @@
  */
 import type { ArtImage } from "../backend";
 import { fitToSlot } from "../fitArtwork";
-import { LibraryAssetType, sleep, steamClient } from "./client";
+import { LibraryAssetType, steamClient } from "./client";
 
 /** Strips the `data:image/png;base64,` prefix -- Steam wants bare base64. */
 function toBareBase64(dataUri: string): string {
@@ -25,72 +25,33 @@ const ART_SLOTS: Array<[keyof ResolvedArt, LibraryAssetType]> = [
 
 type ResolvedArt = Partial<Record<"capsule" | "header" | "hero" | "logo", ArtImage>>;
 
-/**
- * Steam has cleared a slot some time after it says it has.
- *
- * `ClearCustomArtworkForApp` resolves immediately rather than when the asset is
- * gone, so writing the replacement straight afterwards can land before the
- * clear and be wiped by it. Half a second is what decky-steamgriddb settled on
- * for the same call, and it is paid once for the whole set rather than per slot.
- */
-const CLEAR_SETTLES_MS = 500;
-
-/**
- * Empty every slot, so what follows is the new game's artwork and nothing else.
- *
- * Two separate reasons, both seen on the device:
- *
- * A source does not necessarily fill all four. A libretro row is a boxart and
- * only a boxart, so picking one used to replace the capsule and leave the hero,
- * logo and header belonging to whichever game was identified before it -- the
- * new cover over the old backdrop, which reads as "some of the artwork did not
- * update" because that is exactly what happened.
- *
- * And Steam does not reliably refresh a slot that already holds custom art:
- * decky-steamgriddb clears before every single write, including the ones that
- * overwrite. So the clear is not only for the slots being left empty.
- */
-async function clearArtwork(appId: number, apps: any): Promise<void> {
-  if (!apps.ClearCustomArtworkForApp) return;
-
-  for (const [, assetType] of ART_SLOTS) {
-    try {
-      await apps.ClearCustomArtworkForApp(appId, assetType);
-    } catch (error) {
-      // Best effort: a slot that would not clear is no worse than before, and
-      // the write that follows may well succeed anyway.
-      console.error(`[deckyemu] could not clear art slot ${assetType}`, error);
-    }
-  }
-
-  await sleep(CLEAR_SETTLES_MS);
+/** One slot's picture, reshaped and ready for Steam. */
+interface Ready {
+  slot: keyof ResolvedArt;
+  assetType: LibraryAssetType;
+  data: string;
+  kind: string;
 }
 
 /**
- * Replaces a game's artwork with whatever we have. Returns the slots that stuck.
+ * Reshape everything before Steam is touched at all.
  *
- * A replacement, not a patch: anything not supplied is cleared rather than left
- * behind. See `clearArtwork`.
+ * The order is the point. Fitting decodes and redraws a picture on a canvas,
+ * which for a 4K hero is the slowest thing in here by far -- and while it runs,
+ * the slot it is destined for must still hold the *old* game's art rather than
+ * nothing. Clearing first and fitting afterwards is what made a game details
+ * page sit empty for seconds; see `applyArtwork`.
  */
-export async function applyArtwork(appId: number, art: ResolvedArt): Promise<number> {
-  const apps = steamClient()?.Apps;
-  if (!apps?.SetCustomArtworkForApp) {
-    return 0;
-  }
+async function fitAll(art: ResolvedArt): Promise<{ ready: Ready[]; abandoned: LibraryAssetType[] }> {
+  const ready: Ready[] = [];
+  const abandoned: LibraryAssetType[] = [];
 
-  // Nothing to put there is not the same as "this game has no artwork". A
-  // lookup that came back empty would otherwise strip a perfectly good cover
-  // and leave the game worse than it found it.
-  if (!ART_SLOTS.some(([slot]) => art[slot]?.data)) {
-    return 0;
-  }
-
-  await clearArtwork(appId, apps);
-
-  let applied = 0;
   for (const [slot, assetType] of ART_SLOTS) {
     const image = art[slot];
-    if (!image?.data) continue;
+    if (!image?.data) {
+      abandoned.push(assetType);
+      continue;
+    }
 
     let data = image.data;
     let kind: string = image.kind;
@@ -118,6 +79,78 @@ export async function applyArtwork(appId: number, art: ResolvedArt): Promise<num
       }
     }
 
+    ready.push({ slot, assetType, data, kind });
+  }
+
+  return { ready, abandoned };
+}
+
+/**
+ * Replaces a game's artwork with whatever we have. Returns the slots that stuck.
+ *
+ * A replacement, not a patch: anything not supplied is cleared rather than left
+ * behind, because a source does not necessarily fill all four. A libretro row is
+ * a boxart and only a boxart, so filling the capsule and leaving the rest gives
+ * the new cover over the old game's backdrop.
+ *
+ * **Nothing here may leave a slot empty for longer than one write takes.** A
+ * game details page open behind the editor renders the artwork straight off
+ * these files, and it renders their absence just as promptly: Steam's custom art
+ * URL is `/customimages/<appid><suffix>.<ext>?v=<rt_custom_image_mtime>`, and
+ * `BHasCustomImages()` is `rt_custom_image_mtime > 0`, so an app with every slot
+ * cleared offers no URLs at all and the page goes blank. Worse, the hero and the
+ * logo do not recover the same way afterwards -- the hero's element survives and
+ * follows the new URL, but the logo's is dropped from the page and only comes
+ * back when the page is re-opened. That asymmetry is what "the artwork comes
+ * back if I leave and return" was.
+ *
+ * So the sequence is: reshape everything first, then per slot clear and write
+ * back to back, then empty the abandoned slots last. Measured on the device over
+ * 165 samples of a details page during six of these runs: not one sample had the
+ * app without custom artwork, and not one had `rt_custom_image_mtime` unset.
+ */
+export async function applyArtwork(appId: number, art: ResolvedArt): Promise<number> {
+  const apps = steamClient()?.Apps;
+  if (!apps?.SetCustomArtworkForApp) {
+    return 0;
+  }
+
+  // Nothing to put there is not the same as "this game has no artwork". A
+  // lookup that came back empty would otherwise strip a perfectly good cover
+  // and leave the game worse than it found it.
+  if (!ART_SLOTS.some(([slot]) => art[slot]?.data)) {
+    return 0;
+  }
+
+  const { ready, abandoned } = await fitAll(art);
+
+  let applied = 0;
+  for (const { slot, assetType, data, kind } of ready) {
+    /*
+     * Cleared immediately before its own write, not as part of an up-front
+     * sweep, and with nothing in between.
+     *
+     * The clear is still here, but not for the reason it used to say. Writing
+     * over a slot that already holds custom art works: measured on the device,
+     * a hero replaced in place went from 1427835 bytes to 131638 with no clear
+     * at all. What the clear is for is the extension. Steam keeps
+     * `<appid>_hero.jpg` and `<appid>_hero.png` as separate files and
+     * `GetCustomImageURLs` offers jpg first, so a png written over a slot
+     * holding a jpg leaves the jpg winning -- the previous game's art, on the
+     * new game, indefinitely. Clearing drops both extensions, which was
+     * measured too.
+     *
+     * Best effort: a slot that would not clear is no worse than before, and the
+     * write that follows may well succeed anyway.
+     */
+    if (apps.ClearCustomArtworkForApp) {
+      try {
+        await apps.ClearCustomArtworkForApp(appId, assetType);
+      } catch (error) {
+        console.error(`[deckyemu] could not clear art slot ${assetType}`, error);
+      }
+    }
+
     try {
       await apps.SetCustomArtworkForApp(appId, toBareBase64(data), kind, assetType);
       applied += 1;
@@ -125,5 +158,22 @@ export async function applyArtwork(appId: number, art: ResolvedArt): Promise<num
       console.error(`[deckyemu] failed to set ${slot} art`, error);
     }
   }
+
+  /*
+   * Last, once the new artwork is in place. These are the slots the new game has
+   * nothing for, so they end up genuinely empty either way -- but doing them
+   * after the writes means the page is never showing *nothing*, only the slots
+   * that are honestly missing.
+   */
+  if (apps.ClearCustomArtworkForApp) {
+    for (const assetType of abandoned) {
+      try {
+        await apps.ClearCustomArtworkForApp(appId, assetType);
+      } catch (error) {
+        console.error(`[deckyemu] could not clear art slot ${assetType}`, error);
+      }
+    }
+  }
+
   return applied;
 }
