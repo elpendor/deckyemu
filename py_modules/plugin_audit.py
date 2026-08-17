@@ -22,6 +22,7 @@ import decky
 
 import plugin_base
 
+import emulators
 import launchers
 import romshelf
 import steam_shortcuts
@@ -43,6 +44,17 @@ class Audit(plugin_base.PluginContext):
 
         registry, broken, referenced = await self._run(self._inspect_library, library)
 
+        # The plugin's own setup shortcut and the script it runs are in use, and
+        # neither is in the registry -- the shortcut is remembered in the
+        # settings and the script is named after an emulator rather than a game.
+        # Without this the library check reported both: "DeckyEmu setup" as an
+        # orphaned shortcut, and its launcher as a stray to be deleted. Acting on
+        # the second breaks the first, which is the worst shape a finding can
+        # have.
+        setup_app_id, gui_launchers = await self._run(self._setup_shortcut)
+
+        referenced |= gui_launchers
+
         strays = await self._run(self._stray_launchers, referenced)
 
         previous = await self._run(self._find_previous_installs)
@@ -58,7 +70,9 @@ class Audit(plugin_base.PluginContext):
             "broken": broken,
             "strays": sorted(strays),
             "previous_installs": previous,
-            "unknown_shortcuts": await self._run(self._unknown_shortcuts, library),
+            "unknown_shortcuts": await self._run(
+                self._unknown_shortcuts, library, setup_app_id
+            ),
             "mispointed": await self._run(self._mispointed_entries, library),
             "unused_roms": await self._run(self._unused_roms, library),
         }
@@ -79,7 +93,13 @@ class Audit(plugin_base.PluginContext):
         cleanup screen nobody has a reason to open cannot report it.
         """
         library = await self._run(store.get_library)
-        found = await self._run(self._unknown_shortcuts, library)
+        # The setup shortcut is excluded here too, and this is the surface where
+        # that mattered most: the panel asks on every open, so one shortcut the
+        # plugin made for itself put a permanent "something is wrong with your
+        # library" nudge in front of every user who had ever opened an
+        # emulator's own window.
+        setup_app_id, _gui = await self._run(self._setup_shortcut)
+        found = await self._run(self._unknown_shortcuts, library, setup_app_id)
         counts = {"dead": 0, "duplicate": 0, "orphan": 0}
         for item in found:
             counts[item["kind"]] = counts.get(item["kind"], 0) + 1
@@ -129,7 +149,27 @@ class Audit(plugin_base.PluginContext):
         return {"app_id": await self._run(look)}
 
     @staticmethod
-    def _unknown_shortcuts(library):
+    def _setup_shortcut():
+        """(setup appid, the GUI launcher paths in use) -- what is ours, not a game.
+
+        Both halves answer the same question: which of the things in the
+        launcher directory and in Steam's shortcuts belong to the plugin rather
+        than to somebody's library. Read together because every caller that
+        needs one is about to need the other.
+
+        The paths are derived from the emulators that are actually registered,
+        so a script left behind by an emulator since removed is still a stray --
+        which it is.
+        """
+        settings = store.get_settings()
+        paths = {
+            os.path.normpath(launchers.gui_launcher_path(emulator))
+            for emulator in emulators.list_emulators()
+        }
+        return int(settings.get("setup_app_id") or 0), paths
+
+    @staticmethod
+    def _unknown_shortcuts(library, setup_app_id=0):
         """Shortcuts of ours that the registry does not account for.
 
         The one check that does not begin with a registry entry, and the only
@@ -169,6 +209,13 @@ class Audit(plugin_base.PluginContext):
         report = []
         for item in steam_shortcuts.ours():
             if str(item["app_id"]) in known:
+                continue
+            # Ours, deliberately, and deliberately not in the registry: it is
+            # one hidden shortcut repointed at whichever emulator is being
+            # opened, remembered in the settings instead. It is in the launcher
+            # directory like every game's, which is what `ours()` matches on, so
+            # nothing else here can tell it apart.
+            if setup_app_id and item["app_id"] == setup_app_id:
                 continue
             if not item["launcher_exists"]:
                 kind = "dead"

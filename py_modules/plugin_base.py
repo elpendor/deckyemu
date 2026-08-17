@@ -66,6 +66,11 @@ class PluginContext:
         """Re-read the registered emulators and return them."""
         raise NotImplementedError
 
+    @staticmethod
+    def _stray_launchers(referenced: set) -> list:
+        """Launcher scripts in our own directory that nothing in `referenced` claims."""
+        raise NotImplementedError
+
     # --- resolving what a game is ----------------------------------------
     def _core_by_id(self, core_id: str) -> Optional[dict]:
         """The core or emulator entry behind a core id, or None."""

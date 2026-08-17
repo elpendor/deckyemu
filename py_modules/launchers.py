@@ -395,6 +395,27 @@ def write_launcher(
 SETUP_SHORTCUT_TITLE = "DeckyEmu setup"
 
 
+def gui_launcher_path(emulator, title=""):
+    """Where the launcher that opens `emulator`'s own interface lives.
+
+    Its own function because two very different things need to agree on it: the
+    writer below, and the library check, which has to recognise this script as
+    something in use rather than a leftover. It did not, so the one launcher the
+    plugin writes for itself was reported as a stray -- and deleting it, which
+    is what that finding offers, breaks the setup shortcut that runs it.
+
+    Derived rather than pattern-matched for the same reason. `open-<id>.sh` looks
+    like a rule a check could apply on its own, but a game called "Open Season"
+    produces `open-season-<digest>.sh` and an imported emulator may call itself
+    anything at all. Asking for the path of an emulator that actually exists has
+    neither problem, and a script left behind by an emulator since removed is
+    still correctly a stray.
+    """
+    return os.path.join(
+        LAUNCHER_DIR, "open-%s.sh" % _slug((emulator or {}).get("id") or title)
+    )
+
+
 def write_gui_launcher(emulator, title, args=(), allow=(), errand=""):
     """Write (or overwrite) the launcher that opens an emulator's interface.
 
@@ -412,7 +433,7 @@ def write_gui_launcher(emulator, title, args=(), allow=(), errand=""):
     """
     argv = emulators.gui_argv(emulator, args=args, allow=allow)
     os.makedirs(LAUNCHER_DIR, exist_ok=True)
-    path = os.path.join(LAUNCHER_DIR, "open-%s.sh" % _slug(emulator.get("id") or title))
+    path = gui_launcher_path(emulator, title)
 
     body = "\n".join(
         [
