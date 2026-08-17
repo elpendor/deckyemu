@@ -275,39 +275,47 @@ export function PendingPackageRows({
               // Refused rather than allowed to fail: without a key Vita3K
               // reports a corrupt package, which reads as a bad download.
               disabled={adding || blocked}
+              // One shape for all three: what the package is not yet, the one
+              // thing that is different about this console, then the .pkg being
+              // deleted. They were written separately and read like three
+              // different features -- three lengths, three orders, and the
+              // shared facts phrased differently each time.
+              //
+              // What went is what is already said elsewhere on the panel. The
+              // PS3 licence had a sentence here and has its own row above in all
+              // three of its states; "no window and nothing to press" was said
+              // twice for Vita. A description that repeats the row above it is
+              // one more thing to read and no more information.
               description={
                 packaged.system === "vita"
-                  ? // Vita3K installs it itself, like RPCS3 — but it cannot
-                    // decrypt without the key the package was sold with, and
-                    // cannot work that out, so the key has to arrive too. What
-                    // is missing is said in its own row above, not here: this
-                    // description belongs to a button that cannot be pressed,
-                    // and a disabled control is the last place to put the one
-                    // thing the reader has to act on.
+                  ? // What is missing is said in its own row above, not here:
+                    // this description belongs to a button that cannot be
+                    // pressed, and a disabled control is the last place to put
+                    // the one thing the reader has to act on.
                     blocked
                     ? "Waiting for the licence key — see above."
                     : chosen
-                      ? // Named again here, at the moment of pressing. The
-                        // dropdown is above and may well be scrolled off, and
-                        // this is the press that spends a gigabyte or two on
-                        // the answer being right.
-                        `Vita3K installs and decrypts this itself, with no window and nothing to press. ` +
-                        `Using ${chosen}, which you chose — the wrong key installs the game and then fails to decrypt it.`
-                      : "Vita3K installs and decrypts this itself, with no window and nothing to press. The .pkg is deleted afterwards, using the licence key found beside it."
+                      ? // Named again at the moment of pressing. The dropdown is
+                        // above and may well be scrolled off, and this is the
+                        // press that spends a gigabyte or two on the answer
+                        // being right.
+                        `A PlayStation Vita package is not a game until Vita3K installs it. ` +
+                        `Using ${chosen} to decrypt it — the wrong key installs the game and then fails. ` +
+                        `The .pkg is deleted afterwards.`
+                      : "A PlayStation Vita package is not a game until Vita3K installs it. " +
+                        "It decrypts as it installs, using the key found beside it. " +
+                        "The .pkg is deleted afterwards."
                   : packaged.system === "ps4"
-                    ? // shadPS4 cannot do this itself, so the first PS4 package
-                      // fetches the extractor. Worth saying: it is the one thing
-                      // here that downloads something the emulator did not bring.
+                    ? // Where the extractor comes from is kept: it is the one
+                      // thing here that downloads something the emulator did not
+                      // bring, and that is worth a clause before it happens.
                       "A PlayStation 4 package is not a game until it is unpacked. " +
-                      "shadPS4 has no way to do that, so the first one fetches a " +
-                      "small extractor built from shadPS4's own code. Large games " +
-                      "take a while. The .pkg is deleted afterwards — the game is " +
-                      "then installed and the package is never read again."
+                      "shadPS4 cannot do that itself, so the first one fetches a small " +
+                      "extractor built from its own code — large games take a while. " +
+                      "The .pkg is deleted afterwards."
                     : "A PlayStation 3 package is not a game until RPCS3 unpacks it. " +
-                      "This takes a few seconds, opens no windows, and deletes the .pkg " +
-                      "afterwards — the game is then installed and the package is never " +
-                      "read again. Store games also need their .rap licence, which " +
-                      "goes in with the game if it was sent alongside it."
+                      "This takes a few seconds and opens no windows. " +
+                      "The .pkg is deleted afterwards."
               }
             >
               {/* "Install", not "Unpack", on all three. Only RPCS3 and the PS4
