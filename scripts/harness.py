@@ -92,6 +92,71 @@ import store  # noqa: E402
 failures = []
 
 
+# --- fixtures more than one file needs ---------------------------------------
+
+def make_sfo(pairs):
+    """A PARAM.SFO holding `pairs`. Strings and uint32s, which is all it uses.
+
+    Header: magic, version, offset of the key table, offset of the data table,
+    entry count. Then one 16-byte index entry per key -- key offset, format,
+    used length, total length, data offset -- then the keys as null-terminated
+    ASCII, then the values.
+
+    Built byte by byte from the documented layout rather than shipped as a file.
+    It used to be Braid's own PARAM.SFO, lifted off a Deck -- a kilobyte of a
+    commercial game, Sony's copyright notice included, in a repository that is
+    going public. Not worth it for a parser test.
+
+    Constructing it from the spec keeps what the fixture was for. The objection
+    to a generated file is that it only proves the writer and the reader agree;
+    that does not apply here, because there is no writer -- this is struct.pack
+    against the format as documented, and sfo.py has to meet it rather than meet
+    itself. This is the pattern to copy for any other format the project reads.
+
+    Here rather than in a test file because three of them need it: the PS3, PS4
+    and Vita records all start with this container. It sat inside one section of
+    test_backend.py and two other sections reached across the file for the bytes
+    it happened to leave behind, which is what broke when that section moved.
+    """
+    import struct as _struct
+
+    keys, values, index = b"", b"", b""
+    for name, value in pairs:
+        if isinstance(value, int):
+            fmt, raw = 0x0404, _struct.pack("<I", value)
+            used = total = 4
+        else:
+            fmt = 0x0204
+            raw = value.encode("utf-8") + b"\x00"
+            used = len(raw)
+            # Real ones pad the value to a multiple of four; the reader has to
+            # cope with total > used, so the fixture exercises that.
+            total = (used + 3) & ~3
+            raw = raw.ljust(total, b"\x00")
+        index += _struct.pack("<HHIII", len(keys), fmt, used, total, len(values))
+        keys += name.encode("ascii") + b"\x00"
+        values += raw
+    keys = keys.ljust((len(keys) + 3) & ~3, b"\x00")
+
+    header_size = _struct.calcsize("<4sIIII")
+    key_table = header_size + len(index)
+    data_table = key_table + len(keys)
+    return (_struct.pack("<4sIIII", b"\x00PSF", 0x0101, key_table, data_table,
+                         len(pairs)) + index + keys + values)
+
+
+#: One made-up game's PARAM.SFO, which is what every caller actually wanted.
+#: The title id is a real product code shape, not a real product code.
+SAMPLE_SFO = make_sfo([
+    ("APP_VER", "01.00"),
+    ("BOOTABLE", 1),
+    ("CATEGORY", "HG"),
+    ("PARENTAL_LEVEL", 4),
+    ("TITLE", "Braid"),
+    ("TITLE_ID", "NPUB30133"),
+])
+
+
 def check(label, actual, expected):
     ok = actual == expected
     print("%s %-52s %r" % ("PASS" if ok else "FAIL", label, actual))
