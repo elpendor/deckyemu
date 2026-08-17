@@ -2077,7 +2077,7 @@ from urllib.parse import urljoin  # noqa: E402
 import fileserver  # noqa: E402
 
 check("traversal is stripped", fileserver.safe_name("../../etc/passwd"), "passwd")
-check("windows separators too", fileserver.safe_name("..\..\win.ini"), "win.ini")
+check("windows separators too", fileserver.safe_name(r"..\..\win.ini"), "win.ini")
 check("leading dots removed", fileserver.safe_name(".hidden"), "hidden")
 check("empty names get a fallback", fileserver.safe_name(""), "upload.bin")
 
