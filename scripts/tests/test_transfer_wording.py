@@ -24,6 +24,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from harness import check, section, summary  # noqa: E402
 
 import fileserver  # noqa: E402
+import fileserver_page  # noqa: E402  -- the markup half; fileserver renders through it
 
 _SRC = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "src")
@@ -127,7 +128,7 @@ if _node:
     with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False,
                                      encoding="utf-8") as _handle:
         # The page's script runs after its elements exist; parsing needs no DOM.
-        _handle.write(fileserver._SCRIPT)
+        _handle.write(fileserver_page._SCRIPT)
         _script_path = _handle.name
     try:
         _parsed = subprocess.run([_node, "--check", _script_path],

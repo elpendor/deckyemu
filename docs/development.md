@@ -161,6 +161,8 @@ py_modules/                 Backend logic. Plain Python, stdlib only -- it runs
   net.py                    stdlib-only HTTP, with a system-CA fallback
   sysenv.py                 Strip Steam's runtime; user_home(); user_dir()
   fileserver.py             Upload from another device: QR, or short URL + code
+  fileserver_page.py        The pages that server serves. Pure functions of what
+                            they are handed; the server keeps state and sockets
   releases.py               Find newer releases on GitHub. Looks only.
   handoff.py                Serve one staged update to decky over loopback
   diagnostics.py            The redacted report behind Report a problem
