@@ -14,7 +14,6 @@ import decky
 import cheevos
 import devreset
 import diagnostics
-import emu_config
 import emu_install
 import emulator_catalog
 import emulators
@@ -31,6 +30,7 @@ import plugin_audit
 import plugin_emulators
 import plugin_firmware
 import plugin_packages
+import plugin_startup
 import ra_cores
 import ra_detect
 import releases
@@ -184,6 +184,7 @@ class Plugin(
     plugin_emulators.Emulators,
     plugin_firmware.Firmware,
     plugin_packages.PackagedGames,
+    plugin_startup.Startup,
 ):
     async def _main(self):
         self.loop = asyncio.get_event_loop()
@@ -193,7 +194,8 @@ class Plugin(
         decky.logger.info("DeckyEmu starting")
         _check_own_modules()
 
-        # Ordered, and each one on its own.
+        # Ordered, and each one on its own. The sequence stays here because this
+        # is where it is read; the steps themselves are plugin_startup.py.
         #
         # The catalog is loaded first because everything after it reads it: an
         # imported emulator has to be in it by the time launchers are upgraded
@@ -229,281 +231,6 @@ class Plugin(
                 # here: a cancelled startup is decky shutting the plugin down,
                 # and it must be allowed to.
                 decky.logger.exception("Startup: could not %s -- carrying on", label)
-
-    async def _adopt_menu_combo(self):
-        """Give games added before the menu shortcut existed a way into the menu.
-
-        A default only reaches a game when its launcher is written, and nothing
-        rewrites launchers on upgrade -- so an existing library would keep no
-        shortcut at all until the user happened to change some other launch
-        setting, which looks exactly like the feature not working.
-        """
-        if "menu_combo" in await self._run(store.stored_keys):
-            return
-
-        settings = await self._run(store.get_settings)
-        # Stored explicitly so this runs once, whether or not anything is rebuilt
-        # below -- and so turning it back off is not undone at the next startup.
-        combo = self._menu_combo(settings)
-        await self._run(store.set_settings, {"menu_combo": combo})
-
-        if not await self._run(store.get_library):
-            return
-        decky.logger.info("Adding the %s menu shortcut to existing launchers", combo)
-        await self.rebuild_launchers()
-
-    async def _pin_collection_layout(self):
-        """Leave an existing library on the collection layout it was filed under.
-
-        `collection_per_platform` defaults on now. Settings are merged from the
-        defaults when they are read rather than written at install, so changing
-        one changes it for everybody who never opened that toggle -- and this
-        one decides where a game is filed. Their next added game would land on a
-        per-system shelf while every game already added stayed on the shared
-        one: nothing moved, and a library split across two schemes.
-
-        So anyone with games keeps what those games were filed under, written
-        down explicitly. Only an install with nothing filed yet takes the new
-        default. Changing it in the panel still migrates the library, which is
-        the supported way to move between the two.
-        """
-        if "collection_per_platform" in await self._run(store.stored_keys):
-            return
-        if not await self._run(store.get_library):
-            return
-
-        await self._run(store.set_settings, {"collection_per_platform": False})
-        decky.logger.info(
-            "Existing library: staying on one shared collection until it is changed",
-        )
-
-    async def _upgrade_emulator_recipes(self):
-        """Carry a corrected launch recipe to an emulator already installed.
-
-        Launch arguments are written once, when the emulator is installed, so a
-        fix to them would otherwise reach nobody who already had it -- and
-        PCSX2's needed one, to stop its main window appearing for a second
-        before the game and to make quitting the game exit rather than drop back
-        to its game list.
-
-        Only touched when the stored arguments are still exactly what the
-        catalog last supplied. Anything edited in the emulator editor is the
-        user's and is left alone, which is the same rule `emu_config` uses.
-        """
-        changed = []
-        # Read once for the whole pass, and only because something below needs
-        # it: this is what `extensions_for` derives a libretro-backed emulator's
-        # formats from, and it is a cached file rather than a fetch in the
-        # ordinary case.
-        extension_map = None
-
-        for emulator in await self._refresh_emulators():
-            entry = emulator_catalog.find(emulator.get("id", ""))
-            if not entry:
-                continue
-            recipe = entry.get("recipe", 1)
-            if emulator.get("catalog_recipe", 1) == recipe:
-                continue
-
-            if extension_map is None:
-                extension_map = await self._run(installer.database_extensions)
-
-            stored = emulator.get("catalog_args")
-            if stored is not None and emulator.get("args") != stored:
-                # Edited here, so the recipe is no longer ours to change. The
-                # version is still recorded, or this would ask again forever.
-                decky.logger.info(
-                    "Leaving %s launch arguments alone; they were edited", emulator["id"]
-                )
-            else:
-                emulator["args"] = entry.get("args") or "{rom}"
-                emulator["fullscreen_args"] = entry.get("fullscreen_args") or ""
-                changed.append(emulator["id"])
-
-            # Refreshed unconditionally, unlike the arguments above: neither is
-            # editable in the emulator editor, so neither can be the user's.
-            # They are also the two that decide whether the emulator runs at
-            # all -- shadPS4's launches the wrong binary without `command` and
-            # renders on the CPU without `env` -- so a stale one is not a
-            # cosmetic difference.
-            previous = (emulator.get("command"), emulator.get("env") or {},
-                        emulator.get("installed_args"), emulator.get("splits_args"))
-            emulator["command"] = entry.get("command", "")
-            emulator["env"] = dict(entry.get("env") or {})
-            emulator["installed_args"] = entry.get("installed_args", "")
-            emulator["splits_args"] = bool(entry.get("splits_args"))
-            if previous != (emulator["command"], emulator["env"],
-                            emulator["installed_args"], emulator["splits_args"]):
-                changed.append(emulator["id"])
-
-            # Which files the picker offers this emulator for. Stored at install
-            # time and never revisited, so narrowing a system's formats reached
-            # nobody who already had the emulator: Vita3K stopped claiming .vpk
-            # in the catalog and went on claiming it on every device where it
-            # was installed, which is the whole reason a .vpk was still offered
-            # a "Run with" it could not honour.
-            #
-            # Editable in the emulator editor, so the same rule the arguments
-            # use applies -- refreshed only while it is still exactly what the
-            # catalog last supplied.
-            derived = emulator_catalog.extensions_for(entry, extension_map)
-            # An empty answer means the map could not be read, and so does a
-            # libretro-backed emulator with no map: both are "cannot tell", and
-            # writing a shorter list on a guess would stop the emulator matching
-            # ROMs it handles. An entry with no databases derives entirely from
-            # MANUAL_EXTENSIONS, so for those the map is not needed at all.
-            if derived and (extension_map or not entry.get("databases")):
-                stored_ext = emulator.get("catalog_extensions")
-                if stored_ext is not None and emulator.get("extensions") != stored_ext:
-                    decky.logger.info(
-                        "Leaving %s file extensions alone; they were edited", emulator["id"]
-                    )
-                elif emulator.get("extensions") != derived:
-                    emulator["extensions"] = derived
-                    changed.append(emulator["id"])
-                emulator["catalog_extensions"] = derived
-
-            emulator["catalog_recipe"] = recipe
-            emulator["catalog_args"] = entry.get("args") or "{rom}"
-            emulator["catalog_fullscreen_args"] = entry.get("fullscreen_args") or ""
-            await self._run(emulators.save, emulator)
-
-        if changed:
-            # Every launcher already written bakes in the old argv, so the fix
-            # reaches nothing until they are rewritten.
-            decky.logger.info("Updated launch recipe for %s", ", ".join(changed))
-            await self._refresh_emulators()
-            await self.rebuild_launchers()
-
-    async def _upgrade_emulator_setups(self):
-        """Re-apply recommended settings an emulator installed earlier has missed.
-
-        Settings are written when an emulator is installed, and an emulator is
-        installed once -- so a *correction* to those settings would otherwise
-        only ever reach someone who had not installed it yet. The first Azahar
-        bindings were wrong, and the only route to the fixed ones was deleting a
-        hundred-megabyte AppImage and downloading it again.
-
-        Safe to run unattended because the rule in `emu_config` decides what may
-        be touched: anything the user set themselves is left alone, and only
-        values still at the emulator's own default or previously written by this
-        plugin are rewritten.
-        """
-        for entry in emulator_catalog.CATALOG:
-            if not entry.get("setup"):
-                continue
-            if not await self._run(emu_config.needs_setup, entry):
-                continue
-
-            if entry["source"]["kind"] == "flatpak":
-                present = await self._run(
-                    emu_install.flatpak_installed, entry["source"]["id"]
-                )
-            else:
-                present = bool(await self._run(emu_install.installed_appimage, entry["id"]))
-            if not present:
-                continue
-
-            decky.logger.info("Updating recommended settings for %s", entry["id"])
-            result = await self._run(emu_config.apply_setup, entry)
-            if not result.get("ok"):
-                decky.logger.warning(
-                    "Could not update %s settings: %s", entry["id"], result.get("error")
-                )
-
-    async def _claim_filed_collections(self):
-        """Record the collections an existing library is already filed into.
-
-        The record of which collections are ours is written as games are filed,
-        so an install that predates it starts empty -- and every shelf it made
-        would be recognised only by the name pattern, which is exactly the thing
-        that loses them the moment the naming changes. One pass over the library
-        at startup gives those installs the same footing as a new one.
-
-        Cheap to repeat and safe to: `remember_collections` adds only what is
-        missing and reports what it added, so this settles to doing nothing.
-        """
-        library = await self._run(store.get_library)
-        if not library:
-            return
-        added = await self._run(
-            store.remember_collections,
-            [entry.get("collection", "") for entry in library.values()],
-        )
-        if added:
-            decky.logger.info(
-                "Claiming %d collection(s) this library is already filed into: %s",
-                len(added), ", ".join(added),
-            )
-
-    async def _upgrade_launchers(self):
-        """Rewrite launchers when the format they were written in is out of date.
-
-        A launcher is generated once and never revisited, so a fix to how they
-        are written reaches only games added afterwards. That is the failure
-        `_adopt_menu_combo` was written for, one flag at a time; a version number
-        covers the next one too.
-
-        Recorded even when there is nothing to rebuild, so a fresh install does
-        not spend its first startup deciding it is behind.
-        """
-        settings = await self._run(store.get_settings)
-        if settings.get("launcher_format") == launchers.FORMAT_VERSION:
-            return
-
-        await self._run(store.set_settings, {"launcher_format": launchers.FORMAT_VERSION})
-        if not await self._run(store.get_library):
-            return
-
-        decky.logger.info(
-            "Rewriting launchers for format %d", launchers.FORMAT_VERSION
-        )
-        await self.rebuild_launchers()
-
-    async def _forget_removed_settings(self):
-        """Clear settings that have been taken out of the plugin.
-
-        The one this exists for is the GitHub token, which the update check
-        needed while this repository was private. Nothing reads it now, and a
-        credential nothing reads is still a credential in a file -- so it is
-        deleted rather than left to be ignored. It also has to go: `get_settings`
-        merges the stored file over the defaults, so a key that is no longer
-        declared is still handed to every reader, the frontend included.
-        """
-        gone = await self._run(store.forget_removed)
-        if gone:
-            decky.logger.info("Removed setting(s) no longer used: %s", ", ".join(gone))
-
-    async def _backfill_library(self):
-        """Fill in fields that older versions of this plugin never recorded.
-
-        Games added before per-platform collections existed have no `platform`,
-        which would make them fall back to the plain collection name instead of
-        being grouped by system. The core id and database name were recorded even
-        then, so the label can be recovered.
-        """
-        library = await self._run(store.get_library)
-        # Through the settings rather than _platform_label directly: the stored
-        # label is what the games list shows, so a backfilled game would otherwise
-        # read "Super Nintendo Entertainment System" while every other game on the
-        # same shelf read "SNES".
-        settings = await self._run(store.get_settings)
-        filled = {}
-        for entry in library.values():
-            if entry.get("platform"):
-                continue
-            core = self._core_by_id(entry.get("core_id", ""))
-            platform = self._entry_platform(settings, core, entry)
-            if not platform:
-                continue
-            entry["platform"] = platform
-            filled[entry["app_id"]] = entry
-
-        # One write for the whole pass. This runs at every startup, and writing
-        # per game rewrote the entire registry once per game backfilled.
-        if filled:
-            await self._run(store.remember_games, filled)
-            decky.logger.info("Backfilled platform for %d existing game(s)", len(filled))
 
     async def _unload(self):
         # Cancelled before stopping, and only here. Stopping deliberately leaves

@@ -193,7 +193,9 @@ py_modules/                 Backend logic. Plain Python, stdlib only -- it runs
   plugin_emulators.py       Installing and registering emulators
   plugin_firmware.py        Putting BIOS files and keys where they are read
   plugin_packages.py        Games that arrive as a .pkg
-                            These five are mixins: decky exposes the methods it
+  plugin_startup.py         One-time migrations of data already on the device.
+                            The sequence they run in stays in main.py's _main
+                            These six are mixins: decky exposes the methods it
                             finds on the plugin object, so the names must stay
                             on Plugin while the code lives somewhere findable.
                             None of them may be instantiated alone.
