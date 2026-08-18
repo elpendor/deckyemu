@@ -29,7 +29,7 @@ import {
  */
 
 /** Our item, so it can be found again and replaced rather than duplicated. */
-export const MENU_ITEM_KEY = "deckyemu-edit-game";
+export const MENU_ITEM_KEY = "deckyemu-game-menu";
 
 /**
  * Steam's game context menu component, or null if it cannot be found.
@@ -154,7 +154,7 @@ export function patchGameContextMenu(
 ): () => void {
   const menu = libraryContextMenu();
   if (!menu) {
-    console.error("[deckyemu] could not find Steam's game context menu; no Edit item");
+    console.error("[deckyemu] could not find Steam's game context menu; no menu item");
     return () => undefined;
   }
 
@@ -166,8 +166,8 @@ export function patchGameContextMenu(
    *
    * The inner patches below are installed once and close over the appid from
    * the render that installed them, so a captured id names the first game whose
-   * menu was ever opened -- and every menu after it. Trusting that put "Edit in
-   * DeckyEmu" on a Steam-installed game, because that game was being judged
+   * menu was ever opened -- and every menu after it. Trusting that put our
+   * submenu on a Steam-installed game, because that game was being judged
    * against a DeckyEmu game's id.
    *
    * The children being rendered right now are the reliable answer; the hint is

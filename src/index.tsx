@@ -328,9 +328,10 @@ export default definePlugin(() => {
   // exact route leaves those unresolved, so tapping a tab navigates to nothing.
   routerHook.addRoute(MANAGE_ROUTE, GuardedManagePage);
 
-  // "Edit in DeckyEmu" behind the cog on a game's page. The cache is filled
-  // first because the item decides whether to appear by reading it, and a menu
-  // opened before the first read would show nothing for a game that is ours.
+  // The "DeckyEmu" submenu behind the cog on a game's page -- Edit and Remove.
+  // The cache is filled first because the item decides whether to appear by
+  // reading it, and a menu opened before the first read would show nothing for
+  // a game that is ours.
   void refreshAddedGames();
   const unpatchContextMenu = patchGameContextMenu(editGameMenuItem);
 
