@@ -50,7 +50,17 @@ DEFAULT_SETTINGS = {
     "cheevos_token": "",
     # How much of RetroArch's on-screen chatter to suppress when a game starts.
     # keep | startup | all
-    "hide_osd": "startup",
+    #
+    # `all`, because a game launched from Steam should look like a game from
+    # Steam. `startup` took away the load animation and left the rest -- save
+    # state confirmations, shader notices, the autoconfig line -- which is a
+    # frontend's chrome appearing over somebody's console game.
+    #
+    # The cost is real and worth knowing: RetroArch's own error text goes with
+    # it, so a core that cannot find its BIOS fails quietly rather than saying
+    # so on screen. What replaces it is the panel, which checks firmware before
+    # the shortcut is made and says what is missing there instead.
+    "hide_osd": "all",
     # Controller shortcut that opens RetroArch's menu. A key of
     # launchers.MENU_COMBOS; "off" leaves the user's own retroarch.cfg alone.
     # Defaulted on because RetroArch sets no combo of its own and the Deck never

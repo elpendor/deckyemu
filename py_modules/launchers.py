@@ -38,7 +38,13 @@ LAUNCHER_DIR = os.path.join(decky.DECKY_PLUGIN_RUNTIME_DIR, "launchers")
 #      argv is baked into every launcher when it is written, so fixing how it
 #      is built reaches nothing already on disk until they are rewritten --
 #      which is the whole reason this number exists.
-FORMAT_VERSION = 5
+#   6  the default OSD mode became `all`. A launcher names the override file it
+#      was written with, so a game added under the old default went on pointing
+#      at retroarch-overrides-startup.cfg however the setting read afterwards --
+#      the panel would have said "Hide all on-screen messages" while the games
+#      already in the library kept showing them. Rewritten, each game resolves
+#      its own options again, so anything overridden per game is kept.
+FORMAT_VERSION = 6
 
 # One file per OSD mode rather than one shared file. Games can override the
 # global setting individually, and a single file would mean the last game

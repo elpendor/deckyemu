@@ -50,8 +50,8 @@ notifications** suppresses that for games launched from this plugin:
 
 | Mode | Effect |
 | --- | --- |
-| `Hide the startup banner` (default) | Disables the load animation and the notices that follow it |
-| `Hide all on-screen messages` | Also sets `video_font_enable = false`, silencing save-state confirmations and errors too |
+| `Hide the startup banner` | Disables the load animation and the notices that follow it |
+| `Hide all on-screen messages` (default) | Also sets `video_font_enable = false`, silencing save-state confirmations and errors too |
 | `Keep RetroArch's notifications` | RetroArch behaves exactly as it does on its own |
 
 These are passed per-launch rather than written into your own `retroarch.cfg`,
