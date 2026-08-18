@@ -151,6 +151,35 @@ try:
     check("a GUI launcher whose emulator is gone becomes a stray",
           os.path.basename(_gui) in [os.path.basename(p) for p in _report["strays"]],
           True)
+
+    # ---- and the shortcut left by an uninstall, which is the way back --------
+    #
+    # Uninstalling the plugin removes the settings and the launcher scripts and
+    # cannot touch Steam: decky has no frontend uninstall hook, and the only one
+    # it does have fires on every reload, so removing shortcuts there would
+    # delete somebody's library every time the plugin restarted. The setup
+    # shortcut therefore outlives an uninstall as a hidden entry that starts
+    # nothing, and a fresh install's library check is the only thing that can
+    # ever find it again.
+    #
+    # Which is why the skip above is keyed on the recorded id and must stay that
+    # way. Widening it to the title -- the obvious next "improvement" -- would
+    # make this shortcut invisible to the one tool able to clean it up, forever.
+    store.set_settings({"setup_app_id": 0})
+    os.remove(_gui)
+    steam_shortcuts.ours = lambda: [
+        {"app_id": SETUP_APP_ID, "title": launchers.SETUP_SHORTCUT_TITLE,
+         "exe": _gui, "launcher": os.path.basename(_gui), "launcher_exists": False},
+    ]
+    _report = _run(_plugin.audit_library())
+    check("a setup shortcut whose record is gone is still reported",
+          [(i["title"], i["kind"]) for i in _report["unknown_shortcuts"]],
+          [(launchers.SETUP_SHORTCUT_TITLE, "dead")])
+    # `dead` and not `orphan`, because that is the group OrphanModal offers a
+    # "Remove" button for, and removing it is the only thing to do with it.
+    _health = _run(_plugin.shortcut_health())
+    check("and the panel counts it, so it is findable at all",
+          (_health["unknown"], _health["dead"]), (1, 1))
 finally:
     steam_shortcuts.ours = _real_ours
     store.set_settings({"setup_app_id": 0})
