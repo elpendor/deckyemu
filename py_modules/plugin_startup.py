@@ -78,13 +78,50 @@ class Startup(plugin_base.PluginContext):
         one: nothing moved, and a library split across two schemes.
 
         So anyone with games keeps what those games were filed under, written
-        down explicitly. Only an install with nothing filed yet takes the new
-        default. Changing it in the panel still migrates the library, which is
-        the supported way to move between the two.
+        down explicitly. Changing it in the panel still migrates the library,
+        which is the supported way to move between the two.
+
+        **What that is decided from is the whole of this.** It used to be "the
+        library is not empty", on the reasoning that a library older than the
+        setting must predate the setting. That is true for exactly one
+        population -- people upgrading across the release that added per-platform
+        collections -- and false for everyone else, because the key is only ever
+        stored by this method or by the toggle in the panel. So a fresh install
+        where somebody added a game before their first restart got the layout
+        turned off underneath them, and so did every install after a state reset,
+        which clears settings.json and leaves the library newer than it. The
+        migration produced the exact split it exists to prevent, repeatedly.
+
+        The evidence was already there: every entry records the collection it was
+        filed into. Games sitting on per-system shelves *are* the per-platform
+        layout in use, whatever the settings file has lost. Only a library filed
+        under one shared name -- or filed before that was recorded at all, which
+        is the same old install -- pins to the shared layout.
+
+        Either way the answer is written down, so this runs once and stops
+        asking.
         """
         if "collection_per_platform" in await self._run(store.stored_keys):
             return
-        if not await self._run(store.get_library):
+        library = await self._run(store.get_library)
+        if not library:
+            return
+
+        settings = await self._run(store.get_settings)
+        # Under the shared layout every game carries the same name, so anything
+        # else that is recorded is a per-system shelf. Compared against a name
+        # built here rather than matched by pattern: the template is
+        # configurable, and a pattern would have to know all seven formats.
+        shared = self._collection_name(dict(settings, collection_per_platform=False), "")
+        filed = {(entry or {}).get("collection") or "" for entry in library.values()}
+        per_platform = {name for name in filed if name and name != shared}
+
+        if per_platform:
+            await self._run(store.set_settings, {"collection_per_platform": True})
+            decky.logger.info(
+                "Library is already filed per system (%s); keeping that layout",
+                ", ".join(sorted(per_platform)[:3]),
+            )
             return
 
         await self._run(store.set_settings, {"collection_per_platform": False})

@@ -365,14 +365,16 @@ def clear_state():
     setup block at all, and the bug you were testing for stays hidden.
 
     Every file removed is named in the log, and that is not decoration. This
-    deletes settings.json, and the next startup writes part of it back:
-    `_pin_collection_layout` finds no stored `collection_per_platform` and a
-    library still full of games, so it pins the layout to one shared collection
-    -- correct on its own terms, and indistinguishable from the setting having
-    turned itself off. Chasing that took a session, because the step that
-    caused it removed the file with a bare os.remove and said nothing. A
-    destructive action nobody can see afterwards is one nobody can reason
-    about.
+    deletes settings.json, and the next startup writes part of it back -- worth
+    knowing before reading a log, because a setting that appears to have changed
+    itself usually changed here. `_pin_collection_layout` was the worst of them:
+    it found no stored `collection_per_platform` and a library full of games and
+    pinned the layout to one shared collection, which is indistinguishable from
+    the setting turning itself off. It decides from what the games are actually
+    filed into now, so a reset no longer flips it. Chasing the original took a
+    session, because the step that caused it removed the file with a bare
+    os.remove and said nothing. A destructive action nobody can see afterwards
+    is one nobody can reason about.
     """
     freed = 0
     cleared = []
