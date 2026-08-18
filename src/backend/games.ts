@@ -238,6 +238,16 @@ export interface PluginSettings {
   last_rom_dir: string;
   last_core_by_ext: Record<string, string>;
   sgdb_api_key_set: boolean;
+  /**
+   * The one hidden shortcut that opens an emulator's own window, or 0.
+   *
+   * Not in the library: it is not a game, it is repointed rather than added to,
+   * and only the frontend can create or remove a Steam shortcut. Declared here
+   * because a reset has to take it away -- the backend deletes the record and
+   * the script, and without this the shortcut is left behind pointing at
+   * nothing.
+   */
+  setup_app_id: number;
 }
 
 /**

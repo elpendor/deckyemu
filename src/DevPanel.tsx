@@ -11,7 +11,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { callable } from "@decky/api";
 
-import { listAdded, type AddedGame } from "./backend";
+import { getSettings, listAdded, type AddedGame } from "./backend";
 import { removeShortcut } from "./steam";
 import { sweepEmptyCollections, unfileGames } from "./collections";
 import { humanSize } from "./TransferModal";
@@ -209,6 +209,32 @@ export function DevPanel({ onChanged }: Props) {
                       })
                     : [];
 
+                /*
+                 * The setup shortcut, read for the same reason and at the same
+                 * moment: its id lives in settings.json, which this action is
+                 * about to delete.
+                 *
+                 * It is not in the library and never was -- it is one hidden
+                 * shortcut repointed at whichever emulator is being opened -- so
+                 * `stranded` does not cover it. Left behind, it is a Steam entry
+                 * pointing at a launcher directory that no longer exists: it
+                 * starts nothing, the library check reports it as dead, and the
+                 * next emulator window makes a second one beside it because the
+                 * id it would have reused is gone.
+                 */
+                const setupAppId =
+                  action.id === "state"
+                    ? await getSettings()
+                        .then((settings) => settings.setup_app_id ?? 0)
+                        .catch((settingsError) => {
+                          console.error(
+                            "[deckyemu] could not read the setup shortcut id",
+                            settingsError,
+                          );
+                          return 0;
+                        })
+                    : 0;
+
                 const result = await devReset(action.id);
                 if (!result.ok) {
                   toaster.toast({ title: "Reset failed", body: result.error ?? "" });
@@ -225,6 +251,9 @@ export function DevPanel({ onChanged }: Props) {
                 for (const game of stranded) {
                   if (removeShortcut(game.app_id)) unshortcut += 1;
                 }
+                // Counted with them: to the person pressing this it is one more
+                // entry that was in their library and now is not.
+                if (setupAppId && removeShortcut(setupAppId)) unshortcut += 1;
 
                 // And whatever earlier resets left standing, since this is the
                 // action that made them.

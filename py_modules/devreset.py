@@ -125,6 +125,52 @@ def _state_files():
     ]
 
 
+def _runtime_leftovers():
+    """[(path, label, is_dir)] the plugin wrote into decky's runtime directory.
+
+    `clear_state` used to name the launcher scripts and the artwork cache and
+    stop there, which left two thirds of that directory standing after an action
+    called "forget everything the plugin knows". Worse, what it left was the
+    generated half: RetroArch override configs baked from settings that had just
+    been deleted, and a pad profile written for them. A reinstall then read
+    values nothing in the plugin remembered writing, which is the exact failure
+    the state reset exists to rule out while testing.
+
+    Derived from the modules that write them, not typed out again -- the list of
+    override files has already grown once, and a copy here would have gone stale
+    silently.
+    """
+    runtime = decky.DECKY_PLUGIN_RUNTIME_DIR
+    items = [
+        (launchers.LAUNCHER_DIR, "Launcher scripts", True),
+        (os.path.join(runtime, "thumb_index"), "Cached artwork", True),
+        # The pad profile RetroArch is pointed at for games launched from here.
+        (launchers.AUTOCONFIG_DIR, "Controller profile", True),
+        # The pad profile RetroArch is pointed at for games launched from here.
+
+        # Short-named symlinks for emulators that re-split a path on its spaces.
+        # Dangling once the ROMs they point at are gone, which is the same reset.
+        (emulators.ARG_LINK_DIR, "Package links for launch arguments", True),
+        # The libretro database and buildbot listing. A cache, so keeping it is
+        # harmless in use and wrong here: a reset that leaves it means the next
+        # run never exercises the first fetch, which is a thing worth testing.
+        (os.path.join(runtime, "installer"), "Cached core catalog", True),
+    ]
+    # Every OSD mode's override file, plus the legacy one left for launchers
+    # written before the split.
+    for path in list(launchers.OVERRIDE_CONFIGS.values()) + [launchers.OVERRIDE_CONFIG]:
+        items.append((path, "RetroArch override config", False))
+    # An update downloaded and handed to decky. Named from the release asset, so
+    # it is found rather than assumed.
+    try:
+        for name in sorted(os.listdir(runtime)):
+            if name.lower().endswith(".zip"):
+                items.append((os.path.join(runtime, name), "Staged update", False))
+    except OSError:
+        pass
+    return items
+
+
 def inventory():
     """What each action would delete, before anybody presses anything.
 
@@ -189,13 +235,14 @@ def inventory():
 
     state = [found for found in
              (_file_report(path, label) for path, label in _state_files()) if found]
-    launcher_dir = _dir_report(launchers.LAUNCHER_DIR, "Launcher scripts")
-    if launcher_dir:
-        state.append(launcher_dir)
-    thumbs = _dir_report(
-        os.path.join(decky.DECKY_PLUGIN_RUNTIME_DIR, "thumb_index"), "Cached artwork")
-    if thumbs:
-        state.append(thumbs)
+    # Same list the action deletes from, so the panel cannot promise less than
+    # it takes. It said "Launcher scripts, Cached artwork" while removing those
+    # two and nothing else -- honest at the time, and it stopped being honest
+    # the moment anything else was added.
+    for path, label, is_dir in _runtime_leftovers():
+        found = _dir_report(path, label) if is_dir else _file_report(path, label)
+        if found:
+            state.append(found)
     report["state"] = state
 
     return report
@@ -244,6 +291,20 @@ def _remove(path):
     freed = sysenv.directory_bytes(path)
     try:
         shutil.rmtree(path)
+    except OSError as error:
+        decky.logger.warning("Could not delete %s: %s", path, error)
+        return 0
+    decky.logger.info("Reset: removed %s (%d bytes)", path, freed)
+    return freed
+
+
+def _remove_file(path):
+    """Delete one generated file. Returns bytes. Named in the log, like _remove."""
+    if not path or not os.path.isfile(path):
+        return 0
+    try:
+        freed = os.path.getsize(path)
+        os.remove(path)
     except OSError as error:
         decky.logger.warning("Could not delete %s: %s", path, error)
         return 0
@@ -324,8 +385,8 @@ def clear_state():
         cleared.append(label)
     if cleared:
         decky.logger.info("Reset: cleared %s", ", ".join(cleared))
-    freed += _remove(launchers.LAUNCHER_DIR)
-    freed += _remove(os.path.join(decky.DECKY_PLUGIN_RUNTIME_DIR, "thumb_index"))
+    for path, _label, is_dir in _runtime_leftovers():
+        freed += _remove(path) if is_dir else _remove_file(path)
     # Nothing to invalidate afterwards: every one of these files is read from
     # disk on each access rather than cached in the module. The one live copy
     # anywhere is the plugin's list of emulators, and its caller refreshes it.
