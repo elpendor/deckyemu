@@ -1,6 +1,6 @@
 import { type DropdownOption } from "@decky/ui";
 
-import { type Core, type InstallableCore } from "./backend";
+import { type Core, type InstallableCore, type RomProbe } from "./backend";
 
 /** Whether a picker entry is a standalone emulator rather than a libretro core. */
 export const isEmulatorId = (id: string) => id.startsWith("emu:");
@@ -155,4 +155,77 @@ export function installableOptions(cores: InstallableCore[]): DropdownOption[] {
     label: system,
     options: cores.filter((core) => core.system_name === system).map(option),
   }));
+}
+
+/**
+ * The systems a core covers, for the row that appears when it covers several.
+ *
+ * Most cores do. Of the seven with an info file on the device this was written
+ * for, six declare between two and six systems, and libretro lists them
+ * alphabetically -- so the core's *first* system is Game Gear for Genesis Plus
+ * GX and Sega CD for clownmdemu, neither of which is the system anyone means.
+ * Which one a game is decides its shelf, its folder and which thumbnail
+ * directory its cover comes from, and until this row existed nothing asked: it
+ * was inferred from whichever system's artwork happened to match the filename
+ * first, which filed Mega Drive games under Game Gear.
+ *
+ * Labelled from `database_labels` rather than from the database name, whose own
+ * last word is "Mark III" for the Master System and "Genesis" for a name that
+ * begins "Sega - Mega Drive".
+ *
+ * Empty for a core covering one system, which is how the row knows not to draw:
+ * a dropdown with a single entry is a question with one answer.
+ */
+export function systemOptions(core: Core | null | undefined): DropdownOption[] {
+  const databases = core?.databases ?? [];
+  if (databases.length < 2) return [];
+  const labels = core?.database_labels ?? [];
+  return databases.map((database, index) => ({
+    data: database,
+    // The full name when no label came with it -- a system the backend's table
+    // has never heard of still has to be pickable.
+    label: labels[index]?.trim() || database,
+  }));
+}
+
+/**
+ * Which system to start on: what the file says, else what the game already had.
+ *
+ * `suggested` is the backend's reading of the extension -- `.md` is a Mega
+ * Drive cartridge whatever the core declares -- and is empty for a file that
+ * names no system, `.cue` and `.iso` among them. `current` is for the editor,
+ * where the game has already been filed somewhere and that answer should stand
+ * until somebody changes it.
+ *
+ * Both are checked against what the core actually claims, so a system left over
+ * from another core cannot survive a core change and leave the row showing an
+ * option that is not in it -- a `selectedOption` in no option draws nothing.
+ */
+export function defaultSystem(
+  core: Core | null | undefined,
+  suggested: string,
+  current = "",
+): string {
+  const databases = core?.databases ?? [];
+  if (databases.length < 2) return "";
+  for (const candidate of [current, suggested]) {
+    if (candidate && databases.includes(candidate)) return candidate;
+  }
+  return databases[0];
+}
+
+/**
+ * The system row's value for a core, straight from a probe.
+ *
+ * The probe holds both halves -- the cores themselves and what it made of the
+ * file for each of them -- so this is the form every caller actually wants, and
+ * the only place that has to know `system_for_core` is keyed by core id.
+ */
+export function chooseSystem(
+  probe: RomProbe | null | undefined,
+  coreId: string,
+  current = "",
+): string {
+  const core = probe?.all_cores?.find((candidate) => candidate.id === coreId);
+  return defaultSystem(core, probe?.system_for_core?.[coreId] ?? "", current);
 }

@@ -17,6 +17,12 @@ export interface Core {
   short_name: string;
   system_name: string;
   databases: string[];
+  /**
+   * A short label per entry in `databases`, in the same order — "Genesis",
+   * "Game Gear". Sent from the backend because the name table is there: the
+   * database name's own last word is "Mark III" for the Master System.
+   */
+  database_labels: string[];
   extensions: string[];
   has_info: boolean;
   /**
@@ -39,6 +45,13 @@ export interface RomProbe {
   all_cores: Core[];
   suggested_core_id: string;
   unsupported_extension: boolean;
+  /**
+   * Which of its systems each core would take this file as, by core id. "" for
+   * a core covering one system, and for a file whose extension names none —
+   * `.cue` is a medium rather than a system. This is what preselects the
+   * system row, so the answer is a default on screen rather than a guess.
+   */
+  system_for_core: Record<string, string>;
   /**
    * Set when the file is an Xbox disc image with no `default.xbe` at its root,
    * so there is nothing for the console to start. Said here because the console
@@ -272,8 +285,13 @@ export const probeRom = callable<[romPath: string], RomProbe>("probe_rom");
  * `USRDIR/EBOOT.BIN`, so without it they would all search SteamGridDB for
  * "EBOOT"; the PARAM.SFO says "Braid".
  */
+/**
+ * `system` puts one of a multi-system core's databases at the front of the
+ * artwork search, so the cover matches the shelf the game is going on. Without
+ * it a Mega Drive ROM came back with the Game Gear cover of a same-named game.
+ */
 export const resolveGame = callable<
-  [romPath: string, coreId: string, title?: string],
+  [romPath: string, coreId: string, title?: string, system?: string],
   ResolvedGame
 >("resolve_game");
 export interface LibretroArtCandidate {
@@ -381,8 +399,21 @@ export type UpdatedGame =
     };
 
 /** `romPath` empty keeps the current ROM; `options` replaces the overrides. */
+/**
+ * `system` refiles a game onto another of its core's systems. Empty means the
+ * edit says nothing about it and the stored answer stands — renaming a Wii game
+ * must not move it to GameCube. It is the only way to correct a game filed
+ * under the wrong system without deleting and re-adding it.
+ */
 export const updateGame = callable<
-  [appId: number, title: string, coreId: string, romPath: string, options: GameOptions],
+  [
+    appId: number,
+    title: string,
+    coreId: string,
+    romPath: string,
+    options: GameOptions,
+    system?: string,
+  ],
   UpdatedGame
 >("update_game");
 /**

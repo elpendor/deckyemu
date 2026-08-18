@@ -18,6 +18,7 @@ import {
   setSettings,
   suggestCoresForExtension,
 } from "./backend";
+import { chooseSystem } from "./corePicker";
 import { updateDraft } from "./romDraft";
 import { logError } from "./logError";
 
@@ -63,11 +64,15 @@ export async function lookupArtwork(
   romPath: string,
   coreId: string,
   title = "",
+  system = "",
 ): Promise<void> {
   if (!romPath || !coreId) return;
   updateDraft({ looking: true, error: "" });
   try {
-    const result = await resolveGame(romPath, coreId, title);
+    // `system` decides which of a multi-system core's thumbnail directories is
+    // searched first, so the cover matches the shelf the game is going on --
+    // a Mega Drive ROM used to come back with a Game Gear cover.
+    const result = await resolveGame(romPath, coreId, title, system);
     updateDraft({ resolved: result, title: result.title || title, looking: false });
   } catch (error) {
     logError("lookup failed", error);
@@ -181,18 +186,22 @@ export async function selectRom(romPath: string): Promise<void> {
       // something to do behind a file picker closing. The core is cleared with
       // it: a package cannot be launched by anything, and leaving whatever was
       // selected for the last ROM would let Add build a launcher pointing at it.
-      updateDraft({ coreId: "" });
+      updateDraft({ coreId: "", systemId: "" });
       return;
     }
 
     if (info.suggested_core_id) {
-      updateDraft({ coreId: info.suggested_core_id });
-      await lookupArtwork(romPath, info.suggested_core_id);
+      // The system comes with the core, because the file is what answers it:
+      // the same `.md` that picks Genesis Plus GX also says it is a Mega Drive
+      // cartridge rather than one of the five other systems that core covers.
+      const system = chooseSystem(info, info.suggested_core_id);
+      updateDraft({ coreId: info.suggested_core_id, systemId: system });
+      await lookupArtwork(romPath, info.suggested_core_id, "", system);
       return;
     }
 
     // Nothing installed can run this, so offer the cores that could.
-    updateDraft({ coreId: "" });
+    updateDraft({ coreId: "", systemId: "" });
     try {
       // The selection goes with the list it belonged to: a core chosen for the
       // last ROM is not a choice anyone made about this one.

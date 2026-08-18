@@ -51,7 +51,12 @@ import {
   selectRom,
   type Console,
 } from "./addFlow";
-import { coreOptions as buildCoreOptions, installableOptions } from "./corePicker";
+import {
+  chooseSystem,
+  coreOptions as buildCoreOptions,
+  installableOptions,
+  systemOptions,
+} from "./corePicker";
 import { licenceChoice, pendingPackage as pendingPackageOf } from "./packageState";
 import { PackagedGameEntries, PendingPackageRows } from "./PackageRows";
 import { ArtPickerModal } from "./ArtPickerModal";
@@ -170,6 +175,7 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
     probe,
     coreId,
     showAllCores,
+    systemId,
     resolved,
     title,
     installable,
@@ -370,6 +376,18 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
   );
 
   /**
+   * The systems the chosen core covers, and empty for a core covering one.
+   *
+   * Read from `all_cores` rather than from what is on screen: the visible list
+   * narrows to the cores matching this file, and the chosen core stays chosen
+   * when the list changes underneath it.
+   */
+  const systemChoices: DropdownOption[] = useMemo(
+    () => systemOptions(probe?.all_cores.find((core) => core.id === coreId)),
+    [probe, coreId],
+  );
+
+  /**
    * Which suggested core the install button would install; "" means the first.
    *
    * Read from the draft, not from component state: opening this dropdown opens a
@@ -411,10 +429,30 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
   const onCoreChange = useCallback(
     (option: SingleDropdownOption) => {
       const nextCore = String(option.data);
-      updateDraft({ coreId: nextCore });
-      void lookup(romPath, nextCore);
+      // The system goes with the core: the answer only means anything against
+      // the core that declared it, and a value left over from the last one
+      // would leave the row showing an option it does not have.
+      const nextSystem = chooseSystem(probe, nextCore);
+      updateDraft({ coreId: nextCore, systemId: nextSystem });
+      void lookup(romPath, nextCore, "", nextSystem);
     },
-    [romPath, lookup],
+    [romPath, lookup, probe],
+  );
+
+  /**
+   * Which of the core's systems this game is.
+   *
+   * The lookup runs again because the answer decides which system's thumbnail
+   * directory the cover comes from, and picking Genesis after Game Gear should
+   * replace a Game Gear cover rather than leave it there.
+   */
+  const onSystemChange = useCallback(
+    (option: SingleDropdownOption) => {
+      const nextSystem = String(option.data);
+      updateDraft({ systemId: nextSystem });
+      void lookup(romPath, coreId, getDraft().title, nextSystem);
+    },
+    [romPath, coreId, lookup],
   );
 
   /** Install a core for a ROM nothing can currently run, then re-probe. */
@@ -429,14 +467,16 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
         }
         const info = await probeRom(romPath);
         const nextCore = info.suggested_core_id || core.id;
+        const nextSystem = chooseSystem(info, nextCore);
         updateDraft({
           probe: info,
           installable: [],
           installableId: "",
           coreId: nextCore,
+          systemId: nextSystem,
           installingCore: "",
         });
-        await lookup(romPath, nextCore);
+        await lookup(romPath, nextCore, "", nextSystem);
         toaster.toast({
           title: `Installed ${core.display_name}`,
           body: "Ready to add this game.",
@@ -501,11 +541,15 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
     updateDraft({ adding: true, error: "" });
 
     try {
-      // The resolved system decides the collection for a core covering more
-      // than one; without it Dolphin filed Wii games under GameCube.
-      const prepared = await prepareShortcut(
-        title, coreId, romPath, resolved?.system ?? "", titleId,
-      );
+      // The system row's answer decides the collection for a core covering
+      // more than one. It used to be whatever the artwork lookup settled on,
+      // which took the first system whose thumbnail directory had a matching
+      // name -- and libretro lists them alphabetically, so Mega Drive games
+      // were filed under Game Gear and Wii games under GameCube. The lookup's
+      // answer is still the fallback, for the core that covers one system and
+      // is never asked.
+      const system = systemId || resolved?.system || "";
+      const prepared = await prepareShortcut(title, coreId, romPath, system, titleId);
       if (!prepared.ok) {
         updateDraft({ error: prepared.error, adding: false });
         return;
@@ -517,7 +561,7 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
         prepared,
         romPath,
         coreId,
-        system: resolved?.system ?? "",
+        system,
         art: resolved?.art,
       });
 
@@ -552,7 +596,7 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
           addError instanceof Error ? addError.message : "Failed to add the game to Steam.",
       });
     }
-  }, [romPath, titleId, coreId, title, resolved, onGameAdded]);
+  }, [romPath, titleId, coreId, systemId, title, resolved, onGameAdded]);
 
   /**
    * Start receiving, then show the QR code in a modal.
@@ -718,6 +762,32 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
               disabled={adding || coreOptions.length === 0}
             />
           </PanelSectionRow>
+
+          {/* Only for a core covering several systems, which is most of them:
+              six of the seven installed on the device this was written for
+              declare between two and six. Which one a game is decides its
+              shelf, its folder and where its cover comes from, and nothing
+              asked until this row existed -- it was inferred from whichever
+              system's artwork matched the filename first, and libretro lists
+              them alphabetically, so Mega Drive games were filed under Game
+              Gear with Game Gear covers. A core covering one system has
+              nothing to ask and gets no row. */}
+          {systemChoices.length > 0 && (
+            <PanelSectionRow>
+              <DropdownItem
+                layout="below"
+                label="System"
+                description={
+                  `${probe.match_extension ? `.${probe.match_extension} ` : ""}` +
+                  "files can be more than one on this core"
+                }
+                rgOptions={systemChoices}
+                selectedOption={systemId}
+                onChange={onSystemChange}
+                disabled={adding}
+              />
+            </PanelSectionRow>
+          )}
 
           <PanelSectionRow>
             <ToggleField
@@ -986,7 +1056,7 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
         <PanelSectionRow>
           <ButtonItem
             layout="below"
-            onClick={() => void lookupArtwork(romPath, coreId, title)}
+            onClick={() => void lookupArtwork(romPath, coreId, title, systemId)}
             disabled={adding || !coreId}
           >
             Try the lookup again

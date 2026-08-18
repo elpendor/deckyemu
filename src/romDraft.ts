@@ -25,6 +25,17 @@ export interface RomDraft {
   probe: RomProbe | null;
   coreId: string;
   showAllCores: boolean;
+  /**
+   * Which of a multi-system core's systems this game is, or "" when the core
+   * covers one and there is nothing to ask.
+   *
+   * Here rather than in component state for the reason `installableId` is: the
+   * row is a dropdown, a dropdown opens a ContextMenu, and that unmounts the
+   * panel behind it exactly as a modal does -- so a choice held in `useState`
+   * is discarded on the way back and the row snaps to its first entry, which
+   * for Genesis Plus GX is Game Gear.
+   */
+  systemId: string;
   resolved: ResolvedGame | null;
   title: string;
   installable: InstallableCore[];
@@ -60,6 +71,7 @@ export const EMPTY_DRAFT: RomDraft = {
   probe: null,
   coreId: "",
   showAllCores: false,
+  systemId: "",
   resolved: null,
   title: "",
   installable: [],

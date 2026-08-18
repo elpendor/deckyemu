@@ -3,9 +3,11 @@ import { describe, expect, it } from "vitest";
 import { type Core, type InstallableCore } from "./backend";
 import {
   coreOptions,
+  defaultSystem,
   installableOptions,
   isEmulatorId,
   pinnedLabel,
+  systemOptions,
   withCurrentCore,
 } from "./corePicker";
 
@@ -232,5 +234,98 @@ describe("pinnedLabel", () => {
     // would sit where a real core name belongs.
     expect(pinnedLabel([c("gambatte")], "gambatte")).toBe("");
     expect(pinnedLabel([c("gambatte")], "")).toBe("");
+  });
+});
+
+/**
+ * The system row: which of a multi-system core's systems a game is.
+ *
+ * Six of the seven cores installed on the device this was written for cover
+ * more than one, libretro lists them alphabetically, and before this row the
+ * answer was inferred from whichever system's cover art matched the filename
+ * first -- which put three Mega Drive games on a Game Gear shelf.
+ */
+const sega = {
+  id: "genesis_plus_gx",
+  databases: [
+    "Sega - Game Gear",
+    "Sega - Master System - Mark III",
+    "Sega - Mega Drive - Genesis",
+  ],
+  database_labels: ["Game Gear", "Master System", "Genesis"],
+} as Core;
+
+const snes = {
+  id: "bsnes",
+  databases: ["Nintendo - Super Nintendo Entertainment System"],
+  database_labels: ["SNES"],
+} as Core;
+
+describe("systemOptions", () => {
+  it("offers each system a core covers, under the name people use", () => {
+    expect(systemOptions(sega)).toEqual([
+      { data: "Sega - Game Gear", label: "Game Gear" },
+      { data: "Sega - Master System - Mark III", label: "Master System" },
+      { data: "Sega - Mega Drive - Genesis", label: "Genesis" },
+    ]);
+  });
+
+  // The row draws itself off this: a question with one answer is not a
+  // question, and every single-system core would otherwise gain a row.
+  it("says nothing for a core covering one system", () => {
+    expect(systemOptions(snes)).toEqual([]);
+    expect(systemOptions(null)).toEqual([]);
+  });
+
+  // A label the backend's table has never seen comes through empty; the option
+  // still has to be pickable, so it falls back to the full name.
+  it("falls back to the database name when no label came with it", () => {
+    const odd = { databases: ["Sega - PICO", "Sega - SG-1000"], database_labels: [] } as unknown as Core;
+    expect(systemOptions(odd).map((o) => (o as { label: string }).label)).toEqual([
+      "Sega - PICO",
+      "Sega - SG-1000",
+    ]);
+  });
+});
+
+describe("defaultSystem", () => {
+  it("starts on what the file says it is", () => {
+    expect(defaultSystem(sega, "Sega - Mega Drive - Genesis")).toBe(
+      "Sega - Mega Drive - Genesis",
+    );
+  });
+
+  /*
+   * The core's first system is the wrong answer and the reason this exists:
+   * alphabetical order makes it Game Gear. It is still where the row has to
+   * start when the file says nothing -- a `.cue` names a medium, not a system
+   * -- because the dropdown has to show something, and this is what the game
+   * would have been filed as anyway.
+   */
+  it("falls back to the core's first system when the file says nothing", () => {
+    expect(defaultSystem(sega, "")).toBe("Sega - Game Gear");
+  });
+
+  // The editor's case: the game is already filed somewhere, and that is what
+  // the row should show until somebody changes it.
+  it("keeps where a game is already filed", () => {
+    expect(defaultSystem(sega, "Sega - Mega Drive - Genesis", "Sega - Game Gear")).toBe(
+      "Sega - Game Gear",
+    );
+  });
+
+  /*
+   * A stale answer from another core must not survive a core change: a
+   * DropdownItem whose selectedOption is in none of its options draws nothing
+   * at all, so the row would go blank rather than wrong.
+   */
+  it("ignores a system the core does not claim", () => {
+    expect(defaultSystem(sega, "Nintendo - Game Boy", "Sony - PlayStation")).toBe(
+      "Sega - Game Gear",
+    );
+  });
+
+  it("answers nothing for a core with one system", () => {
+    expect(defaultSystem(snes, "Nintendo - Super Nintendo Entertainment System")).toBe("");
   });
 });
