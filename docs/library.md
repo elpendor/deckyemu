@@ -12,21 +12,30 @@ Back to [the README](../README.md).
 ## Editing a game
 
 The pencil on each row in **Added games** opens an editor for a game already in
-Steam, so its playtime and its place in a collection survive.
+Steam, so its playtime and its place in a collection survive. The game's own
+page in Big Picture reaches the same editor: the cog menu carries a **DeckyEmu**
+entry with **Edit** and **Remove**, for the games this plugin added and no
+others.
 
 - **Name** — renaming moves the launcher, since its filename embeds the title.
 - **ROM file** — repoint an entry at a moved file, an SD card or a better dump.
   The launcher filename also embeds a hash of the ROM path, so this relocates the
   script too. A ROM the chosen core cannot read is refused.
-- **Core or emulator** — changing it changes the system, so the platform label
+- **Core or emulator** — changing it can change the system, so the platform label
   and the per-platform collection follow.
+- **System** — only for a core covering more than one, which is most of them.
+  It says which of that core's systems this game is, and that decides the shelf
+  it is on, the folder its ROM was filed into and which thumbnail directory its
+  cover comes from. It starts on where the game is filed now, so changing it is
+  how a game that landed on the wrong shelf is moved — saving does the move.
+  Worth running **Look up name and artwork again** afterwards, since the cover
+  came from the old system.
 - **Name and artwork** — **Choose the right game** is how you say which game
   this is when the automatic match got it wrong; it sets the name as well as
   the cover, unless you have written a name of your own. Artwork lands
   immediately; a name change waits for Save, like every other edit here.
-  **Look up name and artwork again** is worth running after a core change, since the
-  core decides the system and the system decides which thumbnail directory is
-  searched.
+  **Look up name and artwork again** is worth running after a core or system
+  change, since the system decides which thumbnail directory is searched.
 - **Launch options** — override the global fullscreen or notification setting for
   one game, and append extra arguments. They are appended rather than inserted,
   because several argument templates end in the ROM path. An override left on
@@ -43,6 +52,15 @@ Picture. The collection is called `DeckyEmu` unless you rename it.
 **One collection per system** is on by default: each system gets its own shelf,
 named by a selectable format. Turn it off and every system shares the one
 collection.
+
+Which system a game is comes from the **System** row on the add panel, which
+starts on what the file says: a `.md` is a Mega Drive cartridge whatever else
+its core reads. Where the file says nothing — a `.cue` or an `.iso` names a
+medium, not a system — the core's first system is used, and the row is there to
+correct it before adding. Games added before that row existed had their system
+inferred from whichever system's cover art matched the filename first, which is
+worth knowing if one is on a shelf you did not expect; the editor's **System**
+row moves it.
 
 | Format | Result |
 | --- | --- |

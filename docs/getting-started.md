@@ -139,6 +139,12 @@ Back in the Quick Access panel, under **Add a game**:
 2. **Pick what runs it.** Only cores and emulators that handle that file type are
    offered, with the one you used last for it first. A toggle reveals everything
    installed, for when the right answer is not in the short list.
+
+   Most cores cover more than one system — Genesis Plus GX alone reads Genesis,
+   Game Gear, Master System, Sega CD, SG-1000 and PICO — so a **System** row
+   appears when the one you picked does. It starts on what the file says it is,
+   and it decides the shelf the game goes on and where its cover comes from.
+   A core that covers one system has nothing to ask, and gets no row.
 3. **Check the name and the cover.** `Super Mario World (USA) [!].smc` becomes
    *Super Mario World*. If the cover is wrong, **Wrong game? Choose the right
    one** lets you say which game it is — that sets the name as well as the
@@ -168,8 +174,9 @@ the executable inside.
 | You want to | Where |
 | --- | --- |
 | See what you have added | **Added games (n)** in the Quick Access panel |
-| Rename a game, or change its core or artwork | The pencil on its row in **Added games** |
-| Remove a game | The bin on its row — **this deletes the ROM** if the plugin filed it |
+| Rename a game, or change its core, system or artwork | The pencil on its row in **Added games**, or the cog on the game's own page → **DeckyEmu → Edit** |
+| Remove a game | The bin on its row, or **DeckyEmu → Remove** on its page — **this deletes the ROM** if the plugin filed it |
+| Move a game to the right system | Edit it and change **System**. Saving moves it to that system's collection |
 | Update an emulator, or go back to an earlier build | **Settings → Emulators**, the branch button on its row |
 | Update RetroArch, or go back | **Settings → RetroArch → RetroArch version** |
 | Change how games are grouped | **Settings → Collections** |
@@ -200,6 +207,8 @@ survive the change.
 | A bookmarked transfer link stopped working | Either **Remember trusted devices** is off, so every session issues a new one, or **Reset link** was pressed — which invalidates all of them at once |
 | A ROM stayed in `transfer/` after adding | Something was unaccounted for: a disc a playlist names, or a different dump of the same name already filed |
 | The cover or the name is wrong | **Wrong game? Choose the right one** on the add panel, or the pencil on an added game |
+| A game is on the wrong system's shelf, with that system's cover | Its core covers several systems and the game was added before the **System** row existed. Edit it, set **System**, and look the artwork up again |
+| A game opens with the sticks moving a pointer and no buttons | Steam picked a layout for it. It files controller layouts by the game's *name*, so a title it recognises can arrive with a browser layout attached. Games added now get a gamepad layout pinned; for an older one, open its controller settings and pick **Gamepad With Joystick Trackpad** |
 | A collection is left holding nothing | **Settings → Collections** tidies stale ones |
 | A game you removed is still in Steam | **Settings → Library** finds entries that drifted apart, and offers the fix for each |
 

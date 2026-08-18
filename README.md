@@ -50,8 +50,9 @@ For a Deck that cannot reach GitHub, see
    shows a QR code, or a short address and a six-digit code. The file lands ready
    to add.
 2. **Pick a core.** Only cores that can run that file are offered, the one you
-   used last for it first. If nothing installed can run it, the cores that could
-   are offered there and then.
+   used last for it first — and for a core covering several systems, which one
+   this game is, starting on what the file says. If nothing installed can run it,
+   the cores that could are offered there and then.
 3. **Add to Steam.** `Super Mario World (USA) [!].smc` becomes *Super Mario
    World*, boxart is applied, and the game is filed under a collection so it is
    findable rather than lost among every other non-Steam shortcut.

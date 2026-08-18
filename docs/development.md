@@ -152,7 +152,9 @@ py_modules/                 Backend logic. Plain Python, stdlib only -- it runs
   ra_cores.py               Scan cores, parse .info, match extensions, peek in zips
   libretro_meta.py          Name cleanup and libretro thumbnail resolution
   sgdb.py                   SteamGridDB search, scoring, era filtering, key discovery
-  platforms.py              libretro database -> short name and folder name
+  platforms.py              libretro database -> short name and folder name;
+                            and which system a file extension names, for the
+                            cores that cover several
   installer.py              Install RetroArch (flatpak) and cores (buildbot)
   launchers.py              One .sh per game; the RetroArch override files
   cheevos.py                RetroAchievements login, and the per-launch config
@@ -216,7 +218,8 @@ src/                        Frontend (React + TypeScript, bundled by rollup).
                             still write `from "./backend"` and a declaration can
                             move between them without touching a caller.
   steam/                    All undocumented SteamClient / appStore /
-                            collectionStore use, in four files by subject.
+                            collectionStore / Steam Input use, in five files by
+                            subject.
                             Kept free of backend imports so the Node tests can
                             load it -- anything needing both halves lives one
                             level up (addGame.ts, collections.ts,
