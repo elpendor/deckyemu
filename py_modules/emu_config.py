@@ -111,6 +111,22 @@ STATE_PATH = os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "emulator_setup.json"
 # and "is it current?".
 VERSION_KEY = "__version__"
 
+#: What each config file looked like when this plugin last wrote it, as
+#: {relative path: "<size>:<mtime_ns>"}. Bookkeeping, like the version.
+#:
+#: Here because an emulator can undo what was written. DuckStation had never run
+#: when its settings were applied at install, so the file was created from
+#: nothing -- and on its first real run it regenerated the file with its own
+#: defaults, putting `SetupWizardIncomplete` back to true. The result was a setup
+#: wizard in front of every game Steam launched, on an install the plugin had
+#: correctly configured and correctly recorded configuring.
+#:
+#: A stamp rather than a per-key comparison because it needs no reader for the
+#: five formats, and re-applying is safe by construction: the writers already
+#: leave alone anything whose value differs from what was recorded, which is how
+#: a setting the user changed themselves survives.
+STAMP_KEY = "__files__"
+
 
 def needs_setup(entry):
     """Whether `entry`'s recommended settings are missing or out of date.
@@ -123,8 +139,44 @@ def needs_setup(entry):
     setup = entry.get("setup")
     if not setup:
         return False
-    recorded = _read_state().get(entry["id"], {}).get(VERSION_KEY)
-    return recorded != setup.get("version", 1)
+    stored = _read_state().get(entry["id"], {})
+    if stored.get(VERSION_KEY) != setup.get("version", 1):
+        return True
+    # Or the emulator has written its config since, which may mean it threw away
+    # what was put there. Cheaper to re-apply than to read five formats back and
+    # decide, and re-applying costs nothing when nothing moved -- the writers
+    # report "0 written" and the file is not touched.
+    return _stamps(setup) != stored.get(STAMP_KEY, {})
+
+
+#: The keys in a stored entry that are bookkeeping rather than values written
+#: into somebody's config. Filtered wherever the recorded values are read back,
+#: and kept as a set so adding a third cannot be remembered in one place and
+#: forgotten in the other.
+BOOKKEEPING = (VERSION_KEY, STAMP_KEY)
+
+
+def _recorded_values(stored):
+    """Just the values this plugin wrote, without the bookkeeping beside them."""
+    return {key: value for key, value in stored.items() if key not in BOOKKEEPING}
+
+
+def _stamps(setup):
+    """{relative path: "<size>:<mtime_ns>"} for the files this setup writes.
+
+    Missing files are recorded as "" rather than skipped: a config that has been
+    deleted since is a config that no longer holds what was written, which is
+    the same problem as one that was regenerated.
+    """
+    stamps = {}
+    for relative, _sections, _prefix, _fmt in _files_of(setup):
+        path = os.path.join(sysenv.user_home(), relative)
+        try:
+            info = os.stat(path)
+            stamps[relative] = "%d:%d" % (info.st_size, info.st_mtime_ns)
+        except OSError:
+            stamps[relative] = ""
+    return stamps
 
 
 def _read_state():
@@ -813,9 +865,7 @@ def apply_file(path, fmt, sections, owner):
         return {"ok": False, "error": "Unknown setup format %r." % fmt}
 
     state = _read_state()
-    previous = {
-        key: value for key, value in state.get(owner, {}).items() if key != VERSION_KEY
-    }
+    previous = _recorded_values(state.get(owner, {}))
 
     applied, skipped, written, error = handler(path, _expand(sections), previous, ())
     if error:
@@ -841,7 +891,7 @@ def apply_setup(entry):
     stored = state.get(entry["id"], {})
     # The version lives alongside the values; it is bookkeeping, not something
     # that was ever written into the emulator's config.
-    previous = {key: value for key, value in stored.items() if key != VERSION_KEY}
+    previous = _recorded_values(stored)
     superseded = [re.compile(pattern) for pattern in setup.get("superseded", ())]
 
     applied = []
@@ -872,6 +922,10 @@ def apply_setup(entry):
     # last recorded for it.
     state[entry["id"]] = dict(previous, **written)
     state[entry["id"]][VERSION_KEY] = setup.get("version", 1)
+    # Taken after the writes, so it describes the files as this plugin left
+    # them. Anything that moves them afterwards is the emulator, and that is
+    # what brings this round again.
+    state[entry["id"]][STAMP_KEY] = _stamps(setup)
     _write_state(state)
 
     decky.logger.info(
