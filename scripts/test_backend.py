@@ -2903,6 +2903,91 @@ check(
 store.set_settings({"last_core_by_ext": {}})
 plugin._cores = [N64_CORE, SNES_CORE]
 
+# --------------------------------------------------------------------------
+section("which system a multi-system core is being asked to run")
+# The failure this prevents happened on a real device: three Mega Drive ROMs
+# filed under Game Gear, with Game Gear covers, on a Game Gear shelf. Genesis
+# Plus GX declares six systems, libretro lists them alphabetically, and nothing
+# was reading the file -- so "the core's system" was Game Gear and the artwork
+# search settled the rest by matching a different regional release.
+SEGA_CORE = dict(
+    N64_CORE,
+    id="genesis_plus_gx",
+    display_name="Sega 8/16-bit (Genesis Plus GX)",
+    system_name="Sega 8/16-bit (Various)",
+    databases=[
+        "Sega - Game Gear",
+        "Sega - Master System - Mark III",
+        "Sega - Mega-CD - Sega CD",
+        "Sega - Mega Drive - Genesis",
+        "Sega - PICO",
+        "Sega - SG-1000",
+    ],
+    extensions=["md", "gg", "sms", "cue"],
+)
+plugin._cores = [N64_CORE, SNES_CORE, SEGA_CORE]
+
+_md_rom = os.path.join(TMP, "Comix Zone (USA).md")
+open(_md_rom, "w").close()
+_md_probe = run(plugin.probe_rom(_md_rom))
+check("a Mega Drive file says which of the core's six systems it is",
+      _md_probe["system_for_core"]["genesis_plus_gx"], "Sega - Mega Drive - Genesis")
+check("which is not the one the core would have been filed under",
+      SEGA_CORE["databases"][0], "Sega - Game Gear")
+
+_gg_rom = os.path.join(TMP, "Sonic The Hedgehog (USA, Europe).gg")
+open(_gg_rom, "w").close()
+check("and a Game Gear file says Game Gear",
+      run(plugin.probe_rom(_gg_rom))["system_for_core"]["genesis_plus_gx"],
+      "Sega - Game Gear")
+
+# The zipped case is the normal one: every ROM on the device that hit this was a
+# .zip with a .md inside, and the extension that matters is the inner one.
+_zipped_md = os.path.join(TMP, "Cool Spot (USA).zip")
+with zipfile.ZipFile(_zipped_md, "w") as handle:
+    handle.writestr("Cool Spot (USA).md", b"x")
+check("a zipped Mega Drive ROM is read from what is inside it",
+      run(plugin.probe_rom(_zipped_md))["system_for_core"]["genesis_plus_gx"],
+      "Sega - Mega Drive - Genesis")
+
+# A core covering one system has nothing to be asked, and must not be offered a
+# row that pretends otherwise.
+check("a single-system core is asked nothing",
+      _md_probe["system_for_core"]["bsnes"], "")
+
+# The picker needs a label per system, and the name table lives in the backend.
+_labels = {core["id"]: core.get("database_labels") for core in run(plugin.list_cores())}
+check("every core carries a short label for each system it declares",
+      _labels["genesis_plus_gx"],
+      ["Game Gear", "Master System", "Sega CD", "Genesis", "PICO", "SG-1000"])
+check("and a single-system core carries exactly one",
+      _labels["bsnes"], ["SNES"])
+
+# The other half: an answer from the picker refiles the game. Without it the
+# three that were already added could only be fixed by deleting them.
+_settings = store.get_settings()
+_wrong = Plugin._entry_for(_settings, 900, "Comix Zone", _md_rom, "genesis_plus_gx",
+                           SEGA_CORE, "/l/comix.sh", "Sega - Game Gear")
+check("a game filed under the wrong system says so", _wrong["platform"], "Game Gear")
+_right = Plugin._entry_for(_settings, 900, "Comix Zone", _md_rom, "genesis_plus_gx",
+                           SEGA_CORE, "/l/comix.sh", "Sega - Mega Drive - Genesis",
+                           previous=_wrong)
+check("and can be moved to the right one without being re-added",
+      _right["platform"], "Genesis")
+# The name pattern is whatever the settings say at this point in the run; what
+# matters is that the shelf moved and that it is the Genesis one.
+check("which is what changes the shelf it is on",
+      (_wrong["collection"] != _right["collection"], "Genesis" in _right["collection"]),
+      (True, True))
+# An edit that says nothing about the system leaves the stored answer alone --
+# renaming a Wii game must not refile it under GameCube.
+check("an edit with no answer keeps the system the game had",
+      Plugin._entry_for(_settings, 900, "Comix Zone II", _md_rom, "genesis_plus_gx",
+                        SEGA_CORE, "/l/comix.sh", previous=_right)["system"],
+      "Sega - Mega Drive - Genesis")
+
+plugin._cores = [N64_CORE, SNES_CORE]
+
 prepared = run(plugin.prepare_shortcut("Super Mario World", "bsnes", add_rom))
 check("preparing a shortcut succeeds", prepared["ok"], True)
 check("the launcher exists on disk", os.path.isfile(prepared["exe"]), True)

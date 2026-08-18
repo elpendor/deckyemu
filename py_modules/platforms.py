@@ -143,3 +143,83 @@ def short_name(database, fallback=""):
             return SHORT_NAMES[database]
         return database.split(" - ")[-1]
     return fallback
+
+
+# Extensions that name a system on their own.
+#
+# Only useful for a core covering more than one, which is most of them: of the
+# seven cores with an info file on the device this was written against, six
+# declare between two and six databases. Genesis Plus GX declares Game Gear,
+# Master System, Mega-CD, Mega Drive, PICO and SG-1000, and libretro lists them
+# alphabetically -- so "the core's system" is Game Gear, and every Mega Drive
+# ROM run on it was filed under Game Gear unless something else spoke up.
+#
+# What speaks up is the file. `.md` is a Mega Drive cartridge and nothing else,
+# and that is true of every entry here: a mapping is only listed when the
+# extension names one system across every core that reads it.
+#
+# Deliberately no disc images. `.cue`, `.chd`, `.iso` and `.m3u` name a *medium*
+# -- Mega-CD, Saturn, PlayStation, GameCube and PSP all arrive as one -- so an
+# entry for them would be a guess wearing a fact's clothes. Those keep the
+# behaviour they had, which is the core's first database.
+EXTENSION_SYSTEMS = {
+    # Sega
+    "md": "Sega - Mega Drive - Genesis",
+    "smd": "Sega - Mega Drive - Genesis",
+    "gen": "Sega - Mega Drive - Genesis",
+    "mdx": "Sega - Mega Drive - Genesis",
+    "68k": "Sega - Mega Drive - Genesis",
+    "sgd": "Sega - Mega Drive - Genesis",
+    "bin": "Sega - Mega Drive - Genesis",
+    "gg": "Sega - Game Gear",
+    "sms": "Sega - Master System - Mark III",
+    "bms": "Sega - Master System - Mark III",
+    "sg": "Sega - SG-1000",
+    "32x": "Sega - 32X",
+    # Nintendo
+    "gb": "Nintendo - Game Boy",
+    "gbc": "Nintendo - Game Boy Color",
+    "gba": "Nintendo - Game Boy Advance",
+    "nes": "Nintendo - Nintendo Entertainment System",
+    "unf": "Nintendo - Nintendo Entertainment System",
+    "unif": "Nintendo - Nintendo Entertainment System",
+    "fds": "Nintendo - Family Computer Disk System",
+    "sfc": "Nintendo - Super Nintendo Entertainment System",
+    "smc": "Nintendo - Super Nintendo Entertainment System",
+    "swc": "Nintendo - Super Nintendo Entertainment System",
+    "fig": "Nintendo - Super Nintendo Entertainment System",
+    "bs": "Nintendo - Satellaview",
+    "st": "Nintendo - Sufami Turbo",
+    "n64": "Nintendo - Nintendo 64",
+    "z64": "Nintendo - Nintendo 64",
+    "v64": "Nintendo - Nintendo 64",
+    "ndd": "Nintendo - Nintendo 64DD",
+    "gcm": "Nintendo - GameCube",
+    "gcz": "Nintendo - GameCube",
+    "wbfs": "Nintendo - Wii",
+    "wad": "Nintendo - Wii",
+    # Handhelds whose two generations share a core
+    "ws": "Bandai - WonderSwan",
+    "wsc": "Bandai - WonderSwan Color",
+    "ngp": "SNK - Neo Geo Pocket",
+    "ngc": "SNK - Neo Geo Pocket Color",
+    "pce": "NEC - PC Engine - TurboGrafx 16",
+    "sgx": "NEC - PC Engine SuperGrafx",
+    "lnx": "Atari - Lynx",
+    "a78": "Atari - 7800",
+}
+
+
+def system_for_extension(databases, extension):
+    """Which of `databases` a file extension names, or "".
+
+    Answered only when the core itself claims the system. The table above is
+    keyed on the extension alone, so `.md` maps to Mega Drive even when asked
+    about DuckStation -- and DuckStation does not declare Mega Drive, so the
+    answer is "" and nothing downstream changes. That guard is what lets the
+    table stay a plain dict instead of a per-core one.
+    """
+    wanted = EXTENSION_SYSTEMS.get((extension or "").lower().lstrip("."))
+    if wanted and wanted in (databases or []):
+        return wanted
+    return ""

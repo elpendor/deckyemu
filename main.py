@@ -390,7 +390,17 @@ class Plugin(
                 )
             custom.append(emulators.to_core_entry(emulator, label))
 
-        return self._cores + custom
+        # A short label per declared database, so the picker can offer the
+        # systems a multi-system core covers without the frontend needing a
+        # copy of the name table. Attached here rather than where each kind of
+        # core is built, because this is the one place both kinds meet.
+        return [
+            dict(core, database_labels=[
+                platforms.short_name(database, "")
+                for database in core.get("databases") or []
+            ])
+            for core in self._cores + custom
+        ]
 
     async def _refresh_emulators(self):
         self._emulators = await self._run(emulators.list_emulators)
@@ -424,6 +434,19 @@ class Plugin(
             "all_cores": cores,
             "suggested_core_id": (matching[0]["id"] if matching else ""),
             "unsupported_extension": extension in ROM_EXTENSION_BLOCKLIST,
+            # Which of its systems each core would take this file as, keyed by
+            # core id. Only a core covering several has anything to say, and
+            # only the file can say it: `.md` is a Mega Drive cartridge, while
+            # the core that reads it declares six systems and lists Game Gear
+            # first. The frontend uses this to preselect the system row, so the
+            # answer is a visible default the user can change rather than a
+            # guess made behind them.
+            "system_for_core": {
+                core["id"]: platforms.system_for_extension(
+                    core.get("databases") or [], match_extension
+                )
+                for core in cores
+            },
         }
 
         # A PlayStation 3 package is the one thing the picker can be pointed at
@@ -853,7 +876,9 @@ class Plugin(
 
     # ----------------------------------------------------------------- metadata
 
-    async def resolve_game(self, rom_path: str, core_id: str, title: str = ""):
+    async def resolve_game(
+        self, rom_path: str, core_id: str, title: str = "", system: str = ""
+    ):
         """Canonical name + artwork for a ROM/core pair.
 
         Artwork comes back as data URIs so the frontend can both preview it and
@@ -867,6 +892,23 @@ class Plugin(
         decky.logger.info("resolve_game: core=%s rom=%s title=%r", core_id, rom_path, title)
         core = self._core_by_id(core_id)
         databases = core["databases"] if core else []
+        # The system the user picked goes to the front of the search.
+        #
+        # `resolve` takes the first database whose thumbnail directory has a
+        # matching name, so the order of this list decides which system's cover
+        # a game gets. Left alone it is libretro's order, which is alphabetical:
+        # a Mega Drive ROM run on Genesis Plus GX was matched against Game Gear
+        # first and came back with the Game Gear cover of a different regional
+        # release -- "Sonic The Hedgehog (USA, Europe)" answered by
+        # "Sonic The Hedgehog (Japan, USA)".
+        #
+        # Moved rather than narrowed to the one system: this call also settles
+        # the game's *name*, and a name matched on a sibling system is usually
+        # still the right name. Nothing is filed on the strength of it any more
+        # -- the picker's answer is what decides that -- so a stray match here
+        # costs a cover, not a shelf.
+        if system and system in databases:
+            databases = [system] + [other for other in databases if other != system]
         settings = await self._run(store.get_settings)
         api_key = (settings.get("sgdb_api_key") or "").strip()
         art_source = settings.get("art_source", "auto")
@@ -1272,6 +1314,7 @@ class Plugin(
         core_id: str,
         rom_path: str = "",
         options: Optional[dict] = None,
+        system: str = "",
     ):
         """Change a tracked game's name, ROM, what runs it, or how it launches.
 
@@ -1373,12 +1416,20 @@ class Plugin(
             await self._run(launchers.remove_launcher, old_launcher)
 
         previous_collection = entry.get("collection", "")
-        # No system hint: an edit says nothing new about which of a multi-system
-        # core's databases this game is in, so the stored answer stands wherever
-        # the newly chosen core still claims it. `_entry_for` owns that rule.
+        # `system` empty means the edit said nothing about it, and the stored
+        # answer stands wherever the newly chosen core still claims it --
+        # `_entry_for` owns that rule. Given, it is the user answering the one
+        # question nothing else can: which of a multi-system core's systems this
+        # game is, for the games that were filed under the wrong one before the
+        # picker asked. That is the only way to move one without deleting it.
+        #
+        # The ROM file stays where it is. It was filed under the old system on
+        # the way in, and its path is baked into the launcher's argv, hashed
+        # into the launcher's filename and recorded here -- moving it is three
+        # more things to keep in step for a folder nobody sees in Game Mode.
         entry = self._entry_for(
             settings, app_id, clean_title, rom_path, core_id, core, script,
-            previous=entry,
+            system, previous=entry,
         )
         entry["options"] = cleaned_options
         platform = entry["platform"]
