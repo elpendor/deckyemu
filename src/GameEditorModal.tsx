@@ -31,8 +31,10 @@ import { unfileGames } from "./collections";
 import { ArtPickerModal } from "./ArtPickerModal";
 import {
   coreOptions as buildCoreOptions,
+  defaultSystem,
   isEmulatorId,
   pinnedLabel,
+  systemOptions,
   withCurrentCore,
 } from "./corePicker";
 import { preselectCore } from "./CoreInstallPanel";
@@ -120,7 +122,20 @@ export function GameEditorModal({ game, onSaved, closeModal, onLeave }: Props) {
   const [title, setTitle] = useState(game.title);
   const [romPath, setRomPath] = useState(game.rom_path);
   const [coreId, setCoreId] = useState(game.core_id);
-  const [cores, setCores] = useState<{ matching: Core[]; all: Core[] } | null>(null);
+  const [cores, setCores] = useState<
+    { matching: Core[]; all: Core[]; systemForCore: Record<string, string> } | null
+  >(null);
+  /**
+   * Which of a multi-system core's systems this game is.
+   *
+   * Starts on where it is filed now, not on what the file says: this is the
+   * record of a game that was already added, and showing anything else would
+   * be quietly disagreeing with the shelf it is on. Changing it is the only
+   * way to move a game filed under the wrong system -- the games added before
+   * the add panel had a system row were filed by the artwork lookup, which put
+   * Mega Drive games on the Game Gear shelf.
+   */
+  const [system, setSystem] = useState(game.system ?? "");
   const [showAll, setShowAll] = useState(false);
   type OsdChoice = NonNullable<GameOptions["hide_osd"]> | "";
   const [osd, setOsd] = useState<OsdChoice>(game.options?.hide_osd ?? "");
@@ -143,14 +158,18 @@ export function GameEditorModal({ game, onSaved, closeModal, onLeave }: Props) {
     callWithRetry(() => probeRom(romPath))
       .then((probe) => {
         if (!current) return;
-        setCores({ matching: probe.matching_cores, all: probe.all_cores });
+        setCores({
+          matching: probe.matching_cores,
+          all: probe.all_cores,
+          systemForCore: probe.system_for_core ?? {},
+        });
         setShowAll(probe.matching_cores.length === 0);
       })
       .catch((probeError) => {
         if (!current) return;
         logError("could not probe ROM for editing", probeError);
         setError("Could not read that ROM, so the core list is unavailable.");
-        setCores({ matching: [], all: [] });
+        setCores({ matching: [], all: [], systemForCore: {} });
       });
     return () => {
       current = false;
@@ -169,6 +188,33 @@ export function GameEditorModal({ game, onSaved, closeModal, onLeave }: Props) {
   // already drifted once, staying flat after the panel learned to separate
   // emulators from cores.
   const coreOptions: DropdownOption[] = useMemo(() => buildCoreOptions(visible), [visible]);
+
+  const systemChoices: DropdownOption[] = useMemo(
+    () => systemOptions(cores?.all.find((core) => core.id === coreId)),
+    [cores, coreId],
+  );
+
+  /**
+   * Follow the core: the answer only means anything against the core that
+   * declared it.
+   *
+   * On the game's own core the stored answer stands, which is what makes the
+   * row show where the game is filed. On any other, the file decides -- a
+   * system carried over from the previous core would leave the row showing an
+   * option it no longer has, and a `selectedOption` in no option draws nothing
+   * at all.
+   */
+  useEffect(() => {
+    if (!cores) return;
+    const core = cores.all.find((candidate) => candidate.id === coreId);
+    setSystem(
+      defaultSystem(
+        core,
+        cores.systemForCore[coreId] ?? "",
+        coreId === game.core_id ? game.system ?? "" : "",
+      ),
+    );
+  }, [cores, coreId, game.core_id, game.system]);
 
   const isEmulator = isEmulatorId(coreId);
 
@@ -295,6 +341,9 @@ export function GameEditorModal({ game, onSaved, closeModal, onLeave }: Props) {
         romPath,
         coreId,
         byFilename ? "" : title.trim(),
+        // The system decides which thumbnail directory is searched first, so
+        // this is what stops a Mega Drive game being handed a Game Gear cover.
+        system,
       );
       const applied = await applyArtwork(game.app_id, resolved.art);
       setArtApplied(applied);
@@ -314,7 +363,7 @@ export function GameEditorModal({ game, onSaved, closeModal, onLeave }: Props) {
     } finally {
       setRefreshing(false);
     }
-  }, [romPath, coreId, game.app_id, game.title]);
+  }, [romPath, coreId, system, game.app_id, game.title]);
 
   const currentOptions = useCallback((): GameOptions => {
     const options: GameOptions = {};
@@ -328,7 +377,9 @@ export function GameEditorModal({ game, onSaved, closeModal, onLeave }: Props) {
     setSaving(true);
     setError("");
     try {
-      const result = await updateGame(game.app_id, title, coreId, romPath, currentOptions());
+      const result = await updateGame(
+        game.app_id, title, coreId, romPath, currentOptions(), system,
+      );
       if (!result.ok) {
         setError(result.error);
         return;
@@ -363,6 +414,7 @@ export function GameEditorModal({ game, onSaved, closeModal, onLeave }: Props) {
 
       if (result.rom_changed) notes.push(`now runs ${basename(result.rom_path)}`);
       if (coreId !== game.core_id) notes.push(`now runs on ${result.platform}`);
+      else if (system !== game.system) notes.push(`filed as ${result.platform}`);
 
       toaster.toast({
         title: result.title,
@@ -378,7 +430,7 @@ export function GameEditorModal({ game, onSaved, closeModal, onLeave }: Props) {
     } finally {
       setSaving(false);
     }
-  }, [game, title, coreId, romPath, currentOptions, onSaved, closeModal]);
+  }, [game, title, coreId, system, romPath, currentOptions, onSaved, closeModal]);
 
   /**
    * Launch the game to check the change worked.
@@ -484,6 +536,31 @@ export function GameEditorModal({ game, onSaved, closeModal, onLeave }: Props) {
             </DialogButton>
           )}
         </div>
+
+        {/* Only for a core covering several systems. This is where a game filed
+            under the wrong one gets moved: everything added before the add
+            panel gained the same row had its system inferred from whichever
+            system's cover art matched the filename first, which put Mega Drive
+            games on the Game Gear shelf. Deleting and re-adding was the only
+            way back, and it produced the same answer. */}
+        {systemChoices.length > 0 && (
+          <div style={FIELD}>
+            <Label
+              hint={
+                system === game.system
+                  ? "Which shelf this game belongs on, and where its artwork comes from."
+                  : "Saving moves the game to the collection for this system."
+              }
+            >
+              System
+            </Label>
+            <Dropdown
+              rgOptions={systemChoices}
+              selectedOption={system}
+              onChange={(option) => setSystem(String(option.data))}
+            />
+          </div>
+        )}
 
         <div style={FIELD}>
           <Label
