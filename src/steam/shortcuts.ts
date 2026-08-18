@@ -7,6 +7,7 @@
  * something exists under an id, not whether it is still the right game.
  */
 import { appStore, collectionStore, steamClient, waitForOverview } from "./client";
+import { pinGamepadLayout } from "./layout";
 
 export interface CreateShortcutArgs {
   title: string;
@@ -49,6 +50,12 @@ export async function createShortcut(args: CreateShortcutArgs): Promise<number> 
     console.error("[deckyemu] could not apply shortcut fields", error);
     throw new Error("Steam created the shortcut but rejected its settings.");
   }
+
+  // Not awaited. It has to wait for Steam to notice the name before it can tell
+  // whether the layout needs repairing, and nothing about adding a game depends
+  // on the answer -- making the caller hold for a couple of seconds would buy
+  // only a return value nobody reads. See layout.ts for what it is repairing.
+  void pinGamepadLayout(appId);
 
   return appId;
 }

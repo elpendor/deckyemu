@@ -1,5 +1,11 @@
 import { shortcutForLauncher } from "./backend";
-import { createShortcut, repointShortcut, renameShortcut, shortcutExists } from "./steam";
+import {
+  createShortcut,
+  pinGamepadLayout,
+  repointShortcut,
+  renameShortcut,
+  shortcutExists,
+} from "./steam";
 import { logError } from "./logError";
 
 /**
@@ -51,6 +57,11 @@ export async function createOrReuseShortcut(args: {
     // assumed. This is the same repair the audit's adopt path performs.
     renameShortcut(existing, args.title);
     repointShortcut(existing, args.exe);
+    // The name is the key Steam files a controller layout under, so a rename
+    // moves the shortcut onto whatever layout that title already attracts --
+    // the same guess a fresh shortcut gets, and worth the same repair. Not
+    // awaited, for the reason `createShortcut` gives.
+    void pinGamepadLayout(existing);
     return { appId: existing, reused: true };
   }
 

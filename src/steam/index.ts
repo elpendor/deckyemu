@@ -18,6 +18,7 @@
  * and nothing outside this directory should be reaching for one.
  */
 export * from "./shortcuts";
+export * from "./layout";
 export * from "./artwork";
 export * from "./collections";
 export * from "./focus";

@@ -99,3 +99,17 @@ export async function overviewsFor(appIds: number[]): Promise<AppOverview[]> {
   });
   return overviews;
 }
+
+/**
+ * The controller stores, which own everything Steam Input knows.
+ *
+ * `ControllerStore` lists what is physically attached and can name each
+ * controller's type; `controllerConfiguratorStore` owns the per-app layout
+ * selection and is what Steam's own controller settings page drives. Both are
+ * globals of the same kind as `appStore` -- injected, undocumented, and reached
+ * through an accessor so a rename degrades one feature.
+ */
+export const controllerStore = (): any => (window as any).ControllerStore ?? null;
+
+export const controllerConfiguratorStore = (): any =>
+  (window as any).controllerConfiguratorStore ?? null;
