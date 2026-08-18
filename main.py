@@ -5,6 +5,7 @@ import hashlib
 import inspect
 import json
 import os
+import posixpath
 import re
 import sys
 from typing import Optional
@@ -1718,13 +1719,16 @@ class Plugin(
             return {"ok": False, "error": "flatpak is not available on this system."}
 
         result = await self._run_flatpak(argv)
-        if not result.get("ok"):
-            return result
 
-        # Re-detect rather than assume: this is what makes every other tab agree
-        # that RetroArch is gone, and it is also how a failed-but-zero-exit
-        # removal would still be caught.
+        # Re-detected whether or not that succeeded, and the failure case is the
+        # one that needs it. `--delete-data` removes the application first and
+        # its data second, so a failure in the second half leaves RetroArch
+        # already gone -- and returning the error without re-detecting left every
+        # tab still showing it as installed, which is a worse answer than the
+        # error. It is also how a failed-but-zero-exit removal gets caught.
         await self.refresh_retroarch()
+        if not result.get("ok"):
+            return dict(result, still_installed=bool(self._install))
         return {
             "ok": True,
             "still_installed": bool(self._install),
@@ -1764,6 +1768,30 @@ class Plugin(
             env.setdefault("XDG_DATA_HOME", os.path.join(home, ".local", "share"))
             env.setdefault("XDG_CACHE_HOME", os.path.join(home, ".cache"))
         env.setdefault("PATH", "/usr/bin:/bin:/usr/local/bin")
+
+        # The session bus, which `flatpak uninstall --delete-data` needs and
+        # nothing else here does.
+        #
+        # The plugin is started by a systemd service and inherits no bus
+        # address, so flatpak tried to autolaunch one and answered "Cannot
+        # autolaunch D-Bus without X11 $DISPLAY" -- on a device that has no X11
+        # and does not need one, since the bus is already running and its socket
+        # is right there. What made it expensive is where it failed: the app was
+        # uninstalled first and the data deletion second, so removing RetroArch
+        # *with* its saves reported an error having already removed RetroArch.
+        #
+        # Set only when the socket exists, and never overriding an inherited
+        # one: naming an address for a bus that is not there turns a clear
+        # autolaunch message into a connection refused.
+        runtime = env.get("XDG_RUNTIME_DIR")
+        if not runtime and hasattr(os, "getuid"):
+            runtime = "/run/user/%d" % os.getuid()
+        if runtime and os.path.exists(os.path.join(runtime, "bus")):
+            env.setdefault("XDG_RUNTIME_DIR", runtime)
+            env.setdefault(
+                "DBUS_SESSION_BUS_ADDRESS",
+                "unix:path=%s" % posixpath.join(runtime, "bus"),
+            )
         return env
 
     async def _run_flatpak(self, argv):
