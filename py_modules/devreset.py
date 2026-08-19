@@ -77,8 +77,14 @@ def _file_report(path, label):
     return {"label": label, "path": path, "items": 1, "bytes": size}
 
 
-def _emulator_data_dirs():
+def _emulator_data_dirs(entry_ids=None):
     """Where each installed emulator keeps everything it owns.
+
+    `entry_ids` narrows it to those catalog ids, which is what the uninstall
+    action needs: it deletes the data of the emulators it actually removed, and
+    must leave alone the one it was refused -- a system-wide install belongs to
+    root and is still there afterwards, so taking its saves would destroy data
+    for an emulator the reset could not touch.
 
     A flatpak is easy and needs nothing declared: everything it can write is
     under its application id. An AppImage writes wherever it likes, and the
@@ -95,6 +101,8 @@ def _emulator_data_dirs():
     home = sysenv.user_home()
     found = []
     for entry in emulator_catalog.CATALOG:
+        if entry_ids is not None and entry["id"] not in entry_ids:
+            continue
         source = entry["source"]
         if source["kind"] == "flatpak":
             relatives = [os.path.join(".var", "app", source["id"])]
@@ -190,20 +198,24 @@ def inventory():
             retroarch.append(found)
     report["retroarch"] = retroarch
 
-    # Names only: what uninstalling costs is a download, not disk, and the
-    # useful thing to show is which ones are about to go.
-    report["emulators"] = [
-        {"label": entry.get("name") or entry.get("id", ""), "path": entry.get("target", ""),
-         "items": 1, "bytes": 0}
-        for entry in emulators.list_emulators()
-    ]
-
     data = []
     for name, path in _emulator_data_dirs():
         found = _dir_report(path, "%s data (games, saves, firmware, config)" % name)
         if found:
             data.append(found)
     report["emulator_data"] = data
+
+    # The emulators themselves carry no size -- uninstalling one costs a
+    # download, not disk -- and the useful thing to show is which ones are about
+    # to go. Their data is listed with them because the action deletes it too,
+    # and that half is the irreversible half: a dialog that named four emulators
+    # and no save directory would be the one place this destroys something
+    # without saying so.
+    report["emulators"] = [
+        {"label": entry.get("name") or entry.get("id", ""), "path": entry.get("target", ""),
+         "items": 1, "bytes": 0}
+        for entry in emulators.list_emulators()
+    ] + data
 
     transfers = []
     for path, label in (
@@ -346,10 +358,15 @@ def clear_downloads():
     return freed
 
 
-def clear_emulator_data():
-    """Delete what the emulators themselves own. This includes save games."""
+def clear_emulator_data(entry_ids=None):
+    """Delete what the emulators themselves own. This includes save games.
+
+    All of them by default; `entry_ids` restricts it to those catalog ids. The
+    uninstall action passes a list because it must not touch what it could not
+    remove -- see `_emulator_data_dirs`.
+    """
     freed = 0
-    for name, path in _emulator_data_dirs():
+    for name, path in _emulator_data_dirs(entry_ids):
         gone = _remove(path)
         if gone:
             decky.logger.info("Cleared %s data (%d bytes)", name, gone)

@@ -2323,13 +2323,29 @@ class Plugin(
         return {"ok": True, "freed": freed}
 
     async def _dev_reset_emulators(self):
-        """Uninstall every catalog emulator this plugin can remove.
+        """Uninstall every catalog emulator this plugin can remove, data and all.
 
         Through the same endpoint the Emulators tab uses, so a system-wide
         flatpak is refused here for the same reason and with the same words --
         removing one needs root, which the plugin has not got.
+
+        The data goes with it, and that is the difference between this and the
+        tab's own Remove, where keeping it is a question worth asking. Here it
+        is not: the reset exists so the next run is a first run, and an emulator
+        whose `~/.var/app/<id>` survived comes back already configured, already
+        holding its firmware, and reports itself set up -- which is the exact
+        state this is for getting rid of.
+
+        Two passes because neither alone covers it. `--delete-data` is
+        flatpak's own and is the only thing that reaches a flatpak's data before
+        the application id stops existing; the sweep afterwards is what reaches
+        an AppImage's, which lives in ordinary folders the catalog has to name.
+
+        Only for what actually came off: an emulator whose removal was refused
+        is still installed, so deleting its saves would take data from an
+        emulator this reset could not touch.
         """
-        removed, failed = [], []
+        removed, failed, cleared = [], [], []
         for entry in emulator_catalog.CATALOG:
             present = (
                 await self._run(emu_install.flatpak_installed, entry["source"]["id"])
@@ -2337,14 +2353,24 @@ class Plugin(
                 else bool(await self._run(emu_install.installed_appimage, entry["id"]))
             )
             if not present:
+                # Not installed, but its data can still be sitting there from an
+                # install some earlier reset took away -- which is the leftover
+                # that makes a reinstall arrive pre-configured.
+                cleared.append(entry["id"])
                 continue
-            result = await self.uninstall_emulator(entry["id"])
-            (removed if result.get("ok") else failed).append(
-                entry["name"] if result.get("ok")
-                else "%s (%s)" % (entry["name"], result.get("error", ""))
-            )
+            result = await self.uninstall_emulator(entry["id"], True)
+            if result.get("ok"):
+                removed.append(entry["name"])
+                cleared.append(entry["id"])
+            else:
+                failed.append("%s (%s)" % (entry["name"], result.get("error", "")))
+        freed = await self._run(devreset.clear_emulator_data, cleared)
         await self.refresh_retroarch()
-        return {"ok": True, "removed": removed, "failed": failed}
+        decky.logger.warning(
+            "Dev reset emulators: %d removed, %d refused, %d bytes of data deleted",
+            len(removed), len(failed), freed,
+        )
+        return {"ok": True, "removed": removed, "failed": failed, "freed": freed}
 
     async def _dev_reset_retroarch(self):
         """Remove RetroArch itself, its cores and its configuration."""

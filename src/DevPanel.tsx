@@ -94,10 +94,16 @@ const ACTIONS: {
     id: "emulators",
     group: "emulators",
     title: "Uninstall every emulator",
-    what: "Each one this plugin installed, and its registration.",
+    what:
+      "Each one this plugin installed, its registration, and everything that " +
+      "emulator owns — its configuration, the firmware it unpacked, games " +
+      "installed into it, and save games. An emulator that comes back still " +
+      "configured is the state this exists to get rid of, so the data goes with it.",
     cost:
-      "A download each. Anything installed system-wide is refused — removing that " +
-      "needs root, which the plugin has not got.",
+      "A download each, and the data is not recoverable — save games are not " +
+      "stored anywhere else. Anything installed system-wide is refused, and its " +
+      "data is left alone with it: removing that needs root, which the plugin has " +
+      "not got.",
   },
   {
     id: "emulator_data",
@@ -265,7 +271,11 @@ export function DevPanel({ onChanged }: Props) {
                   title: action.title,
                   body:
                     (result.removed
-                      ? `${result.removed.length} removed.`
+                      ? `${result.removed.length} removed.` +
+                        // The data half, said separately: "3 removed" is the
+                        // uninstall and gives no hint that gigabytes of saves
+                        // went with it.
+                        (result.freed ? ` ${humanSize(result.freed)} of data deleted.` : "")
                       : `${humanSize(result.freed ?? 0)} recovered.`) +
                     (unshortcut ? ` ${unshortcut} Steam shortcut(s) removed.` : "") +
                     (emptied ? ` ${emptied} empty collection(s) deleted.` : "") +
