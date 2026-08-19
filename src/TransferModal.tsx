@@ -499,12 +499,37 @@ export function TransferModal({
         // returned that requirement's instructions *as an error*, which read
         // as the plugin refusing to do what it was describing.
         if (match.guiInstall) {
-          await installThroughEmulator(
+          const started = await installThroughEmulator(
             entryId,
             match.emulatorName,
             requirement,
             match.prompt,
           );
+          /*
+           * This one dismisses the dialog, and only this one.
+           *
+           * The rule is the kind of install, not the emulator: a copy is
+           * instant and local, and a requirement can want several files -- xemu
+           * wants three -- so staying open is right for those and is why it
+           * does. An install through the emulator's own window is not that. It
+           * launches a game through Steam and takes the screen for minutes,
+           * with this dialog left drawn over the top of it, and the file server
+           * still listening the whole time because `close` is what stops it.
+           *
+           * Only once it has actually started. A prepare that failed, or a
+           * Steam that would not launch it, has just put a toast on screen and
+           * left something to retry -- closing over that would take the retry
+           * away along with the reason.
+           *
+           * This is the narrow form of a wider question: every action in this
+           * list is a one-shot hand-off attached to a list that is plural, and
+           * that is what makes each of them want its own rule. Worth solving
+           * properly rather than growing a second exception here.
+           */
+          if (started) {
+            await close();
+            return;
+          }
           await load();
           return;
         }
@@ -530,7 +555,7 @@ export function TransferModal({
         setBusy(false);
       }
     },
-    [matchFor, load],
+    [matchFor, load, close],
   );
 
   /**
