@@ -1004,20 +1004,32 @@ class Emulators(plugin_base.PluginContext):
         repair on the next panel open catches what the first run undoes.
         """
         setup = entry.get("setup")
-        missing = await self._run(emu_config.missing_files, setup)
-        if not missing:
+        if not await self._run(emu_config.needs_priming, entry):
             return False
 
+        # "Not there" and "there because we put it there" both land here, and
+        # the second is why reinstalling an emulator did not help: `flatpak
+        # uninstall` leaves `~/.var/app/<id>` alone, so the config survives the
+        # emulator and the next install saw a file and asked for nothing.
         decky.logger.info(
-            "Letting %s write its own config first (%s)", entry["id"], ", ".join(missing)
+            "Letting %s write its own config first", entry["id"]
         )
-        # Two attempts, cheapest first. Nothing is retried once the file is
-        # there: an emulator that has written its config has done the only job
-        # this asked of it.
-        for wrapper in ((), self._HEADLESS_WRAPPER):
+        # Two attempts, cheapest first, and the second one drops the offscreen
+        # environment rather than keeping it. That is not tidiness: an emulator
+        # reaches the second attempt *because* it has no offscreen platform to
+        # use, so asking again for one under gamescope fails identically. Azahar
+        # did exactly that -- gamescope came up, its headless backend and
+        # XWayland started, and the AppImage was gone a second later, logged as
+        # "Primary child shut down!" and reported as an emulator that writes no
+        # config. Under gamescope there is a real display; the point is that
+        # nothing is attached to the other end of it.
+        for wrapper, environment in (
+            ((), self._OFFSCREEN),
+            (self._HEADLESS_WRAPPER, None),
+        ):
             await self._run_emulator_tool(
                 emulator, [], seconds=self._PRIME_SECONDS,
-                env_overrides=self._OFFSCREEN, wrapper=wrapper,
+                env_overrides=environment, wrapper=wrapper,
             )
             if not await self._run(emu_config.missing_files, setup):
                 break

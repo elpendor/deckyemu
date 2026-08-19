@@ -127,6 +127,17 @@ VERSION_KEY = "__version__"
 #: a setting the user changed themselves survives.
 STAMP_KEY = "__files__"
 
+#: The configs this plugin created because the emulator had not.
+#:
+#: "The file exists" is not "the emulator has run", and the difference is the
+#: whole of `_prime_emulator_config`. A config this plugin authored is one the
+#: emulator will replace the moment it starts -- so treating it as evidence that
+#: the emulator has already run is how an emulator gets stuck: primed never,
+#: because a file is there; and the file is there only because priming has never
+#: happened. Azahar reached exactly that state, holding a 2189-byte config this
+#: plugin wrote after a failed prime.
+AUTHORED_KEY = "__authored__"
+
 
 def needs_setup(entry):
     """Whether `entry`'s recommended settings are missing or out of date.
@@ -153,7 +164,7 @@ def needs_setup(entry):
 #: into somebody's config. Filtered wherever the recorded values are read back,
 #: and kept as a set so adding a third cannot be remembered in one place and
 #: forgotten in the other.
-BOOKKEEPING = (VERSION_KEY, STAMP_KEY)
+BOOKKEEPING = (VERSION_KEY, STAMP_KEY, AUTHORED_KEY)
 
 
 def _recorded_values(stored):
@@ -194,6 +205,40 @@ def missing_files(setup):
         if not os.path.exists(os.path.join(sysenv.user_home(), relative)):
             missing.append(relative)
     return missing
+
+
+def needs_priming(entry):
+    """Whether the emulator should be made to write its own config first.
+
+    Two states qualify, and the second is the one that took a session to find.
+    A config that is not there at all, obviously -- and a config that is there
+    only because this plugin wrote it, which is the same situation wearing a
+    file. That is recognised by the stamp: `apply_setup` records what it left
+    behind, so a file whose size and mtime still match that record has been
+    touched by nothing since, and an emulator that has never touched its own
+    config has never run.
+
+    The pair together is what makes this self-correcting. A prime that fails
+    leaves a config this plugin authored, and the next install or registration
+    asks again rather than concluding from its own leftovers that the job is
+    done.
+    """
+    setup = entry.get("setup")
+    if not setup:
+        return False
+    if missing_files(setup):
+        return True
+
+    stored = _read_state().get(entry["id"], {})
+    authored = stored.get(AUTHORED_KEY) or []
+    if not authored:
+        return False
+    stamps = _stamps(setup)
+    recorded = stored.get(STAMP_KEY, {})
+    return any(
+        relative in stamps and stamps[relative] == recorded.get(relative)
+        for relative in authored
+    )
 
 
 def _read_state():
@@ -914,6 +959,8 @@ def apply_setup(entry):
     applied = []
     skipped = []
     written = {}
+    # Noted before anything is written, because writing is what makes it false.
+    authored = missing_files(setup)
     for relative, sections, prefix, fmt in _files_of(setup):
         handler = _HANDLERS.get(fmt)
         if handler is None:
@@ -943,6 +990,7 @@ def apply_setup(entry):
     # them. Anything that moves them afterwards is the emulator, and that is
     # what brings this round again.
     state[entry["id"]][STAMP_KEY] = _stamps(setup)
+    state[entry["id"]][AUTHORED_KEY] = authored
     _write_state(state)
 
     decky.logger.info(

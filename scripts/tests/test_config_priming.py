@@ -121,6 +121,13 @@ try:
     check("which is gamescope's headless backend",
           _second.attempts[1]["wrapper"],
           ("gamescope", "--backend", "headless", "--"))
+    # And without the offscreen environment, which is the whole reason this
+    # attempt exists: an emulator gets here *because* it has no offscreen
+    # platform to use, so asking for one again fails identically. Azahar did --
+    # gamescope came up, XWayland started, and the AppImage was gone a second
+    # later, logged as "Primary child shut down!".
+    check("with a real display rather than none at all",
+          _second.attempts[1]["env"], {})
     os.remove(_path)
 
     # Nothing written by either attempt. Reported, not raised: the settings are
@@ -138,6 +145,34 @@ try:
     _already = _Fake()
     check("an emulator that already has a config is left alone",
           (_prime(_already), _already.attempts), (False, []))
+
+    section("a config this plugin wrote is not the emulator having run")
+
+    # The state this got stuck in on a real device. A prime that fails leaves
+    # `apply_setup` authoring the file, and if a file on disk counts as "the
+    # emulator has run" then nothing primes again -- primed never because a
+    # file is there, and the file is there only because priming never happened.
+    # It also explains why reinstalling the emulator did not help: `flatpak
+    # uninstall` leaves ~/.var/app alone, so the config outlives the emulator.
+    os.remove(_path)
+    emu_config.apply_setup(ENTRY)
+    check("the plugin records having authored it",
+          emu_config._read_state()[ENTRY["id"]][emu_config.AUTHORED_KEY],
+          [_relative.replace(os.sep, "/")])
+    check("so it asks the emulator again next time",
+          emu_config.needs_priming(ENTRY), True)
+
+    _stuck = _Fake(writes_on=1)
+    check("and the emulator is started rather than trusted",
+          (_prime(_stuck), len(_stuck.attempts)), (True, 1))
+
+    # Once the emulator has written the file itself the stamp no longer matches
+    # what this plugin left behind, and there is nothing to prime.
+    emu_config.apply_setup(ENTRY)
+    check("a config the emulator wrote is left alone",
+          emu_config.needs_priming(ENTRY), False)
+    check("and nothing is recorded as authored",
+          emu_config._read_state()[ENTRY["id"]][emu_config.AUTHORED_KEY], [])
 finally:
     sysenv.user_home = _real_home
 
