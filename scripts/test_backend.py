@@ -1670,10 +1670,22 @@ try:
     check("it never asks for a system uninstall", "--system" in _rm, False)
     # Uninstalling an emulator means "take it off my list", not "destroy my saves".
     check("removing an emulator never deletes its data", "--delete-data" in _rm, False)
+    # Unless it was asked for. `flatpak uninstall` leaves ~/.var/app/<id> alone,
+    # so without this a reinstall inherits the last install's configuration --
+    # which is how a reinstalled DuckStation came back with the setup wizard
+    # that was already answered once.
+    _wipe = emu_install.flatpak_uninstall_argv("org.DolphinEmu.dolphin-emu", True)
+    check("deleting it is opt-in and explicit", "--delete-data" in _wipe, True)
+    check("the two differ by exactly that flag", len(_wipe) - len(_rm), 1)
+    check("and the application id stays last either way",
+          (_rm[-1], _wipe[-1]),
+          ("org.DolphinEmu.dolphin-emu", "org.DolphinEmu.dolphin-emu"))
     # The app id reaches a subprocess argument list, so a malformed one must be
     # refused here rather than passed to flatpak to interpret.
     for _bad in ("", "not-an-id", "../../etc", "a.b; rm -rf /", "org.Foo Bar"):
-        if emu_install.flatpak_install_steps(_bad) or emu_install.flatpak_uninstall_argv(_bad):
+        if (emu_install.flatpak_install_steps(_bad)
+                or emu_install.flatpak_uninstall_argv(_bad)
+                or emu_install.flatpak_uninstall_argv(_bad, True)):
             failures.append("a bad flatpak id was accepted: %r" % _bad)
     print("PASS %-52s %r" % ("malformed application ids are refused", True))
 finally:

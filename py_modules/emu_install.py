@@ -88,17 +88,30 @@ def flatpak_install_steps(app_id):
     ]
 
 
-def flatpak_uninstall_argv(app_id):
+def flatpak_uninstall_argv(app_id, delete_data=False):
     """Remove a user-scope flatpak. Never `--system`, for the usual reason.
 
-    Data is always kept. Uninstalling an emulator from this panel means "I do not
-    want it in my list", and destroying its saves and configuration on the way out
-    is not what that says.
+    Data is kept unless asked for. Uninstalling an emulator from this panel
+    normally means "I do not want it in my list", and destroying saves and
+    configuration on the way out is not what that says -- so `--delete-data` is
+    a separate answer to a separate question, defaulted off, exactly as it is
+    for RetroArch.
+
+    What it removes is `~/.var/app/<id>` entire: configuration, saves, save
+    states, memory cards, and anything the emulator unpacked into itself.
+    Nothing else brings the emulator back to never-installed, which is why the
+    option exists at all -- without it a reinstall inherits whatever the last
+    one left, and flatpak keeps that directory even when the application is
+    gone.
     """
     flatpak = flatpak_binary()
     if not flatpak or not _valid_app_id(app_id):
         return []
-    return [flatpak, "uninstall", "--user", "-y", "--noninteractive", app_id]
+    argv = [flatpak, "uninstall", "--user", "-y", "--noninteractive"]
+    if delete_data:
+        argv.append("--delete-data")
+    argv.append(app_id)
+    return argv
 
 
 _APP_ID_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]*(\.[A-Za-z][A-Za-z0-9_-]*)+$")

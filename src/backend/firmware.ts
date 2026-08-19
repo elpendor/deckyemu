@@ -203,8 +203,14 @@ export const installEmulator = callable<
   [entryId: string],
   { ok: boolean; started?: boolean; error?: string }
 >("install_emulator");
+/**
+ * `deleteData` removes the emulator's own directory with it — saves,
+ * configuration, memory cards. Off unless asked for, and it only applies to a
+ * flatpak: that is the kind whose `~/.var/app/<id>` outlives the application,
+ * so a reinstall otherwise inherits the last install's state.
+ */
 export const uninstallEmulator = callable<
-  [entryId: string],
+  [entryId: string, deleteData?: boolean],
   { ok: boolean; error?: string }
 >("uninstall_emulator");
 

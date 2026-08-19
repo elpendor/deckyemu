@@ -91,6 +91,24 @@ author meant well. Read the file first; it is a few lines of plain text.
 See [emulator-definitions.md](emulator-definitions.md) for the format,
 a worked example, and what to check when one does not work.
 
+## Removing an emulator
+
+**Remove** on its row uninstalls it and forgets its registration. Games you have
+already added keep their shortcuts and launcher scripts and start working again
+the moment the emulator is reinstalled, so removing one is not a decision about
+your library.
+
+For a Flathub emulator the dialog offers **Also delete its saves and
+configuration**, off by default. Left off, everything the emulator owns stays
+where it is — `flatpak uninstall` does not touch `~/.var/app/<id>` — so
+reinstalling picks up exactly where you left off, memory cards and all. Turned
+on, nothing is left behind, which is what a genuinely fresh install needs: an
+emulator that keeps its old configuration is one that comes back with whatever
+state it was in, including a setup wizard you have already answered once.
+
+The switch is not offered for an emulator installed from a GitHub release or one
+of your own, because their data lives in ordinary folders this does not remove.
+
 ## Updating an emulator, or going back
 
 Anything installed from Flathub — most of the list above, and RetroArch itself —

@@ -1083,13 +1083,23 @@ class Emulators(plugin_base.PluginContext):
         return {"ok": not notice, "error": notice, "notice": notice}
 
 
-    async def uninstall_emulator(self, entry_id: str):
+    async def uninstall_emulator(self, entry_id: str, delete_data: bool = False):
         """Remove a catalog emulator and forget its registration.
 
         Games already added to Steam keep their launcher scripts, exactly as with
         RetroArch: reinstalling makes every one of them work again, and deleting
         them here would be an unrelated irreversible act behind a button that
         does not say so.
+
+        `delete_data` is the emulator's own directory -- saves, configuration,
+        memory cards, whatever it unpacked into itself -- and it is off unless
+        the person removing it said otherwise. It applies to a flatpak, which is
+        the kind whose data outlives it: `flatpak uninstall` leaves
+        `~/.var/app/<id>` alone, so a reinstall inherits the last install's
+        state, which is how an emulator comes back with a config nobody wanted.
+        An AppImage keeps its data in ordinary folders and is untouched by this;
+        the catalog knows where they are, but deleting them is not wired up and
+        pretending otherwise would be worse than the gap.
         """
         entry = emulator_catalog.find(entry_id)
         if not entry:
@@ -1106,7 +1116,7 @@ class Emulators(plugin_base.PluginContext):
                     % entry["name"],
                 }
 
-            removed = await self._flatpak_uninstall(app_id)
+            removed = await self._flatpak_uninstall(app_id, bool(delete_data))
             if not removed["ok"]:
                 return removed
         else:
@@ -1121,8 +1131,12 @@ class Emulators(plugin_base.PluginContext):
         return {"ok": True}
 
 
-    async def _flatpak_uninstall(self, app_id):
+    async def _flatpak_uninstall(self, app_id, delete_data=False):
         """Run `flatpak uninstall` for one application id.
+
+        `--delete-data` additionally needs the session bus, which
+        `_subprocess_env` supplies for every flatpak run for exactly this
+        reason -- without it the application goes and its data silently stays.
 
         The argv is built here because only this side knows the id; running it
         and reading its output is `_run_flatpak` on the composed Plugin, which
@@ -1130,7 +1144,7 @@ class Emulators(plugin_base.PluginContext):
         tidiness preference -- see its docstring for the three copies this had
         and what each of them got wrong.
         """
-        argv = await self._run(emu_install.flatpak_uninstall_argv, app_id)
+        argv = await self._run(emu_install.flatpak_uninstall_argv, app_id, delete_data)
         if not argv:
             return {"ok": False, "error": "flatpak is not available on this system."}
         return await self._run_flatpak(argv)

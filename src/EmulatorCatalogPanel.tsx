@@ -41,6 +41,7 @@ import {
   type EmulatorBuild,
 } from "./backend";
 import { EmulatorVersionModal } from "./EmulatorVersionModal";
+import { RemoveEmulatorModal } from "./RemoveEmulatorModal";
 import { InstallProgress } from "./InstallProgress";
 import { emulatorRowActions } from "./emulatorActions";
 import { byName } from "./order";
@@ -437,12 +438,12 @@ export function EmulatorCatalogPanel({ onChanged }: Props) {
   const confirmRemove = useCallback(
     (entry: CatalogEmulator) => {
       showModal(
-        <ConfirmModal
-          strTitle={`Remove ${entry.name}?`}
-          strDescription="Games already added to Steam keep working — their launcher scripts are unaffected, and reinstalling makes them run again. Saves and configuration are kept."
-          strOKButtonText="Remove"
-          bDestructiveWarning
-          onOK={() => {
+        // The dialog owns the question -- keep this emulator's data or not --
+        // because the answer changes what it says, and the panel owns what
+        // happens after, because that is the row that goes busy.
+        <RemoveEmulatorModal
+          emulator={entry}
+          onConfirm={(deleteData) => {
             void (async () => {
               /*
                * Busy for the same reason installing is, and one that is not
@@ -461,7 +462,7 @@ export function EmulatorCatalogPanel({ onChanged }: Props) {
               setStatus(`Removing ${entry.name}`);
               setPercent(-1);
               try {
-                const result = await uninstallEmulator(entry.id);
+                const result = await uninstallEmulator(entry.id, deleteData);
                 if (!result.ok) {
                   toaster.toast({
                     title: "Could not remove emulator",
@@ -469,7 +470,10 @@ export function EmulatorCatalogPanel({ onChanged }: Props) {
                   });
                   return;
                 }
-                toaster.toast({ title: "Emulator removed", body: entry.name });
+                toaster.toast({
+                  title: "Emulator removed",
+                  body: deleteData ? `${entry.name}, with its data` : entry.name,
+                });
                 load();
                 onChanged();
               } finally {
