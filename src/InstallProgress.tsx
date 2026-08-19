@@ -14,12 +14,29 @@ const PROGRESS_CSS = `
   100% { transform: translateX(410%); }
 }`;
 
+/**
+ * Whether the installer's own last line of output is shown under the bar.
+ *
+ * Off, so the line under the bar says "Installing PCSX2" and nothing else.
+ * What it said instead was flatpak's bookkeeping -- ref names, commit hashes,
+ * "Updating appstream data for user flathub" -- which is meaningless to
+ * somebody who asked to install an emulator, changes several times a second,
+ * and reads like something going wrong. The label already answers the only
+ * question being asked.
+ *
+ * A constant rather than a setting on purpose: it is a debugging aid for
+ * whoever is looking at a stalled install, not a choice worth putting in front
+ * of anyone. The callers still compute `status`, so flipping this is the whole
+ * of turning it back on.
+ */
+const SHOW_INSTALLER_OUTPUT = false;
+
 interface Props {
   /** What is being installed, e.g. "Installing PCSX2". */
   label: string;
   /** -1 or 0 for "no number available", which draws the sliding segment. */
   percent: number;
-  /** The installer's own last line of output. */
+  /** The installer's own last line of output. Drawn only under the flag above. */
   status: string;
   /**
    * Drawn as the description of a row that already names the thing.
@@ -45,6 +62,7 @@ interface Props {
  */
 export function InstallProgress({ label, percent, status, inline = false }: Props) {
   const indeterminate = percent <= 0;
+  const detail = SHOW_INSTALLER_OUTPUT ? status : "";
 
   return (
     <div style={{ width: "100%", padding: inline ? "2px 0 0" : "4px 0" }}>
@@ -101,10 +119,11 @@ export function InstallProgress({ label, percent, status, inline = false }: Prop
             whiteSpace: "nowrap",
           }}
         >
-          {/* Inline, the status line carries the label when there is no output
-              yet -- otherwise the row reads as a name over an empty bar and
-              says nothing about what is happening. */}
-          {status || (inline ? label : "")}
+          {/* Inline, this line carries the label -- otherwise the row reads as
+              a name over an empty bar and says nothing about what is happening.
+              Not inline, the label is already drawn above the bar and this is
+              left empty rather than repeating it under itself. */}
+          {detail || (inline ? label : "")}
         </span>
         {/* Inline the percentage lives here rather than up beside a label there
             is none of. */}
