@@ -161,7 +161,9 @@ py_modules/                 Backend logic. Plain Python, stdlib only -- it runs
   store.py                  settings / library / emulators / collections records
   romshelf.py               File a ROM under roms/<system>, and delete it again
   net.py                    stdlib-only HTTP, with a system-CA fallback
-  sysenv.py                 Strip Steam's runtime; user_home(); user_dir()
+  sysenv.py                 Strip Steam's runtime; user_home(); user_dir();
+                            where flatpak keeps applications and whether one is
+                            deployed there or merely left behind
   fileserver.py             Upload from another device: QR, or short URL + code
   fileserver_page.py        The pages that server serves. Pure functions of what
                             they are handed; the server keeps state and sockets

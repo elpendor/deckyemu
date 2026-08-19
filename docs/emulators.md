@@ -30,8 +30,10 @@ types it accepts and its launch arguments are all filled in for you.
 | xemu | Xbox |
 
 Most come from Flathub and install for your user, so no password is asked for.
-Azahar and Vita3K publish no Flatpak and are downloaded from their own releases
-into `~/deckyemu/emulators`.
+RPCS3, Azahar and Vita3K publish no Flatpak and are downloaded from their own
+releases into `~/deckyemu/emulators`. Each row says which it is, in brackets
+after the name, because the two behave differently when something goes wrong and
+only one of them has builds you can move between.
 
 Several emulators are not playable as they ship — a keyboard is bound instead of
 a controller, or they start in a window — so installing one also writes a
