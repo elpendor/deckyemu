@@ -173,6 +173,48 @@ def section(title):
 
 
 
+def link(source, target):
+    """A symlink, or a plain file standing in for one where they are refused.
+
+    Windows will not make a symlink without a privilege a test host has no
+    reason to hold, and every check that reads one here goes through
+    `os.path.lexists` -- which answers the same for both. So the fallback tests
+    the same thing rather than skipping on the developer's machine and only
+    running in CI.
+    """
+    if os.path.lexists(source):
+        try:
+            os.remove(source)
+        except OSError:
+            shutil.rmtree(source, ignore_errors=True)
+    try:
+        os.symlink(target, source)
+    except (OSError, NotImplementedError, AttributeError):
+        with io.open(source, "w") as handle:
+            handle.write(target)
+
+
+def deploy_flatpak(root, app_id, commit="0" * 64, arch="x86_64", branch="stable"):
+    """A flatpak application as flatpak actually lays one out, under `root`.
+
+    The commit tree *and* the two symlinks that make it a deployment: `current`
+    at the top and `active` under the branch. Both matter, because a directory
+    holding commit trees and neither symlink is what a failed operation leaves
+    behind -- flatpak disowns it, and the plugin must not read it as an install.
+    Fixtures that made only the directory reported an install for something
+    flatpak would refuse to run or remove, which is the bug this shape exists to
+    keep out. Returns the deploy path.
+    """
+    base = os.path.join(root, "app", app_id)
+    deploy = os.path.join(base, arch, branch, commit)
+    os.makedirs(os.path.join(deploy, "files"), exist_ok=True)
+    with io.open(os.path.join(deploy, "metadata"), "w") as handle:
+        handle.write(os.linesep.join(["[Application]", "name=%s" % app_id, ""]))
+    link(os.path.join(base, arch, branch, "active"), commit)
+    link(os.path.join(base, "current"), "%s/%s" % (arch, branch))
+    return deploy
+
+
 def summary():
     """Print the result and exit. Called by whatever was run directly."""
     print()

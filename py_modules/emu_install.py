@@ -404,16 +404,13 @@ def flatpak_installed(app_id):
 
     A `.var/app/<id>` directory is deliberately *not* accepted: that is left
     behind by an uninstall that kept its data, and treating it as an install is
-    the same mistake `ra_detect.flatpak_scope` avoids.
+    the same mistake `ra_detect.flatpak_scope` avoids. Nor is the deploy
+    directory alone -- a failed operation leaves one standing with nothing
+    deployed in it, and `sysenv.flatpak_deployed` is what tells the two apart.
     """
     if not _valid_app_id(app_id):
         return False
-    home = sysenv.user_home()
-    candidates = (
-        os.path.join(home, ".local", "share", "flatpak", "app", app_id),
-        os.path.join("/var/lib/flatpak/app", app_id),
-    )
-    return any(os.path.isdir(path) for path in candidates)
+    return any(sysenv.flatpak_deployed(root, app_id) for root in sysenv.flatpak_roots())
 
 
 def flatpak_scope(app_id):
@@ -424,12 +421,61 @@ def flatpak_scope(app_id):
     """
     if not _valid_app_id(app_id):
         return ""
-    home = sysenv.user_home()
-    if os.path.isdir(os.path.join(home, ".local", "share", "flatpak", "app", app_id)):
+    system_root, user_root = sysenv.flatpak_roots()
+    if sysenv.flatpak_deployed(user_root, app_id):
         return "user"
-    if os.path.isdir(os.path.join("/var/lib/flatpak/app", app_id)):
+    if sysenv.flatpak_deployed(system_root, app_id):
         return "system"
     return ""
+
+
+#: What flatpak says when asked to remove something it does not have.
+#:
+#: Matched rather than inferred from the exit code, which is the same 1 as
+#: every other failure. The distinction is worth making because "there was
+#: nothing to remove" is the goal already met, and reporting it as a failed
+#: removal is what leaves somebody pressing a button that can never work.
+_NOTHING_INSTALLED = re.compile(r"no installed refs? found", re.I)
+
+
+def nothing_to_uninstall(error):
+    """Whether a failed `flatpak uninstall` failed only by having no work."""
+    return bool(_NOTHING_INSTALLED.search(error or ""))
+
+
+def remove_flatpak_husk(app_id):
+    """Delete a deploy directory flatpak has disowned. Returns bytes freed.
+
+    The leftover of an operation that failed partway: the commit trees are
+    still on disk, with no `current` and no `active` pointing at any of them,
+    so flatpak considers the application not installed and will neither run it
+    nor remove it. Two full deploys of DuckStation sat there that way.
+
+    Guarded on flatpak having disowned it rather than on the uninstall having
+    just run, because that guard is what makes deleting inside flatpak's own
+    store safe: with nothing deployed there is nothing for flatpak to be using,
+    and a real install -- mid-download included, since the ref is written
+    first -- is left alone.
+    """
+    if not _valid_app_id(app_id):
+        return 0
+    freed = 0
+    # The user's own installation only. A system one belongs to root, and the
+    # plugin could not have created that mess or be trusted to tidy it.
+    _system, user_root = sysenv.flatpak_roots()
+    if sysenv.flatpak_deployed(user_root, app_id):
+        return 0
+    path = os.path.join(user_root, "app", app_id)
+    if not os.path.isdir(path):
+        return 0
+    freed = sysenv.directory_bytes(path)
+    try:
+        shutil.rmtree(path)
+    except OSError as error:
+        decky.logger.warning("Could not remove the leftover %s: %s", path, error)
+        return 0
+    decky.logger.info("Removed the leftover deploy directory %s (%d bytes)", path, freed)
+    return freed
 
 
 # -------------------------------------------------------------------- github

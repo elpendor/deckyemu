@@ -27,16 +27,11 @@ def user_home():
 def _flatpak_system_roots():
     """Where flatpak keeps installed applications, system-wide and per-user.
 
-    A function rather than a constant: as a constant this used
-    `os.path.expanduser("~")` evaluated at import time, which ignored
-    DECKY_USER_HOME and froze the per-user root at whatever home the backend
-    process happened to have. Running as root, that looked in /root and reported
-    RetroArch as absent.
+    Shared with the emulator side rather than kept here: both ask the same
+    question of the same two directories, and a copy was how the per-user root
+    came to be frozen at import time in the first place -- see `sysenv`.
     """
-    return (
-        "/var/lib/flatpak",
-        os.path.join(user_home(), ".local", "share", "flatpak"),
-    )
+    return sysenv.flatpak_roots()
 
 
 def _flatpak_data_dir():
@@ -54,9 +49,9 @@ def flatpak_scope():
     Returns "user", "system", or "" when RetroArch is not installed as a flatpak.
     """
     system_root, user_root = _flatpak_system_roots()
-    if os.path.isdir(os.path.join(user_root, "app", FLATPAK_ID)):
+    if sysenv.flatpak_deployed(user_root, FLATPAK_ID):
         return "user"
-    if os.path.isdir(os.path.join(system_root, "app", FLATPAK_ID)):
+    if sysenv.flatpak_deployed(system_root, FLATPAK_ID):
         return "system"
     return ""
 
@@ -71,7 +66,7 @@ def _flatpak_installed():
     would then fail.
     """
     for root in _flatpak_system_roots():
-        if os.path.isdir(os.path.join(root, "app", FLATPAK_ID)):
+        if sysenv.flatpak_deployed(root, FLATPAK_ID):
             return True
     if shutil.which("flatpak"):
         try:

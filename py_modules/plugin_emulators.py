@@ -1143,11 +1143,27 @@ class Emulators(plugin_base.PluginContext):
         the RetroArch removal shares. That sharing is the point rather than a
         tidiness preference -- see its docstring for the three copies this had
         and what each of them got wrong.
+
+        Two recoveries after it runs, and between them they are the way out of a
+        removal that could never work. Nothing installed is success: the button
+        exists to end up without the emulator, and answering "no installed refs
+        found" as a failure told somebody their removal had failed while showing
+        them the emulator was still there. And whatever flatpak disowned is
+        swept, because that leftover is what made the row claim an install in
+        the first place -- without it the button unsticks but the row does not,
+        and two full deploys stay on the disk.
         """
         argv = await self._run(emu_install.flatpak_uninstall_argv, app_id, delete_data)
         if not argv:
             return {"ok": False, "error": "flatpak is not available on this system."}
-        return await self._run_flatpak(argv)
+
+        result = await self._run_flatpak(argv)
+        if not result.get("ok") and emu_install.nothing_to_uninstall(result.get("error")):
+            decky.logger.info("%s was already gone; treating the removal as done", app_id)
+            result = {"ok": True}
+        if result.get("ok"):
+            await self._run(emu_install.remove_flatpak_husk, app_id)
+        return result
 
 
     async def prepare_emulator_gui(self, entry_id: str):

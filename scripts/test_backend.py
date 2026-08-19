@@ -46,6 +46,7 @@ from harness import (  # noqa: E402
     TMP,
     check,
     decky,
+    deploy_flatpak,
     failures,
     section,
     summary,
@@ -1102,19 +1103,24 @@ finally:
 # Scope decides whether removal is offered at all, so it must not guess: a
 # leftover ~/.var/app directory is not an installed application.
 _scope_home = os.path.join(TMP, "scopehome")
-_real_user_home = ra_detect.user_home
-ra_detect.user_home = lambda: _scope_home
+import sysenv  # noqa: E402  -- the flatpak roots read the home from here
+# `sysenv`, not `ra_detect`: the two roots flatpak uses are one function now,
+# shared by the RetroArch side and the emulator side, and it reads the home
+# from there. Patching ra_detect's own wrapper stopped reaching it.
+_real_user_home = sysenv.user_home
+sysenv.user_home = lambda: _scope_home
 try:
     os.makedirs(os.path.join(_scope_home, ".var", "app", ra_detect.FLATPAK_ID), exist_ok=True)
     check("stale user data alone is not an install", ra_detect.flatpak_scope(), "")
 
-    os.makedirs(
-        os.path.join(_scope_home, ".local", "share", "flatpak", "app", ra_detect.FLATPAK_ID),
-        exist_ok=True,
-    )
+    # A whole deployment, not just the directory. The directory on its own is
+    # what a failed flatpak operation leaves behind, and reading that as an
+    # install is the bug tests/test_flatpak_husk.py exists for.
+    deploy_flatpak(
+        os.path.join(_scope_home, ".local", "share", "flatpak"), ra_detect.FLATPAK_ID)
     check("a user-scope install is recognised", ra_detect.flatpak_scope(), "user")
 finally:
-    ra_detect.user_home = _real_user_home
+    sysenv.user_home = _real_user_home
 
 if OFFLINE:
     print("SKIP catalog fetch (--offline)")
@@ -1717,10 +1723,8 @@ sysenv.user_home = lambda: _fp_home
 try:
     os.makedirs(os.path.join(_fp_home, ".var", "app", "net.pcsx2.PCSX2"), exist_ok=True)
     check("stale user data alone is not an install", emu_install.flatpak_installed("net.pcsx2.PCSX2"), False)
-    os.makedirs(
-        os.path.join(_fp_home, ".local", "share", "flatpak", "app", "net.pcsx2.PCSX2"),
-        exist_ok=True,
-    )
+    deploy_flatpak(
+        os.path.join(_fp_home, ".local", "share", "flatpak"), "net.pcsx2.PCSX2")
     check("a user-scope install is recognised", emu_install.flatpak_installed("net.pcsx2.PCSX2"), True)
     check("and its scope is reported", emu_install.flatpak_scope("net.pcsx2.PCSX2"), "user")
     check("an absent one has no scope", emu_install.flatpak_scope("net.rpcs3.RPCS3"), "")
@@ -2789,7 +2793,7 @@ check(
     ra_detect._flatpak_installed(),
     False,
 )
-os.makedirs(os.path.join(fake_flatpak_root, "app", ra_detect.FLATPAK_ID), exist_ok=True)
+deploy_flatpak(fake_flatpak_root, ra_detect.FLATPAK_ID)
 check("the installed app is detected", ra_detect._flatpak_installed(), True)
 
 ra_detect._flatpak_system_roots = _real_roots

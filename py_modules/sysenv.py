@@ -150,6 +150,60 @@ def directory_bytes(path):
     return total
 
 
+def flatpak_roots():
+    """Where flatpak keeps installed applications: (system, user).
+
+    A function rather than a constant, and that is not style. As a constant this
+    used `os.path.expanduser("~")` evaluated at import time, which ignores
+    DECKY_USER_HOME and freezes the per-user root at whatever home the backend
+    process happened to have -- running as root it looked in /root and reported
+    everything as absent.
+    """
+    return (
+        "/var/lib/flatpak",
+        os.path.join(user_home(), ".local", "share", "flatpak"),
+    )
+
+
+def flatpak_deployed(root, app_id):
+    """Whether `<root>/app/<app_id>` is a deployment flatpak still owns.
+
+    The directory existing is not enough, and the gap is not theoretical. A
+    `flatpak update --commit=` that fails partway leaves the commit trees where
+    they are while the ref goes: `flatpak info` then reports the application as
+    not installed, `flatpak uninstall` answers "no installed refs found", and
+    the files stay. Read as an install, that husk is permanent -- the panel goes
+    on offering Remove for an emulator that is not there, every press fails, and
+    nothing in the plugin can ever take the row away. That is what happened to
+    DuckStation after a version switch failed with "Directory not empty".
+
+    What flatpak itself follows is the symlinks: `<id>/current` pointing at the
+    arch and branch in use, and `<id>/<arch>/<branch>/active` at the deployed
+    commit. A husk has neither, only the commit directories. `current` first,
+    because this is asked for every catalog entry each time the panel opens and
+    the usual answer should cost one stat.
+
+    `lexists` rather than `exists` throughout: these are symlinks, and one left
+    dangling still says flatpak deployed something here.
+    """
+    base = os.path.join(root, "app", app_id)
+    if os.path.lexists(os.path.join(base, "current")):
+        return True
+    # No `current` also describes an install for an architecture that is not the
+    # default one, so the branches are worth walking before answering no.
+    try:
+        for arch in os.listdir(base):
+            branches = os.path.join(base, arch)
+            if not os.path.isdir(branches):
+                continue
+            for branch in os.listdir(branches):
+                if os.path.lexists(os.path.join(branches, branch, "active")):
+                    return True
+    except OSError:
+        return False
+    return False
+
+
 def clean_env(base=None):
     """A copy of the environment with Steam's library redirection removed."""
     env = dict(base if base is not None else os.environ)
