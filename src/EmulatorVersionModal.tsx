@@ -254,8 +254,11 @@ export function EmulatorVersionModal({ closeModal, emulator, onChanged }: Props)
           makes one available. */}
       {running && (
         <PanelSectionRow>
+          {/* No label on the row. The bar carries "Updating..." itself now that
+              the line under it is a sentence rather than flatpak's output, and
+              a heading saying the same word without the ellipsis read as two
+              rows' worth of the same fact. */}
           <Field
-            label={busy}
             description={
               <InstallProgress inline label={busy} percent={percent} status={status} />
             }
