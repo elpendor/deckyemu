@@ -52,6 +52,21 @@ interface Props {
 }
 
 /**
+ * "Installing PCSX2" -> "Installing PCSX2...".
+ *
+ * What used to say the work was still going was the line changing several
+ * times a second. Now that it is one fixed sentence, the ellipsis is the only
+ * thing left carrying that: a static "Installing PCSX2" over a bar reads as a
+ * caption for the row rather than as something happening right now.
+ *
+ * Left alone when the caller ended the label itself, so nothing arrives with
+ * six dots on it.
+ */
+function working(label: string): string {
+  return !label || label.endsWith(".") ? label : `${label}...`;
+}
+
+/**
  * Install progress, drawn with plain markup.
  *
  * `ProgressBarItem` was the obvious choice, but it is an Item: it puts its label
@@ -72,7 +87,7 @@ export function InstallProgress({ label, percent, status, inline = false }: Prop
           repeating it under itself is the thing that looked wrong. */}
       {!inline && (
         <div style={{ display: "flex", justifyContent: "space-between", fontSize: "14px" }}>
-          <span>{label}</span>
+          <span>{working(label)}</span>
           {!indeterminate && <span style={{ opacity: 0.7 }}>{percent}%</span>}
         </div>
       )}
@@ -123,7 +138,7 @@ export function InstallProgress({ label, percent, status, inline = false }: Prop
               a name over an empty bar and says nothing about what is happening.
               Not inline, the label is already drawn above the bar and this is
               left empty rather than repeating it under itself. */}
-          {detail || (inline ? label : "")}
+          {detail || (inline ? working(label) : "")}
         </span>
         {/* Inline the percentage lives here rather than up beside a label there
             is none of. */}
