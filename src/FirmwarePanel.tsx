@@ -19,6 +19,7 @@ import {
 
 import {
   deleteFirmware,
+  tidyFirmware,
   fetchFirmware,
   firmwareDir,
   firmwareStatus,
@@ -73,10 +74,41 @@ export function FirmwarePanel({ reloadKey = 0 }: Props) {
   const [report, setReport] = useState<FirmwareReport | null>(null);
   const [busy, setBusy] = useState("");
 
+  /*
+   * Sweep first, then read.
+   *
+   * The one requirement installed through the emulator's own window has no
+   * result to act on -- the emulator is opened as a Steam shortcut, asks the
+   * user to confirm, and the plugin never hears how it went. The panel coming
+   * back into view is the next moment the question can be asked at all, so it
+   * is asked here, before the rows are drawn: otherwise the row renders with a
+   * spent file still "waiting" and then rearranges itself under the user.
+   *
+   * A failure here is not allowed to cost the status read. Not knowing that a
+   * file could have been tidied is untidiness; not knowing what is installed
+   * is an empty panel.
+   */
   const load = useCallback(() => {
-    callWithRetry(firmwareStatus)
-      .then(setReport)
-      .catch((error) => console.error("[deckyemu] could not read firmware status", error));
+    void callWithRetry(tidyFirmware)
+      .then((result) => {
+        const gone = result?.removed ?? [];
+        if (gone.length) {
+          toaster.toast({
+            title: "Firmware file no longer needed",
+            // Named rather than counted: a file disappearing from the transfer
+            // folder with nothing said reads as the plugin having lost it.
+            body: `${gone.join(", ")} is already installed, so it has been deleted.`,
+          });
+        }
+      })
+      .catch((error) => console.error("[deckyemu] could not tidy firmware", error))
+      .finally(() => {
+        callWithRetry(firmwareStatus)
+          .then(setReport)
+          .catch((error) =>
+            console.error("[deckyemu] could not read firmware status", error),
+          );
+      });
   }, []);
 
   useEffect(load, [load, reloadKey]);

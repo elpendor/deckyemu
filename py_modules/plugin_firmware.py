@@ -211,6 +211,39 @@ class Firmware(plugin_base.PluginContext):
         return await self._run(emu_firmware.remove, names)
 
 
+    async def tidy_firmware(self):
+        """Throw away sent firmware the emulator has already taken in.
+
+        The panel calls this as it loads, which is the moment it can be
+        answered: the one requirement this covers is installed through the
+        emulator's own window, so the plugin hands over a file, Steam runs the
+        emulator, and nothing comes back. By the time the user is looking at
+        this panel again they have been and confirmed it -- or not, and
+        `emu_firmware.spent` is what tells the two apart rather than assuming.
+
+        Quiet when there is nothing to do, which is almost always. It reports
+        what went so the panel can say so once rather than leaving a file to
+        disappear with no explanation.
+        """
+        files = await self._run(emu_firmware.available)
+        done = []
+        for entry in emulator_catalog.CATALOG:
+            done.extend(await self._run(emu_firmware.spent, entry, files))
+
+        if not done:
+            return {"ok": True, "removed": []}
+
+        # Deduplicated: two emulators can accept the same file, and asking to
+        # delete it twice makes the second one a failure.
+        result = await self._run(emu_firmware.remove, sorted(set(done)))
+        if result.get("removed"):
+            decky.logger.info(
+                "Tidied %s from the firmware folder; already installed",
+                ", ".join(result["removed"]),
+            )
+        return result
+
+
     async def install_firmware(self, entry_id: str, requirement: str):
         """Put one requirement where the emulator wants it.
 

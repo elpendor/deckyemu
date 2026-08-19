@@ -465,6 +465,19 @@ export const missingFirmware = callable<
   }
 >("missing_firmware");
 /** Deletes from the firmware folder only; never touches an installed copy. */
+/**
+ * Throw away sent firmware the emulator has already taken in.
+ *
+ * Called as the panel loads rather than offered as a button: the requirement
+ * it covers is installed through the emulator's own window, so there is no
+ * result to act on at the time and the panel reopening is the next moment the
+ * question can be asked at all.
+ */
+export const tidyFirmware = callable<
+  [],
+  { ok: boolean; error?: string; removed?: string[] }
+>("tidy_firmware");
+
 export const deleteFirmware = callable<
   [names: string[]],
   { ok: boolean; error?: string; removed?: string[]; missing?: string[] }

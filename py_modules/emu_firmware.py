@@ -478,6 +478,75 @@ def status(entry, files=None):
     return report
 
 
+def _newest(directory):
+    """The most recent mtime at `directory`, itself and its immediate children.
+
+    The directory's own stamp moves when entries are added or removed, which is
+    what a firmware install does; the children are read too because an install
+    that only overwrote what was already there would not move it. 238 entries
+    is a few milliseconds and the answer has to be right, since a file gets
+    deleted on the strength of it.
+    """
+    newest = 0.0
+    try:
+        newest = os.stat(directory).st_mtime
+        with os.scandir(directory) as entries:
+            for item in entries:
+                try:
+                    newest = max(newest, item.stat().st_mtime)
+                except OSError:
+                    continue
+    except OSError:
+        return 0.0
+    return newest
+
+
+def spent(entry, files=None):
+    """Sent files the emulator has already taken in, and so no longer needs.
+
+    Only for a requirement the emulator installs through its own window --
+    Ryujinx's Switch firmware is the case. There is no return value from that
+    install to act on: the emulator is opened as a Steam shortcut, asks the user
+    to confirm, and this plugin never hears how it went. So the question is
+    asked of the filesystem afterwards instead.
+
+    **"Is anything installed" is not the question, and answering that one would
+    delete somebody's firmware upgrade.** `detect` only says whether the folder
+    has contents, so a device with 6.0 installed reports the same as one with
+    nothing -- and a 7.0 zip sent to it would be thrown away before it was ever
+    applied. The question is whether *this file* has been taken in, and the
+    timestamps answer it: an install writes into the folder, so contents newer
+    than the file mean the file went in, and contents older mean it is a newer
+    dump still waiting its turn.
+
+    A copied requirement is deliberately not swept. `install` copies rather than
+    moves, because the folder the user sent to is the folder they resend from,
+    and a second dump sitting there is a choice they made rather than litter.
+    An imported one is already deleted at the point it succeeds, where the
+    emulator's own output says so -- see `_import_firmware`.
+    """
+    files = available() if files is None else files
+    directory = emu_install.firmware_dir()
+    done = []
+
+    for requirement in entry.get("firmware") or []:
+        detect = requirement.get("detect")
+        if not detect or requirement.get("import"):
+            continue
+        installed_at = _newest(under_home(detect.get("path") or ""))
+        if not installed_at:
+            continue
+        for name in _matching(requirement, files):
+            try:
+                sent_at = os.path.getmtime(os.path.join(directory, name))
+            except OSError:
+                continue
+            if installed_at >= sent_at:
+                done.append(name)
+
+    return done
+
+
 def remove(names, directory=None):
     """Delete files from the firmware folder. Returns a result dict.
 
