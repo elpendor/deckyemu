@@ -85,6 +85,31 @@ export const EMPTY_DRAFT: RomDraft = {
 
 let draft: RomDraft = EMPTY_DRAFT;
 
+/**
+ * Which draft is current, for work that started against an older one.
+ *
+ * A lookup is fired and not awaited -- by the core row, the system row, the
+ * artwork button -- and it writes its answer into the draft whenever it comes
+ * back. If the game was added in the meantime, `resetDraft` has already cleared
+ * everything and that answer puts `resolved` and `title` back, leaving the
+ * panel showing artwork rows for a game that is already in Steam and no ROM
+ * selected. The same write landing after a *different* ROM was picked is worse
+ * and quieter: the previous game's name and cover on this one.
+ *
+ * So anything asynchronous reads this before it starts and checks it before it
+ * writes. Cheaper than cancellation, and it needs no cooperation from the
+ * backend call in flight.
+ */
+let generation = 0;
+
+export const draftGeneration = (): number => generation;
+
+/** Start a new draft's worth of work; anything older stops being welcome. */
+export function newDraftGeneration(): number {
+  generation += 1;
+  return generation;
+}
+
 type Listener = (next: RomDraft) => void;
 const listeners = new Set<Listener>();
 
@@ -102,6 +127,7 @@ export function updateDraft(patch: Partial<RomDraft>): RomDraft {
 }
 
 export function resetDraft(): RomDraft {
+  newDraftGeneration();
   return updateDraft(EMPTY_DRAFT);
 }
 

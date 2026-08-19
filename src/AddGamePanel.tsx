@@ -936,7 +936,12 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
         </PanelSectionRow>
       )}
 
-      {resolved && !looking && (
+      {/* `romPath` as well as `resolved`, and it is not redundant: every other
+          row here is gated on there being a ROM, and these two were not -- so a
+          lookup answering after the game was added put its artwork rows back on
+          a panel with nothing selected. `addFlow` stops the write; this stops
+          it being renderable at all. */}
+      {romPath && resolved && !looking && (
         <PanelSectionRow>
           <Field
             label="Artwork"
@@ -975,7 +980,7 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
           it to be a remark on. It disappears by itself the moment a key exists;
           there is no dismissal, because the row asks for one thing and having
           done it is the only signal needed. See sgdbPrompt.ts. */}
-      {resolved && !looking && shouldOfferSgdb(settings) && (
+      {romPath && resolved && !looking && shouldOfferSgdb(settings) && (
         <>
           <PanelSectionRow>
             <Field label={SGDB_PROMPT.label} description={SGDB_PROMPT.description} />

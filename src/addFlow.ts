@@ -19,7 +19,7 @@ import {
   suggestCoresForExtension,
 } from "./backend";
 import { chooseSystem } from "./corePicker";
-import { updateDraft } from "./romDraft";
+import { draftGeneration, newDraftGeneration, updateDraft } from "./romDraft";
 import { logError } from "./logError";
 
 /**
@@ -67,15 +67,21 @@ export async function lookupArtwork(
   system = "",
 ): Promise<void> {
   if (!romPath || !coreId) return;
+  // Which draft this answer belongs to. Nothing here is awaited by its callers,
+  // so the panel can be finished with this game -- added, or replaced by
+  // another ROM -- long before the backend answers.
+  const asked = draftGeneration();
   updateDraft({ looking: true, error: "" });
   try {
     // `system` decides which of a multi-system core's thumbnail directories is
     // searched first, so the cover matches the shelf the game is going on --
     // a Mega Drive ROM used to come back with a Game Gear cover.
     const result = await resolveGame(romPath, coreId, title, system);
+    if (draftGeneration() !== asked) return;
     updateDraft({ resolved: result, title: result.title || title, looking: false });
   } catch (error) {
     logError("lookup failed", error);
+    if (draftGeneration() !== asked) return;
     updateDraft({
       resolved: null,
       looking: false,
@@ -146,6 +152,10 @@ export const selectPs3Game = (titleId: string) => selectPackagedGame("ps3", titl
  * handlers with nowhere useful to send an exception.
  */
 export async function selectRom(romPath: string): Promise<void> {
+  // A different game, so anything still in flight for the last one is no longer
+  // an answer to anything -- see `newDraftGeneration`. Bumped before the first
+  // write, so a lookup that returns during this function is already stale.
+  newDraftGeneration();
   // `titleId` cleared with the rest: a file picked from disk is launched as a
   // file, and a leftover id from a previous selection would send the launcher
   // at the wrong game entirely.
