@@ -941,6 +941,10 @@ class Emulators(plugin_base.PluginContext):
         # Some emulators are not playable as they ship -- Azahar binds a
         # keyboard and starts windowed -- so the recommended settings go in
         # here, while it is certainly not running and cannot save over them.
+        #
+        # First the emulator writes its own config, because settings written
+        # into a file it has never made do not survive its first run.
+        await self._prime_emulator_config(entry, saved)
         result = await self._run(emu_config.apply_setup, entry)
         if not result.get("ok"):
             return "%s was installed, but its settings could not be written: %s" % (
@@ -949,6 +953,85 @@ class Emulators(plugin_base.PluginContext):
             )
         return ""
 
+
+    #: What makes a windowed emulator start, write its config and stop trying.
+    #:
+    #: Qt gets `offscreen`, SDL gets `dummy`. Between them nothing needs a
+    #: display, so the emulator runs far enough to write its defaults and then
+    #: has nothing to show. Measured rather than assumed: DuckStation with these
+    #: two set authored a complete 8392-byte `settings.ini` -- `SettingsVersion
+    #: = 3`, `SetupWizardIncomplete = true` -- before the timeout stopped it.
+    _OFFSCREEN = {"QT_QPA_PLATFORM": "offscreen", "SDL_VIDEODRIVER": "dummy"}
+
+    #: The second attempt, for an emulator whose Qt build ships only the `xcb`
+    #: platform plugin: `offscreen` is not among its options, so it aborts
+    #: before writing anything -- Azahar's AppImage prints "Available platform
+    #: plugins are: xcb" and dumps core. gamescope's headless backend gives it
+    #: a real display with no output attached, and under that same AppImage
+    #: wrote its whole 32658-byte config. Already on every Deck; it is what
+    #: Game Mode itself runs.
+    _HEADLESS_WRAPPER = ("gamescope", "--backend", "headless", "--")
+
+    #: Long enough for an emulator to reach the point where it writes its
+    #: config, which every one measured does during startup. It is never long
+    #: enough for the emulator to *finish*, because it is being asked to start
+    #: with nowhere to draw -- so a timeout here is the expected ending, not a
+    #: failure, and what actually happened is judged from the file.
+    _PRIME_SECONDS = 25
+
+    async def _prime_emulator_config(self, entry, emulator):
+        """Make an emulator write its own config before this plugin edits it.
+
+        Recommended settings used to go into a file that did not exist, so the
+        plugin authored it. That does not work, and the way it fails is the
+        worst one available: the emulator does not recognise a config it did not
+        write -- DuckStation checks `SettingsVersion`, Azahar checks
+        `firstStart` -- so its first run regenerates the file from its own
+        defaults and the settings vanish. The first launch of the first game is
+        exactly when that lands: a setup wizard no gamepad can dismiss, or a
+        3DS game with the controls unbound, on an install the plugin reported
+        configuring correctly. Repairing it afterwards, which this plugin now
+        also does, still costs the user that launch -- and a first launch that
+        looks broken is indistinguishable from a plugin that is.
+
+        So the emulator is started once here, with nowhere to draw, and left to
+        write its own config. What follows then merges into a file it made
+        itself, which is the case that has always worked.
+
+        Best effort by design. Some emulators refuse to start without a real
+        display and write nothing -- GTK ones especially -- and for those this
+        changes nothing: `apply_setup` authors the file as before and the
+        repair on the next panel open catches what the first run undoes.
+        """
+        setup = entry.get("setup")
+        missing = await self._run(emu_config.missing_files, setup)
+        if not missing:
+            return False
+
+        decky.logger.info(
+            "Letting %s write its own config first (%s)", entry["id"], ", ".join(missing)
+        )
+        # Two attempts, cheapest first. Nothing is retried once the file is
+        # there: an emulator that has written its config has done the only job
+        # this asked of it.
+        for wrapper in ((), self._HEADLESS_WRAPPER):
+            await self._run_emulator_tool(
+                emulator, [], seconds=self._PRIME_SECONDS,
+                env_overrides=self._OFFSCREEN, wrapper=wrapper,
+            )
+            if not await self._run(emu_config.missing_files, setup):
+                break
+
+        left = await self._run(emu_config.missing_files, setup)
+        if left:
+            decky.logger.warning(
+                "%s wrote no config with no display; settings will be written into a "
+                "new file and re-applied after its first run (%s)",
+                entry["id"], ", ".join(left),
+            )
+            return False
+        decky.logger.info("%s wrote its own config; applying settings into it", entry["id"])
+        return True
 
     async def register_emulator(self, entry_id: str):
         """Register a catalog emulator that is already on the device.

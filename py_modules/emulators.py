@@ -419,7 +419,7 @@ def space_free(path):
         return path
 
 
-def tool_argv(emulator, args, allow=()):
+def tool_argv(emulator, args, allow=(), env=None):
     """Argv that runs an emulator as a command-line tool, with no window at all.
 
     RPCS3 is the case this exists for. `--headless --installpkg` and `--headless
@@ -450,6 +450,11 @@ def tool_argv(emulator, args, allow=()):
 
     if emulator.get("kind") == "flatpak":
         grants = ["--filesystem=%s" % folder for folder in allow if folder]
+        # A sandbox does not inherit the caller's environment, so a variable a
+        # run depends on has to be handed to `flatpak run` itself. Everything
+        # outside one reads it from the process env the caller sets, which is
+        # why this returns nothing for an AppImage.
+        grants += ["--env=%s=%s" % (name, value) for name, value in sorted((env or {}).items())]
         return flatpak_prefix(emulator, grants) + args
     return [emulator.get("target", "")] + args
 

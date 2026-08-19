@@ -179,6 +179,23 @@ def _stamps(setup):
     return stamps
 
 
+def missing_files(setup):
+    """The configs this setup writes that are not on disk yet.
+
+    Empty means the emulator has written its own config at least once, which is
+    the only state in which writing into it is worth anything. See
+    `_prime_emulator_config`: a file this plugin authors from nothing is one the
+    emulator does not recognise as its own, and its first run replaces it.
+    """
+    if not setup:
+        return []
+    missing = []
+    for relative, _sections, _prefix, _fmt in _files_of(setup):
+        if not os.path.exists(os.path.join(sysenv.user_home(), relative)):
+            missing.append(relative)
+    return missing
+
+
 def _read_state():
     try:
         with open(STATE_PATH, "r", encoding="utf-8") as handle:

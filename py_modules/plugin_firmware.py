@@ -356,7 +356,8 @@ class Firmware(plugin_base.PluginContext):
 
 
     async def _run_emulator_tool(
-        self, emulator, args, allow=(), seconds=600, on_line=None, display=False
+        self, emulator, args, allow=(), seconds=600, on_line=None, display=False,
+        env_overrides=None, wrapper=(),
     ):
         """Run an emulator headlessly as a command-line tool. Returns (ok, error).
 
@@ -364,10 +365,16 @@ class Firmware(plugin_base.PluginContext):
         these runs show nothing on screen by design, so their log lines are the
         only account of what happened.
         """
-        argv = emulators.tool_argv(emulator, args, allow)
+        # `wrapper` runs the whole thing inside something else -- gamescope's
+        # headless backend, for an emulator that will not start without a real
+        # display even to write a config. Outside that one use it is empty.
+        argv = list(wrapper) + emulators.tool_argv(emulator, args, allow, env_overrides)
         decky.logger.info("Running: %s", " ".join(argv))
 
         env = self._subprocess_env()
+        # Both halves: `tool_argv` put these on the flatpak command line, where
+        # a sandbox can see them, and this is where everything else gets them.
+        env.update(env_overrides or {})
         if display:
             # Some emulators will not start without a display even to do
             # something that draws nothing: Vita3K's Qt aborts with "could not
