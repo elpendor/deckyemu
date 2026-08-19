@@ -144,6 +144,34 @@ check("every recipe belongs to a catalog entry",
       [])
 
 
+
+
+section("the messages an emulator writes over somebody's game")
+
+# Dolphin prints its version, controller connections, save states and speed
+# changes into the top-left corner of the game. On a desktop that is a status
+# line; on a game Steam just launched it is text over the first seconds of
+# play, about things nobody asked and cannot act on -- the same argument that
+# turns RetroArch's on-screen chatter off by default.
+_dolphin = emulator_catalog.find("dolphin")
+_ini = next(
+    spec for path, spec in _dolphin["setup"]["files"].items() if path.endswith("Dolphin.ini")
+)
+
+# The section is the part worth pinning: a key under the wrong heading is not an
+# error, it is silently ignored, and the setting stays on. Confirmed twice --
+# the string is in the installed binary, and RetroDECK's own Deck-tested
+# Dolphin.ini carries it under [Interface].
+check("Dolphin's on-screen messages are turned off",
+      _ini.get("Interface", {}).get("OnScreenDisplayMessages", {}).get("value"), "False")
+check("and the setting says what Dolphin's own default is, so a chosen value survives",
+      _ini["Interface"]["OnScreenDisplayMessages"].get("default"), "True")
+# Recommended settings are applied once, at install, and `needs_setup` compares
+# this number -- so a change to the values that does not raise it reaches
+# nobody who already has the emulator, silently.
+check("the setup version rose with them", _dolphin["setup"]["version"] >= 4, True)
+
+
 if __name__ == "__main__":
     from harness import summary
 

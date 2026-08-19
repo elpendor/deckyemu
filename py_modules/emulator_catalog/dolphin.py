@@ -168,7 +168,8 @@ _DOLPHIN_SETUP = {
     #   3  profiles judged by their Device line, since Dolphin had already
     #      written its own bindings and every key was skipped one at a time;
     #      and the analytics prompt answered
-    "version": 3,
+    #   4  Dolphin's own on-screen messages off
+    "version": 4,
     "files": {
         # `False` is Dolphin's own default, so it is stated as replaceable.
         # Anything else there was chosen by somebody and is left alone.
@@ -183,6 +184,20 @@ _DOLPHIN_SETUP = {
                 "Enabled": {"value": "False", "default": "True"},
                 "PermissionAsked": {"value": "True", "default": "False"},
             },
+            # The messages Dolphin writes into the top-left corner of the game
+            # -- its version on startup, controller connections, save states,
+            # speed changes. On a desktop they are a status line; on a game
+            # launched from Steam they are text over the first seconds of
+            # somebody's game, saying things they did not ask about and cannot
+            # act on. The same argument as RetroArch's on-screen chatter, which
+            # this plugin turns off by default for the same reason.
+            #
+            # `[Interface] OnScreenDisplayMessages` confirmed twice: the string
+            # is in the installed binary, and RetroDECK's own Deck-tested
+            # Dolphin.ini carries it in that section beside ShowActiveTitle and
+            # UsePanicHandlers. True is Dolphin's default, so anything else in
+            # there was chosen by somebody and is left alone.
+            "Interface": {"OnScreenDisplayMessages": {"value": "False", "default": "True"}},
         },
         "%s/GCPadNew.ini" % _DOLPHIN_CONFIG: {"GCPad1": _DOLPHIN_PAD},
         "%s/WiimoteNew.ini" % _DOLPHIN_CONFIG: {"Wiimote1": _DOLPHIN_WIIMOTE},
