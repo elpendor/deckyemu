@@ -68,10 +68,26 @@ const MUTED = { fontSize: "12px", opacity: 0.6 };
 function nameWithSource(entry: CatalogEmulator) {
   const source = sourceLabel(entry.kind);
   if (!source) return entry.name;
+  /*
+   * One element, with the gap inside the small half.
+   *
+   * Steam's `FieldLabelRow` is a flex container, and that breaks the obvious
+   * version of this in two ways at once. A fragment of `{name} <span>` puts
+   * three children in that flex box, and the whitespace one between them is an
+   * anonymous flex item, which the spec drops -- so the name ran straight into
+   * the bracket. The remaining two are then laid out by `align-items: center`,
+   * which centres a 12px box against a 19px one instead of sitting them on a
+   * shared baseline, so the source rode high or low depending on the row.
+   *
+   * Wrapped in one span, the label is a single flex item and everything inside
+   * it is ordinary inline text again: the space survives and the baseline is
+   * the one the name is on.
+   */
   return (
-    <>
-      {entry.name} <span style={MUTED}>({source})</span>
-    </>
+    <span>
+      {entry.name}
+      <span style={MUTED}>{` (${source})`}</span>
+    </span>
   );
 }
 
