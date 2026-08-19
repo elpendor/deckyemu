@@ -16,6 +16,8 @@ import {
   cancelUpload,
   fileServerStatus,
   firmwareDir,
+  firmwareStatus,
+  type FirmwareReport,
   getSettings,
   importEmulatorDefinition,
   installFirmware,
@@ -38,6 +40,8 @@ import { selectRom } from "./addFlow";
 const DEFINITION_SUFFIX = ".deckyemu.json";
 import { DANGER_CLASS, DANGER_CSS } from "./danger";
 import { logError } from "./logError";
+import { installThroughEmulator } from "./firmwareInstall";
+import { requirementForFile, type RequirementMatch } from "./firmwareMatch";
 
 /** How often to re-check while running, to pick up newly arrived files. */
 const POLL_MS = 3000;
@@ -215,6 +219,10 @@ export function TransferModal({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [dir, setDir] = useState("");
+  // Which requirement each waiting file belongs to, read from the backend's own
+  // matching rather than guessed at here -- it tells an MCPX ROM from an Xbox
+  // BIOS by size, which no filename can do.
+  const [firmware, setFirmware] = useState<FirmwareReport | null>(null);
   const [remember, setRemember] = useState(false);
   const timer = useRef<number | undefined>(undefined);
 
@@ -248,7 +256,21 @@ export function TransferModal({
     } catch (loadError) {
       logError("could not read file server status", loadError);
     }
-  }, []);
+    // What each arrival is actually for. Only on a firmware send: on a ROM send
+    // nothing here installs anything, and the call would be asking the backend
+    // a question with no bearing on the dialog.
+    //
+    // A failure is not allowed to cost the transfer. Not knowing which
+    // requirement a file belongs to loses the Install button; not knowing the
+    // server is running loses the QR code, which is the dialog's whole job.
+    if (purpose === "firmware") {
+      try {
+        setFirmware(await firmwareStatus());
+      } catch (reportError) {
+        logError("could not read firmware status", reportError);
+      }
+    }
+  }, [purpose]);
 
   useEffect(() => {
     void load();
@@ -436,32 +458,80 @@ export function TransferModal({
    * while quietly moving the other two would be a lie in the safe direction,
    * which is still a lie.
    */
-  const install = useCallback(async () => {
-    if (!installInto) return;
-    setBusy(true);
-    setError("");
-    try {
-      const result = await installFirmware(installInto.entryId, installInto.requirement);
-      if (!result.ok) {
-        setError(result.error ?? "Could not install that file.");
-        return;
+  /**
+   * The requirement a given arrival satisfies.
+   *
+   * The file's own, not the one whose Send button opened the dialog — those
+   * agree only for the first file sent, which is why xemu's second dump used to
+   * run the first one's requirement and report that nothing matched it.
+   *
+   * `installInto` remains the fallback for the moment before the report has
+   * loaded, and for a file the backend does not recognise at all: the dialog
+   * was opened from a row that wanted something, so offering that row's
+   * requirement is a better guess than offering nothing.
+   */
+  const matchFor = useCallback(
+    (name: string): RequirementMatch | undefined =>
+      requirementForFile(firmware, name) ??
+      (installInto
+        ? {
+            entryId: installInto.entryId,
+            emulatorName: "",
+            requirement: installInto.requirement,
+            guiInstall: false,
+            prompt: "",
+          }
+        : undefined),
+    [firmware, installInto],
+  );
+
+  const install = useCallback(
+    async (name: string) => {
+      const match = matchFor(name);
+      if (!match) return;
+      const { entryId, requirement } = match;
+
+      setBusy(true);
+      setError("");
+      try {
+        // Some requirements are not a copy at all: the emulator will only take
+        // the file through its own window. Falling through to the copy path
+        // returned that requirement's instructions *as an error*, which read
+        // as the plugin refusing to do what it was describing.
+        if (match.guiInstall) {
+          await installThroughEmulator(
+            entryId,
+            match.emulatorName,
+            requirement,
+            match.prompt,
+          );
+          await load();
+          return;
+        }
+
+        const result = await installFirmware(entryId, requirement);
+        if (!result.ok) {
+          setError(result.error ?? "Could not install that file.");
+          return;
+        }
+        const moved = result.copied?.length ?? 0;
+        const kept = result.kept?.length ?? 0;
+        toaster.toast({
+          title: `${requirement} installed`,
+          body: kept
+            ? `${moved} file(s) moved into place; ${kept} already there and left alone.`
+            : `${moved} file(s) moved into place.`,
+        });
+        await load();
+      } catch (installError) {
+        logError("could not install firmware", installError);
+        setError("Could not install that file.");
+      } finally {
+        setBusy(false);
       }
-      const moved = result.copied?.length ?? 0;
-      const kept = result.kept?.length ?? 0;
-      toaster.toast({
-        title: `${installInto.requirement} installed`,
-        body: kept
-          ? `${moved} file(s) moved into place; ${kept} already there and left alone.`
-          : `${moved} file(s) moved into place.`,
-      });
-      await load();
-    } catch (installError) {
-      logError("could not install firmware", installError);
-      setError("Could not install that file.");
-    } finally {
-      setBusy(false);
-    }
-  }, [installInto, load]);
+    },
+    [matchFor, load],
+  );
 
   /**
    * Import an emulator definition the user sent.
@@ -733,10 +803,10 @@ export function TransferModal({
                     >
                       Import
                     </DialogButton>
-                  ) : installInto ? (
+                  ) : matchFor(file.name) ? (
                     <DialogButton
                       disabled={busy}
-                      onClick={() => void install()}
+                      onClick={() => void install(file.name)}
                       style={{ minWidth: "auto", width: "auto", padding: "6px 16px" }}
                     >
                       Install

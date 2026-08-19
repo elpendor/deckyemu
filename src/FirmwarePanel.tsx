@@ -24,15 +24,14 @@ import {
   firmwareDir,
   firmwareStatus,
   installFirmware,
-  prepareFirmwareGui,
   startFileServer,
   uninstallFirmware,
   type FirmwareReport,
   type FirmwareState,
 } from "./backend";
-import { openSetupShortcut } from "./setupShortcut";
 import { humanSize, TransferModal } from "./TransferModal";
 import { callWithRetry } from "./timeout";
+import { installThroughEmulator } from "./firmwareInstall";
 import { byName } from "./order";
 
 
@@ -230,12 +229,8 @@ export function FirmwarePanel({ reloadKey = 0 }: Props) {
 
   /**
    * Hands the file to the emulator's own window, for the one requirement that
-   * has no other route.
-   *
-   * Ryujinx reads `--install-firmware` inside its main window and then waits on
-   * a Yes/No dialog, so neither the window nor the press can be removed — and a
-   * window is only ever drawn if Steam launched it, which is why this goes out
-   * through a shortcut rather than being run from here.
+   * has no other route. The work is in `installThroughEmulator`, shared with
+   * the transfer dialog — which offered the same button and did not have it.
    */
   const guiInstall = useCallback(
     (entryId: string, emulatorName: string, requirement: FirmwareState) => {
@@ -243,34 +238,12 @@ export function FirmwarePanel({ reloadKey = 0 }: Props) {
       setBusy(key);
       void (async () => {
         try {
-          const prepared = await prepareFirmwareGui(entryId, requirement.name);
-          if (!prepared.ok || !prepared.exe) {
-            toaster.toast({ title: "Could not open", body: prepared.error ?? "" });
-            return;
-          }
-
-          // The one setup shortcut, repointed at the script that was just
-          // written to carry the install argument.
-          const appId = await openSetupShortcut({
-            title: prepared.title ?? emulatorName,
-            exe: prepared.exe,
-            start_dir: prepared.start_dir,
-            app_id: prepared.app_id,
-          });
-          if (!appId) {
-            toaster.toast({
-              title: `Could not open ${emulatorName}`,
-              // Hidden, so pointing at "your library" would send somebody
-              // looking where it does not appear.
-              body: `Steam would not start it. "${prepared.title}" is in your hidden games if you want to run it yourself.`,
-            });
-            return;
-          }
-
-          toaster.toast({
-            title: `${emulatorName} is opening`,
-            body: requirement.prompt || `${prepared.file} is ready to install.`,
-          });
+          await installThroughEmulator(
+            entryId,
+            emulatorName,
+            requirement.name,
+            requirement.prompt,
+          );
         } finally {
           setBusy("");
         }
