@@ -263,6 +263,38 @@ class Startup(plugin_base.PluginContext):
                     "Could not update %s settings: %s", entry["id"], result.get("error")
                 )
 
+    async def _recheck_emulator_setups(self):
+        """The same sweep, for the moments between one startup and the next.
+
+        Startup is too rare to be the only time this runs. An emulator that has
+        never run has no config, so installing one means writing settings into a
+        file created from nothing -- and its first real run regenerates that
+        file with its own defaults and throws them away. That is not a rare
+        case: it is what happens to *every* emulator installed and then opened
+        in the same session.
+
+        It happened to Azahar on a real device, and the log reads as a plugin
+        that did everything right: "Configured azahar: 17 written" at install,
+        a 2189-byte config holding exactly those keys, and then a 34086-byte one
+        written by Azahar minutes later with every binding back to its keyboard
+        default. `needs_setup` knew -- the stamp no longer matched -- but
+        nothing asked it again until the next startup, and the game in between
+        launched with no controls.
+
+        So the paths that run before somebody plays ask too. Cheap by
+        construction: `needs_setup` stats a file per entry and stops there, and
+        the expensive probes behind it only run for an entry that is actually
+        stale.
+
+        Never raises. It is called from `get_status`, which is what the panel
+        opens on -- a failure here must degrade to stale settings, not to a
+        panel that will not load.
+        """
+        try:
+            await self._upgrade_emulator_setups()
+        except Exception:
+            decky.logger.exception("Could not re-check emulator settings")
+
     async def _claim_filed_collections(self):
         """Record the collections an existing library is already filed into.
 

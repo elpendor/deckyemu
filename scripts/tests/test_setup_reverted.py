@@ -124,5 +124,68 @@ finally:
 check("the real home resolver is back", sysenv.user_home is _real_home, True)
 
 
+section("and something asks between one startup and the next")
+# The repair above was reached only by the startup sweep, and an emulator
+# installed and then played in the same session never sees another startup.
+# Azahar on a real device: settings written at install into a config Azahar had
+# never made (2189 bytes, 17 keys), Azahar's first run regenerating it (34086
+# bytes, every binding back to a keyboard default), and the game launched
+# minutes later with no controls. `needs_setup` was True the whole time and
+# nothing asked it.
+
+import asyncio  # noqa: E402
+import plugin_startup  # noqa: E402
+
+_asked = []
+
+
+class _Fake:
+    """Enough of the composed Plugin for the wrapper under test."""
+
+    async def _upgrade_emulator_setups(self):
+        _asked.append(True)
+
+
+asyncio.get_event_loop_policy().new_event_loop().run_until_complete(
+    plugin_startup.Startup._recheck_emulator_setups(_Fake())
+)
+check("the re-check runs the same sweep startup does", _asked, [True])
+
+
+class _Broken(_Fake):
+    async def _upgrade_emulator_setups(self):
+        raise RuntimeError("flatpak is not there")
+
+
+# It is called from `get_status`, which is what the panel opens on: a failure
+# here has to cost stale settings, never a panel that will not load.
+try:
+    asyncio.get_event_loop_policy().new_event_loop().run_until_complete(
+        plugin_startup.Startup._recheck_emulator_setups(_Broken())
+    )
+    _raised = False
+except Exception:
+    _raised = True
+check("and a failure inside it never reaches the caller", _raised, False)
+
+# The wiring itself, because the behaviour above is one line in each caller and
+# what breaks is somebody removing it. Both are named: `get_status` is every
+# panel open, `prepare_shortcut` is the last plugin code before a game exists to
+# be launched.
+_main = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
+    os.path.abspath(__file__)))), "main.py")
+with io.open(_main, "r", encoding="utf-8") as handle:
+    _source = handle.read()
+
+_NEXT_METHOD = "    async def "
+
+for _caller in ("get_status", "prepare_shortcut"):
+    _at = _source.index("async def %s(" % _caller)
+    _end = _source.find(_NEXT_METHOD, _at + 1)
+    _body = _source[_at:_end if _end != -1 else len(_source)]
+    check("%s re-checks the emulator settings" % _caller,
+          "_recheck_emulator_setups" in _body, True)
+
+
 if __name__ == "__main__":
     summary()

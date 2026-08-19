@@ -323,6 +323,14 @@ class Plugin(
         return await self.get_status()
 
     async def get_status(self):
+        # The panel opening is the cheapest regular chance to notice that an
+        # emulator has rewritten its config since its settings were written --
+        # which is what its *first* run does, because a config written into a
+        # file the emulator has never made is a config it regenerates. Startup
+        # was the only place that asked, and one install-then-play session
+        # happens entirely between two startups. See `_recheck_emulator_setups`.
+        await self._recheck_emulator_setups()
+
         # Three separate answers, and they used to be two: `default_rom_dir()`
         # was `user_home()`, so one lookup filled both fields. It is the transfer
         # folder now, and the coupling had to go with it -- `home_dir` is what
@@ -1123,6 +1131,12 @@ class Plugin(
         Wii game under GameCube.
         """
         decky.logger.info("prepare_shortcut: title=%r core=%s rom=%s", title, core_id, rom_path)
+        # The last plugin code that runs before a game exists to be launched, so
+        # the last chance to notice that the emulator about to run it has thrown
+        # its settings away. This is the sequence that produced the bug: install
+        # the emulator, open it once for firmware, add a game, play -- and the
+        # controller bindings were gone by the third step.
+        await self._recheck_emulator_setups()
         emulator = self._emulator_for_core_id(core_id)
         # A custom emulator does not need RetroArch present at all.
         if not self._install and not emulator:
