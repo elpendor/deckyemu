@@ -35,6 +35,7 @@ import plugin_base
 
 import emu_config
 import emu_install
+import emu_firmware
 import emulator_catalog
 import emulators
 import installer
@@ -357,6 +358,43 @@ class Startup(plugin_base.PluginContext):
         gone = await self._run(store.forget_removed)
         if gone:
             decky.logger.info("Removed setting(s) no longer used: %s", ", ".join(gone))
+
+    async def _resplit_firmware_records(self):
+        """Re-file records written when one requirement accepted several files.
+
+        Ryujinx's keys were one row matching both prod.keys and title.keys, and
+        are now a row each -- because a row is the only way to send a file, and
+        a row with anything installed offers Delete where Send would be, so
+        installing prod.keys first left title.keys no route at all.
+
+        The record is keyed by requirement name, so the rename orphans it. That
+        is not cosmetic: `status` reports anything at the destination this
+        plugin cannot account for as *foreign*, and the removal dialog warns
+        about foreign files -- so without this, a device that installed its keys
+        through the plugin would be told its own prod.keys was somebody else's.
+
+        The pairs are listed rather than derived. A rename is only knowable by
+        having made it, and a guess at which old name became which new ones is
+        the kind of cleverness that quietly re-files the wrong thing.
+        """
+        renamed = (("ryujinx", "prod.keys and title.keys"),)
+        for entry_id, old_name in renamed:
+            entry = emulator_catalog.find(entry_id)
+            if not entry:
+                continue
+            moved = await self._run(
+                emu_firmware.resplit_record, entry_id, old_name, entry
+            )
+            if moved:
+                decky.logger.info(
+                    "Re-filed %s firmware records from %r: %s",
+                    entry_id,
+                    old_name,
+                    ", ".join(
+                        "%s -> %s" % (", ".join(names), target)
+                        for target, names in sorted(moved.items())
+                    ),
+                )
 
     async def _backfill_library(self):
         """Fill in fields that older versions of this plugin never recorded.

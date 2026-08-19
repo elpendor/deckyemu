@@ -88,6 +88,45 @@ def _write_state(state):
 def _recorded(entry_id, requirement_name):
     return _read_state().get(entry_id, {}).get(requirement_name, [])
 
+
+def resplit_record(entry_id, old_name, entry):
+    """Move a record written under one requirement onto the ones that replaced it.
+
+    A requirement that used to accept several filenames and now has a row each
+    leaves its record behind under the old name. Nothing reads that key any
+    more, so the files it names stop being recognised as this plugin's work --
+    and `status` reports anything at the destination it does not recognise as
+    *foreign*, which is how somebody gets warned about their own prod.keys.
+
+    Each recorded filename is filed under whichever new requirement would match
+    it, so the split is decided by the same patterns that will match the file
+    next time rather than by a table written here. Returns what moved.
+    """
+    state = _read_state()
+    recorded = state.get(entry_id, {}).get(old_name)
+    if not recorded:
+        return {}
+
+    moved = {}
+    for name in recorded:
+        for requirement in entry.get("firmware") or []:
+            target = requirement.get("name", "")
+            if target == old_name or not _matching(requirement, [{"name": name}]):
+                continue
+            moved.setdefault(target, [])
+            if name not in moved[target]:
+                moved[target].append(name)
+            break
+
+    for target, names in moved.items():
+        existing = state[entry_id].get(target, [])
+        state[entry_id][target] = existing + [n for n in names if n not in existing]
+    # Dropped whether or not anything matched: the key names a requirement that
+    # no longer exists, so leaving it would have it re-examined at every start.
+    del state[entry_id][old_name]
+    _write_state(state)
+    return moved
+
 # The cap stops a stray ROM in the folder from being scanned as firmware. It was
 # 64MB, written when everything here was a BIOS image or a key file -- and that
 # made every console firmware invisible: a PS Vita PUP is 128MB and a PS3 one is

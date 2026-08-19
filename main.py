@@ -223,6 +223,7 @@ class Plugin(
             ("upgrade launchers", self._upgrade_launchers),
             ("upgrade emulator recipes", self._upgrade_emulator_recipes),
             ("upgrade emulator setups", self._upgrade_emulator_setups),
+            ("re-file split firmware records", self._resplit_firmware_records),
             ("forget settings that no longer exist", self._forget_removed_settings),
         ):
             try:

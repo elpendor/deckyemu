@@ -174,11 +174,20 @@ try:
            if not r["detectable"]],
           [])
 
-    check("no other requirement anywhere is optional",
+    # A whitelist rather than a count, so marking something optional has to be
+    # argued for here. `optional` is what stops the add flow reporting an
+    # emulator as missing something, so a careless one hides a real gap: the
+    # game then fails to boot with the panel insisting everything is in place.
+    #
+    # Both entries earn it the same way -- they belong to a *game* rather than
+    # to the emulator. A .rap unlocks one PS3 title, and title.keys is needed
+    # only by the Switch games that carry one; most boot on prod.keys alone,
+    # which is not optional and is not on this list.
+    check("only what belongs to a game, not to the emulator, is optional",
           sorted({r["name"] for e in emu_catalog.CATALOG
                   for r in emu_firmware.status(e, emu_firmware.available())
                   if r["optional"]}),
-          ["Game licences (.rap)"])
+          ["Game licences (.rap)", "title.keys"])
 
     # The copy path must refuse it outright rather than half-doing something:
     # `install` moves files, and there is no destination to move this to.

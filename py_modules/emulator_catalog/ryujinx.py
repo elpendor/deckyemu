@@ -152,15 +152,31 @@ ENTRY = {
     # opened fullscreen, and played on the pad `_RYUJINX_SETUP` binds.
     "verified": True,
     "firmware": [
+        # One row each, and the reason is that a row is the only way to send a
+        # file. These were a single requirement matching both names, which was
+        # itself an improvement on a row called "prod.keys" that silently
+        # installed a title.keys sent beside it -- but it left no route to the
+        # second file at all. A row with anything installed reads as done, and a
+        # done row offers Delete and Remove where the Send button would be. So
+        # sending prod.keys first, which is what everyone does because it is the
+        # one that matters, closed the only door title.keys had.
         {
-            # Named for both files because it accepts both. Called just
-            # "prod.keys" the row was accurate about the one that matters
-            # and silent about the other, so a title.keys sent alongside
-            # looked like it had been ignored -- it was always installed.
-            "name": "prod.keys and title.keys",
-            "note": "Dumped from your own Switch. Nothing runs without prod.keys.",
-            "match": r"(?i)^(prod|title)\.keys$",
-            "expects": "prod.keys, which is required, and title.keys, which is optional -- send either or both, together or one at a time.",
+            "name": "prod.keys",
+            "note": "Dumped from your own Switch. Nothing runs without it.",
+            "match": r"(?i)^prod\.keys$",
+            "expects": "A file named exactly prod.keys.",
+            "dest": ".var/app/io.github.ryubing.Ryujinx/config/Ryujinx/system",
+        },
+        {
+            "name": "title.keys",
+            "note": "Dumped from your own Switch, alongside prod.keys. The "
+            "games that need it will not boot without it; most do not need it.",
+            "match": r"(?i)^title\.keys$",
+            "expects": "A file named exactly title.keys.",
+            # So adding a Switch game does not report the emulator as missing
+            # something every time. Same reason RPCS3's licence row carries it:
+            # what is optional must not be counted as unmet.
+            "optional": True,
             "dest": ".var/app/io.github.ryubing.Ryujinx/config/Ryujinx/system",
         },
         {
