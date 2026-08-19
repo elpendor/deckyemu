@@ -44,6 +44,7 @@ import { EmulatorVersionModal } from "./EmulatorVersionModal";
 import { RemoveEmulatorModal } from "./RemoveEmulatorModal";
 import { InstallProgress } from "./InstallProgress";
 import { emulatorRowActions } from "./emulatorActions";
+import { sourceLabel } from "./emulatorSource";
 import { byName } from "./order";
 import { openSetupShortcut } from "./setupShortcut";
 import { callWithRetry } from "./timeout";
@@ -55,6 +56,24 @@ interface Props {
 }
 
 const MUTED = { fontSize: "12px", opacity: 0.6 };
+
+/**
+ * The emulator's name with where its build comes from beside it.
+ *
+ * Small and parenthesised rather than another word in the description, because
+ * it belongs to the name -- it is what distinguishes this listing of an
+ * emulator from the same emulator obtained some other way -- and the
+ * description is already three facts long on an installed row.
+ */
+function nameWithSource(entry: CatalogEmulator) {
+  const source = sourceLabel(entry.kind);
+  if (!source) return entry.name;
+  return (
+    <>
+      {entry.name} <span style={MUTED}>({source})</span>
+    </>
+  );
+}
 
 /**
  * What the row says under the emulator's name.
@@ -541,7 +560,7 @@ export function EmulatorCatalogPanel({ onChanged }: Props) {
                jump to a different size and lose its inset, so an installing row
                read as a different kind of thing wedged into the list. */
             <Field
-              label={entry.name}
+              label={nameWithSource(entry)}
               description={
                 <InstallProgress
                   inline
@@ -553,7 +572,7 @@ export function EmulatorCatalogPanel({ onChanged }: Props) {
             />
           ) : (
             <Field
-              label={entry.name}
+              label={nameWithSource(entry)}
               description={describe(entry, builds[entry.id])}
               childrenContainerWidth="min"
             >
