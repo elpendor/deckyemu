@@ -241,6 +241,9 @@ class Firmware(plugin_base.PluginContext):
                 "Tidied %s from the firmware folder; already installed",
                 ", ".join(result["removed"]),
             )
+            # The record has done its job. Left behind it would answer for the
+            # next file to take the same name.
+            await self._run(emu_firmware.forget_handoffs, result["removed"])
         return result
 
 
@@ -575,6 +578,12 @@ class Firmware(plugin_base.PluginContext):
         except OSError as error:
             decky.logger.exception("Failed writing firmware GUI launcher")
             return {"ok": False, "error": "Could not write launcher script: %s" % error}
+
+        # What the install folder held before the emulator was given the file.
+        # Recorded here rather than inferred later, because "did this install
+        # happen" has no other witness: the emulator opens as a Steam shortcut,
+        # asks the user, and never reports back. See `emu_firmware.spent`.
+        await self._run(emu_firmware.record_handoff, entry_id, spec, waiting[0])
 
         settings = await self._run(store.get_settings)
         decky.logger.info("Opening %s to install %s", entry["name"], waiting[0])

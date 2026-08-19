@@ -40,6 +40,7 @@ actually produced -- `dev_flash/vsh/etc/version.txt` for RPCS3 -- rather than by
 remembering that a button was pressed.
 """
 
+import hashlib
 import json
 import os
 import posixpath
@@ -478,71 +479,131 @@ def status(entry, files=None):
     return report
 
 
-def _newest(directory):
-    """The most recent mtime at `directory`, itself and its immediate children.
+#: What was last handed to an emulator's own window, and what its install
+#: folder held at that moment. Keyed "<entry id>/<requirement name>".
+#:
+#: There is nothing else to go on. That install is a Steam shortcut opening the
+#: emulator, and the emulator never reports back -- so whether it happened can
+#: only be answered by looking at what changed while it was open.
+HANDOFF_PATH = os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "firmware_handoff.json")
 
-    The directory's own stamp moves when entries are added or removed, which is
-    what a firmware install does; the children are read too because an install
-    that only overwrote what was already there would not move it. 238 entries
-    is a few milliseconds and the answer has to be right, since a file gets
-    deleted on the strength of it.
-    """
-    newest = 0.0
+
+def _read_handoff():
     try:
-        newest = os.stat(directory).st_mtime
-        with os.scandir(directory) as entries:
-            for item in entries:
-                try:
-                    newest = max(newest, item.stat().st_mtime)
-                except OSError:
-                    continue
+        with open(HANDOFF_PATH, "r", encoding="utf-8") as handle:
+            data = json.load(handle)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _write_handoff(state):
+    try:
+        os.makedirs(os.path.dirname(HANDOFF_PATH), exist_ok=True)
+        tmp = HANDOFF_PATH + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as handle:
+            json.dump(state, handle, indent=2, sort_keys=True)
+        os.replace(tmp, HANDOFF_PATH)
+    except OSError as error:
+        # Not fatal: without the record nothing is swept, which is the safe
+        # direction -- the file stays and the button is still there.
+        decky.logger.warning("Could not record the firmware handoff: %s", error)
+
+
+def _handoff_key(entry_id, requirement_name):
+    return "%s/%s" % (entry_id, requirement_name)
+
+
+def fingerprint(directory):
+    """What is in `directory` right now, as one comparable string.
+
+    The entry *names*, never their timestamps, and that is the whole
+    correctness of this rather than a preference. A clock says "changed" for
+    things that are not an install: the emulator merely starting touches its
+    own folders, and removing the firmware empties this one and stamps it with
+    the moment it was emptied. Both of those read as "just installed" to an
+    mtime, and the first one shipped -- a firmware zip was deleted after
+    Ryujinx was opened and closed again without installing anything.
+
+    What only an install does is change which .nca entries are there. So the
+    names are the signal, and an empty or missing folder fingerprints as
+    nothing at all, which is the honest answer for "no firmware here".
+    """
+    try:
+        names = sorted(os.listdir(directory))
     except OSError:
-        return 0.0
-    return newest
+        return ""
+    if not names:
+        return ""
+    digest = hashlib.sha1("\n".join(names).encode("utf-8", "replace")).hexdigest()
+    return "%d:%s" % (len(names), digest)
+
+
+def record_handoff(entry_id, requirement, filename):
+    """Note the file about to be given to the emulator, and the state before it."""
+    detect = (requirement or {}).get("detect") or {}
+    state = _read_handoff()
+    state[_handoff_key(entry_id, requirement.get("name", ""))] = {
+        "file": filename,
+        "before": fingerprint(under_home(detect.get("path") or "")),
+    }
+    _write_handoff(state)
+
+
+def forget_handoffs(filenames):
+    """Drop the records for files that have been dealt with."""
+    names = set(filenames or ())
+    state = _read_handoff()
+    keep = {key: value for key, value in state.items() if value.get("file") not in names}
+    if len(keep) != len(state):
+        _write_handoff(keep)
 
 
 def spent(entry, files=None):
-    """Sent files the emulator has already taken in, and so no longer needs.
+    """The sent file an emulator has demonstrably taken in, if any.
 
-    Only for a requirement the emulator installs through its own window --
-    Ryujinx's Switch firmware is the case. There is no return value from that
-    install to act on: the emulator is opened as a Steam shortcut, asks the user
-    to confirm, and this plugin never hears how it went. So the question is
-    asked of the filesystem afterwards instead.
+    Only for a requirement installed through the emulator's own window --
+    Ryujinx's Switch firmware is the case. The plugin writes a launcher, Steam
+    runs the emulator, the user presses Yes or does not, and nothing comes back.
 
-    **"Is anything installed" is not the question, and answering that one would
-    delete somebody's firmware upgrade.** `detect` only says whether the folder
-    has contents, so a device with 6.0 installed reports the same as one with
-    nothing -- and a 7.0 zip sent to it would be thrown away before it was ever
-    applied. The question is whether *this file* has been taken in, and the
-    timestamps answer it: an install writes into the folder, so contents newer
-    than the file mean the file went in, and contents older mean it is a newer
-    dump still waiting its turn.
+    So the test is a before-and-after of the folder the firmware lands in,
+    recorded when the file was handed over. Changed means it went in; identical
+    means the user backed out and the file is still theirs to install. **Both
+    halves are required**: an unchanged fingerprint is a cancel, and an empty
+    folder is nothing installed at all, whatever else moved.
 
-    A copied requirement is deliberately not swept. `install` copies rather than
-    moves, because the folder the user sent to is the folder they resend from,
-    and a second dump sitting there is a choice they made rather than litter.
-    An imported one is already deleted at the point it succeeds, where the
-    emulator's own output says so -- see `_import_firmware`.
+    Three rules this deliberately is not, each of which was or would have been
+    wrong. Not "is the folder non-empty" -- that cannot tell 6.0-is-installed
+    from 7.0-is-not, and would throw away an upgrade before it was applied. Not
+    "is the folder newer than the file" -- opening the emulator and closing it
+    again bumps that, and so does removing the firmware, and that one shipped.
+    And not "was a matching file sent" -- only the file actually handed over
+    was ever offered to the emulator.
+
+    A copied requirement is never swept. `install` copies rather than moves on
+    purpose -- the folder sent to is the folder resent from -- so a file still
+    sitting there is a spare somebody kept. An imported one is deleted where it
+    succeeds, on the emulator's own output; see `_import_firmware`.
     """
     files = available() if files is None else files
-    directory = emu_install.firmware_dir()
+    present = {item["name"] for item in files}
+    handoff = _read_handoff()
     done = []
 
     for requirement in entry.get("firmware") or []:
         detect = requirement.get("detect")
         if not detect or requirement.get("import"):
             continue
-        installed_at = _newest(under_home(detect.get("path") or ""))
-        if not installed_at:
+        record = handoff.get(_handoff_key(entry.get("id", ""), requirement.get("name", "")))
+        if not record:
             continue
-        for name in _matching(requirement, files):
-            try:
-                sent_at = os.path.getmtime(os.path.join(directory, name))
-            except OSError:
-                continue
-            if installed_at >= sent_at:
-                done.append(name)
+        now = fingerprint(under_home(detect.get("path") or ""))
+        # Nothing there, or nothing changed since it was handed over.
+        if not now or now == record.get("before"):
+            continue
+        name = record.get("file")
+        if name and name in present:
+            done.append(name)
 
     return done
 
