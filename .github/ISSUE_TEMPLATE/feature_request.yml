@@ -1,0 +1,105 @@
+name: Ask for something
+description: A feature, a change to one that exists, or an emulator the plugin does not cover.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Two things worth knowing before you spend time on this, both of them
+        better said here than discovered from silence.
+
+        **An emulator this plugin does not cover needs no code and no
+        permission.** A `.deckyemu.json` definition describes its system, file
+        extensions, launch arguments and firmware layout, and is imported from
+        the Quick Access panel — no Desktop Mode, nothing to type on the Deck.
+        See [docs/emulator-definitions.md](https://github.com/elpendor/deckyemu/blob/main/docs/emulator-definitions.md).
+        That is a thing you can finish this evening rather than wait for, so it
+        is worth reading before filing anything below.
+
+        **There is no promise that a request is acted on.** One maintainer, no
+        store listing, and nothing here is anybody's job. A request can be a
+        good idea and still be closed — usually against one of the two
+        constraints below, and the reason is always given.
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What you want to be able to do
+      description: >
+        What you are trying to get done, not the button you imagine doing it.
+        The first is something to solve; the second is one answer to it, and
+        often not the one that fits the rest of the panel.
+      placeholder: |
+        I keep several ROM hacks of the same game and cannot tell them apart in
+        Steam — they all take the name of the game they patch.
+    validations:
+      required: true
+
+  - type: textarea
+    id: today
+    attributes:
+      label: What you do about it today
+      description: >
+        The workaround, however ugly, or "nothing". This is the most useful box
+        on the form: it says how much the gap actually costs, which is the
+        difference between a papercut and the reason somebody stops using the
+        plugin.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What kind of thing is this
+      options:
+        - Something the plugin does not do at all
+        - Something it does, done differently
+        - An emulator it does not cover
+        - Not sure
+    validations:
+      required: true
+
+  - type: input
+    id: emulator
+    attributes:
+      label: Which emulator
+      description: >
+        Only if it is about one. Say where its build comes from — Flathub, the
+        project's own releases, or a binary you already have — because that
+        decides whether it can be installed from the panel at all.
+      placeholder: Flycast, from Flathub
+
+  - type: markdown
+    attributes:
+      value: |
+        ### The two constraints
+
+        These are not style preferences. They decide most of what is possible,
+        so a request that already answers them is a much shorter conversation.
+
+        **Everything works in Game Mode.** No Desktop Mode, no keyboard, no
+        second device, no SSH — including the first install. It is why this
+        plugin exists next to tools that already do more. Anything that ends at
+        a shell command needs an in-panel alternative instead.
+
+        **The backend is stdlib only.** It runs on decky's frozen Python, so
+        there is nothing to install and no dependency to add.
+
+  - type: textarea
+    id: gamemode
+    attributes:
+      label: What it would look like in Game Mode
+      description: >
+        A controller, a thumbstick and no keyboard. A rough answer is fine, and
+        "I do not know" is a real answer — but a request nobody can picture
+        being used on a Deck is the one most likely to be closed.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checked
+    attributes:
+      label: Before submitting
+      options:
+        - label: This does not need Desktop Mode, a keyboard or a second device to use.
+        - label: If it is about an emulator, I have read what a definition can do and this needs more than one.

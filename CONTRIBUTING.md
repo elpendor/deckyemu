@@ -18,6 +18,24 @@ removed — so it is safe to paste in public. See
 If you cannot reach the panel at all, say which Deck, which plugin version, and
 what you did; that is enough to start.
 
+## Asking for something
+
+Open an issue with **Ask for something**. Say what you are trying to get done
+rather than the button you imagine doing it — the first is a problem to solve,
+the second is one answer to it, and often not the one that fits the rest of the
+panel. Say what you do about it today as well, however ugly the workaround is;
+that is what separates a papercut from the reason somebody stops using the
+plugin.
+
+**There is no promise that a request is acted on**, the same as for pull
+requests below. One maintainer, no store listing, and nothing here is anybody's
+job. A request can be a good idea and still be closed — usually against Game
+Mode or the stdlib-only backend, and the reason is always given rather than
+left to be inferred from silence.
+
+Before filing one for an emulator, read the next section: that case needs no
+code, no permission and no waiting.
+
 ## Emulators this project does not ship
 
 You do not need code or permission for these. A `.deckyemu.json` definition

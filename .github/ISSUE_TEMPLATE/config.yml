@@ -1,8 +1,15 @@
-# Every issue goes through the form.
+# Every issue goes through one of the forms.
 #
-# The form asks for the diagnostic report, and the report is the difference
+# The bug form asks for the diagnostic report, and the report is the difference
 # between a bug that can be reproduced and one that reads "it didn't work" --
 # which is what a blank issue tends to become on a device with no keyboard and a
 # log nobody can reach. The plugin can produce that report in two taps, so the
 # form asks for something it costs almost nothing to give.
+#
+# The request form spends its questions on the two constraints that decide most
+# of what is possible here -- Game Mode, and a stdlib-only backend -- and on
+# saying that an emulator this plugin does not cover needs a definition file
+# rather than a request. Both are cheaper to read on the way in than to explain
+# in comments afterwards, and the second turns a wait into something the person
+# asking can finish themselves.
 blank_issues_enabled: false
