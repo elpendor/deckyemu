@@ -207,6 +207,20 @@ _RPCS3_SETUP = {
 # already. The one setting worth changing, leaving the emulator when the game
 # stops, is `--no-gui` on the command line instead.
 
+# Upstream's own AppImage, not the Flathub build, and the difference is not
+# cosmetic. The flatpak (0.0.41-19607) is compiled without libevdev, so
+# `Handler: Evdev` is not in its enum at all -- it logs "invalid enum" and
+# reports "No devices configured", leaving every game with dead controls. It
+# also routes --installpkg and --installfw through the main window, where each
+# waits on a modal dialog forever.
+#
+# RPCS3's own build ships libevdev.so.2 and takes the headless branch, where
+# every dialog is skipped: a 240MB package installed in five seconds with no
+# window, and the PS3 firmware in six. That is the difference between "install
+# a PS3 game from the panel" and "tap through three dialogs in a GUI".
+#
+# So the paths are RPCS3's ordinary ones rather than a flatpak sandbox's.
+
 ENTRY = {
     "id": "rpcs3",
     "name": "RPCS3",
