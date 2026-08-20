@@ -35,6 +35,11 @@ Thumbs.db
 # Ignore built ts files
 dist/
 
+# The hand-installable plugin zip, built from dist/ and the runtime files by the
+# same payload list scripts/deploy.sh uses. Build output like dist/, so it goes
+# here rather than in .git/info/exclude.
+/deckyemu.zip
+
 __pycache__/
 .mypy_cache/
 
