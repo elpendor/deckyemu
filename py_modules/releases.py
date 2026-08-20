@@ -21,6 +21,8 @@ module reaches is authenticated, which is why it can say so plainly when GitHub
 does not answer instead of having to wonder whether a token was wrong.
 """
 
+import json
+import os
 import re
 import time
 
@@ -34,6 +36,22 @@ RELEASES_URL = "https://api.github.com/repos/%s/releases" % REPO
 # GitHub allows 60 unauthenticated requests an hour per address. One check an hour
 # leaves that budget almost untouched even with the panel opened repeatedly.
 CACHE_SECONDS = 60 * 60
+
+#: Where a successful check is kept, so a restart does not repeat it.
+#:
+#: The cache below is module state, and decky restarts this backend every time
+#: the plugin's files change -- so without a copy on disk the hour it promises
+#: only lasts as long as the process. That was survivable while the only caller
+#: was a button somebody pressed; it is not, now that opening the panel asks.
+#:
+#: Only a successful fetch is written. A failure kept for an hour would be a
+#: check that refuses to retry, which is the opposite of what a cache is for.
+CACHE_PATH = os.path.join(decky.DECKY_PLUGIN_RUNTIME_DIR, "releases.json")
+
+#: Bumped when the shape of a cached release changes. An older file is ignored
+#: rather than migrated: it is a cache, so the cost of throwing it away is one
+#: request, and the cost of reading a stale shape is a crash in the panel.
+CACHE_FORMAT = 1
 
 # CI writes this line into the release body so the download can be verified.
 _SHA256_RE = re.compile(r"sha256:\s*([0-9a-f]{64})", re.IGNORECASE)
@@ -144,8 +162,60 @@ def _failure_message(failure):
     ) or "GitHub did not answer. Check the connection."
 
 
+_loaded = False
+
+
+def _load_cache():
+    """Fill the in-process cache from disk. Once per process, and never raises."""
+    global _loaded
+    _loaded = True
+    try:
+        with open(CACHE_PATH, "r", encoding="utf-8") as handle:
+            saved = json.load(handle)
+    except (OSError, ValueError):
+        return
+    if not isinstance(saved, dict) or saved.get("format") != CACHE_FORMAT:
+        return
+
+    at, releases = saved.get("at"), saved.get("releases")
+    if not isinstance(releases, list) or not isinstance(at, (int, float)):
+        return
+    # A timestamp in the future would hold this answer past the hour it is
+    # entitled to -- a clock that has not caught up after a suspend, or a
+    # settings folder restored from another machine.
+    if at > time.time():
+        return
+
+    _cache["releases"] = releases
+    _cache["at"] = float(at)
+    # Loaded from a file that is only written on success, so this *is* a
+    # successful check -- an older one, which is what the timestamp is for.
+    _cache["ok"] = True
+    _cache["error"] = ""
+
+
+def _save_cache():
+    """Keep the current answer for the next process. Failure is not worth raising."""
+    try:
+        os.makedirs(os.path.dirname(CACHE_PATH), exist_ok=True)
+        with open(CACHE_PATH, "w", encoding="utf-8") as handle:
+            json.dump(
+                {
+                    "format": CACHE_FORMAT,
+                    "at": _cache["at"],
+                    "releases": _cache["releases"],
+                },
+                handle,
+            )
+    except OSError as error:
+        decky.logger.warning("Could not keep the release cache: %s", error)
+
+
 def fetch_releases(force=False):
     """Installable releases, newest first. Cached, and never raises."""
+    if not _loaded:
+        _load_cache()
+
     now = time.time()
     if not force and _cache["releases"] and now - _cache["at"] < CACHE_SECONDS:
         return _cache["releases"]
@@ -182,6 +252,7 @@ def fetch_releases(force=False):
     _cache["at"] = now
     _cache["ok"] = True
     _cache["error"] = ""
+    _save_cache()
     return releases
 
 
@@ -230,7 +301,16 @@ def check(current_version, force=False, allow_prerelease=False):
 
 
 def clear_cache():
+    global _loaded
     _cache["releases"] = []
     _cache["at"] = 0.0
     _cache["ok"] = False
     _cache["error"] = "Not checked yet."
+    # Both halves, or "clear" would only mean "until the next call reads the
+    # file back". `_loaded` stays true for the same reason: this is a request
+    # for no cached answer, not for the old one to be loaded again.
+    _loaded = True
+    try:
+        os.remove(CACHE_PATH)
+    except OSError:
+        pass
