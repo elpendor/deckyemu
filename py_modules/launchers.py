@@ -91,6 +91,29 @@ OVERRIDE_CONFIG = os.path.join(decky.DECKY_PLUGIN_RUNTIME_DIR, "retroarch-overri
 # the real ones. Turn Steam Input off for such a game and its own pad would
 # find no profile here; mirroring 4.2MB of somebody else's data on every launch
 # to cover that is the worse trade.
+#
+# The `udev` folder name is not decoration and is also not a bug. RetroArch
+# reads profiles from the autoconfig directory and from
+# `<autoconfig dir>/<joypad driver>`, and nowhere else below it -- the scan is
+# not recursive and a profile's own `input_driver` line is not what selects it
+# (tasks/task_autodetect.c, matching is on vendor/product/name/phys). So under a
+# config set to `sdl2` -- which is exactly what EmuDeck's retroarch.cfg does --
+# RetroArch looks in `<ours>/sdl2` and finds nothing.
+#
+# **That is fine, and forcing the driver back to udev to "fix" it is a
+# regression.** The sdl2 joypad driver needs no profile at all: SDL recognises
+# Steam's virtual pad as a game controller, so RetroArch opens it with
+# SDL_GameControllerOpen and exposes normalised SDL_CONTROLLER_BUTTON_* indices
+# that its built-in default binds already cover (input/drivers_joypad/
+# sdl_joypad.c). Measured on a Deck with EmuDeck installed: config says sdl2,
+# only `udev/` exists here, controller works.
+#
+# The "unconfigured pad has no bindings at all" failure above is real but is a
+# *udev* failure -- that driver has no normalised layout to fall back on. Do not
+# generalise it to the other drivers, and do not add a line that names a joypad
+# driver: it would move a working sdl2 setup onto udev, where the controller
+# then depends entirely on the single profile below matching. A whole commit
+# went in and back out on that reasoning.
 AUTOCONFIG_DIR = os.path.join(decky.DECKY_PLUGIN_RUNTIME_DIR, "autoconfig")
 
 _STEAM_PAD_PROFILE = """\
