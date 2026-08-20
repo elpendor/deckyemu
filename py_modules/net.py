@@ -260,6 +260,24 @@ def head_ok(url, headers=None):
     return False
 
 
+#: What an image may weigh before it is refused.
+#:
+#: Its own number because artwork is the one thing here fetched at a size
+#: somebody else chose. SteamGridDB serves the asset as uploaded, and a hero is
+#: a wide lossless PNG -- big enough that the general 12MB ceiling refused real
+#: artwork a user had picked. Seen twice in one diagnostic report: the hero slot
+#: came back empty with three of four slots filled and nothing said about why.
+#:
+#: This is a bound on what the pipeline can carry, not a claim about what
+#: SteamGridDB will serve -- the bytes are base64'd into a data URI (a third
+#: larger again) and handed across the websocket to the frontend, so an
+#: unbounded image is a real cost on a Deck. Their published limit could not be
+#: read from their docs, which are a script shell, so no number here is the
+#: "correct" one and something will eventually exceed it. That is why a refusal
+#: now says the size it refused rather than disappearing into an empty slot.
+MAX_IMAGE_BYTES = 32 * 1024 * 1024
+
+
 def get_bytes(url, headers=None, max_bytes=12 * 1024 * 1024, failure=None):
     """Returns (bytes, content_type) or (None, None).
 
@@ -276,7 +294,16 @@ def get_bytes(url, headers=None, max_bytes=12 * 1024 * 1024, failure=None):
         with _urlopen(_request(url, headers)) as response:
             payload = response.read(max_bytes + 1)
             if len(payload) > max_bytes:
-                decky.logger.warning("Refusing oversized download: %s", url)
+                # The size and the ceiling both, because "oversized" alone
+                # cannot be acted on: it does not say whether the cap is a
+                # little too low or the file is absurd. This line is what a
+                # diagnostic report has to explain an empty artwork slot with.
+                decky.logger.warning(
+                    "Refusing download over %d bytes (read at least %d): %s",
+                    max_bytes, len(payload), url,
+                )
+                if failure is not None:
+                    failure["oversized"] = True
                 return None, None
             return payload, response.headers.get("Content-Type", "")
     except urllib.error.HTTPError as error:
@@ -446,9 +473,11 @@ def failure_message(failure, subject, not_found=""):
     return ""
 
 
-def get_data_uri(url, headers=None):
+def get_data_uri(url, headers=None, max_bytes=None):
     """Fetch an image and return (data_uri, 'png'|'jpg') for the Steam client."""
-    payload, content_type = get_bytes(url, headers)
+    payload, content_type = get_bytes(
+        url, headers, MAX_IMAGE_BYTES if max_bytes is None else max_bytes
+    )
     if not payload:
         return None, None
 

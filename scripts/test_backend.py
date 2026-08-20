@@ -790,6 +790,58 @@ check(
 )
 check("timeouts are not cert problems", net._is_cert_error(OSError("timed out")), False)
 
+section("artwork is not refused at the ceiling meant for everything else")
+# A hero is a wide lossless PNG served as somebody uploaded it, and the general
+# 12MB ceiling refused real artwork a user had picked -- twice in one diagnostic
+# report, both times leaving three of four slots filled and the hero blank with
+# nothing said. Artwork therefore has its own, larger number.
+class _FakeResponse:
+    def __init__(self, payload):
+        self._payload = payload
+        self.headers = {"Content-Type": "image/png"}
+
+    def read(self, size=-1):
+        return self._payload[:size] if size and size >= 0 else self._payload
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        return False
+
+
+_asked_for = []
+_real_urlopen = net._urlopen
+_hero = b"x" * (20 * 1024 * 1024)
+
+
+def _fake_urlopen(request, *args, **kwargs):
+    _asked_for.append(getattr(request, "full_url", request))
+    return _FakeResponse(_hero)
+
+
+net._urlopen = _fake_urlopen
+try:
+    check("the image ceiling is above the general one",
+          net.MAX_IMAGE_BYTES > 12 * 1024 * 1024, True)
+    # 20MB: over the old ceiling, under the new one. This is the case from the
+    # report -- it used to come back as nothing at all.
+    _uri, _kind = net.get_data_uri("https://cdn2.steamgriddb.com/hero/x.png")
+    check("a hero the old ceiling refused now lands", bool(_uri), True)
+    check("and is still recognised as a png", _kind, "png")
+    # Everything else keeps the ceiling it had; artwork is the one thing fetched
+    # at a size somebody else chose.
+    check("a caller that is not fetching an image is unaffected",
+          net.get_bytes("https://example.test/x.bin")[0], None)
+    # Whatever number is chosen, something will exceed it one day -- so the
+    # refusal has to be reportable rather than silent.
+    _failure = {}
+    net.get_bytes("https://example.test/x.bin", failure=_failure)
+    check("and a refusal for size says so, rather than reading as no answer",
+          _failure.get("oversized"), True)
+finally:
+    net._urlopen = _real_urlopen
+
 section("probe connections -- reused between probes, and never reused when broken")
 # Artwork probing is a dozen or more requests to one host in a row, and a fresh
 # TLS handshake for each was most of the wait. Connections are therefore kept per
