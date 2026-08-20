@@ -40,7 +40,7 @@ export const MANAGE_ROUTE = "/deckyemu/manage";
 export const tabRoute = (tab: string) => `${MANAGE_ROUTE}/${tab}`;
 
 /** The tabs anything outside the page is allowed to ask for by name. */
-export type ManageTab = "artwork" | "retroarch" | "emulators";
+export type ManageTab = "artwork" | "retroarch" | "emulators" | "updates";
 
 /**
  * Navigate to the setup page, optionally straight to one tab.

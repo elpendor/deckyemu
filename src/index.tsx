@@ -12,14 +12,17 @@ import { useCallback, useEffect, useState } from "react";
 import { FaCog, FaGamepad } from "react-icons/fa";
 
 import {
+  checkForUpdate,
   getStatus,
   listAdded,
   setSettings,
   shortcutHealth,
   type AddedGame,
   type RetroArchStatus,
+  type UpdateCheck,
 } from "./backend";
 import { deviceGate } from "./deviceGate";
+import { updateBadge } from "./updateBadge";
 import { AddGamePanel } from "./AddGamePanel";
 import { editGameMenuItem } from "./EditGameMenuItem";
 import { refreshAddedGames, rememberAddedGames } from "./addedGames";
@@ -79,6 +82,7 @@ function Content() {
   // Shown while retrying, so a wait after a reload does not look like a freeze.
   const [waitNote, setWaitNote] = useState("");
   const [health, setHealth] = useState<ShortcutCounts | null>(null);
+  const [update, setUpdate] = useState<UpdateCheck | null>(null);
 
   // Its own endpoint rather than the full audit, which walks the ROM library
   // and every previous install looking for things this does not need. Failure
@@ -89,6 +93,26 @@ function Content() {
       setHealth(await shortcutHealth());
     } catch (error) {
       console.error("[deckyemu] could not check shortcut health", error);
+    }
+  }, []);
+
+  /*
+   * Unforced, so the backend's hourly cache decides whether this costs anything:
+   * opening the panel twenty times in an evening asks GitHub once, and the cache
+   * now survives a backend restart so a reload does not reset that.
+   *
+   * Nothing is retried and no failure reaches the screen. Nobody opened the
+   * Quick Access panel to check for updates -- it is answered here because this
+   * is the screen people actually open, and until now nothing asked at all
+   * unless you went to Manage and pressed a button. A check that fails should
+   * therefore leave no trace here; the Updates tab explains it to whoever goes
+   * looking.
+   */
+  const loadUpdate = useCallback(async () => {
+    try {
+      setUpdate(await checkForUpdate(false));
+    } catch (error) {
+      console.error("[deckyemu] could not check for updates", error);
     }
   }, []);
 
@@ -135,9 +159,31 @@ function Content() {
     void loadStatus();
     loadGames();
     void loadHealth();
-  }, [visible, loadStatus, loadGames, loadHealth]);
+    void loadUpdate();
+  }, [visible, loadStatus, loadGames, loadHealth, loadUpdate]);
 
   const nudge = shortcutNudge(health);
+  const badge = updateBadge(update);
+
+  /*
+   * Written once because it renders in two places, and the second one is not
+   * decoration: `check_for_update` is on the backend's ungated list precisely so
+   * that a device wrongly refused by the gate can still update its way out. A
+   * block screen with no way to reach a newer build would make that escape
+   * hatch theoretical.
+   */
+  const updateRow = badge && (
+    <>
+      <PanelSectionRow>
+        <Field label={badge.label} description={badge.description} />
+      </PanelSectionRow>
+      <PanelSectionRow>
+        <ButtonItem layout="below" onClick={() => openManagePage("updates")}>
+          See what's new
+        </ButtonItem>
+      </PanelSectionRow>
+    </>
+  );
 
   const openManage = useCallback(() => openManagePage(), []);
 
@@ -207,6 +253,7 @@ function Content() {
             Use it anyway
           </ButtonItem>
         </PanelSectionRow>
+        {updateRow}
       </PanelSection>
     );
   }
@@ -286,6 +333,12 @@ function Content() {
             </PanelSectionRow>
           </>
         )}
+
+        {/* Last on the section, because it is the least urgent thing on it: a
+            newer version is worth knowing about and is never the reason the
+            panel was opened. Above the add flow it would put a version number
+            between somebody and the button they came for. */}
+        {updateRow}
       </PanelSection>
 
       {canAddGames && <AddGamePanel status={status} onGameAdded={loadGames} />}
