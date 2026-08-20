@@ -4,6 +4,20 @@ import { callable } from "@decky/api";
  * Emulators: what is installed, the one-click catalog, and hand-registered ones.
  */
 
+/** Whether this is a Steam Deck, and whether the user waived the answer. */
+export interface DeviceState {
+  /** Valve hardware. The only field anything should branch on for "is a Deck". */
+  supported: boolean;
+  /** `supported`, or the user turned the override on. Gates the whole UI. */
+  allowed: boolean;
+  /** The override is on. Distinguishes "fine" from "continuing anyway". */
+  waived: boolean;
+  /** "Steam Deck (OLED)", or the vendor and product this machine reported. */
+  model: string;
+  /** "deck" | "valve-unknown" | "not-valve" | "unknown" -- picks the wording. */
+  why: string;
+}
+
 export interface RetroArchStatus {
   found: boolean;
   kind: "" | "flatpak" | "native" | "appimage";
@@ -25,6 +39,19 @@ export interface RetroArchStatus {
   waiting_rom_dir: string;
   /** The user's home, resolved by the backend. Never hardcode /home/deck. */
   home_dir: string;
+  /**
+   * What machine this is, and whether the plugin will do anything on it.
+   *
+   * Carried here rather than fetched separately because the panel cannot render
+   * until it knows: a second round trip would only be a chance to show the real
+   * UI for a moment on hardware that is not meant to have it.
+   *
+   * Optional because a backend older than this field is a real thing during an
+   * update, and `undefined` has to read as "supported" -- refusing to render on
+   * a Deck because the answer had not arrived would be a far worse bug than the
+   * one this exists to prevent.
+   */
+  device?: DeviceState;
 }
 
 /** A user-registered standalone emulator, e.g. Dolphin or PCSX2. */

@@ -33,6 +33,7 @@ import plugin_firmware
 import plugin_packages
 import plugin_startup
 import ra_cores
+import hardware
 import ra_detect
 import releases
 import romshelf
@@ -178,7 +179,84 @@ def _log_failures(cls):
     return cls
 
 
+#: Methods that answer even on hardware the plugin does not support.
+#:
+#: The gate is a backstop, not the user interface -- the panel shows the
+#: explanation and never calls the rest. What survives is therefore only what is
+#: needed to *see* that explanation, act on it, and report it if it is wrong:
+#:
+#: * what the panel asks for on mount, or it renders nothing to explain with
+#: * the settings pair, which is how the override is turned on
+#: * frontend error logging, which must never be the thing that fails
+#: * the updater, so a machine can always be moved to a version that fixes this
+#: * the diagnostic report, which is how somebody tells us this gate is wrong
+#:
+#: An allowlist rather than a denylist because the risk is asymmetric: a
+#: mutating method left out of a denylist runs on hardware nothing has tested,
+#: while one wrongly left out of this list is a visible, reported failure.
+UNGATED_METHODS = frozenset({
+    "get_status",
+    "list_added",
+    "shortcut_health",
+    "get_settings",
+    "set_settings",
+    "log_frontend_error",
+    "plugin_version",
+    "check_for_update",
+    "stage_update",
+    "start_report",
+    "end_report",
+    "file_server_status",
+    "stop_file_server",
+})
+
+
+class UnsupportedDevice(Exception):
+    """Raised by the gate. Never shown -- the panel explains it properly."""
+
+
+def _require_supported_device(cls):
+    """Refuse the methods that change things when this is not a Steam Deck.
+
+    Everything here was built and measured on one, so anywhere else is untested
+    rather than merely unusual, and the failures it produces cannot be
+    reproduced on hardware the project targets.
+
+    The hardware is asked each time rather than cached at load: a cached answer
+    would be one more thing to be wrong after a suspend, an update or a change
+    nobody predicted, and reading two small sysfs files is not a cost worth
+    optimising against correctness.
+
+    Applied over `_log_failures` -- the gate is the inner wrapper, so a refusal
+    is logged with the method that caused it exactly like any other failure.
+    """
+    def wrap(name, method):
+        @functools.wraps(method)
+        async def gated(self, *args, **kwargs):
+            if not hardware.detect()["supported"]:
+                allowed = await self._run(store.get_settings)
+                if not allowed.get("allow_unsupported_device"):
+                    raise UnsupportedDevice(
+                        "%s is not available: this is not a Steam Deck." % name
+                    )
+            return await method(self, *args, **kwargs)
+
+        return gated
+
+    for klass in cls.__mro__:
+        if klass is object:
+            continue
+        for name, method in list(vars(klass).items()):
+            if name.startswith("_") or not inspect.iscoroutinefunction(method):
+                continue
+            if name in UNGATED_METHODS:
+                continue
+            setattr(klass, name, wrap(name, method))
+    return cls
+
+
 @_log_failures
+@_require_supported_device
 class Plugin(
     plugin_accounts.Accounts,
     plugin_audit.Audit,
@@ -194,6 +272,10 @@ class Plugin(
         self._emulators = []
         decky.logger.info("DeckyEmu starting")
         _check_own_modules()
+        # Said once, at the top of the log, so a report from unsupported
+        # hardware explains itself before anyone reads a line of what went
+        # wrong on it.
+        hardware.log_once()
 
         # Ordered, and each one on its own. The sequence stays here because this
         # is where it is read; the steps themselves are plugin_startup.py.
@@ -340,12 +422,17 @@ class Plugin(
         #
         # Still one executor hop each rather than one per field per call: this is
         # the call the panel makes every time it mounts.
-        home, default_dir, waiting = await asyncio.gather(
+        home, default_dir, waiting, device = await asyncio.gather(
             self._run(ra_detect.user_home),
             self._run(ra_detect.default_rom_dir),
             # Where the picker should open instead, when a transferred file is
             # still sitting unadded. "" the rest of the time, which is most of it.
             self._run(fileserver.waiting_dir),
+            # What machine this is. Carried on the call the panel already makes
+            # on mount rather than added as a second one: the panel cannot
+            # render anything until it knows, so a separate round trip would
+            # only be a chance to show the wrong thing first.
+            self._device_state(),
         )
         if not self._install:
             return {
@@ -359,6 +446,7 @@ class Plugin(
                 "default_rom_dir": default_dir,
                 "waiting_rom_dir": waiting,
                 "home_dir": home,
+                "device": device,
             }
         return {
             "found": True,
@@ -371,7 +459,21 @@ class Plugin(
             "default_rom_dir": default_dir,
             "waiting_rom_dir": waiting,
             "home_dir": home,
+            "device": device,
         }
+
+    async def _device_state(self):
+        """What the hardware is, plus whether the user has waived the answer.
+
+        Both together because neither is usable alone: `supported` decides the
+        message, `allowed` decides whether anything works, and the panel needs
+        to say "unsupported, and you chose to continue" as its own state rather
+        than as the absence of a warning.
+        """
+        found = await self._run(hardware.detect)
+        settings = await self._run(store.get_settings)
+        waived = bool(settings.get("allow_unsupported_device"))
+        return dict(found, allowed=found["supported"] or waived, waived=waived)
 
     async def list_cores(self):
         """Every way to run a ROM: libretro cores plus custom emulators.

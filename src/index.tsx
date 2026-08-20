@@ -14,10 +14,12 @@ import { FaCog, FaGamepad } from "react-icons/fa";
 import {
   getStatus,
   listAdded,
+  setSettings,
   shortcutHealth,
   type AddedGame,
   type RetroArchStatus,
 } from "./backend";
+import { deviceGate } from "./deviceGate";
 import { AddGamePanel } from "./AddGamePanel";
 import { editGameMenuItem } from "./EditGameMenuItem";
 import { refreshAddedGames, rememberAddedGames } from "./addedGames";
@@ -168,6 +170,41 @@ function Content() {
             }}
           >
             Try again
+          </ButtonItem>
+        </PanelSectionRow>
+      </PanelSection>
+    );
+  }
+
+  // Before anything else that renders a working plugin. Nothing here has been
+  // tested off a Steam Deck, so on other hardware the panel is the explanation
+  // and the way past it, and nothing else -- showing the add flow first and the
+  // warning underneath would be an invitation with a footnote.
+  const gate = deviceGate(status.device);
+  if (gate.blocked) {
+    return (
+      <PanelSection title={gate.title}>
+        <PanelSectionRow>
+          <Field description={gate.body} />
+        </PanelSectionRow>
+        <PanelSectionRow>
+          <Field description={gate.caveat} />
+        </PanelSectionRow>
+        <PanelSectionRow>
+          <ButtonItem
+            layout="below"
+            onClick={() => {
+              // Awaited before re-reading, or the status call races the write
+              // and the panel re-renders still blocked -- which reads as the
+              // button not working and gets pressed again.
+              setSettings({ allow_unsupported_device: true })
+                .then(() => loadStatus())
+                .catch((error) =>
+                  console.error("[deckyemu] could not set the device override", error),
+                );
+            }}
+          >
+            Use it anyway
           </ButtonItem>
         </PanelSectionRow>
       </PanelSection>

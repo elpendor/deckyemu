@@ -123,6 +123,13 @@ DEFAULT_SETTINGS = {
     "last_rom_dir": "",
     # Remembered per-system so picking a core twice in a row is one tap.
     "last_core_by_ext": {},
+    # Set by the user on hardware this plugin does not claim to work on, to say
+    # they have read that and want to continue anyway. False is not "unknown":
+    # the gate asks the hardware every time and this only ever waives the
+    # answer, so a device that starts reporting itself correctly needs no
+    # cleanup here. Recorded in the diagnostic report, so a bug from an
+    # unsupported machine says so on its own.
+    "allow_unsupported_device": False,
 }
 
 _lock = threading.Lock()

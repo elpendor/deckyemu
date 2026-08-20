@@ -84,6 +84,24 @@ for directory in (decky.DECKY_PLUGIN_RUNTIME_DIR, decky.DECKY_PLUGIN_SETTINGS_DI
     os.makedirs(directory, exist_ok=True)
 sys.path.insert(0, os.path.join(REPO_ROOT, "py_modules"))
 
+import hardware  # noqa: E402
+
+# Answer as a Steam Deck for the whole run.
+#
+# Nothing in this plugin is supported off one, so `Plugin` refuses almost every
+# method elsewhere -- and a suite that runs on Windows and on CI's ubuntu is
+# "elsewhere" every time. Without this the run stops at the first gated call
+# with a traceback rather than a FAIL line, which is worse than a failure: it
+# looks like zero failures to anything counting them.
+#
+# Faked at the lowest point that still exercises the real logic. `detect()`,
+# `describe()` and the gate all run exactly as they do on a device; only the two
+# sysfs reads are answered. The other direction -- what happens on hardware that
+# is not a Deck -- is scripts/tests/test_device_gate.py, which fakes this same
+# function the other way.
+_DECK_DMI = {"sys_vendor": "Valve", "product_name": "Galileo"}
+hardware._dmi = lambda name: _DECK_DMI.get(name, "")
+
 import launchers  # noqa: E402
 import libretro_meta as meta  # noqa: E402
 import ra_cores  # noqa: E402

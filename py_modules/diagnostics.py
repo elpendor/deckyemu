@@ -40,6 +40,7 @@ import urllib.parse
 import decky
 
 import releases
+import hardware
 import store
 import sysenv
 
@@ -332,6 +333,16 @@ def build(version, install, emulators_registered, library, catalog_installed=(),
                     "plugin  %s (%s)" % (version.get("version", "?"), version.get("build", "?")),
                     "built   %s" % (version.get("built_at") or "locally"),
                     "os      %s" % (_os_release() or "unknown"),
+                    # Above `home` because it changes how every line under it
+                    # should be read: nothing below was measured anywhere but a
+                    # Deck, so a report from other hardware has to say so before
+                    # anyone spends time on what it contains.
+                    "device  %s%s" % (
+                        hardware.describe(),
+                        " -- user chose to continue"
+                        if store.get_settings().get("allow_unsupported_device")
+                        else "",
+                    ),
                     "home    %s" % sysenv.user_home(),
                 ]
             ),
