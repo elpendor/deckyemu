@@ -2920,6 +2920,84 @@ store.set_settings({"last_core_by_ext": {}})
 plugin._cores = [N64_CORE, SNES_CORE]
 
 # --------------------------------------------------------------------------
+import platforms  # noqa: E402
+
+section("a disc image is suggested a core for the system, not for the last game")
+# Straight from a user's diagnostic report. `.chd` is claimed by eighteen cores
+# across PS1, PS2, Dreamcast, PSP, Saturn and Mega-CD, so the extension narrows
+# nothing -- and `last_core_by_ext` is keyed on the extension alone, so it
+# remembers whichever *system* was added last. Within one session the same
+# Dreamcast image was suggested flycast, then swanstation, then ppsspp, and a
+# PS2 image was suggested flycast. Accepting one of those writes a shortcut that
+# loads the core, fails on the disc and quits -- which is reported as "the game
+# will not launch", not as a bad suggestion.
+FLYCAST_CORE = dict(N64_CORE, id="flycast", system_name="Dreamcast",
+                    databases=["Sega - Dreamcast", "Sega - Naomi"],
+                    extensions=["chd", "cue", "gdi"])
+SWANSTATION_CORE = dict(N64_CORE, id="swanstation", system_name="PlayStation",
+                        databases=["Sony - PlayStation"],
+                        extensions=["chd", "cue", "m3u"])
+PSP_CORE = dict(N64_CORE, id="ppsspp", system_name="PlayStation Portable",
+                databases=["Sony - PlayStation Portable"],
+                extensions=["chd", "iso", "cso"])
+plugin._cores = [FLYCAST_CORE, SWANSTATION_CORE, PSP_CORE]
+
+
+# Forward slashes throughout: system_for_folder reads a path on the target
+# system with posixpath, so a Windows separator here would have it find a
+# different parent and this suite runs on both.
+def _disc(folder, name="Some Game (USA).chd"):
+    directory = "%s/discs/%s" % (TMP.replace(os.sep, "/"), folder)
+    os.makedirs(directory, exist_ok=True)
+    path = "%s/%s" % (directory, name)
+    open(path, "w").close()
+    return path
+
+
+def _suggest(folder, name="Some Game (USA).chd"):
+    return run(plugin.probe_rom(_disc(folder, name)))["suggested_core_id"]
+
+
+# The exact sequence from the report: each add teaches the wrong lesson for the
+# next one. Every line below suggested the previously used core before this.
+store.set_settings({"last_core_by_ext": {"chd": "swanstation"}})
+check("a Dreamcast image after a PS1 one is still Dreamcast",
+      _suggest("dreamcast"), "flycast")
+store.set_settings({"last_core_by_ext": {"chd": "ppsspp"}})
+check("and after a PSP one too", _suggest("dreamcast"), "flycast")
+store.set_settings({"last_core_by_ext": {"chd": "flycast"}})
+check("a PS1 image after a Dreamcast one is still PS1",
+      _suggest("psx"), "swanstation")
+check("and the folder ES-DE calls ps1 means the same thing",
+      _suggest("ps1"), "swanstation")
+check("a PSP image is not handed the last disc core either",
+      _suggest("psp"), "ppsspp")
+# The report's PS2 image was suggested flycast. No core here reads PS2, so the
+# right answer is not "flycast" but "whatever the list already offered" -- the
+# folder must not invent a preference it has no candidate for.
+check("a folder no installed core covers changes nothing",
+      _suggest("ps2"), "flycast")
+# The remembered core still decides when the folder is silent, which is the
+# whole reason it exists.
+check("a folder that names no system leaves the memory in charge",
+      _suggest("Downloads"), "flycast")
+check("and the others are all still offered",
+      sorted(c["id"] for c in
+             run(plugin.probe_rom(_disc("dreamcast")))["matching_cores"]),
+      ["flycast", "ppsspp", "swanstation"])
+
+store.set_settings({"last_core_by_ext": {}})
+plugin._cores = [N64_CORE, SNES_CORE]
+
+# Both naming conventions are on the device, so the plugin's own folder names
+# have to be keys here too -- kept in step by this check rather than by an
+# import, the way installer.target_core_dir is.
+check("every system named here round-trips through the folder it is filed in",
+      sorted({db for db in platforms.SYSTEM_FOLDERS.values()
+              if platforms.folder_name(db) not in platforms.SYSTEM_FOLDERS}),
+      [])
+
+# --------------------------------------------------------------------------
 section("which system a multi-system core is being asked to run")
 # The failure this prevents happened on a real device: three Mega Drive ROMs
 # filed under Game Gear, with Game Gear covers, on a Game Gear shelf. Genesis

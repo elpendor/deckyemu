@@ -431,8 +431,29 @@ class Plugin(
         settings = await self._run(store.get_settings)
         remembered = settings.get("last_core_by_ext", {}).get(match_extension, "")
 
-        if remembered:
-            matching.sort(key=lambda core: core["id"] != remembered)
+        # What the folder holding the ROM says the system is, which for a disc
+        # image is the only evidence there is. See platforms.SYSTEM_FOLDERS.
+        folder_system = await self._run(platforms.system_for_folder, rom_path)
+
+        # Evidence about this file beats a preference carried over from the
+        # last one. `last_core_by_ext` is keyed on the extension alone, so for
+        # `.chd` -- eighteen cores across six systems -- it remembers whichever
+        # system was added last and suggests it for the next file whatever that
+        # file is. A Dreamcast image suggested SwanStation is a shortcut that
+        # cannot work, and it is reported as "the game will not launch".
+        #
+        # One sort with both terms rather than two passes: the order the two
+        # rules apply in is the whole behaviour, and a second `.sort()` silently
+        # overrules the first. Ties keep the order list_cores gave them, and
+        # when neither term has anything to say the key is constant and the list
+        # is left exactly as it was.
+        matching.sort(
+            key=lambda core: (
+                bool(folder_system)
+                and folder_system not in (core.get("databases") or []),
+                core["id"] != remembered,
+            )
+        )
 
         result = {
             "extension": extension,

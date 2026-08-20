@@ -9,6 +9,7 @@ plugin already stores per game, so existing entries benefit without re-adding
 anything.
 """
 
+import posixpath
 import re
 
 SHORT_NAMES = {
@@ -223,3 +224,85 @@ def system_for_extension(databases, extension):
     if wanted and wanted in (databases or []):
         return wanted
     return ""
+
+
+# The folder a ROM sits in, when that folder names a system.
+#
+# This exists for the case EXTENSION_SYSTEMS deliberately refuses: disc images.
+# `.chd` is claimed by eighteen cores spanning PS1, PS2, Dreamcast, PSP, Saturn
+# and Mega-CD, so the extension cannot narrow it and there is nothing else in
+# the file to ask. A directory called `dreamcast` is not proof, but it is the
+# only evidence anywhere near the file, and it is evidence somebody typed on
+# purpose.
+#
+# Read off a real report: within one session the same Dreamcast `.chd` was
+# suggested flycast, then swanstation, then ppsspp, and a PS2 image was
+# suggested flycast -- because the only input was `last_core_by_ext`, which is
+# keyed on the extension alone and therefore remembers whichever *system* was
+# added last. Accepting one of those wrong suggestions produces a shortcut that
+# loads the core, fails on the disc and quits, which reads as "the game will
+# not launch".
+#
+# Two naming conventions, because both are on the device: the one ES-DE and
+# EmuDeck lay down (`psx`, `gc`, `megacd`), and this plugin's own
+# `folder_name()` (`ps1`, `gamecube`, `sega-cd`). A test keeps the second half
+# honest rather than an import -- every database named here must round-trip
+# through folder_name() back to a key in this table.
+#
+# Only disc systems are listed. Everything else already has a better answer
+# from the file itself, and a folder is the weaker evidence of the two.
+SYSTEM_FOLDERS = {
+    # Sony
+    "psx": "Sony - PlayStation",
+    "ps1": "Sony - PlayStation",
+    "playstation": "Sony - PlayStation",
+    "ps2": "Sony - PlayStation 2",
+    "psp": "Sony - PlayStation Portable",
+    # Sega
+    "dreamcast": "Sega - Dreamcast",
+    "dc": "Sega - Dreamcast",
+    "saturn": "Sega - Saturn",
+    "saturnjp": "Sega - Saturn",
+    "segacd": "Sega - Mega-CD - Sega CD",
+    "megacd": "Sega - Mega-CD - Sega CD",
+    "megacdjp": "Sega - Mega-CD - Sega CD",
+    "sega-cd": "Sega - Mega-CD - Sega CD",
+    "naomi": "Sega - Naomi",
+    "naomigd": "Sega - Naomi",
+    "naomi2": "Sega - Naomi 2",
+    "naomi-2": "Sega - Naomi 2",
+    "atomiswave": "Atomiswave",
+    # Nintendo
+    "gc": "Nintendo - GameCube",
+    "gamecube": "Nintendo - GameCube",
+    "ngc": "Nintendo - GameCube",
+    "wii": "Nintendo - Wii",
+    # NEC
+    "pcenginecd": "NEC - PC Engine CD - TurboGrafx-CD",
+    "tg-cd": "NEC - PC Engine CD - TurboGrafx-CD",
+    "turbografx-cd": "NEC - PC Engine CD - TurboGrafx-CD",
+    "pcfx": "NEC - PC-FX",
+    "pc-fx": "NEC - PC-FX",
+    # SNK
+    "neogeocd": "SNK - Neo Geo CD",
+    "neogeocdjp": "SNK - Neo Geo CD",
+    "neo-geo-cd": "SNK - Neo Geo CD",
+    # Everyone else
+    "3do": "The 3DO Company - 3DO",
+    "amigacd32": "Commodore - CD32",
+    "cd32": "Commodore - CD32",
+    "cdtv": "Commodore - CDTV",
+    "cdimono1": "Philips - CD-i",
+    "cd-i": "Philips - CD-i",
+}
+
+
+def system_for_folder(rom_path):
+    """Which system the directory holding `rom_path` names, or "".
+
+    posixpath rather than os.path: this is a path on the target system, and on
+    Windows os.path would take a backslash as a separator and find a different
+    parent -- which the test suite, which runs on both, would not notice.
+    """
+    parent = posixpath.basename(posixpath.dirname(rom_path or ""))
+    return SYSTEM_FOLDERS.get(parent.strip().lower(), "")
