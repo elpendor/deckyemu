@@ -43,7 +43,7 @@ function explain(device: DeviceState): { title: string; body: string } {
   return {
     title: "Not a Steam Deck",
     body:
-      `DeckyEmu is for the Steam Deck, and this is ${device.model}. ` +
+      "DeckyEmu is for the Steam Deck, and this machine is not one. " +
       "Everything here — Game Mode, the controller setup, the emulator configuration — " +
       "is built and tested on Deck hardware and on nothing else, so it is not supported here yet.",
   };

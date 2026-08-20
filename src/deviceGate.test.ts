@@ -24,8 +24,17 @@ describe("the panel on hardware this plugin does not support", () => {
     expect(deviceGate(desktop).blocked).toBe(true);
   });
 
-  it("names what the machine actually is, so the message is checkable", () => {
-    expect(deviceGate(desktop).body).toContain("Valve-less PC");
+  // What the machine reports goes in the log and the diagnostic report, not on
+  // screen. The panel has one thing to say -- this is not a Deck -- and naming
+  // some half-parsed DMI string back at the reader only invites an argument
+  // about the label instead of the point.
+  it("never repeats the machine's own name back at it", () => {
+    for (const why of ["not-valve", "unknown"]) {
+      const gate = deviceGate({ ...desktop, why });
+      for (const text of [gate.title, gate.body, gate.caveat]) {
+        expect(text).not.toContain("Valve-less PC");
+      }
+    }
   });
 
   // The expensive failure is the opposite one: a block screen on a real Deck
@@ -56,7 +65,7 @@ describe("the panel on hardware this plugin does not support", () => {
   // "Could not identify this device" is not the same claim as "this is not a
   // Deck", and a Deck whose DMI is unreadable must not be told it is a desktop.
   it("does not accuse a machine that simply would not say what it is", () => {
-    const gate = deviceGate({ ...desktop, why: "unknown", model: "unknown" });
+    const gate = deviceGate({ ...desktop, why: "unknown" });
     expect(gate.blocked).toBe(true);
     expect(gate.title).toBe("Could not identify this device");
   });
