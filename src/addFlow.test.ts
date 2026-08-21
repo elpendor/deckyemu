@@ -11,8 +11,16 @@ import { describe, expect, it, vi } from "vitest";
  * of the same bug: the previous game's name and cover on this one.
  *
  * `./backend` is mocked because it imports `@decky/api`, which will not load
- * under Node. `./romDraft` is not: the draft is the thing under test.
+ * under Node -- and `@decky/api` itself now, because `addFlow` reaches it
+ * directly for the toast and the emulator install events. `./romDraft` is not:
+ * the draft is the thing under test.
  */
+
+vi.mock("@decky/api", () => ({
+  toaster: { toast: vi.fn() },
+  addEventListener: vi.fn(),
+  removeEventListener: vi.fn(),
+}));
 
 let answer: (value: unknown) => void = () => undefined;
 const resolveGame = vi.fn(

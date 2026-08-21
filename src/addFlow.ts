@@ -6,7 +6,13 @@
  * draft, so the work lives here rather than being duplicated per caller.
  */
 
+import { addEventListener, removeEventListener, toaster } from "@decky/api";
+
 import {
+  installEmulator,
+  installPs3Package,
+  installPs4Package,
+  installVitaPackage,
   listInstalledPs3Games,
   listInstalledPs4Games,
   listInstalledVitaGames,
@@ -19,7 +25,13 @@ import {
   suggestCoresForExtension,
 } from "./backend";
 import { chooseSystem } from "./corePicker";
-import { draftGeneration, newDraftGeneration, updateDraft } from "./romDraft";
+import { pendingPackage as pendingPackageOf } from "./packageState";
+import {
+  draftGeneration,
+  getDraft,
+  newDraftGeneration,
+  updateDraft,
+} from "./romDraft";
 import { logError } from "./logError";
 
 /**
@@ -243,5 +255,203 @@ export async function selectRom(romPath: string): Promise<void> {
         probeError instanceof Error ? probeError.message : String(probeError)
       }`,
     });
+  }
+}
+
+
+/**
+ * Unpack the package the draft is pointing at, then carry on from the game.
+ *
+ * Here rather than in `AddGamePanel` for the same reason the flags it sets live
+ * in the draft: this outlasts the panel by minutes. A PS4 package is a long job
+ * and the user will open the ROM picker, look at their library or close Quick
+ * Access while it runs -- all of which unmount the panel. Anything owned by the
+ * component stops existing at that moment.
+ *
+ * `romPath` is read from the draft rather than passed, so there is one answer to
+ * which file this is about and it is the same one the rest of the flow uses.
+ */
+export function unpackPendingPackage(system: Console, keyName = ""): void {
+  const romPath = getDraft().romPath;
+  if (!romPath) return;
+  // Which draft this install belongs to. Nothing awaits it, so the user can
+  // pick another ROM while it runs -- and then the answer is about a file they
+  // have moved on from. Written in anyway, it replaced their new selection with
+  // the game that came out of the package. See `newDraftGeneration`.
+  const asked = draftGeneration();
+  const stale = () => draftGeneration() !== asked;
+  updateDraft({
+    error: "",
+    unpacking: true,
+    unpackPercent: 0,
+    unpackStatus: "Starting...",
+  });
+  void (async () => {
+    try {
+      const result =
+        system === "ps4"
+          ? await installPs4Package(romPath)
+          : system === "vita"
+            ? // `keyName` is only set when the user picked a key that is not
+              // named for this game. Without it the backend uses the one named
+              // after the package, and refuses rather than guessing.
+              await installVitaPackage(romPath, keyName)
+            : await installPs3Package(romPath);
+      if (!result.ok || !result.title_id) {
+        // A failure still has to reach somebody. The error row is the right
+        // place for it only while this is still the game on screen; after that
+        // it would be an error about a file the panel is not showing.
+        if (stale()) {
+          toaster.toast({
+            title: "That package did not install",
+            body: result.error ?? "",
+          });
+        } else {
+          updateDraft({ error: result.error ?? "The package did not install." });
+        }
+        return;
+      }
+      toaster.toast({
+        title: `${result.title} installed`,
+        // Worth saying: a licence going in without being asked for is the
+        // difference between a game that boots and one that does not.
+        body:
+          ("licence" in result && result.licence ? "Its licence was installed too. " : "") +
+          // The install happened either way; only the flow into the panel is
+          // abandoned, and the game is still reachable from the list of what
+          // the emulator has installed.
+          (stale()
+            ? "Choose a game to add it from the installed list."
+            : "Finding its artwork."),
+      });
+      if (stale()) return;
+      await selectPackagedGame(system, result.title_id);
+    } catch (installError) {
+      logError("package install failed", installError);
+      if (stale()) return;
+      updateDraft({
+        error:
+          installError instanceof Error
+            ? installError.message
+            : "The package did not install.",
+      });
+    } finally {
+      // In a finally, so no path out of here can leave the panel claiming to
+      // still be unpacking. Not once the draft has moved on: the flag there
+      // belongs to whatever is being added now.
+      if (!stale()) updateDraft({ unpacking: false, unpackPercent: 0, unpackStatus: "" });
+    }
+  })();
+}
+
+/**
+ * Install the emulator a package needs, then unpack the package.
+ *
+ * One press for two steps because they are one intention: a `.pkg` is only ever
+ * installed *into* an emulator, so with that emulator missing there is nothing
+ * else the user could want here.
+ *
+ * **The listeners are registered here, at module scope, and that is the whole
+ * point of this living in `addFlow`.** They were an effect inside the panel
+ * first, and it did not work: installing an emulator takes half a minute and
+ * launches it headless in gamescope, so the Quick Access panel is unmounted for
+ * most of it. `emulator_install_done` then fired with nothing subscribed, the
+ * unpack never followed, and the row sat on "Installing..." forever. Measured
+ * on a device -- shadPS4 installed at 18:12:37 and the package it was installed
+ * for was still sitting in the transfer folder.
+ *
+ * The draft already held the *flag* across that unmount. Holding the flag and
+ * not the listener is the shape of the bug: half the state survived and the
+ * thing that would act on it did not.
+ *
+ * `installEmulator` starts the install and reports the end by event, unlike
+ * `installCore` which resolves -- which is why there is a subscription at all.
+ */
+export async function installEmulatorAndUnpack(emulatorId: string): Promise<void> {
+  updateDraft({
+    error: "",
+    installingEmulator: emulatorId,
+    emulatorPercent: 0,
+    emulatorStatus: "Starting...",
+  });
+
+  // Only this emulator: an install started from the Emulators tab emits the
+  // same events and must not drive this bar or trigger an unpack nobody asked
+  // for.
+  const onProgress = (id: string, text: string, percent: number) => {
+    if (id !== emulatorId) return;
+    updateDraft({ emulatorStatus: text, emulatorPercent: percent });
+  };
+
+  const stop = () => {
+    removeEventListener("emulator_install_progress", progress);
+    removeEventListener("emulator_install_done", done);
+  };
+
+  const onDone = (id: string, ok: boolean, message: string) => {
+    if (id !== emulatorId) return;
+    stop();
+    updateDraft({ installingEmulator: "", emulatorPercent: 0, emulatorStatus: "" });
+    if (!ok) {
+      updateDraft({ error: message || "The install did not complete." });
+      return;
+    }
+    void continueAfterEmulator();
+  };
+
+  const progress = addEventListener<[id: string, text: string, percent: number]>(
+    "emulator_install_progress",
+    onProgress,
+  );
+  const done = addEventListener<[id: string, ok: boolean, message: string]>(
+    "emulator_install_done",
+    onDone,
+  );
+
+  try {
+    const result = await installEmulator(emulatorId);
+    if (!result.ok) {
+      stop();
+      updateDraft({
+        error: result.error ?? "Could not start the install.",
+        installingEmulator: "",
+      });
+    }
+  } catch (startError) {
+    logError("emulator install could not start", startError);
+    stop();
+    updateDraft({ error: "Could not start the install.", installingEmulator: "" });
+  }
+}
+
+/**
+ * Re-read the package now the emulator is there, and unpack it.
+ *
+ * The re-probe is what takes the offer off screen: `emulator_ready` came from
+ * the probe, so without it the row would still be offering an install while the
+ * unpack ran behind it.
+ *
+ * Exported because it is also the recovery path. If the done event is missed
+ * entirely -- the plugin reloading mid-install would do it -- the panel asks on
+ * its next mount whether the emulator arrived, and this is what it calls.
+ */
+export async function continueAfterEmulator(): Promise<boolean> {
+  const romPath = getDraft().romPath;
+  if (!romPath) return false;
+  try {
+    const info = await probeRom(romPath);
+    updateDraft({ probe: info });
+    const nowPending = pendingPackageOf(info);
+    // Gone means the package installed itself somehow, or the file moved.
+    // Either way there is nothing left here to unpack.
+    if (!nowPending || !nowPending.state.emulator_ready) return false;
+    unpackPendingPackage(nowPending.system, getDraft().keyChoice);
+    return true;
+  } catch (probeError) {
+    logError("could not re-read the package after installing", probeError);
+    updateDraft({
+      error: "The emulator is installed. Press install again to unpack the game.",
+    });
+    return false;
   }
 }

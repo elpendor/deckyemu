@@ -25,10 +25,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   getSettings,
   installCore,
-  installEmulator,
-  installPs3Package,
-  installPs4Package,
-  installVitaPackage,
   listAdded,
   listInstalledPs3Games,
   listInstalledPs4Games,
@@ -45,18 +41,18 @@ import {
 } from "./backend";
 import { addPreparedGame } from "./addGame";
 import {
-  draftGeneration,
   getDraft,
   resetDraft,
   subscribeDraft,
   updateDraft,
 } from "./romDraft";
 import {
+  continueAfterEmulator,
+  installEmulatorAndUnpack,
   LOOKUP_FAILED,
   lookupArtwork,
-  selectPackagedGame,
   selectRom,
-  type Console,
+  unpackPendingPackage,
 } from "./addFlow";
 import {
   chooseSystem,
@@ -205,6 +201,33 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
   const lookup = lookupArtwork;
 
   /**
+   * Pick up an emulator install that finished while nothing was listening.
+   *
+   * The listeners live in `addFlow` now, at module scope, so the ordinary case
+   * needs nothing here. This is for the one that survives even that: the plugin
+   * reloading mid-install takes the whole module with it, and the draft comes
+   * back saying an install is running that nothing is waiting on. Without this
+   * the row sits on "Installing..." until the panel is given a different ROM.
+   *
+   * Asking on mount is enough because mounting is when it would be seen. The
+   * answer comes from the probe, which is the same thing that decides whether
+   * the offer is on screen at all.
+   */
+  useEffect(() => {
+    if (!installingEmulator || !romPath) return;
+    let live = true;
+    void (async () => {
+      const carried = await continueAfterEmulator();
+      // Cleared either way: the install is over, or it is not ours to wait for.
+      if (live && carried) updateDraft({ installingEmulator: "" });
+    })();
+    return () => {
+      live = false;
+    };
+    // Deliberately on mount and on the id changing, not on every render.
+  }, [installingEmulator, romPath]);
+
+  /**
    * Look again for a Vita package's licence key whenever this panel comes back.
    *
    * The advice for a missing key is "send it to the same folder", and doing
@@ -276,189 +299,8 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
     };
   }, []);
 
-  /**
-   * The emulator a package needs, then the package.
-   *
-   * One press for two steps because they are one intention: a `.pkg` is only
-   * ever installed *into* an emulator, so with that emulator missing there is
-   * nothing else the user could want here. Splitting it into "install RPCS3"
-   * and then "now press Install again" would be a second press for a decision
-   * already made.
-   *
-   * Unlike `installCore`, `installEmulator` does not resolve when it is done --
-   * it starts the install and the catalog's own events report the end. So this
-   * starts it and the effect below waits, which is also what lets the bar keep
-   * moving when the panel is unmounted and remounted mid-install.
-   */
-  const installEmulatorAndUnpack = useCallback(
-    async (emulatorId: string) => {
-      updateDraft({
-        error: "",
-        installingEmulator: emulatorId,
-        emulatorPercent: 0,
-        emulatorStatus: "Starting...",
-      });
-      try {
-        const result = await installEmulator(emulatorId);
-        if (!result.ok) {
-          updateDraft({
-            error: result.error ?? "Could not start the install.",
-            installingEmulator: "",
-          });
-        }
-      } catch (startError) {
-        logError("emulator install could not start", startError);
-        updateDraft({
-          error: "Could not start the install.",
-          installingEmulator: "",
-        });
-      }
-    },
-    [],
-  );
 
-  /**
-   * Unpacking a PlayStation 3 package, which is a step no other system has.
-   *
-   * A .pkg is not a game until RPCS3 has unpacked it, so the add flow stops
-   * here and carries on afterwards from the EBOOT.BIN that came out -- see
-   * `selectPs3Game`. No window opens: `--headless --installpkg` does a 240MB
-   * package in about five seconds with nothing on screen.
-   */
-  const unpackPackage = useCallback((system: Console, keyName = "") => {
-    if (!romPath) return;
-    // Which draft this install belongs to. It is the longest-running thing the
-    // panel starts and nothing awaits it, so the user can pick another ROM
-    // while it runs -- and then the answer is about a file they have moved on
-    // from. Written in anyway, it replaced their new selection with the game
-    // that came out of the package. See `newDraftGeneration`.
-    const asked = draftGeneration();
-    const stale = () => draftGeneration() !== asked;
-    updateDraft({
-      error: "",
-      unpacking: true,
-      unpackPercent: 0,
-      unpackStatus: "Starting...",
-    });
-    void (async () => {
-      try {
-        const result =
-          system === "ps4"
-            ? await installPs4Package(romPath)
-            : system === "vita"
-              ? // `keyName` is only set when the user picked a key that is not
-                // named for this game. Without it the backend uses the one
-                // named after the package, and refuses rather than guessing.
-                await installVitaPackage(romPath, keyName)
-              : await installPs3Package(romPath);
-        if (!result.ok || !result.title_id) {
-          // A failure still has to reach somebody. The error row is the right
-          // place for it only while this is still the game on screen; after
-          // that it would be an error about a file the panel is not showing.
-          if (stale()) {
-            toaster.toast({
-              title: "That package did not install",
-              body: result.error ?? "",
-            });
-          } else {
-            updateDraft({ error: result.error ?? "The package did not install." });
-          }
-          return;
-        }
-        toaster.toast({
-          title: `${result.title} installed`,
-          // Worth saying: a licence going in without being asked for is the
-          // difference between a game that boots and one that does not.
-          body:
-            ("licence" in result && result.licence
-              ? "Its licence was installed too. "
-              : "") +
-            // The install happened either way; only the flow into the panel is
-            // abandoned, and the game is still reachable from the list of what
-            // the emulator has installed.
-            (stale()
-              ? "Choose a game to add it from the installed list."
-              : "Finding its artwork."),
-        });
-        if (stale()) return;
-        await selectPackagedGame(system, result.title_id);
-      } catch (installError) {
-        logError("package install failed", installError);
-        if (stale()) return;
-        updateDraft({
-          error:
-            installError instanceof Error
-              ? installError.message
-              : "The package did not install.",
-        });
-      } finally {
-        // In a finally, so no path out of here can leave the panel claiming to
-        // still be unpacking -- which is the whole reason this was rewritten.
-        // Not once the draft has moved on: the flag there belongs to whatever
-        // is being added now, and clearing it is not this install's business.
-        if (!stale()) updateDraft({ unpacking: false, unpackPercent: 0, unpackStatus: "" });
-      }
-    })();
-  }, [romPath]);
 
-  /**
-   * Wait for that install, then carry on into the unpack.
-   *
-   * Subscribed only while one is running, and only to the id this panel
-   * started: an install begun from the Emulators tab emits the same events and
-   * must not drive this bar or trigger an unpack nobody asked for.
-   *
-   * The re-probe is what makes the package rows correct again -- `emulator_ready`
-   * came from the probe, so without it the offer would still be on screen while
-   * the unpack ran behind it.
-   */
-  useEffect(() => {
-    if (!installingEmulator) return;
-    const wanted = installingEmulator;
-
-    const onProgress = (id: string, text: string, percent: number) => {
-      if (id !== wanted) return;
-      updateDraft({ emulatorStatus: text, emulatorPercent: percent });
-    };
-
-    const onDone = (id: string, ok: boolean, message: string) => {
-      if (id !== wanted) return;
-      updateDraft({ installingEmulator: "", emulatorPercent: 0, emulatorStatus: "" });
-      if (!ok) {
-        updateDraft({ error: message || "The install did not complete." });
-        return;
-      }
-      void (async () => {
-        try {
-          const info = await probeRom(getDraft().romPath);
-          updateDraft({ probe: info });
-          const nowPending = pendingPackageOf(info);
-          // Gone means the package installed itself somehow, or the file moved.
-          // Either way there is nothing left here to unpack.
-          if (nowPending) unpackPackage(nowPending.system, getDraft().keyChoice);
-        } catch (probeError) {
-          logError("could not re-read the package after installing", probeError);
-          updateDraft({
-            error: "%s is installed. Press install again to unpack the game."
-              .replace("%s", message || "The emulator"),
-          });
-        }
-      })();
-    };
-
-    const progress = addEventListener<[id: string, text: string, percent: number]>(
-      "emulator_install_progress",
-      onProgress,
-    );
-    const done = addEventListener<[id: string, ok: boolean, message: string]>(
-      "emulator_install_done",
-      onDone,
-    );
-    return () => {
-      removeEventListener("emulator_install_progress", progress);
-      removeEventListener("emulator_install_done", done);
-    };
-  }, [installingEmulator, unpackPackage]);
 
   const pickRom = useCallback(async () => {
     updateDraft({ error: "" });
@@ -884,7 +726,7 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
         unpackPercent={unpackPercent}
         unpackStatus={unpackStatus}
         adding={adding}
-        onInstall={(keyName) => pendingPackage && unpackPackage(pendingPackage.system, keyName)}
+        onInstall={(keyName) => pendingPackage && unpackPendingPackage(pendingPackage.system, keyName)}
         missing={missing}
         onInstallEmulator={() => missing && void installEmulatorAndUnpack(missing.id)}
         installingEmulator={Boolean(installingEmulator)}
