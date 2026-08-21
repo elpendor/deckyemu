@@ -37,7 +37,11 @@ export function updateBadge(check: UpdateCheck | null | undefined): UpdateBadge 
   if (!version) return null;
 
   return {
-    label: `DeckyEmu ${version} is available`,
+    // No plugin name: this row is inside DeckyEmu's own panel, under a header
+    // that says DeckyEmu. The Updates tab has said "Version X is available."
+    // since long before this row existed, and two wordings for one fact read as
+    // two different facts.
+    label: `Version ${version} is available`,
     // Naming what is installed as well: the useful question on seeing this is
     // "how far behind am I", and the answer is otherwise two screens away.
     description: check.current
