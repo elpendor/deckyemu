@@ -1,4 +1,4 @@
-import { DialogButton, Focusable, ModalRoot, showModal } from "@decky/ui";
+import { ConfirmModal, showModal, type ConfirmModalProps } from "@decky/ui";
 import { useState } from "react";
 
 import { steamText, terminateGame, type RunningGame } from "./steam";
@@ -16,7 +16,22 @@ interface Props extends LaunchConflict {
   closeModal?: () => void;
 }
 
-const BUTTON = { width: "100%" };
+/**
+ * Keep the dialog up when OK is pressed.
+ *
+ * Steam's `GenericDialog` destructures `bCloseAfterOK` with a default of true
+ * and skips its own `closeModal` when it is false, which is what makes a
+ * two-press button possible inside a `ConfirmModal` at all. `@decky/ui` does
+ * not list the prop, but `ConfirmModal` spreads everything it does not
+ * recognise straight through to that dialog, so it arrives.
+ *
+ * The cast is the honest shape of that: a real prop of the component underneath,
+ * missing from the types in between.
+ */
+const STAYS_OPEN_ON_OK = { bCloseAfterOK: false } as unknown as ConfirmModalProps;
+
+/** Steam's own class for this line is `margin-top: .75rem` and nothing else. */
+const WARNING = { marginTop: "0.75rem" };
 
 /**
  * Open the dialog.
@@ -42,26 +57,23 @@ export function showLaunchConflict(conflict: LaunchConflict) {
  * that reads as a stutter and a hot device rather than as a mistake, and the
  * first game is still sitting there holding memory when the second one quits.
  *
- * Deliberately a copy rather than an improvement. The words, the three choices,
- * their order and the second press on the destructive one are all Steam's, read
- * out of the client itself (`GameAction_Launch_Multiple_*`), because somebody
- * who has already seen this dialog should not have to read it again to find out
- * it says the same thing. `steamText` takes them by token, so they arrive in
- * whatever language the client is set to and fall back to the English below.
+ * Deliberately a copy rather than an improvement, down to the layout. It is a
+ * `ConfirmModal` with a middle button because that is exactly what Steam's own
+ * is -- its three-button footer is the branch `strMiddleButtonText` selects --
+ * and an earlier version of this built the same three buttons by hand out of
+ * `ModalRoot` and `DialogButton`, which put a stack of full-width buttons where
+ * Steam puts a footer row. It looked like a different dialog saying the same
+ * words, which is the one thing a copy must not do.
+ *
+ * The words come from the client too (`GameAction_Launch_Multiple_*`), so they
+ * arrive in whatever language it is set to and fall back to the English below.
  *
  * Two things are deliberately not copied. Steam's kiosk-mode branch disables
  * "launch anyway" outright; nothing here runs in kiosk mode, and a dead button
  * nobody can explain is worse than no button. And Steam only warns about apps
  * whose `app_type` is in its own game mask, which this does not try to
  * reconstruct from a minified constant -- everything Steam reports as running
- * is something contending for the same GPU, which is the thing being warned
- * about.
- *
- * Built from `ModalRoot` rather than `ConfirmModal` because the second press
- * needs the modal to stay open, and `ConfirmModal` is Steam's own component
- * found by matching minified source -- its close-on-press behaviour is not
- * ours to rely on. Three stacked buttons rather than a row: "Close Mina the
- * Hollower and launch Sonic The Hedgehog" does not fit beside anything.
+ * is contending for the same GPU, which is the thing being warned about.
  */
 export function LaunchConflictModal({ closeModal, title, running, onLaunch }: Props) {
   // Steam asks twice before closing a game and so does this. The first press
@@ -105,47 +117,49 @@ export function LaunchConflictModal({ closeModal, title, running, onLaunch }: Pr
   };
 
   return (
-    <ModalRoot closeModal={closeModal} bAllowFullSize>
-      <div style={{ fontSize: "20px", fontWeight: 600, marginBottom: "12px" }}>
-        {steamText("#GameAction_Launch_Multiple_Title", "Launch %1$s", title)}
-      </div>
-
-      <div style={{ marginBottom: "8px" }}>{description}</div>
-      <div style={{ marginBottom: "16px", opacity: 0.8 }}>
-        {steamText(
-          "#GameAction_Launch_Multiple_Warning",
-          "Warning: closing a game may result in losing unsaved data.",
-        )}
-      </div>
-
-      <Focusable style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-        <DialogButton
-          style={BUTTON}
-          onClick={() => {
-            if (!confirming) {
-              setConfirming(true);
-              return;
-            }
-            for (const game of running) terminateGame(game.gameId);
-            launch();
-          }}
-        >
-          {confirming
-            ? steamText(
-                "#GameAction_Launch_Multiple_CloseAndLaunch_Confirm",
-                "Confirm close and launch",
-              )
-            : closeAndLaunch}
-        </DialogButton>
-
-        <DialogButton style={BUTTON} onClick={launch}>
-          {steamText("#GameAction_Launch_Multiple_LaunchSimultaneous", "Launch %1$s anyway", title)}
-        </DialogButton>
-
-        <DialogButton style={BUTTON} onClick={() => closeModal?.()}>
-          {steamText("#GameAction_Launch_Multiple_Cancel", "Cancel")}
-        </DialogButton>
-      </Focusable>
-    </ModalRoot>
+    <ConfirmModal
+      {...STAYS_OPEN_ON_OK}
+      closeModal={closeModal}
+      strTitle={steamText("#GameAction_Launch_Multiple_Title", "Launch %1$s", title)}
+      // The same shape Steam builds: the sentence, a break, then the warning on
+      // its own indented line.
+      strDescription={
+        <>
+          {description}
+          <br />
+          <div style={WARNING}>
+            {steamText(
+              "#GameAction_Launch_Multiple_Warning",
+              "Warning: closing a game may result in losing unsaved data.",
+            )}
+          </div>
+        </>
+      }
+      strOKButtonText={
+        confirming
+          ? steamText(
+              "#GameAction_Launch_Multiple_CloseAndLaunch_Confirm",
+              "Confirm close and launch",
+            )
+          : closeAndLaunch
+      }
+      onOK={() => {
+        if (!confirming) {
+          setConfirming(true);
+          return;
+        }
+        for (const game of running) terminateGame(game.gameId);
+        // Closed by hand, because STAYS_OPEN_ON_OK turned off the automatic one.
+        launch();
+      }}
+      strMiddleButtonText={steamText(
+        "#GameAction_Launch_Multiple_LaunchSimultaneous",
+        "Launch %1$s anyway",
+        title,
+      )}
+      // The middle button closes the dialog itself, whatever bCloseAfterOK says.
+      onMiddleButton={onLaunch}
+      strCancelButtonText={steamText("#GameAction_Launch_Multiple_Cancel", "Cancel")}
+    />
   );
 }
