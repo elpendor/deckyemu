@@ -81,6 +81,22 @@ export interface RomDraft {
   unpacking: boolean;
   unpackPercent: number;
   unpackStatus: string;
+  /**
+   * The emulator being installed so this package has somewhere to go, and how
+   * far it has got. Empty when nothing is installing.
+   *
+   * In the draft for the same reason `unpacking` is, and with the same stakes:
+   * an emulator is a few hundred megabytes, so the panel will be unmounted
+   * during one. Held in component state, the button would come back offering an
+   * install that is already running.
+   *
+   * A catalog id rather than a flag, because the install reports itself by
+   * event and the events name which emulator they are about -- another one
+   * started from the Emulators tab must not drive this bar.
+   */
+  installingEmulator: string;
+  emulatorPercent: number;
+  emulatorStatus: string;
   error: string;
 }
 
@@ -102,6 +118,9 @@ export const EMPTY_DRAFT: RomDraft = {
   unpacking: false,
   unpackPercent: 0,
   unpackStatus: "",
+  installingEmulator: "",
+  emulatorPercent: 0,
+  emulatorStatus: "",
   error: "",
 };
 

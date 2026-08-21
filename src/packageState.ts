@@ -38,6 +38,31 @@ export function pendingPackage(probe?: RomProbe | null): PackagedGame | null {
   return packaged && !packaged.state.installed ? packaged : null;
 }
 
+/**
+ * The emulator a pending package needs, when it is not installed yet.
+ *
+ * Null when there is nothing to say — no package, or the emulator is already
+ * here. Derived rather than asked separately because the probe already carries
+ * the answer, and the alternative was finding out by pressing Install: the two
+ * consoles whose emulator does its own unpacking refused straight away, and the
+ * third spent gigabytes first and then had nowhere to put the result.
+ */
+export interface MissingEmulator {
+  id: string;
+  name: string;
+  /** Installing it is necessary but not sufficient — firmware comes next. */
+  needsFirmware: boolean;
+}
+
+export function missingEmulator(packaged: PackagedGame | null): MissingEmulator | null {
+  if (!packaged || packaged.state.emulator_ready) return null;
+  return {
+    id: packaged.state.emulator_id,
+    name: packaged.state.emulator_name,
+    needsFirmware: Boolean(packaged.state.needs_firmware),
+  };
+}
+
 export interface LicenceChoice {
   /**
    * Key files in the folder that nothing ties to this package by name. Present

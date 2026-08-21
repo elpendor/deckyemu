@@ -25,6 +25,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   getSettings,
   installCore,
+  installEmulator,
   installPs3Package,
   installPs4Package,
   installVitaPackage,
@@ -63,7 +64,11 @@ import {
   installableOptions,
   systemOptions,
 } from "./corePicker";
-import { licenceChoice, pendingPackage as pendingPackageOf } from "./packageState";
+import {
+  licenceChoice,
+  missingEmulator,
+  pendingPackage as pendingPackageOf,
+} from "./packageState";
 import { PackagedGameEntries, PendingPackageRows } from "./PackageRows";
 import { ArtPickerModal } from "./ArtPickerModal";
 import { openManagePage } from "./manageRoute";
@@ -191,6 +196,9 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
     unpacking,
     unpackPercent,
     unpackStatus,
+    installingEmulator,
+    emulatorPercent,
+    emulatorStatus,
     error,
   } = draft;
 
@@ -267,6 +275,47 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
       for (const [event, listener] of listeners) removeEventListener(event, listener);
     };
   }, []);
+
+  /**
+   * The emulator a package needs, then the package.
+   *
+   * One press for two steps because they are one intention: a `.pkg` is only
+   * ever installed *into* an emulator, so with that emulator missing there is
+   * nothing else the user could want here. Splitting it into "install RPCS3"
+   * and then "now press Install again" would be a second press for a decision
+   * already made.
+   *
+   * Unlike `installCore`, `installEmulator` does not resolve when it is done --
+   * it starts the install and the catalog's own events report the end. So this
+   * starts it and the effect below waits, which is also what lets the bar keep
+   * moving when the panel is unmounted and remounted mid-install.
+   */
+  const installEmulatorAndUnpack = useCallback(
+    async (emulatorId: string) => {
+      updateDraft({
+        error: "",
+        installingEmulator: emulatorId,
+        emulatorPercent: 0,
+        emulatorStatus: "Starting...",
+      });
+      try {
+        const result = await installEmulator(emulatorId);
+        if (!result.ok) {
+          updateDraft({
+            error: result.error ?? "Could not start the install.",
+            installingEmulator: "",
+          });
+        }
+      } catch (startError) {
+        logError("emulator install could not start", startError);
+        updateDraft({
+          error: "Could not start the install.",
+          installingEmulator: "",
+        });
+      }
+    },
+    [],
+  );
 
   /**
    * Unpacking a PlayStation 3 package, which is a step no other system has.
@@ -351,6 +400,65 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
       }
     })();
   }, [romPath]);
+
+  /**
+   * Wait for that install, then carry on into the unpack.
+   *
+   * Subscribed only while one is running, and only to the id this panel
+   * started: an install begun from the Emulators tab emits the same events and
+   * must not drive this bar or trigger an unpack nobody asked for.
+   *
+   * The re-probe is what makes the package rows correct again -- `emulator_ready`
+   * came from the probe, so without it the offer would still be on screen while
+   * the unpack ran behind it.
+   */
+  useEffect(() => {
+    if (!installingEmulator) return;
+    const wanted = installingEmulator;
+
+    const onProgress = (id: string, text: string, percent: number) => {
+      if (id !== wanted) return;
+      updateDraft({ emulatorStatus: text, emulatorPercent: percent });
+    };
+
+    const onDone = (id: string, ok: boolean, message: string) => {
+      if (id !== wanted) return;
+      updateDraft({ installingEmulator: "", emulatorPercent: 0, emulatorStatus: "" });
+      if (!ok) {
+        updateDraft({ error: message || "The install did not complete." });
+        return;
+      }
+      void (async () => {
+        try {
+          const info = await probeRom(getDraft().romPath);
+          updateDraft({ probe: info });
+          const nowPending = pendingPackageOf(info);
+          // Gone means the package installed itself somehow, or the file moved.
+          // Either way there is nothing left here to unpack.
+          if (nowPending) unpackPackage(nowPending.system, getDraft().keyChoice);
+        } catch (probeError) {
+          logError("could not re-read the package after installing", probeError);
+          updateDraft({
+            error: "%s is installed. Press install again to unpack the game."
+              .replace("%s", message || "The emulator"),
+          });
+        }
+      })();
+    };
+
+    const progress = addEventListener<[id: string, text: string, percent: number]>(
+      "emulator_install_progress",
+      onProgress,
+    );
+    const done = addEventListener<[id: string, ok: boolean, message: string]>(
+      "emulator_install_done",
+      onDone,
+    );
+    return () => {
+      removeEventListener("emulator_install_progress", progress);
+      removeEventListener("emulator_install_done", done);
+    };
+  }, [installingEmulator, unpackPackage]);
 
   const pickRom = useCallback(async () => {
     updateDraft({ error: "" });
@@ -676,6 +784,9 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
   // DOM here, so anything only reachable by rendering the panel is untested.
   const pendingPackage = pendingPackageOf(probe);
   const licence = licenceChoice(pendingPackage, keyChoice);
+  // Null once the emulator is here, which is what takes the offer off screen
+  // after the install and puts the ordinary unpack button back.
+  const missing = missingEmulator(pendingPackage);
 
   return (
     <PanelSection title="Add a game">
@@ -774,6 +885,11 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
         unpackStatus={unpackStatus}
         adding={adding}
         onInstall={(keyName) => pendingPackage && unpackPackage(pendingPackage.system, keyName)}
+        missing={missing}
+        onInstallEmulator={() => missing && void installEmulatorAndUnpack(missing.id)}
+        installingEmulator={Boolean(installingEmulator)}
+        emulatorPercent={emulatorPercent}
+        emulatorStatus={emulatorStatus}
       />
 
       {probe && !pendingPackage && probe.matching_cores.length > 0 && (

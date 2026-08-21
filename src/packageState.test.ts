@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { type PackageState, type RomProbe } from "./backend";
-import { licenceChoice, pendingPackage } from "./packageState";
+import { licenceChoice, missingEmulator, pendingPackage } from "./packageState";
 
 const state = (fields: Partial<PackageState> = {}): PackageState =>
   ({ title_id: "PCSA00011", installed: false, title: "", eboot: "", ...fields } as PackageState);
@@ -98,5 +98,55 @@ describe("licenceChoice", () => {
       chosen: "",
       blocked: false,
     });
+  });
+});
+
+describe("missingEmulator", () => {
+  it("has nothing to say when there is no package", () => {
+    expect(missingEmulator(null)).toBeNull();
+  });
+
+  it("has nothing to say once the emulator is installed", () => {
+    // This is what takes the offer off screen after the install, and puts the
+    // ordinary unpack button back.
+    const ready = pendingPackage(
+      probe({ ps3_package: state({ emulator_ready: true, emulator_id: "rpcs3" }) }),
+    );
+    expect(missingEmulator(ready)).toBeNull();
+  });
+
+  it("names the emulator a package needs when it is not here", () => {
+    // Answered from the probe rather than by pressing Install and reading the
+    // failure — which for a PS4 package cost the whole unpack and the .pkg.
+    const pending = pendingPackage(
+      probe({
+        ps4_package: state({
+          emulator_ready: false,
+          emulator_id: "shadps4",
+          emulator_name: "shadPS4",
+        }),
+      }),
+    );
+    expect(missingEmulator(pending)).toEqual({
+      id: "shadps4",
+      name: "shadPS4",
+      needsFirmware: false,
+    });
+  });
+
+  it("carries whether installing it is enough to play the game", () => {
+    // RPCS3 and Vita3K want firmware afterwards. Said while offering the
+    // install, because the alternative is a black screen and a second surprise.
+    const pending = pendingPackage(
+      probe({
+        ps3_package: state({
+          emulator_ready: false,
+          emulator_id: "rpcs3",
+          emulator_name: "RPCS3",
+          needs_firmware: true,
+        }),
+      }),
+    );
+    expect(missingEmulator(pending)?.needsFirmware).toBe(true);
   });
 });

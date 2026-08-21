@@ -95,6 +95,28 @@ export interface RomProbe {
 }
 
 export interface PackageState {
+  /** Catalog id of the emulator this console's packages install into. */
+  emulator_id: string;
+  /** Its display name, for saying which one is missing. */
+  emulator_name: string;
+  /**
+   * Whether that emulator is registered yet.
+   *
+   * Reported with the package rather than found out by pressing install,
+   * because that is a question worth answering *before* spending anything: a
+   * PS4 package is several gigabytes and its `.pkg` is deleted on the way. The
+   * panel offers to install the emulator when this is false.
+   */
+  emulator_ready: boolean;
+  /**
+   * Whether the emulator needs firmware before anything it launches will run.
+   *
+   * A static fact about the catalog entry, shown only while offering to install
+   * it — there it answers "is installing this enough to play the game", which
+   * for RPCS3 and Vita3K is no. Once the emulator exists the panel's own
+   * firmware row takes over, keyed on the chosen core.
+   */
+  needs_firmware: boolean;
   title_id: string;
   /** Already unpacked, so `title` and `eboot` are filled and it can be added. */
   installed: boolean;

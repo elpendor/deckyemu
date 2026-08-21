@@ -4,7 +4,7 @@ import { type RomProbe } from "./backend";
 import { InstallProgress } from "./InstallProgress";
 import { PackagedGamesModal } from "./PackagedGamesModal";
 import { VitaGamesModal } from "./VitaGamesModal";
-import { type LicenceChoice, type PackagedGame } from "./packageState";
+import { type LicenceChoice, type MissingEmulator, type PackagedGame } from "./packageState";
 import { updateDraft } from "./romDraft";
 
 /**
@@ -21,6 +21,13 @@ import { updateDraft } from "./romDraft";
  * hundred line `return`. They are here as components rather than a function
  * returning an array so the conditions stay next to the markup they guard.
  */
+
+/** For a sentence, where "ps3" would read as a filename. */
+const CONSOLE_NAMES = {
+  ps3: "PlayStation 3",
+  ps4: "PlayStation 4",
+  vita: "PlayStation Vita",
+} as const;
 
 interface EntryProps {
   ps3Count: number;
@@ -105,6 +112,14 @@ interface PendingProps {
   unpackStatus: string;
   adding: boolean;
   onInstall: (keyName: string) => void;
+  /** The emulator this package needs, when it is not installed yet. */
+  missing: MissingEmulator | null;
+  /** Install that emulator and carry straight on into unpacking. */
+  onInstallEmulator: () => void;
+  /** Set while that install is running, so the row can show it. */
+  installingEmulator: boolean;
+  emulatorPercent: number;
+  emulatorStatus: string;
 }
 
 /** What is known about a package before it is installed, and the button. */
@@ -117,10 +132,56 @@ export function PendingPackageRows({
   unpackStatus,
   adding,
   onInstall,
+  missing,
+  onInstallEmulator,
+  installingEmulator,
+  emulatorPercent,
+  emulatorStatus,
 }: PendingProps) {
   const { candidates, chosen, blocked } = licence;
   return (
     <>
+      {/* The emulator, before anything else this package needs.
+          A package is not a file anything can be pointed at -- it is installed
+          *into* an emulator -- so with that emulator missing every other row
+          here is advice about a step that cannot be reached. It used to be
+          found out by pressing Install: RPCS3 and Vita3K refused straight away,
+          and shadPS4 was not asked at all, so a PS4 package unpacked for
+          minutes, deleted its own .pkg and failed at the very end with nowhere
+          to put the result.
+
+          Offered here rather than as a link to the Emulators tab, which is what
+          the game editor does for a missing core: leaving the panel loses the
+          picked file, and coming back means finding it again. The catalog
+          install is one call, so the same press can do both. */}
+      {missing && (
+        <PanelSectionRow>
+          {installingEmulator ? (
+            <InstallProgress
+              label={`Installing ${missing.name}`}
+              percent={emulatorPercent}
+              status={emulatorStatus}
+            />
+          ) : (
+            <ButtonItem
+              layout="below"
+              onClick={onInstallEmulator}
+              disabled={adding || unpacking}
+              description={
+                `A ${CONSOLE_NAMES[packaged!.system]} package is installed into ${missing.name}, ` +
+                `and it is not here yet. This installs it and then unpacks the game.` +
+                // Necessary but not sufficient, and worth knowing before the
+                // download rather than at the black screen afterwards.
+                (missing.needsFirmware
+                  ? ` ${missing.name} also needs its firmware before games will boot — the panel says so once it is installed.`
+                  : "")
+              }
+            >
+              {`Install ${missing.name} and unpack this game`}
+            </ButtonItem>
+          )}
+        </PanelSectionRow>
+      )}
       {/* A PS3 store game needs its .rap, and RPCS3 reads one only under the
           package's own content id. Said here, before the install, because the
           alternative is finding out from "Failed to decrypt content" on a
@@ -250,7 +311,7 @@ export function PendingPackageRows({
         </>
       )}
 
-      {packaged && (
+      {packaged && !missing && (
         <PanelSectionRow>
           {unpacking ? (
             <InstallProgress

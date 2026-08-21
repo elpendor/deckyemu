@@ -3626,9 +3626,34 @@ check("settling an already-flat game changes nothing",
 check("an empty target settles to nothing rather than failing",
       ps4_games.settle(os.path.join(TMP, "ps4nowhere")), ("", ""))
 
-check("installing something that is not a PS4 package is refused",
-      run(plugin.install_ps4_package(_ps3_pkg))["error"],
-      "That file is not a PlayStation 4 package.")
+# The emulator is asked about before the file is, so with none installed this
+# reports the emulator rather than the file -- which is the right answer to give
+# and the wrong one to be testing the file check with.
+check("with no shadPS4, a PS4 package install says so and stops",
+      "shadPS4 is not installed" in run(plugin.install_ps4_package(_ps3_pkg))["error"],
+      True)
+# Nothing below this needs shadPS4 to *work* -- a standalone extractor does the
+# unpacking -- which is exactly why it used to run with none installed, spend
+# gigabytes and fail at the end. Registered here so the file-type check beneath
+# that gate is reachable at all.
+#
+# Removed again immediately: this suite shares one settings directory, and a
+# registration left behind is counted by everything downstream that asks how
+# many emulators there are. Three later checks failed on it before this
+# `finally` existed.
+_ps4_stub, _ = emulators.save({
+    "name": "shadPS4", "id": "shadps4", "kind": "flatpak",
+    "target": "net.shadps4.shadPS4", "args": "{rom}", "extensions": "pkg",
+    "databases": [], "platform": "PS4", "platform_full": "PlayStation 4",
+})
+try:
+    check("installing something that is not a PS4 package is refused",
+          run(plugin.install_ps4_package(_ps3_pkg))["error"],
+          "That file is not a PlayStation 4 package.")
+finally:
+    emulators.remove(_ps4_stub["id"])
+check("and the stub is gone again, so nothing downstream counts it",
+      emulators.find("shadps4"), None)
 check("and the package it refused is still there",
       os.path.isfile(_ps3_pkg), True)
 

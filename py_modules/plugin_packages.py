@@ -34,6 +34,20 @@ import romshelf
 import vita_games
 
 
+#: Where to go when the emulator a package needs is not installed.
+#:
+#: One string because it was five, and they all said "Install it first" -- which
+#: names a task and not a route. The panel offers the install inline now, so the
+#: row above is the short way; the settings page is named too, because these
+#: endpoints are reachable from places that have no such row.
+#:
+#: ASCII, deliberately. This reaches the test suite's own output, which runs on
+#: Windows where the console is cp1252 -- an arrow here raised
+#: UnicodeEncodeError inside `check()` and took down the run several hundred
+#: checks after the one that introduced it.
+_WHERE = "Install it from the row above, or from the Emulators tab."
+
+
 class PackagedGames(plugin_base.PluginContext):
     """Endpoints for games that arrive as a package. See the module docstring."""
 
@@ -44,6 +58,40 @@ class PackagedGames(plugin_base.PluginContext):
     # answer "is this installed already", and then the PS3 reports whether a .rap
     # is in place while the Vita reports whether its zRIF is, because those are
     # the two consoles that will not decrypt content without one.
+
+    #: Which catalog emulator each console's packages are installed into.
+    _PACKAGE_EMULATORS = {
+        "ps3": "rpcs3",
+        "ps4": "shadps4",
+        "vita": "vita3k",
+    }
+
+    @staticmethod
+    def _package_emulator(console):
+        """Which emulator this console needs, and whether it is here yet.
+
+        Reported with the package rather than discovered when the install button
+        is pressed, because "not installed" is the answer to a question asked
+        *before* spending anything -- a PS4 package is several gigabytes and its
+        .pkg is deleted on the way. The panel can only offer to install the
+        emulator first if it is told, and the alternative is what used to
+        happen: press install, wait, and read "shadPS4 is not set up yet".
+
+        `needs_firmware` is a static fact about the catalog entry, not a check
+        of what is on disk. It is only shown while offering to install the
+        emulator, and there it answers the right question -- "will this alone be
+        enough to play the game" -- which for RPCS3 and Vita3K is no. Checking
+        the disk would cost a scan on every ROM pick to refine an answer nobody
+        can act on until the emulator exists.
+        """
+        slug = PackagedGames._PACKAGE_EMULATORS[console]
+        entry = emulator_catalog.find(slug) or {}
+        return {
+            "emulator_id": slug,
+            "emulator_name": entry.get("name") or slug,
+            "emulator_ready": bool(emulators.find(slug)),
+            "needs_firmware": bool(entry.get("firmware")),
+        }
 
     @staticmethod
     def _ps3_package_state(pkg_path):
@@ -68,6 +116,7 @@ class PackagedGames(plugin_base.PluginContext):
                 None,
             )
         return {
+            **PackagedGames._package_emulator("ps3"),
             "title_id": title_id,
             "installed": bool(game),
             "title": game["title"] if game else "",
@@ -95,6 +144,7 @@ class PackagedGames(plugin_base.PluginContext):
                 None,
             )
         return {
+            **PackagedGames._package_emulator("ps4"),
             "title_id": title_id,
             "installed": bool(game),
             "title": game["title"] if game else "",
@@ -126,6 +176,7 @@ class PackagedGames(plugin_base.PluginContext):
             )
         licence = vita_games.zrif_report(pkg_path, title_id)
         return {
+            **PackagedGames._package_emulator("vita"),
             "title_id": title_id,
             "installed": bool(game),
             "title": game["title"] if game else "",
@@ -186,7 +237,7 @@ class PackagedGames(plugin_base.PluginContext):
         entry = emulator_catalog.find("rpcs3")
         emulator = await self._run(emulators.find, "rpcs3")
         if not entry or not emulator:
-            return {"ok": False, "error": "RPCS3 is not set up yet. Install it first."}
+            return {"ok": False, "error": "RPCS3 is not installed. %s" % _WHERE}
 
         # The path arrives from the frontend and is about to become a subprocess
         # argument, so it is checked against the list rather than trusted: only
@@ -279,6 +330,21 @@ class PackagedGames(plugin_base.PluginContext):
         PS3 one -- the promise resolving is what ends the step, so a lost event
         cannot leave the panel claiming to still be working.
         """
+        # First, and it is the ordering that matters. Nothing below needs
+        # shadPS4 -- unpacking uses a standalone extractor and never consults
+        # the emulator -- so this ran happily with none installed, spending
+        # minutes and several gigabytes, deleting the .pkg on the way, and
+        # failing at the very end when `ps4_core_id` had nowhere to put the
+        # result. The other two consoles refuse immediately because their
+        # emulator does the unpacking; this one has to be told to.
+        #
+        # Asked before the file is even looked at, so the answer is about the
+        # thing the user has to fix. A package that is also unreadable is still
+        # a package with no emulator, and "that file is not a PlayStation 4
+        # package" sends them to check the download instead.
+        if not await self._run(emulators.find, "shadps4"):
+            return {"ok": False, "error": "shadPS4 is not installed. %s" % _WHERE}
+
         entry = emulator_catalog.find("shadps4")
         helper = (entry or {}).get("helper") or {}
         if not helper:
@@ -422,7 +488,7 @@ class PackagedGames(plugin_base.PluginContext):
         """
         emulator = await self._run(emulators.find, "vita3k")
         if not emulator:
-            return {"ok": False, "error": "Vita3K is not set up yet. Install it first."}
+            return {"ok": False, "error": "Vita3K is not installed. %s" % _WHERE}
 
         if not await self._run(vita_games.is_package, path):
             return {"ok": False, "error": "That file is not a PlayStation Vita package."}
@@ -535,7 +601,7 @@ class PackagedGames(plugin_base.PluginContext):
 
         emulator = await self._run(emulators.find, "vita3k")
         if not emulator:
-            return {"ok": False, "error": "Vita3K is not set up yet. Install it first."}
+            return {"ok": False, "error": "Vita3K is not installed. %s" % _WHERE}
 
         core_id = emulators.to_core_entry(emulator)["id"]
         prepared = await self.prepare_shortcut(
@@ -554,14 +620,14 @@ class PackagedGames(plugin_base.PluginContext):
         """The core id the add flow should use for a PS Vita game."""
         emulator = await self._run(emulators.find, "vita3k")
         if not emulator:
-            return {"ok": False, "error": "Vita3K is not set up yet. Install it first."}
+            return {"ok": False, "error": "Vita3K is not installed. %s" % _WHERE}
         return {"ok": True, "core_id": emulators.to_core_entry(emulator)["id"]}
 
     async def ps4_core_id(self):
         """The core id the add flow should use for a PlayStation 4 game."""
         emulator = await self._run(emulators.find, "shadps4")
         if not emulator:
-            return {"ok": False, "error": "shadPS4 is not set up yet. Install it first."}
+            return {"ok": False, "error": "shadPS4 is not installed. %s" % _WHERE}
         return {"ok": True, "core_id": emulators.to_core_entry(emulator)["id"]}
 
     # The two consoles whose games are unpacked from a package rather than
@@ -639,5 +705,5 @@ class PackagedGames(plugin_base.PluginContext):
         """
         emulator = await self._run(emulators.find, "rpcs3")
         if not emulator:
-            return {"ok": False, "error": "RPCS3 is not set up yet. Install it first."}
+            return {"ok": False, "error": "RPCS3 is not installed. %s" % _WHERE}
         return {"ok": True, "core_id": emulators.to_core_entry(emulator)["id"]}
