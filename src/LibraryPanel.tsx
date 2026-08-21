@@ -3,7 +3,6 @@ import {
   ConfirmModal,
   PanelSection,
   PanelSectionRow,
-  showModal,
 } from "@decky/ui";
 import { addEventListener, removeEventListener, toaster } from "@decky/api";
 import { useCallback, useEffect, useState } from "react";
@@ -19,6 +18,7 @@ import { OrphanModal } from "./OrphanModal";
 import { callWithRetry } from "./timeout";
 import { humanSize } from "./TransferModal";
 import { logError } from "./logError";
+import { openModal } from "./modalStack";
 
 interface Props {
   onRefresh: () => void;
@@ -185,7 +185,7 @@ export function LibraryPanel({ onRefresh }: Props) {
       return;
     }
 
-    showModal(
+    openModal(
       <ConfirmModal
         strTitle="Remove every DeckyEmu game?"
         strDescription={clearWarning(count)}
@@ -217,7 +217,7 @@ export function LibraryPanel({ onRefresh }: Props) {
             layout="below"
             disabled={games !== null && games.length === 0}
             onClick={() =>
-              showModal(
+              openModal(
                 <AddedGamesModal
                   onChanged={() => {
                     void loadGames();
@@ -245,7 +245,7 @@ export function LibraryPanel({ onRefresh }: Props) {
         <PanelSectionRow>
           <ButtonItem
             layout="below"
-            onClick={() => showModal(<OrphanModal onChanged={onRefresh} />)}
+            onClick={() => openModal(<OrphanModal onChanged={onRefresh} />)}
             description="Finds games whose ROM or launcher has gone missing, records with no Steam shortcut, empty collections, and games left behind by a previous install."
           >
             Check the library

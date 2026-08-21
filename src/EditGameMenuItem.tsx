@@ -1,9 +1,10 @@
-import { MenuGroup, MenuItem, showModal } from "@decky/ui";
+import { MenuGroup, MenuItem } from "@decky/ui";
 
 import { addedGame, refreshAddedGames } from "./addedGames";
 import { GameEditorModal } from "./GameEditorModal";
 import { RemoveGameModal } from "./RemoveGameModal";
 import { MENU_ITEM_KEY } from "./steam/contextMenu";
+import { openModal } from "./modalStack";
 
 /**
  * The "DeckyEmu" submenu in a game's context menu, or nothing for other games.
@@ -34,9 +35,9 @@ export function editGameMenuItem(appId: number): unknown | null {
   // what the next menu and the next panel both read -- and a removed game stops
   // producing this submenu at all, because that is the same lookup.
   const edit = () =>
-    showModal(<GameEditorModal game={game} onSaved={() => void refreshAddedGames()} />);
+    openModal(<GameEditorModal game={game} onSaved={() => void refreshAddedGames()} />);
   const remove = () =>
-    showModal(<RemoveGameModal game={game} onRemoved={() => void refreshAddedGames()} />);
+    openModal(<RemoveGameModal game={game} onRemoved={() => void refreshAddedGames()} />);
 
   /*
    * `MenuGroup` is found by matching minified Steam source, the same way

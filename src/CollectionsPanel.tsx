@@ -7,7 +7,6 @@ import {
   PanelSectionRow,
   TextField,
   ToggleField,
-  showModal,
   type SingleDropdownOption,
 } from "@decky/ui";
 import { toaster } from "@decky/api";
@@ -30,6 +29,7 @@ import { ownedCollectionMatcher } from "./collectionMatch";
 import { callWithRetry } from "./timeout";
 import { countFiled, strandedSummary, unfileWarning } from "./unfileWarning";
 import { logError } from "./logError";
+import { openModal } from "./modalStack";
 
 const PLATFORM_NAME_OPTIONS: SingleDropdownOption[] = [
   { data: "short", label: "Short (SNES, N64, GBA)" },
@@ -291,7 +291,7 @@ export function CollectionsPanel() {
       return;
     }
 
-    showModal(
+    openModal(
       <ConfirmModal
         strTitle="Turn off collections?"
         strDescription={unfileWarning(filed.games, filed.shelves)}
@@ -304,7 +304,7 @@ export function CollectionsPanel() {
   /** The row's action: take out whatever is still filed, asking first. */
   const unfileStranded = useCallback(async () => {
     if (filed.games === 0) return;
-    showModal(
+    openModal(
       <ConfirmModal
         strTitle="Take them out of their collections?"
         strDescription={unfileWarning(filed.games, filed.shelves)}

@@ -5,7 +5,6 @@ import {
   Field,
   PanelSection,
   PanelSectionRow,
-  showModal,
 } from "@decky/ui";
 import { toaster } from "@decky/api";
 import { useCallback, useEffect, useState } from "react";
@@ -18,6 +17,7 @@ import { FirmwarePanel } from "./FirmwarePanel";
 import { byName } from "./order";
 import { registeredDescription } from "./registeredEmulator";
 import { callWithRetry } from "./timeout";
+import { openModal } from "./modalStack";
 
 interface Props {
   /** Re-read status/cores after a change, so new emulators become selectable. */
@@ -50,14 +50,14 @@ export function EmulatorsPanel({ onChanged }: Props) {
 
   const edit = useCallback(
     (emulator?: CustomEmulator) => {
-      showModal(<EmulatorEditorModal emulator={emulator} onSaved={afterChange} />);
+      openModal(<EmulatorEditorModal emulator={emulator} onSaved={afterChange} />);
     },
     [afterChange],
   );
 
   const confirmRemove = useCallback(
     (emulator: CustomEmulator) => {
-      showModal(
+      openModal(
         <ConfirmModal
           strTitle={`Remove ${emulator.name}?`}
           strDescription="Games already added to Steam keep working — their launcher scripts are unaffected. You just will not be able to pick this emulator for new games."

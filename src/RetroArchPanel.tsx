@@ -5,7 +5,6 @@ import {
   Field,
   PanelSection,
   PanelSectionRow,
-  showModal,
   ToggleField,
   type SingleDropdownOption,
 } from "@decky/ui";
@@ -32,6 +31,7 @@ import { EmulatorVersionModal } from "./EmulatorVersionModal";
 import { InstallRetroArchPanel } from "./InstallRetroArchPanel";
 import { callWithRetry } from "./timeout";
 import { logError } from "./logError";
+import { openModal } from "./modalStack";
 
 const HIDE_OSD_OPTIONS: SingleDropdownOption[] = [
   { data: "startup", label: "Hide the startup banner" },
@@ -197,7 +197,7 @@ export function RetroArchPanel({ status, onRefresh, reloadKey = 0 }: Props) {
    * everything I have set up".
    */
   const confirmUninstall = useCallback(() => {
-    showModal(
+    openModal(
       <ConfirmModal
         strTitle={deleteData ? "Uninstall RetroArch and delete its data?" : "Uninstall RetroArch?"}
         strDescription={
@@ -362,7 +362,7 @@ export function RetroArchPanel({ status, onRefresh, reloadKey = 0 }: Props) {
               <ButtonItem
                 layout="below"
                 onClick={() =>
-                  showModal(
+                  openModal(
                     <EmulatorVersionModal
                       emulator={build}
                       onChanged={() => {

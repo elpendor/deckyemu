@@ -1,9 +1,15 @@
-import { ButtonItem, Field, PanelSection, PanelSectionRow, showModal } from "@decky/ui";
+import {
+  ButtonItem,
+  Field,
+  PanelSection,
+  PanelSectionRow,
+} from "@decky/ui";
 import { useQuickAccessVisible } from "@decky/api";
 import { useCallback, useEffect, useState } from "react";
 
 import { fileServerStatus, type FileServerStatus } from "./backend";
 import { humanSize, ProgressBar, TransferModal } from "./TransferModal";
+import { openModal } from "./modalStack";
 
 /**
  * What is happening with the file server, for the panel you land on afterwards.
@@ -123,7 +129,7 @@ export function TransferStatusPanel() {
             someone already using the panel. */}
         <ButtonItem
           layout="below"
-          onClick={() => showModal(<TransferModal />)}
+          onClick={() => openModal(<TransferModal />)}
           {...(uploads.length > 0 ? { autoFocus: true as const } : {})}
         >
           Show transfer

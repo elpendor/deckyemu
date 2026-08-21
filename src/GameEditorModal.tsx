@@ -5,7 +5,6 @@ import {
   ModalRoot,
   Spinner,
   TextField,
-  showModal,
   type DropdownOption,
   type SingleDropdownOption,
 } from "@decky/ui";
@@ -44,6 +43,7 @@ import { logError } from "./logError";
 import { sentence } from "./sentence";
 import { filenameNamesTheGame } from "./lookupTerm";
 import { titleAfterArtPick } from "./titleFromArt";
+import { openModal } from "./modalStack";
 
 interface Props {
   game: AddedGame;
@@ -267,7 +267,7 @@ export function GameEditorModal({ game, onSaved, closeModal, onLeave }: Props) {
   }, [romPath]);
 
   const pickArtwork = useCallback(() => {
-    showModal(
+    openModal(
       <ArtPickerModal
         romPath={romPath}
         coreId={coreId}

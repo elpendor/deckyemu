@@ -4,7 +4,6 @@ import {
   Field,
   PanelSection,
   PanelSectionRow,
-  showModal,
 } from "@decky/ui";
 import { toaster } from "@decky/api";
 import { useCallback, useEffect, useState } from "react";
@@ -33,7 +32,7 @@ import { humanSize, TransferModal } from "./TransferModal";
 import { callWithRetry } from "./timeout";
 import { installThroughEmulator } from "./firmwareInstall";
 import { byName } from "./order";
-
+import { openModal } from "./modalStack";
 
 /** The tick or the triangle, in the colour that state is drawn in. */
 function StatusIcon({ state }: { state: FirmwareRowState }) {
@@ -137,7 +136,7 @@ export function FirmwarePanel({ reloadKey = 0 }: Props) {
           console.error("[deckyemu] could not start the file server", startError);
         }
 
-        showModal(
+        openModal(
           <TransferModal
             purpose="firmware"
             onClosed={load}
@@ -291,7 +290,7 @@ export function FirmwarePanel({ reloadKey = 0 }: Props) {
   const confirmUninstall = useCallback(
     (entryId: string, emulatorName: string, requirement: FirmwareState) => {
       const foreign = requirement.foreign.length;
-      showModal(
+      openModal(
         <ConfirmModal
           strTitle={`Remove ${requirement.name} from ${emulatorName}?`}
           strDescription={

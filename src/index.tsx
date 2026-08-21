@@ -5,7 +5,6 @@ import {
   PanelSection,
   PanelSectionRow,
   quickAccessMenuClasses,
-  showModal,
 } from "@decky/ui";
 import {
   addEventListener,
@@ -44,6 +43,7 @@ import { ManagePage, MANAGE_ROUTE, openManagePage } from "./ManagePage";
 import { patchGameContextMenu } from "./steam/contextMenu";
 import { watchLaunches } from "./launchGate";
 import { callWithRetry } from "./timeout";
+import { openModal } from "./modalStack";
 
 const EMPTY_STATUS: RetroArchStatus = {
   found: false,
@@ -313,7 +313,7 @@ function Content() {
               <ButtonItem
                 layout="below"
                 onClick={() =>
-                  showModal(
+                  openModal(
                     <OrphanModal
                       onChanged={() => {
                         loadGames();

@@ -6,11 +6,11 @@ import {
   DialogHeader,
   Focusable,
   ModalRoot,
-  showModal,
 } from "@decky/ui";
 import { useState } from "react";
 
 import { steamText, terminateGame, type RunningGame } from "./steam";
+import { openModal } from "./modalStack";
 
 export interface LaunchConflict {
   /** The game the user asked for. */
@@ -39,7 +39,7 @@ const WARNING = { marginTop: "0.75rem" };
  * on the other side of it.
  */
 export function showLaunchConflict(conflict: LaunchConflict) {
-  showModal(<LaunchConflictModal {...conflict} />);
+  openModal(<LaunchConflictModal {...conflict} />);
 }
 
 /**

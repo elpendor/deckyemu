@@ -4,7 +4,6 @@ import {
   Field,
   PanelSection,
   PanelSectionRow,
-  showModal,
 } from "@decky/ui";
 import { toaster } from "@decky/api";
 import { useCallback, useEffect, useState } from "react";
@@ -16,6 +15,7 @@ import { removeShortcut } from "./steam";
 import { sweepEmptyCollections, unfileGames } from "./collections";
 import { humanSize } from "./TransferModal";
 import { callWithRetry } from "./timeout";
+import { openModal } from "./modalStack";
 
 /**
  * Declared here rather than in backend.ts, deliberately.
@@ -165,7 +165,7 @@ export function DevPanel({ onChanged }: Props) {
   const run = useCallback(
     (action: (typeof ACTIONS)[number], targets: ResetTarget[]) => {
       const total = targets.reduce((sum, item) => sum + item.bytes, 0);
-      showModal(
+      openModal(
         <ConfirmModal
           strTitle={action.title}
           strOKButtonText="Delete"

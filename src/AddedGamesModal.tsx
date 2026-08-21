@@ -1,4 +1,10 @@
-import { DialogButton, Field, Focusable, ModalRoot, showModal, Spinner } from "@decky/ui";
+import {
+  DialogButton,
+  Field,
+  Focusable,
+  ModalRoot,
+  Spinner,
+} from "@decky/ui";
 import { useCallback, useEffect, useState } from "react";
 import { FaPen, FaPlay, FaTrash } from "react-icons/fa";
 
@@ -8,6 +14,7 @@ import { playGame } from "./playGame";
 import { RemoveGameModal } from "./RemoveGameModal";
 import { systemLabel } from "./systemLabel";
 import { callWithRetry } from "./timeout";
+import { openModal } from "./modalStack";
 
 interface Props {
   closeModal?: () => void;
@@ -119,7 +126,7 @@ export function AddedGamesModal({ closeModal, onChanged }: Props) {
                     // Stacked on this one: Steam nests modals, so closing the
                     // editor comes back here rather than to the panel.
                     onClick={() =>
-                      showModal(
+                      openModal(
                         <GameEditorModal
                           game={game}
                           onSaved={changed}
@@ -135,7 +142,7 @@ export function AddedGamesModal({ closeModal, onChanged }: Props) {
                   </DialogButton>
                   <DialogButton
                     onClick={() =>
-                      showModal(<RemoveGameModal game={game} onRemoved={changed} />)
+                      openModal(<RemoveGameModal game={game} onRemoved={changed} />)
                     }
                     style={{ minWidth: "auto", width: "auto", padding: "6px 12px" }}
                   >

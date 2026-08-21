@@ -4,7 +4,6 @@ import {
   PanelSection,
   PanelSectionRow,
   ToggleField,
-  showModal,
 } from "@decky/ui";
 
 import { clampNotes, countItems, parseNotes } from "./releaseNotes";
@@ -26,6 +25,7 @@ import { noteCheck, setUpdateDotEnabled } from "./updateSignal";
 import { describe, FRONTEND_BUILD, FRONTEND_VERSION, isStale } from "./version";
 import { ReportModal } from "./ReportModal";
 import { logError } from "./logError";
+import { openModal } from "./modalStack";
 
 /**
  * Two halves side by side rather than stacked: they are one fact -- which build
@@ -429,7 +429,7 @@ export function UpdatePanel() {
       <PanelSectionRow>
         <ButtonItem
           layout="below"
-          onClick={() => showModal(<ReportModal />)}
+          onClick={() => openModal(<ReportModal />)}
           description="Gathers what a bug report needs — this build, what is installed, and the end of the log — and puts it where a phone or PC can read it. Keys, tokens and your game names are removed from it."
         >
           Report a problem

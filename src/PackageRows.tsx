@@ -1,4 +1,9 @@
-import { ButtonItem, DropdownItem, Field, PanelSectionRow, showModal } from "@decky/ui";
+import {
+  ButtonItem,
+  DropdownItem,
+  Field,
+  PanelSectionRow,
+} from "@decky/ui";
 
 import { type RomProbe } from "./backend";
 import { InstallProgress } from "./InstallProgress";
@@ -6,6 +11,7 @@ import { PackagedGamesModal } from "./PackagedGamesModal";
 import { VitaGamesModal } from "./VitaGamesModal";
 import { type LicenceChoice, type MissingEmulator, type PackagedGame } from "./packageState";
 import { updateDraft } from "./romDraft";
+import { openModal } from "./modalStack";
 
 /**
  * The rows the add panel shows for a game that arrived as a package.
@@ -62,7 +68,7 @@ export function PackagedGameEntries({
         <PanelSectionRow>
           <ButtonItem
             layout="below"
-            onClick={() => showModal(<PackagedGamesModal system="ps3" />)}
+            onClick={() => openModal(<PackagedGamesModal system="ps3" />)}
             disabled={disabled}
             description="Games RPCS3 has already installed. They have no ROM file to browse to, so this is the way back to them."
           >
@@ -75,7 +81,7 @@ export function PackagedGameEntries({
         <PanelSectionRow>
           <ButtonItem
             layout="below"
-            onClick={() => showModal(<PackagedGamesModal system="ps4" />)}
+            onClick={() => openModal(<PackagedGamesModal system="ps4" />)}
             disabled={disabled}
             description="Games shadPS4 has already installed. They have no ROM file to browse to, so this is the way back to them."
           >
@@ -91,7 +97,7 @@ export function PackagedGameEntries({
         <PanelSectionRow>
           <ButtonItem
             layout="below"
-            onClick={() => showModal(<VitaGamesModal onAdded={onGameAdded} />)}
+            onClick={() => openModal(<VitaGamesModal onAdded={onGameAdded} />)}
             disabled={disabled}
             description="Games Vita3K has installed. It decrypts them as it installs, so they are added from here rather than by choosing a file."
           >

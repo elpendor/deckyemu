@@ -5,7 +5,6 @@ import {
   Focusable,
   PanelSection,
   PanelSectionRow,
-  showModal,
   Spinner,
   TextField,
   ToggleField,
@@ -73,7 +72,7 @@ import { TransferModal } from "./TransferModal";
 import { logError } from "./logError";
 import { sentence } from "./sentence";
 import { titleAfterArtPick } from "./titleFromArt";
-
+import { openModal } from "./modalStack";
 
 const MATCH_LABELS: Record<ResolvedGame["match_kind"], string> = {
   exact: "Matched libretro database",
@@ -301,7 +300,6 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
 
 
 
-
   const pickRom = useCallback(async () => {
     updateDraft({ error: "" });
 
@@ -482,7 +480,7 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
   /** Correct a wrong artwork match by hand. */
   const openArtPicker = useCallback(() => {
     if (!romPath) return;
-    showModal(
+    openModal(
       <ArtPickerModal
         romPath={romPath}
         coreId={coreId}
@@ -608,7 +606,7 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
     } catch (transferError) {
       logError("could not start the file server", transferError);
     }
-    showModal(<TransferModal />);
+    openModal(<TransferModal />);
   }, []);
 
   // A custom emulator is enough on its own, so do not require RetroArch here.

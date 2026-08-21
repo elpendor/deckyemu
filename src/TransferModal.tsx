@@ -5,7 +5,6 @@ import {
   ModalRoot,
   Navigation,
   QuickAccessTab,
-  showModal,
   ToggleField,
 } from "@decky/ui";
 import { FileSelectionType, openFilePicker, toaster } from "@decky/api";
@@ -42,6 +41,7 @@ import { DANGER_CLASS, DANGER_CSS } from "./danger";
 import { logError } from "./logError";
 import { installThroughEmulator } from "./firmwareInstall";
 import { requirementForFile, type RequirementMatch } from "./firmwareMatch";
+import { closeOpenModals, openModal } from "./modalStack";
 
 /** How often to re-check while running, to pick up newly arrived files. */
 const POLL_MS = 3000;
@@ -469,6 +469,18 @@ export function TransferModal({
       void selectRom(path);
       toaster.toast({ title: "Ready to add", body: name });
       void close();
+      // Everything else of ours, not just this dialog. Steam re-reveals each
+      // modal as the one above it dismisses, so anything still on the stack
+      // arrives on top of the panel opened below -- and with the added-games
+      // list underneath, that is exactly what happened: the panel appeared with
+      // the game ready and closed again about a second later, as the list came
+      // back and took the active overlay. Same rule as "navigate last" (§5),
+      // one layer down.
+      //
+      // Unconditional because none of them is a place to come back to. The user
+      // is adding the file they just pressed a button about; a list of games
+      // they opened beforehand is answering a question they have moved on from.
+      closeOpenModals();
       Navigation.OpenQuickAccessMenu(QuickAccessTab.Decky);
     },
     [close],
@@ -625,7 +637,7 @@ export function TransferModal({
             load();
           })();
 
-        showModal(
+        openModal(
           <ConfirmModal
             strTitle={preview.replaces ? `Replace ${preview.name}?` : `Import ${preview.name}?`}
             strOKButtonText={preview.replaces ? "Replace" : "Import"}

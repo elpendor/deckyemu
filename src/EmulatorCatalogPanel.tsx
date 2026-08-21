@@ -4,7 +4,6 @@ import {
   Field,
   PanelSection,
   PanelSectionRow,
-  showModal,
 } from "@decky/ui";
 import {
   addEventListener,
@@ -49,6 +48,7 @@ import { byName } from "./order";
 import { openSetupShortcut } from "./setupShortcut";
 import { callWithRetry } from "./timeout";
 import { logError } from "./logError";
+import { openModal } from "./modalStack";
 
 interface Props {
   /** Re-read cores and emulators, so a new install becomes selectable. */
@@ -179,7 +179,6 @@ export function EmulatorCatalogPanel({ onChanged }: Props) {
 
   useEffect(load, [load]);
 
-
   useEffect(() => {
     const onProgress = (_id: string, text: string, pct: number) => {
       setStatus(text.length > 110 ? `${text.slice(0, 107)}...` : text);
@@ -248,7 +247,7 @@ export function EmulatorCatalogPanel({ onChanged }: Props) {
         return;
       }
 
-      showModal(
+      openModal(
         <ConfirmModal
           strTitle={`Install ${entry.name}?`}
           strOKButtonText="Install"
@@ -425,7 +424,7 @@ export function EmulatorCatalogPanel({ onChanged }: Props) {
   // delete.
   const confirmForget = useCallback(
     (entry: CatalogEmulator) => {
-      showModal(
+      openModal(
         <ConfirmModal
           strTitle={entry.present && entry.kind !== "byo" ? `Remove ${entry.name}?` : `Forget ${entry.name}?`}
           strDescription={
@@ -472,7 +471,7 @@ export function EmulatorCatalogPanel({ onChanged }: Props) {
 
   const confirmRemove = useCallback(
     (entry: CatalogEmulator) => {
-      showModal(
+      openModal(
         // The dialog owns the question -- keep this emulator's data or not --
         // because the answer changes what it says, and the panel owns what
         // happens after, because that is the row that goes busy.
@@ -549,7 +548,7 @@ export function EmulatorCatalogPanel({ onChanged }: Props) {
               of them, and no permanent block of text explaining buttons to
               somebody who already knows them. */}
           <DialogButton
-            onClick={() => showModal(<EmulatorLegendModal />)}
+            onClick={() => openModal(<EmulatorLegendModal />)}
             style={{ minWidth: "auto", width: "auto", padding: "6px 12px" }}
           >
             <FaQuestion />
@@ -619,7 +618,7 @@ export function EmulatorCatalogPanel({ onChanged }: Props) {
                   <DialogButton
                     disabled={Boolean(busyId)}
                     onClick={() =>
-                      showModal(
+                      openModal(
                         <EmulatorVersionModal
                           emulator={builds[entry.id]}
                           onChanged={() => {

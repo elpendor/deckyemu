@@ -1,7 +1,12 @@
-import { ButtonItem, PanelSection, PanelSectionRow, showModal } from "@decky/ui";
+import {
+  ButtonItem,
+  PanelSection,
+  PanelSectionRow,
+} from "@decky/ui";
 
 import { type AddedGame } from "./backend";
 import { AddedGamesModal } from "./AddedGamesModal";
+import { openModal } from "./modalStack";
 
 interface Props {
   games: AddedGame[];
@@ -30,7 +35,7 @@ export function AddedGamesPanel({ games, onChanged }: Props) {
       <PanelSectionRow>
         <ButtonItem
           layout="below"
-          onClick={() => showModal(<AddedGamesModal onChanged={onChanged} />)}
+          onClick={() => openModal(<AddedGamesModal onChanged={onChanged} />)}
           description="Rename a game, change what runs it, replace its artwork, or remove it."
         >
           {`Added games (${games.length})`}
