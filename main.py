@@ -379,8 +379,17 @@ class Plugin(
         decky.logger.info("DeckyEmu unloading")
 
     async def _uninstall(self):
-        # Launcher scripts live in the plugin runtime dir, which decky removes
-        # for us. The Steam shortcuts themselves are the user's to keep.
+        # Nothing to clean up, and nothing is cleaned up for us either -- this
+        # comment used to say decky removes the runtime dir, which it does not.
+        # Checked against the loader's own source at v3.2.6: the only `rmtree`
+        # in it takes `~/homebrew/plugins/<name>`, the plugin's code. The
+        # settings and runtime directories are left exactly where they are.
+        #
+        # That turns out to be the behaviour worth having, so it is left alone
+        # rather than "fixed": the launcher scripts survive, so every game added
+        # goes on working after an uninstall, and a reinstall finds its whole
+        # library still recorded. Deleting either would break a shelf of Steam
+        # entries as a side effect of removing a plugin.
         decky.logger.info("DeckyEmu uninstalled")
 
     async def _run(self, func, *args, **kwargs):

@@ -6,7 +6,7 @@ your Deck.
 Back to [the README](../README.md).
 
 **Contents** — [Manual install](#manual-install) ·
-[Where things live](#where-things-live)
+[Where things live](#where-things-live) · [Uninstalling](#uninstalling)
 
 ## Manual install
 
@@ -50,24 +50,39 @@ Anything the plugin puts on your device that is yours to keep lives under
 
 Uninstalling the plugin does not touch any of it.
 
-## Before you uninstall
+## Uninstalling
 
-Uninstalling removes the plugin, its records and the launcher scripts your games
-run. **It cannot remove anything from Steam**, so every game the plugin added
-stays in your library and stops working — the shortcut is still there, and the
-script behind it is gone.
+**Uninstalling takes the plugin and nothing else. Your games keep working.**
+Decky removes `~/homebrew/plugins/deckyemu` — the plugin's own code — and
+nothing besides. Your records, your launcher scripts, your ROMs and your Steam
+shortcuts are all somewhere else and all survive it, so the entries in your
+library go on launching exactly as before. You just lose the panel that manages
+them.
 
-That is deliberate for the games themselves: deleting a shelf of library entries
-as a side effect of removing a plugin would be worse than leaving them, and you
-can delete any of them from Steam. But it means the tidy order is:
+Which also means **reinstalling picks up where you left off**: the same games,
+collections, emulator setup and firmware state, with nothing to redo.
+
+Uninstalling Decky itself is safe for the same reason. Its uninstaller removes
+its service and its own binary, and does not touch the plugins, settings or data
+folders underneath it.
+
+### Removing it properly
+
+Because nothing is cleaned up for you, a removal you mean to be permanent is a
+few steps, and they are worth doing **before** you uninstall — afterwards there
+is no panel to do them from:
 
 1. **Library → Remove all DeckyEmu games from Steam**, if you want them gone.
-   This takes the shortcuts and the collections as well as the records.
+   This takes the shortcuts and the collections as well as the records. Skip it
+   to keep playing them.
 2. **Library → Check the library**, and take any **Remove** it offers. One of
    them is an entry called *DeckyEmu setup* — the shortcut used to open an
    emulator's own window for firmware installs. It is hidden from your library,
    so it is the one thing here you cannot find and remove yourself afterwards.
 3. Uninstall.
+4. Delete `~/homebrew/settings/deckyemu` and `~/homebrew/data/deckyemu` if you
+   want the records and launcher scripts gone too. Leaving them costs a few
+   hundred kilobytes and is what makes a later reinstall seamless.
 
 If you have already uninstalled and want that hidden entry gone, installing the
 plugin again and running the library check will find it — that check is the only

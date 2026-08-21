@@ -5,9 +5,45 @@ putting things back in order.
 
 Back to [the README](../README.md).
 
-**Contents** — [Editing a game](#editing-a-game) ·
+**Contents** — [Starting a game](#starting-a-game) ·
+[Editing a game](#editing-a-game) ·
 [Collections](#collections) · [Orphaned entries](#orphaned-entries) ·
 [Removing everything](#removing-everything)
+
+## Starting a game
+
+The play button on each row in **Added games** starts that game, closing the
+panel on the way so nothing is left over the top of it. It goes through Steam
+rather than running the emulator directly, so gamescope, Steam Input and the
+overlay all behave as they do when you launch from the library.
+
+### If another game is already running
+
+Steam normally warns you before starting a second game, but that warning never
+appears for games added here — it only applies to Steam's own titles, and these
+are non-Steam shortcuts. Running two at once is worth avoiding: they share the
+Deck's memory and its heat budget, and the first one keeps doing so long after
+you have forgotten it is there.
+
+So the plugin does the warning itself. Start one of these games while another is
+running — from anywhere, including the game's own page in Big Picture — and you
+will see a flicker back to where you were, then:
+
+> **You are currently running *Mina the Hollower*.** It is not recommended to
+> run multiple games simultaneously as it can impact performance. How would you
+> like to proceed?
+
+with the same three choices Steam offers: close the running game and launch this
+one, launch it anyway, or cancel. The emulator does not start until you pick.
+
+**The flicker is the point, not a fault.** Nothing can stop a launch once Steam
+has begun it, so the game's launcher script is what refuses — it is the first
+thing that runs, and it stops before the emulator starts. That brief return to
+the library is it deciding not to continue.
+
+If anything about that check goes wrong, the game launches normally. It is built
+to fail in that direction: a missing warning is a far smaller problem than a
+game that will not start.
 
 ## Editing a game
 

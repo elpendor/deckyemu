@@ -40,6 +40,12 @@ a controller, or they start in a window — so installing one also writes a
 controller configuration and turns fullscreen on. Those values are not guesses;
 where they came from is under [Thanks](../README.md#thanks).
 
+The same pass turns off whatever an emulator draws over the game. On a desktop a
+menu bar that slides in, a notification in the corner or a mouse pointer are
+harmless; on a handheld the game is the only thing on screen and there is no
+pointer to dismiss any of it with. xemu is the clearest case — its menu bar, its
+notifications and its cursor are all switched off on install.
+
 **Installing the emulator is not always enough to play.** Some systems need BIOS
 files, keys or firmware that are yours to dump and that this plugin will never
 download — PCSX2 and xemu will not boot without them. The install prompt says

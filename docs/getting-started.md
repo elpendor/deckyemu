@@ -174,6 +174,7 @@ the executable inside.
 | You want to | Where |
 | --- | --- |
 | See what you have added | **Added games (n)** in the Quick Access panel |
+| Start a game without leaving the panel | The play button on its row in **Added games** |
 | Rename a game, or change its core, system or artwork | The pencil on its row in **Added games**, or the cog on the game's own page → **DeckyEmu → Edit** |
 | Remove a game | The bin on its row, or **DeckyEmu → Remove** on its page — **this deletes the ROM** if the plugin filed it |
 | Move a game to the right system | Edit it and change **System**. Saving moves it to that system's collection |
