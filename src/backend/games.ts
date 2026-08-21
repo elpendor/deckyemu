@@ -252,6 +252,14 @@ export interface PluginSettings {
   last_core_by_ext: Record<string, string>;
   sgdb_api_key_set: boolean;
   /**
+   * Show the dot on the Quick Access icon when a newer release exists.
+   *
+   * The dot is the only part of the update check that reaches somebody who did
+   * not ask, so it is the only part with a switch. The row inside the panel and
+   * the Updates tab are both places you went to look.
+   */
+  show_update_dot: boolean;
+  /**
    * The one hidden shortcut that opens an emulator's own window, or 0.
    *
    * Not in the library: it is not a game, it is repointed rather than added to,

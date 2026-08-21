@@ -7,12 +7,19 @@ import {
   quickAccessMenuClasses,
   showModal,
 } from "@decky/ui";
-import { definePlugin, routerHook, useQuickAccessVisible } from "@decky/api";
+import {
+  addEventListener,
+  definePlugin,
+  removeEventListener,
+  routerHook,
+  useQuickAccessVisible,
+} from "@decky/api";
 import { useCallback, useEffect, useState } from "react";
 import { FaCog, FaGamepad } from "react-icons/fa";
 
 import {
   checkForUpdate,
+  getSettings,
   getStatus,
   listAdded,
   setSettings,
@@ -23,6 +30,8 @@ import {
 } from "./backend";
 import { deviceGate } from "./deviceGate";
 import { updateBadge } from "./updateBadge";
+import { noteUpdate, setUpdateDotEnabled } from "./updateSignal";
+import { UpdateDot } from "./UpdateDot";
 import { AddGamePanel } from "./AddGamePanel";
 import { editGameMenuItem } from "./EditGameMenuItem";
 import { refreshAddedGames, rememberAddedGames } from "./addedGames";
@@ -110,7 +119,13 @@ function Content() {
    */
   const loadUpdate = useCallback(async () => {
     try {
-      setUpdate(await checkForUpdate(false));
+      const found = await checkForUpdate(false);
+      setUpdate(found);
+      // Shared with the icon, which has no other way to hear about this one:
+      // the backend's timer runs every six hours, and the first open of a fresh
+      // session should not have to wait that long for the dot to agree with the
+      // row underneath it.
+      noteUpdate(Boolean(found.available), found.latest?.version ?? "");
     } catch (error) {
       console.error("[deckyemu] could not check for updates", error);
     }
@@ -425,6 +440,30 @@ export default definePlugin(() => {
   void refreshAddedGames();
   const unpatchContextMenu = patchGameContextMenu(editGameMenuItem);
 
+  /*
+   * The backend checks on a timer and says so here. Registered at plugin scope
+   * rather than inside the panel because that is the whole point of it: the icon
+   * has to carry the dot before anybody opens the panel, and `Content` does not
+   * exist until they do.
+   */
+  const onUpdateAvailable = (available: boolean, version: string) =>
+    noteUpdate(Boolean(available), version || "");
+  addEventListener<[boolean, string]>("update_available", onUpdateAvailable);
+
+  /*
+   * Whether the dot is wanted, read once at load.
+   *
+   * Here rather than in whichever panel renders first, because the icon is one
+   * of the things that exists before any panel does -- and somebody who turned
+   * the dot off should not see it once more on every boot while something
+   * catches up. Failure leaves it on, which is the stored default.
+   */
+  void getSettings()
+    .then((settings) => setUpdateDotEnabled(settings.show_update_dot !== false))
+    .catch((error) =>
+      console.error("[deckyemu] could not read the update dot setting", error),
+    );
+
   return {
     name: "DeckyEmu",
     titleView: <TitleView />,
@@ -438,9 +477,20 @@ export default definePlugin(() => {
         <Content />
       </ErrorBoundary>
     ),
-    icon: <FaGamepad />,
+    /*
+     * Two children rather than one, which is how decky puts its own update dot
+     * on its own plug icon. `UpdateDot` renders nothing at all until there is
+     * something to say, so the ordinary case is the glyph exactly as before.
+     */
+    icon: (
+      <>
+        <FaGamepad />
+        <UpdateDot />
+      </>
+    ),
     onDismount() {
       routerHook.removeRoute(MANAGE_ROUTE);
+      removeEventListener("update_available", onUpdateAvailable);
       // Steam keeps the patched component, so leaving this would put a dead
       // item in every game menu until the client restarts.
       unpatchContextMenu();

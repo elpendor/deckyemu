@@ -3,6 +3,7 @@ import {
   Field,
   PanelSection,
   PanelSectionRow,
+  ToggleField,
   showModal,
 } from "@decky/ui";
 
@@ -12,13 +13,16 @@ import { useCallback, useEffect, useState } from "react";
 
 import {
   checkForUpdate,
+  getSettings,
   pluginVersion,
+  setSettings,
   stageUpdate,
   type PluginVersion,
   type UpdateCheck,
 } from "./backend";
 import { callWithRetry } from "./timeout";
 import { canInstallUpdates, installUpdate } from "./updater";
+import { setUpdateDotEnabled } from "./updateSignal";
 import { describe, FRONTEND_BUILD, FRONTEND_VERSION, isStale } from "./version";
 import { ReportModal } from "./ReportModal";
 import { logError } from "./logError";
@@ -129,12 +133,37 @@ export function UpdatePanel() {
   // Keyed rather than a single flag: the notes for what you are running and
   // the notes for what is on offer are two separate readings.
   const [openNotes, setOpenNotes] = useState<Record<string, boolean>>({});
+  // Undefined until the settings have been read, so the switch is not drawn in
+  // the wrong position for the moment that takes.
+  const [dot, setDot] = useState<boolean | undefined>(undefined);
 
   const load = useCallback(async () => {
     try {
       setBackend(await callWithRetry(pluginVersion));
     } catch (error) {
       logError("could not read version", error);
+    }
+    try {
+      setDot((await callWithRetry(getSettings)).show_update_dot !== false);
+    } catch (error) {
+      logError("could not read the update dot setting", error);
+    }
+  }, []);
+
+  /**
+   * Write it, and tell the icon.
+   *
+   * The icon is rendered outside this tree and never re-reads settings, so
+   * without the second call the switch would move and the dot would stay where
+   * it was until something reloaded the plugin.
+   */
+  const setDotSetting = useCallback(async (on: boolean) => {
+    setDot(on);
+    setUpdateDotEnabled(on);
+    try {
+      await setSettings({ show_update_dot: on });
+    } catch (error) {
+      logError("could not save the update dot setting", error);
     }
   }, []);
 
@@ -320,6 +349,22 @@ export function UpdatePanel() {
           {checking ? "Checking..." : "Check for updates"}
         </ButtonItem>
       </PanelSectionRow>
+
+      {/* Only the dot has a switch, and only because it is the only part of
+          this that arrives without being asked for. decky has a setting of its
+          own for exactly this and honours it for the plugins in its store; a
+          plugin cannot read that setting, so somebody who has already said they
+          do not want to hear about plugin updates can only be answered here. */}
+      {dot !== undefined && (
+        <PanelSectionRow>
+          <ToggleField
+            label="Mark the icon when an update is out"
+            description="Puts a dot on the DeckyEmu icon in the Quick Access bar. Turning it off changes nothing on this tab — checks keep running and this page keeps answering."
+            checked={dot}
+            onChange={(value) => void setDotSetting(value)}
+          />
+        </PanelSectionRow>
+      )}
 
       {update?.available && update.latest && (
         <>
