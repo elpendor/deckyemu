@@ -42,7 +42,7 @@ import { shortcutNudge, type ShortcutCounts } from "./shortcutNudge";
 import { TransferStatusPanel } from "./TransferStatusPanel";
 import { ManagePage, MANAGE_ROUTE, openManagePage } from "./ManagePage";
 import { patchGameContextMenu } from "./steam/contextMenu";
-import { watchForDoubleLaunch } from "./doubleLaunch";
+import { watchLaunches } from "./launchGate";
 import { callWithRetry } from "./timeout";
 
 const EMPTY_STATUS: RetroArchStatus = {
@@ -442,11 +442,11 @@ export default definePlugin(() => {
   void refreshAddedGames();
   const unpatchContextMenu = patchGameContextMenu(editGameMenuItem);
 
-  // Two games at once, which Steam warns about for its own games and cannot
-  // warn about for ours -- its check is gated on an app_type our shortcuts do
-  // not carry. The launcher script is what actually stops the second launch;
-  // this is the panel catching up and asking. See doubleLaunch.ts.
-  const stopWatchingLaunches = watchForDoubleLaunch();
+  // Steam will not warn before launching one of our games over a running one
+  // -- its check is gated on an app_type our shortcuts do not carry. The
+  // launcher script is what actually stops it; this is the panel collecting
+  // that decision and asking. See launchGate.ts.
+  const stopWatchingLaunches = watchLaunches();
 
   /*
    * The backend checks on a timer and says so here. Registered at plugin scope

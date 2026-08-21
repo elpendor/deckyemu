@@ -1,5 +1,4 @@
 import {
-  ConfirmModal,
   DialogBody,
   DialogButtonPrimary,
   DialogButtonSecondary,
@@ -182,46 +181,5 @@ export function LaunchConflictModal({ closeModal, title, running, onLaunch }: Pr
         </Focusable>
       </DialogFooter>
     </ModalRoot>
-  );
-}
-
-/**
- * The same question after the fact: close what is still running?
- *
- * Reached from the two-games toast, which fires when Steam launched something
- * over something else and never asked -- see `doubleLaunch.ts` for why that is
- * not preventable without replacing a function of Steam's. By then "and launch"
- * has already happened, so this is the tail of the dialog above rather than the
- * whole of it: close the other one, or leave it.
- *
- * A plain `ConfirmModal` because that is what two choices are, and
- * `bDestructiveWarning` because closing a game can lose work. The dialog above
- * needs its own footer for the confirm step; this one does not -- reaching it
- * already took a deliberate tap on the toast, and the press below is a second.
- */
-export function showCloseRunning(running: RunningGame[]) {
-  const what = running.length > 1 ? `${running.length} other games` : running[0].title;
-  showModal(
-    <ConfirmModal
-      strTitle="Two games are running"
-      strDescription={
-        <>
-          {`${what} ${running.length > 1 ? "were" : "was"} already running when this one `}
-          {"started. Running more than one game at a time can impact performance."}
-          <div style={WARNING}>
-            {steamText(
-              "#GameAction_Launch_Multiple_Warning",
-              "Warning: closing a game may result in losing unsaved data.",
-            )}
-          </div>
-        </>
-      }
-      strOKButtonText={`Close ${what}`}
-      bDestructiveWarning
-      onOK={() => {
-        for (const game of running) terminateGame(game.gameId);
-      }}
-      strCancelButtonText="Leave it running"
-    />,
   );
 }
