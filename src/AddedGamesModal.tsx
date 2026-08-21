@@ -1,9 +1,10 @@
 import { DialogButton, Field, Focusable, ModalRoot, showModal, Spinner } from "@decky/ui";
 import { useCallback, useEffect, useState } from "react";
-import { FaPen, FaTrash } from "react-icons/fa";
+import { FaPen, FaPlay, FaTrash } from "react-icons/fa";
 
 import { listAdded, type AddedGame } from "./backend";
 import { GameEditorModal } from "./GameEditorModal";
+import { playGame } from "./playGame";
 import { RemoveGameModal } from "./RemoveGameModal";
 import { systemLabel } from "./systemLabel";
 import { callWithRetry } from "./timeout";
@@ -102,6 +103,18 @@ export function AddedGamesModal({ closeModal, onChanged }: Props) {
             {inSystem.map((game) => (
               <Field key={game.app_id} label={game.title} childrenContainerWidth="min">
                 <div style={{ display: "flex", gap: "6px" }}>
+                  {/* First in the row because it is what the list is most
+                      often open for. Getting to a game otherwise means closing
+                      the panel, finding it on the shelf and launching it there
+                      -- and this list is already the one place that knows
+                      which games are the plugin's. `playGame` takes this
+                      modal's dismiss so nothing is left over the game. */}
+                  <DialogButton
+                    onClick={() => playGame(game.app_id, closeModal)}
+                    style={{ minWidth: "auto", width: "auto", padding: "6px 12px" }}
+                  >
+                    <FaPlay />
+                  </DialogButton>
                   <DialogButton
                     // Stacked on this one: Steam nests modals, so closing the
                     // editor comes back here rather than to the panel.

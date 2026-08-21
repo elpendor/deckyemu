@@ -23,10 +23,10 @@ import {
 import {
   addAppsToCollection,
   applyArtwork,
-  launchApp,
   renameShortcut,
   repointShortcut,
 } from "./steam";
+import { playGame } from "./playGame";
 import { unfileGames } from "./collections";
 import { ArtPickerModal } from "./ArtPickerModal";
 import {
@@ -451,20 +451,13 @@ export function GameEditorModal({ game, onSaved, closeModal, onLeave }: Props) {
    * failed -- the error is on screen here, and the game would run the old
    * settings anyway.
    *
-   * Every modal closes before the launch, this one and the list that opened it.
-   * Steam re-reveals each modal as the one above it dismisses, so a list left
-   * standing comes back over the game that is starting -- the same ordering the
-   * navigation buttons above need, for the same reason.
+   * Every modal closes before the launch, this one and the list that opened it
+   * -- see `playGame` for why that ordering is not cosmetic.
    */
   const testLaunch = useCallback(async () => {
     if (!(await save())) return;
-    onLeave?.();
-    if (!launchApp(game.app_id)) {
-      toaster.toast({
-        title: "Could not start the game",
-        body: "Steam did not accept the launch request. Try it from the library.",
-      });
-    }
+    // `save` closed this modal; `playGame` closes the list that opened it.
+    playGame(game.app_id, onLeave);
   }, [save, game.app_id, onLeave]);
 
   const coreChanged = coreId !== game.core_id;
