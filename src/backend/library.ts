@@ -219,6 +219,15 @@ export interface FileServerStatus {
   pin_locked: boolean;
   /** Uploads in flight. Stopping now would cut them off. */
   uploading: number;
+  /**
+   * Half-received files with nobody sending them at this instant.
+   *
+   * A transfer that lost its connection is waiting for the sender to reconnect
+   * and carry on, so stopping the server ends it just as surely as stopping one
+   * mid-flight — which is why this counts alongside `uploading` wherever the
+   * question is "would closing this cut something off".
+   */
+  paused: number;
   /** Those same uploads with their progress, oldest first. */
   uploads: UploadInFlight[];
   port: number;

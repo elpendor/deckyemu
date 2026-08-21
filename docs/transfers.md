@@ -36,6 +36,17 @@ and each can be **cancelled**, which deletes the partial rather than leaving it
 behind. That status also appears in the Quick Access panel, so dismissing the
 dialog does not hide a transfer that is still running.
 
+**An interrupted transfer carries on where it left off.** Wifi dropping, a phone
+locking its screen or a tab left in the background all end an upload partway;
+the Deck keeps what it has and the sending page reconnects and sends the rest,
+so a 4 GB ROM that stopped at 90% resumes at 90%. Files are sent one at a time
+rather than all at once, and the page asks the sending device to stay awake
+while they are moving. Two things end a resumable transfer for good: cancelling
+it, and stopping the server — so the panel says **Paused** rather than
+**Waiting** while one is between attempts, and closing the dialog leaves the
+server running until it finishes or goes idle. Keep the page open; a tab that is
+closed cannot come back, and the browser will ask before letting you.
+
 ### Keeping the same address
 
 By default the port, token and code all rotate per session, so nothing outlives a

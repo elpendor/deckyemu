@@ -2140,7 +2140,7 @@ import re as _re  # noqa: E402
 import time  # noqa: E402
 import urllib.error  # noqa: E402
 import urllib.request  # noqa: E402
-from urllib.parse import urljoin  # noqa: E402
+from urllib.parse import quote as _quote, urljoin  # noqa: E402
 
 import fileserver  # noqa: E402
 
@@ -2241,6 +2241,7 @@ else:
     # the handler blocks in rfile.read until a whole chunk is there, so a payload
     # smaller than _CHUNK reports nothing until it is already complete.
     tracked = []
+    tracked_paused = []
     tracked_total = fileserver._CHUNK + 512 * 1024
 
     def _tracked_upload():
@@ -2252,6 +2253,10 @@ else:
         connection.send(b"x" * fileserver._CHUNK)
         time.sleep(0.6)
         tracked.append(fileserver.status()["uploads"])
+        # The half-file this is writing must not also be reported as a transfer
+        # nobody is sending -- it would say "paused" about the one thing that is
+        # demonstrably moving.
+        tracked_paused.append(fileserver.status()["paused"])
         connection.send(b"x" * (tracked_total - fileserver._CHUNK))
         connection.getresponse().read()
         connection.close()
@@ -2263,6 +2268,7 @@ else:
     check("an upload in flight says what it is", mid.get("name"), "Big.iso")
     check("how big it will be", mid.get("total"), tracked_total)
     check("and how much has arrived so far", mid.get("received"), fileserver._CHUNK)
+    check("a file being written is not also counted as paused", tracked_paused, [0])
     check("and it stops being reported once complete", settled(), 0)
     check("the finished file is on disk", os.path.isfile(os.path.join(incoming, "Big.iso")), True)
 
@@ -2403,9 +2409,9 @@ else:
     dropped.join(timeout=15)
     check("a client that vanishes is not left counted", settled(5.0), 0)
     check(
-        "and its half-written file is cleaned up",
+        "and what arrived is kept, so the sender can carry on from it",
         os.path.isfile(os.path.join(incoming, "Dropped.iso.uploading")),
-        False,
+        True,
     )
     check(
         "with no truncated ROM left in its place",
@@ -2413,13 +2419,122 @@ else:
         False,
     )
 
+    # Resuming, which is what that kept partial is for. A phone that locks its
+    # screen, a wifi blink, a tab in the background: all of them end a PUT, and
+    # before this each one cost the whole file however far in it was.
+    _token = base.group(1).strip("/").split("/")[0]
+    resume_name = "Resumable.iso"
+    resume_tail = 4096
+    resume_total = fileserver._CHUNK + resume_tail
+    resume_fp = "1-2"
+
+    def _pending(name, fingerprint):
+        address = "%s/%s/pending/%s?fp=%s" % (
+            root, _token, _quote(name), _quote(fingerprint))
+        with urllib.request.urlopen(address, timeout=5) as response:
+            return _json.loads(response.read().decode())["received"]
+
+    def put_at(name, data, offset, fingerprint):
+        request = urllib.request.Request(
+            root + base.group(1) + _quote(name), data=data, method="PUT")
+        request.add_header("X-Upload-Id", fingerprint)
+        request.add_header("X-Upload-Offset", str(offset))
+        try:
+            with urllib.request.urlopen(request, timeout=20) as response:
+                return response.status
+        except urllib.error.HTTPError as error:
+            return error.code
+
+    def _half_then_vanish():
+        connection = _http.HTTPConnection("127.0.0.1", served["port"], timeout=20)
+        try:
+            connection.putrequest("PUT", base.group(1) + resume_name)
+            connection.putheader("Content-Length", str(resume_total))
+            connection.putheader("X-Upload-Id", resume_fp)
+            connection.putheader("X-Upload-Offset", "0")
+            connection.endheaders()
+            # One whole chunk, so the handler's read completes and the bytes are
+            # on disk, then the tab is gone.
+            connection.send(b"a" * fileserver._CHUNK)
+            time.sleep(0.4)
+        except OSError:
+            pass
+        finally:
+            try:
+                connection.close()
+            except OSError:
+                pass
+
+    _paused_before = fileserver.status()["paused"]
+    interrupted = _threading.Thread(target=_half_then_vanish)
+    interrupted.start()
+    interrupted.join(timeout=20)
+    check("an interrupted upload leaves its bytes to be resumed", settled(5.0), 0)
+    # The panel has to be able to tell this from an idle server, because the two
+    # look identical from the Deck -- nothing is arriving in either -- and only
+    # one of them survives somebody pressing Done.
+    check("and the Deck reports it as paused rather than as nothing happening",
+          fileserver.status()["paused"] - _paused_before, 1)
+    check("and the Deck says how many it has", _pending(resume_name, resume_fp), fileserver._CHUNK)
+    check("nothing to carry on from for a file it has never seen",
+          _pending("Never Sent.iso", resume_fp), 0)
+    # The fingerprint is the sender's size and date. Without it in the partial's
+    # name, "carry on from byte N of Game.iso" would append the second file to
+    # the first and produce a game that boots to nothing, with no error anywhere.
+    check("nor for a different file that happens to share the name",
+          _pending(resume_name, "99-99"), 0)
+    check("an offset the Deck does not agree with is refused",
+          put_at(resume_name, b"z" * 32, 5, resume_fp), 409)
+    check("the rest of the file is accepted",
+          put_at(resume_name, b"b" * resume_tail, fileserver._CHUNK, resume_fp), 200)
+    _resumed = os.path.join(incoming, resume_name)
+    check("and lands as one whole file", os.path.getsize(_resumed), resume_total)
+    with open(_resumed, "rb") as _handle:
+        _joined = _handle.read()
+    # Order matters and is not implied by the size: an append that seeked wrongly
+    # would produce a file of exactly this length and the wrong bytes in it.
+    check("with the two halves the right way round",
+          (_joined[: fileserver._CHUNK] == b"a" * fileserver._CHUNK,
+           _joined[fileserver._CHUNK:] == b"b" * resume_tail),
+          (True, True))
+    check("and the partial is gone once it is a game",
+          os.path.isfile(fileserver._partial_path(_resumed, resume_fp)), False)
+    check("with nothing left paused", fileserver.status()["paused"] - _paused_before, 0)
+
+    # The connection can also die after the last byte lands, leaving the Deck
+    # holding the whole file with nothing to rename it. The sender has nothing
+    # left to send and says so.
+    _whole = os.path.join(incoming, "Complete.iso")
+    with open(fileserver._partial_path(_whole, "7-7"), "wb") as _handle:
+        _handle.write(b"a whole rom")
+    check("a sender with nothing left asks the Deck to finish the file",
+          put_at("Complete.iso", b"", len(b"a whole rom"), "7-7"), 200)
+    check("and it is a game rather than a leftover", os.path.isfile(_whole), True)
+    check("an empty upload that is not a resume is still refused",
+          put_at("Nothing.iso", b"", 0, "0-0"), 400)
+
     # The page has to carry the guard, or there is nothing to dismiss. `page` is
     # the upload page as this running server actually served it, fetched above.
     check("the upload page warns before a tab is closed mid-transfer",
           "beforeunload" in page, True)
     check("and only while something is actually running",
           "if (active === 0) return;" in page, True)
-    check("with the counter released on every outcome", "loadend" in page, True)
+    # One decrement, in the one place both endings pass through. A per-request
+    # one drove this negative and then questioned every attempt to leave the
+    # page for the rest of the session -- and a resumed upload is several
+    # requests for one file, which is exactly how that would come back.
+    check("with the counter released once per file, not once per attempt",
+          page.count("active -= 1;"), 1)
+
+    # The three halves of surviving an interruption, pinned so none of them can
+    # be dropped without a failure that names it.
+    check("the page sends one file at a time", "function pump()" in page, True)
+    check("it asks what the Deck already has before sending",
+          "PENDING_BASE" in page and "X-Upload-Offset" in page, True)
+    check("it reconnects rather than giving up on one dropped connection",
+          "reconnecting" in page, True)
+    check("and asks the sending device to stay awake while files are moving",
+          "navigator.wakeLock" in page, True)
 
     # Declared inline so the browser never asks for /favicon.ico -- which this
     # server answers 404 and logs, once per page load, for nothing. Both pages
@@ -2439,7 +2554,14 @@ else:
     real_file = os.path.join(incoming, "Keep Me.sfc")
     with open(real_file, "wb") as _handle:
         _handle.write(b"a real rom")
-    check("a leftover partial is swept", fileserver.sweep_partials(incoming), [orphan_partial])
+    # Everything resumable goes too, and that is the point of doing this at the
+    # start of a session rather than at the end of a request: one session is how
+    # long a half-file is worth keeping. The dropped upload above is here as
+    # well, which is what a partial looks like once nobody is coming back for it.
+    _swept = fileserver.sweep_partials(incoming)
+    check("a leftover partial is swept", orphan_partial in _swept, True)
+    check("along with a session's unfinished transfers",
+          os.path.join(incoming, "Dropped.iso.uploading") in _swept, True)
     check("and is gone", os.path.isfile(orphan_partial), False)
     check("while real files are left alone", os.path.isfile(real_file), True)
     check("sweeping a folder with nothing to sweep is fine", fileserver.sweep_partials(incoming), [])

@@ -70,6 +70,16 @@ export function TransferStatusPanel() {
   } else if (uploads.length > 1) {
     label = "Arriving";
     description = `${uploads.length} files - ${humanSize(received)} of ${humanSize(total)}`;
+  } else if (status.paused > 0) {
+    // Not idle and not arriving: a transfer lost its connection and the Deck is
+    // holding what it has until the sender comes back. Said out loud because
+    // this is the moment somebody would otherwise stop the server -- the row
+    // above would have read "Waiting", which invites exactly that.
+    label = "Paused";
+    description =
+      status.paused === 1
+        ? "A transfer stopped partway. It carries on when the sender reconnects."
+        : `${status.paused} transfers stopped partway. They carry on when the sender reconnects.`;
   } else {
     // Nothing arriving, so the useful fact is that it is still listening and for
     // how much longer -- that is the state someone would otherwise not know they

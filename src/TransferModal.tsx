@@ -338,8 +338,12 @@ export function TransferModal({
    * once idle.
    */
   const close = useCallback(async () => {
-    const inFlight = status?.uploading ?? 0;
-    if (status?.running && inFlight === 0) {
+    // Paused counts as arriving. A transfer between two attempts -- the wifi
+    // dropped, the phone locked -- has nothing in flight for as long as the
+    // sender's backoff lasts, and stopping the server in that window is what
+    // the resume was there to prevent.
+    const busy = (status?.uploading ?? 0) + (status?.paused ?? 0);
+    if (status?.running && busy === 0) {
       try {
         await stopFileServer();
       } catch (stopError) {
@@ -353,7 +357,7 @@ export function TransferModal({
     // sits at the top of it with the live progress, for as long as the transfer
     // lasts, which is both more visible and true for longer than a toast.
     closeModal?.();
-  }, [status?.running, status?.uploading, closeModal]);
+  }, [status?.running, status?.uploading, status?.paused, closeModal]);
 
   /**
    * Turn the durable link on or off.
@@ -748,6 +752,19 @@ export function TransferModal({
         )}
 
         {error && <div style={{ color: "#e35d5d", fontSize: "13px" }}>{error}</div>}
+
+        {/* A transfer that lost its connection, waiting for the sender to carry
+            on. Said here as well as in the panel because this is the screen with
+            the Done button on it, and "nothing is arriving" is what somebody
+            reads just before pressing it -- which would end the transfer they
+            are waiting for. */}
+        {uploads.length === 0 && (status?.paused ?? 0) > 0 && (
+          <div style={MUTED}>
+            {status?.paused === 1
+              ? "A transfer stopped partway. It carries on where it left off when the sender reconnects."
+              : `${status?.paused} transfers stopped partway. They carry on where they left off when the sender reconnects.`}
+          </div>
+        )}
 
         {/* Above the received list, because this is the thing changing. Until
             this existed a multi-gigabyte ROM produced no sign of life at all --

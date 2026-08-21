@@ -2251,7 +2251,7 @@ class Plugin(
         """
         await self._run(fileserver.offer_report, "")
         status = await self._run(fileserver.status)
-        if status.get("running") and not status.get("uploading"):
+        if status.get("running") and not (status.get("uploading") or status.get("paused")):
             return await self.stop_file_server()
         return {"ok": True, **await self._run(fileserver.status)}
 
@@ -2343,10 +2343,11 @@ class Plugin(
     async def cancel_upload(self, upload_id: int = 0):
         """Abandon a transfer in progress. 0 means every one of them.
 
-        The half-written file goes with it: nothing can resume an upload, so
-        keeping it would only leave litter in the folder the user browses for
-        ROMs. The handler deletes its own, which is the only thread that can do
-        it safely while the file is still open.
+        The half-written file goes with it, and this is the one thing that
+        deletes one. An interrupted upload keeps its partial so the sender can
+        carry on from it; a cancelled one is the user saying they do not want
+        this file, which is a different answer. The handler deletes its own,
+        being the only thread that can do it safely while the file is open.
         """
         cancelled = await self._run(fileserver.cancel, upload_id or None)
         status = await self._run(fileserver.status)

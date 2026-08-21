@@ -15,6 +15,14 @@ parsing in the standard library means `cgi.FieldStorage`, which is deprecated an
 removed in newer Pythons, and it buffers awkwardly for multi-gigabyte ROMs. A PUT
 of the raw body is both simpler and streamable.
 
+A PUT can also carry on from where an earlier one stopped, which is what makes a
+transfer survive the wifi, a phone locking its screen, or a tab left in the
+background. The sender asks `pending/<name>` how many bytes are already here and
+re-sends the rest with `X-Upload-Offset`; the half-file is kept for exactly that
+reason and only ever deleted by a cancel or by the next server session's sweep.
+See `_partial_path` for the part that stops two different files with the same
+name being spliced together.
+
 Security posture, since this listens on the network:
 
 * A random token is required in every path. The QR code carries it; without it
@@ -220,6 +228,34 @@ def safe_name(name):
     return name[:180] or "upload.bin"
 
 
+_UNSAFE_TAG = re.compile(r"[^0-9A-Za-z-]")
+
+
+def _partial_path(destination, fingerprint):
+    """Where a half-received file waits for the rest of itself.
+
+    The sender's fingerprint -- its size and last-modified date -- is in the
+    name, and that is the whole safety of resuming. Without it, "carry on from
+    byte 900000000 of Game.iso" would append to whatever partial happened to be
+    called that, and two different files spliced together produce a game that
+    boots to nothing with no error anywhere to explain it. A different file gets
+    a different partial, is offered 0, and uploads from the start.
+
+    Anything without a fingerprint keeps the plain name and simply never
+    resumes, which is the old behaviour and a safe one.
+    """
+    tag = _UNSAFE_TAG.sub("", fingerprint or "")[:40]
+    return "%s%s.uploading" % (destination, "." + tag if tag else "")
+
+
+def _partial_size(path):
+    """How much of a partial is on disk, or 0 when there is none."""
+    try:
+        return os.path.getsize(path)
+    except OSError:
+        return 0
+
+
 def same_secret(given, expected):
     """Constant-time comparison that tolerates anything off the network.
 
@@ -360,6 +396,25 @@ class _Handler(BaseHTTPRequestHandler):
             with _state_lock:
                 names = [entry["name"] for entry in _received]
             self._send(200, json.dumps(names), "application/json")
+        elif len(rest) == 2 and rest[0] == "pending":
+            # How much of this file the Deck already has. Asked before every
+            # attempt, not only after a failure: re-picking the same file after
+            # the page itself was reloaded then carries on rather than starting
+            # again, and the answer is 0 whenever there is nothing to carry on
+            # from, so one code path covers both.
+            with _state_lock:
+                uploads = _uploads
+                directory = _target_dir
+            if not uploads or not directory:
+                self._deny()
+                return
+            fingerprint = urllib.parse.parse_qs(query).get("fp", [""])[0]
+            partial = _partial_path(
+                os.path.join(directory, safe_name(rest[1])), fingerprint
+            )
+            self._send(
+                200, json.dumps({"received": _partial_size(partial)}), "application/json"
+            )
         elif rest == ["report"]:
             with _state_lock:
                 report = _report
@@ -401,14 +456,33 @@ class _Handler(BaseHTTPRequestHandler):
         except ValueError:
             self._send(400, "A Content-Length is required.")
             return
-        if length <= 0:
-            self._send(400, "Empty upload.")
-            return
-
         destination = os.path.join(directory, name)
         # Written alongside then renamed, so a partial transfer is never mistaken
         # for a complete ROM.
-        partial = destination + ".uploading"
+        partial = _partial_path(destination, self.headers.get("X-Upload-Id"))
+
+        # Where in the file this body starts. Content-Length is the rest from
+        # here, not the whole game, so everything the panel shows has to be told
+        # about both numbers or a resumed 4 GB ROM reports itself as the 1.5 GB
+        # that is left.
+        try:
+            offset = int(self.headers.get("X-Upload-Offset") or 0)
+        except ValueError:
+            offset = -1
+        already = _partial_size(partial)
+        if offset < 0 or offset != already:
+            # The sender and the Deck disagree about what is here. The answer
+            # carries the truth rather than a bare refusal, so a retry needs one
+            # round trip instead of two.
+            self._send(409, str(already))
+            return
+        if length < 0 or (length <= 0 and offset <= 0):
+            self._send(400, "Empty upload.")
+            return
+        # A body of nothing on top of an offset is a sender saying "you have all
+        # of it, finish the file" -- which is what a connection that died on the
+        # last chunk leaves behind, and it is a rename rather than a transfer.
+        total = offset + length
 
         global _upload_seq
         with _state_lock:
@@ -416,8 +490,8 @@ class _Handler(BaseHTTPRequestHandler):
             upload_id = _upload_seq
             _in_flight[upload_id] = {
                 "name": name,
-                "received": 0,
-                "total": length,
+                "received": offset,
+                "total": total,
                 "at": _now(),
                 # Both are for cancel(): the socket is how a read blocked waiting
                 # for the next chunk gets unstuck, and the path is what a sweep
@@ -427,7 +501,7 @@ class _Handler(BaseHTTPRequestHandler):
                 "cancelled": False,
             }
         try:
-            self._receive(upload_id, partial, destination, name, length, directory)
+            self._receive(upload_id, partial, destination, name, length, directory, offset)
         finally:
             with _state_lock:
                 _in_flight.pop(upload_id, None)
@@ -445,11 +519,15 @@ class _Handler(BaseHTTPRequestHandler):
         except OSError as error:
             decky.logger.info("No one left to reply to: %s", error)
 
-    def _receive(self, upload_id, partial, destination, name, length, directory):
+    def _receive(self, upload_id, partial, destination, name, length, directory, offset=0):
         received = 0
         cancelled = False
+        total = offset + length
         try:
-            with open(partial, "wb") as handle:
+            # Appended to when this is the rest of a file, truncating only when
+            # it is the start of one. The offset was checked against the size on
+            # disk before the entry was made, so append lands exactly there.
+            with open(partial, "ab" if offset else "wb") as handle:
                 while received < length:
                     chunk = self.rfile.read(min(_CHUNK, length - received))
                     if not chunk:
@@ -462,7 +540,7 @@ class _Handler(BaseHTTPRequestHandler):
                     with _state_lock:
                         entry = _in_flight.get(upload_id)
                         if entry is not None:
-                            entry["received"] = received
+                            entry["received"] = offset + received
                             cancelled = bool(entry["cancelled"])
                     if cancelled:
                         break
@@ -473,23 +551,30 @@ class _Handler(BaseHTTPRequestHandler):
             cancelled = cancelled or _was_cancelled(upload_id)
             if not cancelled:
                 decky.logger.warning("Upload of %s failed: %s", name, error)
-            _quiet_remove(partial)
-            if not cancelled:
+                # The partial stays. This is what a dropped connection looks
+                # like from here, and throwing away an hour of a 4 GB ROM
+                # because the wifi blinked is the failure resuming exists to
+                # end. Litter is bounded: the next server session sweeps it.
                 self._reply(500, "Could not write the file: %s" % error)
                 return
 
         cancelled = cancelled or _was_cancelled(upload_id)
         if cancelled:
-            # Deleted rather than kept: a half-file the user asked to abandon is
-            # exactly the leftover this rename-on-completion scheme exists to
-            # avoid, and there is nothing to resume it with.
+            # Deleted rather than kept, and the only path that deletes one. The
+            # user asked for this file to go away; keeping something to resume
+            # would be answering a different question.
             _quiet_remove(partial)
-            decky.logger.info("Cancelled %s after %d of %d bytes", name, received, length)
+            decky.logger.info("Cancelled %s after %d of %d bytes", name, offset + received, total)
             self._reply(499, "Cancelled.")
             return
 
         if received != length:
-            _quiet_remove(partial)
+            # Kept, so the sender can carry on from here. Nothing is renamed
+            # into place, so a half-file is still never mistaken for a game.
+            decky.logger.info(
+                "Upload of %s stopped at %d of %d bytes; keeping it to resume",
+                name, offset + received, total,
+            )
             self._reply(400, "Upload ended early.")
             return
 
@@ -501,10 +586,12 @@ class _Handler(BaseHTTPRequestHandler):
             return
 
         with _state_lock:
-            _received.append({"name": name, "path": destination, "size": received, "at": _now()})
+            # The whole file, not this request's share of it: a resumed upload
+            # sends only the rest, and the list is about what the Deck now has.
+            _received.append({"name": name, "path": destination, "size": total, "at": _now()})
             del _received[:-50]
 
-        decky.logger.info("Received %s (%d bytes) into %s", name, received, directory)
+        decky.logger.info("Received %s (%d bytes) into %s", name, total, directory)
         self._reply(200, "ok")
 
 
@@ -564,11 +651,13 @@ def cancel(upload_id=None):
 def sweep_partials(directory):
     """Delete .uploading leftovers in `directory` that no live transfer owns.
 
-    A handler deletes its own partial on every path it can control -- a client
-    that disappears, a write error, a cancel. What it cannot control is the plugin
-    being unloaded or the machine losing power mid-transfer, which leaves the file
-    behind with nothing that remembers it. Nothing resumes an upload, so a
-    leftover is only ever litter sitting in the user's ROM folder.
+    A partial outlives the request that wrote it on purpose -- that is what the
+    sender resumes from -- so this is where they are finally cleared, and it is
+    called from `start()`. One server session is the life of a resumable file:
+    long enough to cover a dropped connection, a locked phone or a page reload,
+    and short enough that a folder the user browses for ROMs is not accumulating
+    half-files from last week. A partial abandoned by an unload or a power cut
+    has nothing that remembers it at all and goes the same way.
 
     Files a running upload is writing are excluded by path, so this is safe to
     call while transfers are in progress.
@@ -645,7 +734,36 @@ def offer_report(report):
     return bool(report)
 
 
+def _paused_count():
+    """Half-received files that nobody is sending at this moment.
+
+    A resumable transfer between attempts has no request and no `_in_flight`
+    entry, so every "is anything going on here" test answers no -- and the one
+    that matters is the dialog's Done button, which would stop the server out
+    from under a sender that is seconds from reconnecting. This is what says
+    otherwise. Counted off the disk rather than remembered, because the whole
+    point of the partial is that it outlives whatever wrote it.
+    """
+    with _state_lock:
+        directory = _target_dir
+        live = {entry["partial"] for entry in _in_flight.values() if entry.get("partial")}
+    if not directory:
+        return 0
+    try:
+        names = os.listdir(directory)
+    except OSError:
+        return 0
+    return sum(
+        1
+        for name in names
+        if name.endswith(".uploading") and os.path.join(directory, name) not in live
+    )
+
+
 def status():
+    # Before the lock: it reads the directory, and holding the lock across a
+    # filesystem call would put every upload's per-chunk progress write behind it.
+    paused = _paused_count()
     with _state_lock:
         running = _server is not None
         return {
@@ -668,6 +786,9 @@ def status():
             "pin_locked": _pin_locked,
             # Non-zero means a transfer would be cut off by stopping now.
             "uploading": len(_in_flight),
+            # And so does this one: a transfer between two attempts is not
+            # arriving, but stopping the server is still the end of it.
+            "paused": paused if running else 0,
             # Oldest first, so a list of them stays in a stable order as they
             # come and go rather than reshuffling under the reader.
             "uploads": [

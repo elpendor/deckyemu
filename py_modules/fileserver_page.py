@@ -208,10 +208,33 @@ window.addEventListener('beforeunload', (event) => {
   return '';
 });
 
+// Keeping the screen on while files are moving.
+//
+// A phone that locks its screen suspends the upload, which is the commonest way
+// a transfer dies: a multi-gigabyte ROM is ten or twenty minutes of holding a
+// device that would rather go to sleep. The lock is only granted to a visible
+// page and is dropped when the page is hidden, so it is asked for again every
+// time the page comes back. Browsers without it lose nothing else.
+let wakeLock = null;
+
+function keepAwake() {
+  if (wakeLock || !navigator.wakeLock || !active) return;
+  navigator.wakeLock.request('screen').then((lock) => {
+    wakeLock = lock;
+    lock.addEventListener('release', () => { wakeLock = null; });
+  }).catch(() => undefined);
+}
+
+function letSleep() {
+  const lock = wakeLock;
+  wakeLock = null;
+  if (lock) { try { lock.release(); } catch (e) { /* already gone */ } }
+}
+
 document.getElementById('pick').addEventListener('change', (event) => {
   const files = [...event.target.files];
   event.target.value = '';
-  files.forEach(send);
+  files.forEach(enqueue);
 });
 
 // Drag and drop, for the desktop half of the audience. The document-level
@@ -227,10 +250,143 @@ document.getElementById('pick').addEventListener('change', (event) => {
   zone.addEventListener(name, () => zone.classList.remove('drag'));
 });
 zone.addEventListener('drop', (event) => {
-  [...(event.dataTransfer ? event.dataTransfer.files : [])].forEach(send);
+  [...(event.dataTransfer ? event.dataTransfer.files : [])].forEach(enqueue);
 });
 
-function send(file) {
+// One at a time, in the order they were chosen.
+//
+// Eight ROMs picked together used to start eight PUTs at once. They share one
+// wifi link and one disk, so they finish no sooner than they would in turn --
+// and one blink of the connection then set all eight back instead of one. In
+// turn, the bar at the top of the list is also the file that is actually
+// moving, which is what somebody watching it assumes anyway.
+const pending = [];
+let current = null;
+
+function pump() {
+  if (current) return;
+  current = pending.shift() || null;
+  if (!current) { letSleep(); return; }
+  keepAwake();
+  attempt(current);
+}
+
+// Enough to tell "the rest of this file" from "a different file with the same
+// name". The Deck keys its half-file on this and will not splice two files
+// together, which is the one way resuming could produce a broken game quietly.
+function fingerprint(file) {
+  return file.size + '-' + (file.lastModified || 0);
+}
+
+// How much of this file the Deck already has. Asked before every attempt, so
+// the first upload and the fifth retry are the same code path -- and re-picking
+// a file after reloading this page carries on rather than starting again.
+function askPending(file) {
+  return new Promise((resolve) => {
+    const probe = new XMLHttpRequest();
+    probe.open('GET', PENDING_BASE + encodeURIComponent(file.name)
+                      + '?fp=' + encodeURIComponent(fingerprint(file)));
+    probe.addEventListener('load', () => {
+      let received = 0;
+      try { received = JSON.parse(probe.responseText).received || 0; } catch (e) { received = 0; }
+      resolve(received > file.size ? 0 : received);
+    });
+    // An answer we cannot get is not a reason to refuse to send: start over.
+    probe.addEventListener('error', () => resolve(0));
+    probe.send();
+  });
+}
+
+// How many attempts in a row may move nothing before this is called failed. An
+// attempt that transferred bytes resets it, so a slow connection dropping every
+// few minutes keeps going, while a Deck that has gone away stops asking.
+const MAX_STALLS = 6;
+const MAX_TRIES = 30;
+
+function attempt(job) {
+  askPending(job.file).then((offset) => {
+    if (job !== current) return;
+    job.tries += 1;
+    job.size.textContent = offset > 0
+      ? 'resuming at ' + Math.round((offset / job.file.size) * 100) + '%'
+      : humanSize(job.file.size);
+
+    const request = new XMLHttpRequest();
+    request.open('PUT', UPLOAD_BASE + encodeURIComponent(job.file.name));
+    request.setRequestHeader('X-Upload-Id', fingerprint(job.file));
+    request.setRequestHeader('X-Upload-Offset', String(offset));
+
+    // Bytes this attempt handed to the network. Not what the Deck has -- only
+    // it knows that, and the next attempt asks -- but enough to tell an attempt
+    // that achieved something from one that never got started.
+    let moved = 0;
+    request.upload.addEventListener('progress', (e) => {
+      if (!e.lengthComputable) return;
+      moved = e.loaded;
+      job.fill.style.width = (((offset + e.loaded) / job.file.size) * 100) + '%';
+    });
+    request.addEventListener('load', () => {
+      if (request.status === 200) finish(job);
+      else again(job, moved, request.responseText || ('failed (' + request.status + ')'));
+    });
+    request.addEventListener('error', () => again(job, moved, 'connection lost'));
+    request.addEventListener('abort', () => again(job, moved, 'interrupted'));
+    // Only the part the Deck does not have. An offset equal to the whole file
+    // sends nothing and asks it to finish what it is holding, which is what a
+    // connection that died on the last chunk leaves behind.
+    request.send(job.file.slice(offset));
+  });
+}
+
+function again(job, moved, message) {
+  job.stalls = moved > 0 ? 0 : job.stalls + 1;
+  if (job.stalls > MAX_STALLS || job.tries >= MAX_TRIES) { fail(job, message); return; }
+  // "failed" on a row that is about to try again would be a lie, and this is
+  // the state the page is in for most of a bad connection.
+  job.size.textContent = 'reconnecting...';
+  job.timer = setTimeout(() => {
+    job.timer = 0;
+    attempt(job);
+  }, Math.min(1000 * Math.pow(2, job.stalls), 10000));
+}
+
+function finish(job) {
+  job.bar.remove();
+  job.size.textContent = humanSize(job.file.size);
+  job.row.className = 'done';
+  // Newest first, matching the order the server lists what it already had.
+  already.insertBefore(job.row, already.firstChild);
+  settle(job);
+}
+
+function fail(job, message) {
+  job.bar.remove();
+  job.row.className = 'failed';
+  job.size.textContent = message;
+  settle(job);
+}
+
+function settle(job) {
+  active -= 1;
+  if (current === job) current = null;
+  reflowHeadings();
+  pump();
+}
+
+// A locked phone suspends the upload *and* throttles the timer that would retry
+// it, so coming back is the moment to try again rather than the end of a
+// backoff that was not counting while the page was asleep.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible') return;
+  keepAwake();
+  if (current && current.timer) {
+    clearTimeout(current.timer);
+    current.timer = 0;
+    attempt(current);
+  }
+});
+
+function enqueue(file) {
   const row = document.createElement('li');
   const head = document.createElement('div');
   head.className = 'row';
@@ -251,36 +407,14 @@ function send(file) {
   queue.appendChild(row);
   reflowHeadings();
 
-  // XHR rather than fetch: it reports upload progress, which matters for ROMs.
-  const request = new XMLHttpRequest();
-  request.open('PUT', UPLOAD_BASE + encodeURIComponent(file.name));
-  request.upload.addEventListener('progress', (e) => {
-    if (e.lengthComputable) fill.style.width = ((e.loaded / e.total) * 100) + '%';
-  });
-  // loadend rather than load: it fires for success, failure and abort alike, so
-  // the count cannot be left standing by a path that forgot to decrement it and
-  // then question every attempt to leave the page forever after.
-  request.addEventListener('loadend', () => { active -= 1; });
-  request.addEventListener('load', () => {
-    bar.remove();
-    if (request.status === 200) {
-      row.className = 'done';
-      // Newest first, matching the order the server lists what it already had.
-      already.insertBefore(row, already.firstChild);
-    } else {
-      row.className = 'failed';
-      size.textContent = request.responseText || 'failed';
-    }
-    reflowHeadings();
-  });
-  request.addEventListener('error', () => {
-    bar.remove();
-    row.className = 'failed';
-    size.textContent = 'connection lost';
-    reflowHeadings();
-  });
+  // Every attempt at this file shares one row and one count. `active` is
+  // decremented exactly once, by whichever of finish and fail gets there --
+  // a per-request decrement is what made this go negative and question every
+  // attempt to leave the page forever after.
   active += 1;
-  request.send(file);
+  pending.push({ file: file, row: row, bar: bar, fill: fill, size: size,
+                 stalls: 0, tries: 0, timer: 0 });
+  pump();
 }
 """
 
@@ -423,6 +557,9 @@ def upload_page(directory, arrived, token, durable, report):
 // against /<token> -- which the browser treats as a file, not a directory -- and
 // drop the token, so every upload would be refused.
 const UPLOAD_BASE = '/%(token)s/upload/';
+// Where to ask how much of a file the Deck already has, for carrying on from an
+// upload that was cut off. Same token, same reason it is absolute.
+const PENDING_BASE = '/%(token)s/pending/';
 %(script)s
 </script>
 </body></html>""" % {

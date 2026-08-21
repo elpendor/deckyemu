@@ -78,18 +78,25 @@ section("a file moves between the lists as it does on the Deck")
 # page's script moves a finished upload into the received list rather than
 # leaving it under a heading that then means nothing.
 check("a completed upload is moved into the received list",
-      "already.insertBefore(row, already.firstChild)" in _page, True)
+      "already.insertBefore(job.row, already.firstChild)" in _page, True)
 check("newest first, matching the order the server lists what it already had",
       "firstChild" in _page, True)
+# Two things change a list -- a file joining the queue and a file leaving it --
+# and both have to re-flow. Since an upload can now be several attempts, the
+# endings converge in `settle`, which is where the second one has to be.
+_settle = _page.partition("function settle(job) {")[2].partition("\n}")[0]
 check("and the headings follow whatever the lists actually hold",
-      _page.count("reflowHeadings()") >= 4, True)
+      (_page.count("reflowHeadings()") >= 3, "reflowHeadings()" in _settle), (True, True))
 # A failure did not arrive, so it must not be filed as though it had. Asserted
-# by where the move sits rather than by what comes before what: the only move in
-# the page has to be inside the branch that ran on a 200.
-_success_branch = _page.partition("if (request.status === 200) {")[2].partition("} else {")[0]
-check("the only move is inside the success branch",
-      (_page.count("already.insertBefore"), "already.insertBefore" in _success_branch),
+# by where the move sits rather than by what comes before what: the page's one
+# move into Received is in `finish`, and only a 200 reaches it. Every other
+# ending -- a retry, a give-up -- goes the other way.
+_finish = _page.partition("function finish(job) {")[2].partition("\n}")[0]
+check("the only move is the one that ran on a 200",
+      (_page.count("already.insertBefore"), "already.insertBefore" in _finish),
       (1, True))
+check("and nothing else calls it",
+      "if (request.status === 200) finish(job);" in _page, True)
 
 section("instructions name the controls the reader will actually see")
 
