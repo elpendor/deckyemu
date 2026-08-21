@@ -444,8 +444,8 @@ export default definePlugin(() => {
 
   // Two games at once, which Steam warns about for its own games and cannot
   // warn about for ours -- its check is gated on an app_type our shortcuts do
-  // not carry. Not an interception: it says so once the second one is up, and
-  // offers to close the first. See doubleLaunch.ts for why that is the shape.
+  // not carry. The launcher script is what actually stops the second launch;
+  // this is the panel catching up and asking. See doubleLaunch.ts.
   const stopWatchingLaunches = watchForDoubleLaunch();
 
   /*

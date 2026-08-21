@@ -12,13 +12,15 @@ import { describe, expect, it, vi } from "vitest";
  *
  * Three mocks, none of them reached by the pure functions below -- they are
  * what the module under test imports. `@decky/api` does not load under Node,
- * `./LaunchConflictModal` renders, and `./addedGames` reaches `./backend`,
- * whose `callable()` bindings run at import time.
+ * `./LaunchConflictModal` renders, and `./backend`'s `callable()` bindings run
+ * at import time -- which `./addedGames` reaches too.
  */
 
 vi.mock("@decky/api", () => ({ toaster: { toast: vi.fn() } }));
 vi.mock("./LaunchConflictModal", () => ({ showCloseRunning: vi.fn() }));
 vi.mock("./addedGames", () => ({ addedGame: vi.fn() }));
+vi.mock("./backend", () => ({ launchBounced: vi.fn(), approveLaunch: vi.fn() }));
+vi.mock("./logError", () => ({ logError: vi.fn() }));
 
 const { othersToMention, stillRunningLine } = await import("./doubleLaunch");
 

@@ -12,6 +12,7 @@ import os
 import re
 import shlex
 import stat
+import time
 
 import decky
 
@@ -21,6 +22,17 @@ import ra_detect
 import sysenv
 
 LAUNCHER_DIR = os.path.join(decky.DECKY_PLUGIN_RUNTIME_DIR, "launchers")
+
+#: Where the launch gate leaves its notes. Two kinds of one-line file, both
+#: named after the Steam app id: `bounced-<id>`, written by a launcher that
+#: refused to start and listing what was already running, and `approved-<id>`,
+#: written by the panel when the user said go and consumed by the next launch.
+#:
+#: Files rather than a socket because the other end is `/bin/sh` with Steam's
+#: runtime stripped out of its environment. A file it can read with `[ -f ]` is
+#: the whole protocol, and nothing in the launch path depends on the plugin
+#: being loaded, or even installed.
+LAUNCH_GATE_DIR = os.path.join(decky.DECKY_PLUGIN_RUNTIME_DIR, "launch")
 
 # Bumped whenever a change here means existing launchers are wrong rather than
 # merely old. Nothing rewrites launchers on upgrade, so without this a fix only
@@ -44,7 +56,12 @@ LAUNCHER_DIR = os.path.join(decky.DECKY_PLUGIN_RUNTIME_DIR, "launchers")
 #      the panel would have said "Hide all on-screen messages" while the games
 #      already in the library kept showing them. Rewritten, each game resolves
 #      its own options again, so anything overridden per game is kept.
-FORMAT_VERSION = 6
+#   7  the launch gate. Steam will not warn before launching one of these over
+#      a running game -- its check is gated on an app_type a non-Steam shortcut
+#      does not carry -- and nothing on the Steam side can stop the launch
+#      either, so the script does it. Existing games need this or the warning
+#      only ever appears for games added afterwards.
+FORMAT_VERSION = 7
 
 # One file per OSD mode rather than one shared file. Games can override the
 # global setting individually, and a single file would mean the last game
@@ -344,6 +361,114 @@ def split_extra_args(extra_args):
     return shlex.split(text) if text else []
 
 
+
+# The gate that stops a second game starting, spliced into every launcher
+# between the environment preamble and the exec.
+#
+# **This is the only place left that can stop it.** Steam warns before launching
+# one game over another, but only for its own: the check is gated on
+# `app_type & 1` and a non-Steam shortcut is `1073741824`, so it never fires for
+# anything this plugin adds. Reaching that warning would mean replacing a
+# function inside Steam's running code. Stopping the launch from outside does
+# not work either, and both routes were tried on a real device --
+# `CancelGameAction` terminates the game about a second after it starts, and
+# `CancelLaunch` does not stop it at all, it only detaches Steam's tracking and
+# leaves the emulator running with no Stop button. Measured, not assumed.
+#
+# By the time any of that happens this script is already running. The emulator
+# is not: that is the next line. So the decision belongs here.
+#
+# **It fails open at every step.** No app id, no `pgrep`, an unwritable
+# directory -- all of them fall through to launching normally. A game that will
+# not start is a far worse failure than a warning that did not appear, and this
+# runs in front of every game in the library.
+# **Raw, and it has to be.** This is shell text: the backslash escapes in it
+# are for `tr` and `sed` to read, not for Python. Written unraw once, and
+# Python ate them before the shell ever saw them -- the NUL separator `tr`
+# splits /proc/cmdline on became an actual NUL byte in this file, and sed's
+# capture group became an invalid escape. The emitted script then found no app
+# id, fell through, and launched: the right way to fail, but with the gate
+# doing nothing whatsoever. The only complaint was a SyntaxWarning nobody was
+# reading.
+_LAUNCH_GATE = r"""# Two games at once. See launchers.py -- this is the last point that can decide
+# not to start one, and it gets out of the way at the first sign of doubt.
+_dke_gate='{gate}'
+# Steam wraps every launch in `reaper SteamLaunch AppId=<id>`, and that reaper
+# is this script's parent, so our own id is one read away and the other games
+# are visible without asking Steam anything.
+_dke_self=$(tr '\0' '\n' < /proc/$PPID/cmdline 2>/dev/null | sed -n 's/^AppId=//p' | head -1)
+if [ -n "$_dke_self" ]; then
+  if [ -f "$_dke_gate/approved-$_dke_self" ]; then
+    # The panel asked and the answer was yes. One shot: taken now, so a later
+    # launch is judged on its own.
+    rm -f "$_dke_gate/approved-$_dke_self"
+  else
+    _dke_others=$(pgrep -af 'SteamLaunch AppId=' 2>/dev/null \
+      | sed -n 's/.*AppId=\([0-9][0-9]*\).*/\1/p' \
+      | grep -v "^$_dke_self\$" | sort -u | tr '\n' ' ')
+    if [ -n "$(printf %s "$_dke_others" | tr -d ' ')" ]; then
+      mkdir -p "$_dke_gate" 2>/dev/null
+      printf '%s' "$_dke_others" > "$_dke_gate/bounced-$_dke_self" 2>/dev/null
+      # Nothing started. The panel takes it from here.
+      exit 0
+    fi
+  fi
+fi
+"""
+
+
+def launch_gate():
+    """The gate, with this install's paths in it."""
+    return _LAUNCH_GATE.replace("{gate}", LAUNCH_GATE_DIR)
+
+
+def _gate_file(kind, app_id):
+    return os.path.join(LAUNCH_GATE_DIR, "%s-%d" % (kind, int(app_id)))
+
+
+#: How old a bounce note may be and still be answered.
+#:
+#: The panel asks for it a moment after the launch it belongs to, so anything
+#: older is from a launch nobody is waiting on any more -- a bounce while the
+#: plugin was reloading, or one written and never collected. Answering a stale
+#: one would put a dialog about a game on screen minutes after the user gave up
+#: on it.
+BOUNCE_SECONDS = 30
+
+
+def take_bounce(app_id):
+    """What was running when this game's launcher refused, or "" if it did not.
+
+    Consumed: read once and deleted, so the same bounce cannot be reported to
+    two askers, and a note nobody collects expires instead of accumulating.
+    """
+    path = _gate_file("bounced", app_id)
+    try:
+        fresh = (time.time() - os.stat(path).st_mtime) <= BOUNCE_SECONDS
+        with open(path, encoding="utf-8") as handle:
+            others = handle.read().strip()
+    except (OSError, ValueError):
+        return ""
+    finally:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+    return others if fresh else ""
+
+
+def approve_launch(app_id):
+    """Let this game past the gate once."""
+    try:
+        os.makedirs(LAUNCH_GATE_DIR, exist_ok=True)
+        with open(_gate_file("approved", app_id), "w", encoding="utf-8") as handle:
+            handle.write("1")
+        return True
+    except OSError as error:
+        decky.logger.warning("Could not approve launch for %s: %s", app_id, error)
+        return False
+
+
 def write_launcher(
     install,
     title,
@@ -396,6 +521,7 @@ def write_launcher(
             "",
             sysenv.SHELL_PREAMBLE,
             "",
+            launch_gate(),
             "exec %s" % " ".join(shlex.quote(arg) for arg in argv),
             "",
         ]

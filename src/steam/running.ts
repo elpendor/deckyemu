@@ -1,4 +1,4 @@
-import { steamClient, uiStore } from "./client";
+import { appStore, steamClient, uiStore } from "./client";
 
 /** A game Steam currently has running. */
 export interface RunningGame {
@@ -46,36 +46,41 @@ export function runningGames(exceptAppId?: number): RunningGame[] {
 }
 
 /**
- * Call `started` whenever Steam brings an app up, whoever launched it.
+ * Call `launched` when Steam starts a launch, with the app id it is for.
  *
- * `RegisterForAppLifetimeNotifications` is an ordinary registered callback --
- * the same kind used for update notifications, and the same one Steam's own
- * activity tracking listens on. Nothing here matches minified source or replaces
- * a Steam function, which is the whole reason this route exists at all: the
- * launch itself belongs to Steam and stays that way.
+ * `RegisterForGameActionStart` is an ordinary registered callback -- nothing
+ * matched in minified source, nothing of Steam's replaced -- and it is the one
+ * that fires. `RegisterForAppLifetimeNotifications` was here first and was
+ * wrong: it registers cleanly, returns a handle, and then never fires for a
+ * non-Steam shortcut. Measured across a whole launch-and-quit of one of our
+ * games: ten game-action events, zero lifetime ones. `RunningApps` updates by
+ * some other route.
  *
- * Fires for **every** app, ours and everyone else's, and for stopping as well as
- * starting -- only `bRunning` is passed on. The caller decides what is
- * interesting.
+ * Fires at the *start* of the launch, before the app is running, which is
+ * exactly when the answer to "what else is on" is still the interesting one.
  *
+ * Steam passes a **GameID**, not an appid; `resolve` turns one into the other.
  * Returns an unregister function, and one that does nothing if the callback
  * could not be registered, so `onDismount` never has to ask which it got.
  */
-export function onAppStarted(started: (appId: number) => void): () => void {
-  const sessions = steamClient()?.GameSessions;
-  if (!sessions?.RegisterForAppLifetimeNotifications) {
-    console.error("[deckyemu] no app lifetime notifications; nothing will watch launches");
+export function onGameLaunch(launched: (appId: number) => void): () => void {
+  const apps = steamClient()?.Apps;
+  if (!apps?.RegisterForGameActionStart) {
+    console.error("[deckyemu] no game action notifications; launches will not be noticed");
     return () => undefined;
   }
   try {
-    const handle = sessions.RegisterForAppLifetimeNotifications((update: any) => {
-      // Inside Steam's own dispatcher. A throw here is not ours to spend.
-      try {
-        if (update?.bRunning && update?.unAppID) started(update.unAppID);
-      } catch (error) {
-        console.error("[deckyemu] app lifetime handler failed", error);
-      }
-    });
+    const handle = apps.RegisterForGameActionStart(
+      (_actionId: number, gameId: string, _action: string) => {
+        // Inside Steam's own dispatcher. A throw here is not ours to spend.
+        try {
+          const appId = appIdForGameId(gameId);
+          if (appId) launched(appId);
+        } catch (error) {
+          console.error("[deckyemu] launch handler failed", error);
+        }
+      },
+    );
     return () => {
       try {
         handle?.unregister?.();
@@ -86,6 +91,32 @@ export function onAppStarted(started: (appId: number) => void): () => void {
   } catch (error) {
     console.error("[deckyemu] could not watch launches", error);
     return () => undefined;
+  }
+}
+
+/**
+ * The appid behind one of Steam's GameIDs.
+ *
+ * `GetAppOverviewByGameID` is what Steam's own code uses. The fallback undoes
+ * the encoding a non-Steam shortcut's GameID is built with -- the appid in the
+ * high 32 bits -- which covers a shortcut Steam has not materialised an
+ * overview for yet, the same gap `shortcutGameId` fills going the other way.
+ */
+export function appIdForGameId(gameId: string): number {
+  try {
+    const fromStore = appStore()?.GetAppOverviewByGameID?.(gameId)?.appid;
+    if (fromStore) return Number(fromStore);
+  } catch (error) {
+    console.error("[deckyemu] could not resolve gameid", gameId, error);
+  }
+  try {
+    const value = BigInt(gameId);
+    // A plain appid rather than a 64-bit GameID: Steam's own games arrive this
+    // way and need no unpacking.
+    if (value < 0x100000000n) return Number(value);
+    return Number(value >> 32n);
+  } catch {
+    return 0;
   }
 }
 

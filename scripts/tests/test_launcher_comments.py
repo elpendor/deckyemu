@@ -45,8 +45,24 @@ _words = shlex.split(_body, comments=True)
 
 check("nothing the title carried survives as a word",
       [w for w in _words if w in ("touch", "/tmp/pwned")], [])
-check("and nothing the ROM path carried does either",
-      [w for w in _words if w in ("rm", "-rf", "~")], [])
+
+
+def _runs(*words):
+    """Whether `words` appear next to each other, in order, as commands would."""
+    return any(
+        _words[at:at + len(words)] == list(words)
+        for at in range(len(_words) - len(words) + 1)
+    )
+
+
+# The sequence rather than the words. A launcher legitimately contains `rm` --
+# the launch gate takes its own approval token with one -- so asking whether the
+# word appears anywhere answers "yes" for a script that is perfectly safe, which
+# is a check that fails without anything being wrong. What was injected is
+# `rm -rf ~`, adjacent and in that order, and that is what must not be there.
+check("and nothing the ROM path carried does either", _runs("rm", "-rf", "~"), False)
+check("the one rm in it is the gate's own, taking its token",
+      _runs("rm", "-f"), True)
 check("the script still runs exactly one command", _words.count("exec"), 1)
 check("which is the emulator", _words[_words.index("exec") + 1], "/usr/bin/retroarch")
 check("with the whole ROM path as one argument, newlines and all",

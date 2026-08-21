@@ -1635,6 +1635,25 @@ class Plugin(
         library = await self._run(store.get_library)
         return sorted(library.values(), key=lambda entry: entry.get("title", "").lower())
 
+    async def launch_bounced(self, app_id: int) -> dict:
+        """Did this game's launcher refuse to start, and what was in the way?
+
+        The launch gate (`launchers.launch_gate`) is what actually stops a
+        second game, because nothing on the Steam side can -- see the comment
+        there for the two calls that were tried and what each did instead. The
+        script leaves a note; this is the panel collecting it, so the dialog is
+        shown for a launch that really was stopped rather than for one this side
+        merely predicted would be.
+
+        Consumed by reading, so asking twice answers once.
+        """
+        others = await self._run(launchers.take_bounce, app_id)
+        return {"bounced": bool(others), "others": others}
+
+    async def approve_launch(self, app_id: int) -> dict:
+        """Let this game past the gate once, because the user said so."""
+        return {"ok": await self._run(launchers.approve_launch, app_id)}
+
     @staticmethod
     def _stray_launchers(referenced):
         """Launcher scripts in our own directory that no registry entry claims."""

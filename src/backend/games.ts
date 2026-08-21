@@ -492,3 +492,29 @@ export interface ClearedLibrary {
  * those.
  */
 export const clearLibrary = callable<[], ClearedLibrary>("clear_library");
+
+/**
+ * What was already running when this game's launcher refused to start.
+ *
+ * The launch gate lives in the generated launcher script, because that is the
+ * last place that can decide not to start a game: Steam will not warn before
+ * launching one of these over another -- its check is gated on an `app_type` a
+ * non-Steam shortcut does not carry -- and neither of the two Steam calls that
+ * look like they would stop a launch actually does. `launchers.py` has the
+ * measurements.
+ *
+ * So the script decides and this reports the decision. Asking rather than
+ * predicting is the point: the dialog appears for a launch that really was
+ * stopped, so it can never be shown over a game that started anyway.
+ *
+ * `others` is the space-separated app ids the script saw. Consumed by reading.
+ */
+export interface LaunchBounce {
+  bounced: boolean;
+  others: string;
+}
+
+export const launchBounced = callable<[appId: number], LaunchBounce>("launch_bounced");
+
+/** Let one launch past the gate, after the user has said to. */
+export const approveLaunch = callable<[appId: number], { ok: boolean }>("approve_launch");
