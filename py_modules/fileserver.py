@@ -281,9 +281,39 @@ def same_secret(given, expected):
     )
 
 
+def _keep_alive(connection):
+    """Notice a peer that has gone away without saying so.
+
+    Superseding covers the sender that comes back. This covers the one that does
+    not: after a suspend or a wifi change the connection is half open, and a
+    handler blocked in rfile.read waits out the kernel's default keepalive --
+    two hours -- holding a transfer in the panel that ended long ago, and with it
+    the answer to "would closing this dialog cut something off". Roughly two
+    minutes instead.
+
+    Every option is looked up rather than assumed: TCP_KEEPIDLE and friends are
+    Linux names, and the suite runs on Windows too.
+    """
+    settings = (("TCP_KEEPIDLE", 60), ("TCP_KEEPINTVL", 10), ("TCP_KEEPCNT", 6))
+    try:
+        connection.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+        for name, value in settings:
+            option = getattr(socket, name, None)
+            if option is not None:
+                connection.setsockopt(socket.IPPROTO_TCP, option, value)
+    except OSError as error:
+        # Not fatal: without it a dead connection is noticed late rather than
+        # never, which is where this started.
+        decky.logger.info("Could not set keepalive: %s", error)
+
+
 class _Handler(BaseHTTPRequestHandler):
     server_version = "DeckyEmu"
     sys_version = ""
+
+    def setup(self):
+        super().setup()
+        _keep_alive(self.connection)
 
     # BaseHTTPRequestHandler logs to stderr; route it to the plugin log instead.
     def log_message(self, fmt, *args):
@@ -484,6 +514,11 @@ class _Handler(BaseHTTPRequestHandler):
         # last chunk leaves behind, and it is a rename rather than a transfer.
         total = offset + length
 
+        # Before this request is registered, so the panel never shows the two of
+        # them at once. Whatever was still holding these bytes is finished --
+        # this request is the sender saying so.
+        supersede(partial)
+
         global _upload_seq
         with _state_lock:
             _upload_seq += 1
@@ -499,6 +534,9 @@ class _Handler(BaseHTTPRequestHandler):
                 "connection": self.connection,
                 "partial": partial,
                 "cancelled": False,
+                # Set by supersede() rather than by a user: same stop, opposite
+                # answer about the file.
+                "superseded": False,
             }
         try:
             self._receive(upload_id, partial, destination, name, length, directory, offset)
@@ -559,6 +597,17 @@ class _Handler(BaseHTTPRequestHandler):
                 return
 
         cancelled = cancelled or _was_cancelled(upload_id)
+        if cancelled and _was_superseded(upload_id):
+            # A newer request is appending to this very file. Deleting the
+            # partial here -- which is what an ordinary cancel does -- would
+            # delete the transfer that replaced this one, mid-flight.
+            decky.logger.info(
+                "Gave %s up at %d of %d bytes; a newer request has it",
+                name, offset + received, total,
+            )
+            self._reply(409, "Superseded by a newer request.")
+            return
+
         if cancelled:
             # Deleted rather than kept, and the only path that deletes one. The
             # user asked for this file to go away; keeping something to resume
@@ -645,6 +694,59 @@ def cancel(upload_id=None):
 
     if targets:
         decky.logger.info("Cancelling %d upload(s)", len(targets))
+    return len(targets)
+
+
+def _was_superseded(upload_id):
+    with _state_lock:
+        entry = _in_flight.get(upload_id)
+        return bool(entry and entry.get("superseded"))
+
+
+def supersede(partial):
+    """Retire any earlier request still holding `partial`. Returns how many.
+
+    A resume is proof that the request it replaces has been abandoned: nobody
+    asks to carry on from byte N while still believing in the connection that
+    stopped at N. The Deck cannot work that out on its own. A suspend leaves the
+    old connection half open -- the sender's side is gone, but nothing ever
+    reached here to say so -- and the handler sits in rfile.read waiting for
+    bytes that will never come, holding its entry in the panel as a transfer
+    that is arriving forever at the byte it stopped on. Measured on a Deck: a
+    54-second suspend, the file completed on the new request, and the old one
+    was still listed above it frozen at 586 MB.
+
+    Deliberately not `cancel`, which deletes the partial file: that file is the
+    very thing the new request is appending to, so the two differ by the one
+    thing that matters. This says stop and leave the bytes alone.
+    """
+    with _state_lock:
+        targets = [
+            (key, entry)
+            for key, entry in _in_flight.items()
+            if entry.get("partial") == partial
+        ]
+        for _key, entry in targets:
+            entry["cancelled"] = True
+            entry["superseded"] = True
+        connections = [entry.get("connection") for _key, entry in targets]
+
+    # Outside the lock, for the reason cancel() does it outside the lock: the
+    # shutdown is what wakes a handler that is blocked reading, and that handler
+    # needs the lock to see the flag we just set.
+    for connection in connections:
+        if connection is None:
+            continue
+        try:
+            connection.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
+
+    if targets:
+        decky.logger.info(
+            "Superseded %d earlier request(s) for %s",
+            len(targets), os.path.basename(partial),
+        )
     return len(targets)
 
 

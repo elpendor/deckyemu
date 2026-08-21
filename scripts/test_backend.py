@@ -2513,6 +2513,34 @@ else:
     check("an empty upload that is not a resume is still refused",
           put_at("Nothing.iso", b"", 0, "0-0"), 400)
 
+    # The phantom. Measured on a Deck: a 54-second suspend left the sender's old
+    # connection half open, so its handler sat in rfile.read forever and the
+    # panel listed the file twice -- once complete, and once arriving forever at
+    # the byte the suspend hit. A resume has to retire the request it replaces,
+    # and must not do it by cancelling, because a cancel deletes the very bytes
+    # the new request is carrying on from.
+    _ghost_partial = os.path.join(incoming, "Ghost.iso.5-5.uploading")
+    with open(_ghost_partial, "wb") as _handle:
+        _handle.write(b"the bytes a resume carries on from")
+    fileserver._in_flight[99001] = {
+        "name": "Ghost.iso", "received": 34, "total": 900, "at": fileserver._now(),
+        "connection": None, "partial": _ghost_partial,
+        "cancelled": False, "superseded": False,
+    }
+    check("the panel shows the stranded request", fileserver.status()["uploading"], 1)
+    check("a resume retires it", fileserver.supersede(_ghost_partial), 1)
+    check("telling its handler to stop", fileserver._in_flight[99001]["cancelled"], True)
+    check("for the reason that does not delete the file",
+          fileserver._in_flight[99001]["superseded"], True)
+    check("so the bytes the new request is appending to are still there",
+          os.path.isfile(_ghost_partial), True)
+    check("and superseding what nothing holds is not an error",
+          fileserver.supersede(os.path.join(incoming, "Nobody.iso.uploading")), 0)
+    # Put the shared state back: every later check reads this dict.
+    fileserver._in_flight.pop(99001, None)
+    os.remove(_ghost_partial)
+    check("the panel is clear again once it lets go", fileserver.status()["uploading"], 0)
+
     # The page has to carry the guard, or there is nothing to dismiss. `page` is
     # the upload page as this running server actually served it, fetched above.
     check("the upload page warns before a tab is closed mid-transfer",
