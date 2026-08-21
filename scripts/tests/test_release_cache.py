@@ -66,7 +66,7 @@ def _restart():
     the wrong reason.
     """
     releases._cache.update({"releases": [], "at": 0.0, "ok": False,
-                            "error": "Not checked yet."})
+                            "error": "Not checked yet.", "failed_at": 0.0})
     releases._loaded = False
     _asked[0] = 0
 
@@ -100,10 +100,13 @@ try:
     _restart()
     releases.fetch_releases()
     check("a refusal writes nothing", os.path.exists(releases.CACHE_PATH), False)
-    # An hour of "GitHub is rate-limiting you" that cannot be retried would be
-    # this cache making a temporary problem permanent.
-    check("so the next check tries again rather than repeating it",
-          (releases.fetch_releases(), _asked[0] >= 2)[1], True)
+    # An hour of "GitHub is rate-limiting you" that outlived the process would
+    # be this cache making a temporary problem permanent. (How soon the *same*
+    # process tries again is a separate question, below.)
+    _restart()
+    releases.fetch_releases()
+    check("so a restart tries again rather than serving the failure back",
+          _asked[0], 1)
     decky.logger.level = _real_level
 
     section("and neither is a file that cannot be trusted")
@@ -132,6 +135,46 @@ try:
     check("a timestamp from the future does not buy extra hours",
           _write_cache(at=time.time() + 86400), 1)
     check("while an ordinary one is used", _write_cache(), 0)
+
+    section("and a failure is not retried straight away")
+
+    # The hole the panel opened. Nothing recorded a failure, so the next call
+    # went straight back out -- and with a check on every panel open, somebody
+    # being rate-limited would spend a request each time, which is what keeps
+    # them rate-limited. 60 an hour is shared by a whole address; a household,
+    # or a Deck beside the machine its developer is working on, reaches it
+    # without anybody doing anything wrong.
+    releases.clear_cache()
+    net.get_json = _refuse
+    decky.logger.level = logging.CRITICAL  # the failures are deliberate
+    _restart()
+    releases.fetch_releases()
+    _asked[0] = 0
+    releases.fetch_releases()
+    check("a second check straight after a failure does not go back out", _asked[0], 0)
+
+    # Waiting must not cost the explanation: the Updates tab reads these, and
+    # "not checked yet" in place of "GitHub is rate-limiting this network" sends
+    # somebody to look at their wifi.
+    _result = releases.check("1.0.0")
+    check("while the reason for the failure is still there to show",
+          (_result["checked"], bool(_result["error"])), (False, True))
+
+    _asked[0] = 0
+    releases.fetch_releases(force=True)
+    check("pressing check now ignores the wait, because someone asked", _asked[0], 1)
+
+    releases._cache["failed_at"] = time.time() - releases.FAILURE_BACKOFF_SECONDS - 1
+    _asked[0] = 0
+    releases.fetch_releases()
+    check("and once the wait is over it tries again on its own", _asked[0], 1)
+
+    net.get_json = _fake_get_json
+    releases._cache["failed_at"] = time.time()
+    releases.fetch_releases(force=True)
+    check("a check that works clears the wait rather than serving it out",
+          releases._cache["failed_at"], 0.0)
+    decky.logger.level = _real_level
 
     section("clearing it clears both halves")
 

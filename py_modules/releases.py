@@ -60,7 +60,25 @@ _SHA256_RE = re.compile(r"sha256:\s*([0-9a-f]{64})", re.IGNORECASE)
 # it found anything. A repository with no releases yet returns an empty list, and
 # reporting that as a failure told the user GitHub was unreachable when it had
 # answered perfectly.
-_cache = {"at": 0.0, "releases": [], "ok": False, "error": "Not checked yet."}
+_cache = {"at": 0.0, "releases": [], "ok": False, "error": "Not checked yet.",
+          "failed_at": 0.0}
+
+#: How long a *failed* check waits before going back to GitHub.
+#:
+#: Separate from CACHE_SECONDS, and much shorter, because the two are answers to
+#: different questions. A success is worth keeping for an hour; a failure is
+#: worth not repeating for a few minutes.
+#:
+#: Without it a failure was not recorded at all, so the next call went straight
+#: back out. That was invisible while the only caller was a button, and became a
+#: hole the moment the panel started asking: somebody being rate-limited -- 60
+#: an hour shared by an address, which a household reaches without doing
+#: anything wrong -- would spend a request on every panel open, which is exactly
+#: what keeps them rate-limited.
+#:
+#: `force` still ignores this. Pressing "check now" is somebody saying they know
+#: it failed and want it tried again.
+FAILURE_BACKOFF_SECONDS = 15 * 60
 
 
 def _version_tuple(version):
@@ -220,6 +238,13 @@ def fetch_releases(force=False):
     if not force and _cache["releases"] and now - _cache["at"] < CACHE_SECONDS:
         return _cache["releases"]
 
+    # Nothing usable cached, and the last attempt failed recently. Whatever it
+    # said then is still what it says now -- `ok` and `error` are untouched here
+    # on purpose, so the Updates tab keeps explaining the real reason rather
+    # than reporting a check that never ran.
+    if not force and _cache["failed_at"] and now - _cache["failed_at"] < FAILURE_BACKOFF_SECONDS:
+        return _cache["releases"]
+
     failure = {}
     try:
         raw = net.get_json(RELEASES_URL, API_HEADERS, failure=failure)
@@ -227,6 +252,7 @@ def fetch_releases(force=False):
         decky.logger.warning("Could not read releases: %s", error)
         _cache["ok"] = False
         _cache["error"] = str(error)
+        _cache["failed_at"] = now
         return _cache["releases"]
 
     if raw is None:
@@ -235,6 +261,7 @@ def fetch_releases(force=False):
         # for both.
         _cache["ok"] = False
         _cache["error"] = _failure_message(failure)
+        _cache["failed_at"] = now
         return _cache["releases"]
 
     if not isinstance(raw, list):
@@ -243,6 +270,7 @@ def fetch_releases(force=False):
         decky.logger.warning("Unexpected reply from the releases API: %s", message or raw)
         _cache["ok"] = False
         _cache["error"] = message or "Unexpected reply from GitHub."
+        _cache["failed_at"] = now
         return _cache["releases"]
 
     releases = [release for release in (parse_release(item) for item in raw) if release]
@@ -252,6 +280,7 @@ def fetch_releases(force=False):
     _cache["at"] = now
     _cache["ok"] = True
     _cache["error"] = ""
+    _cache["failed_at"] = 0.0
     _save_cache()
     return releases
 
@@ -306,6 +335,7 @@ def clear_cache():
     _cache["at"] = 0.0
     _cache["ok"] = False
     _cache["error"] = "Not checked yet."
+    _cache["failed_at"] = 0.0
     # Both halves, or "clear" would only mean "until the next call reads the
     # file back". `_loaded` stays true for the same reason: this is a request
     # for no cached answer, not for the old one to be loaded again.
