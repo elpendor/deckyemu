@@ -30,7 +30,7 @@ import {
 } from "./backend";
 import { deviceGate } from "./deviceGate";
 import { updateBadge } from "./updateBadge";
-import { noteUpdate, setUpdateDotEnabled } from "./updateSignal";
+import { noteCheck, noteUpdate, setUpdateDotEnabled } from "./updateSignal";
 import { UpdateDot } from "./UpdateDot";
 import { AddGamePanel } from "./AddGamePanel";
 import { editGameMenuItem } from "./EditGameMenuItem";
@@ -124,8 +124,9 @@ function Content() {
       // Shared with the icon, which has no other way to hear about this one:
       // the backend's timer runs every six hours, and the first open of a fresh
       // session should not have to wait that long for the dot to agree with the
-      // row underneath it.
-      noteUpdate(Boolean(found.available), found.latest?.version ?? "");
+      // row underneath it. `noteCheck` because a check that failed must leave
+      // the dot exactly as it found it.
+      noteCheck(found);
     } catch (error) {
       console.error("[deckyemu] could not check for updates", error);
     }
@@ -451,6 +452,22 @@ export default definePlugin(() => {
   addEventListener<[boolean, string]>("update_available", onUpdateAvailable);
 
   /*
+   * And ask once, rather than only listening.
+   *
+   * The backend's first check used to be 30 seconds after start, which hid a
+   * race this has now: the check is immediate, the two halves of the plugin
+   * load at roughly the same moment, and an event emitted before this listener
+   * exists reaches nobody. The dot would then stay dark until somebody opened
+   * the panel -- which is the one thing it is there to save them from.
+   *
+   * Cheap: the backend has just checked, and this is unforced, so it is
+   * answered from the same cache rather than another request.
+   */
+  void callWithRetry(() => checkForUpdate(false))
+    .then(noteCheck)
+    .catch((error) => console.error("[deckyemu] could not check for updates", error));
+
+  /*
    * Whether the dot is wanted, read once at load.
    *
    * Here rather than in whichever panel renders first, because the icon is one
@@ -458,7 +475,7 @@ export default definePlugin(() => {
    * the dot off should not see it once more on every boot while something
    * catches up. Failure leaves it on, which is the stored default.
    */
-  void getSettings()
+  void callWithRetry(getSettings)
     .then((settings) => setUpdateDotEnabled(settings.show_update_dot !== false))
     .catch((error) =>
       console.error("[deckyemu] could not read the update dot setting", error),

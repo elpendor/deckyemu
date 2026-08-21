@@ -1,3 +1,5 @@
+import { type UpdateCheck } from "./backend";
+
 /**
  * Whether a newer DeckyEmu exists, held where anything can read it.
  *
@@ -83,6 +85,23 @@ export function setUpdateDotEnabled(on: boolean): void {
  */
 export function updateDotVisible(): boolean {
   return dotEnabled && signal.available;
+}
+
+/**
+ * Record what a check came back with, which is not the same as what it found.
+ *
+ * A check that could not reach GitHub says nothing about whether an update
+ * exists -- but it reports `available: false`, which is indistinguishable from
+ * "you are up to date" unless `checked` is read as well. Taking it at face
+ * value puts out a dot a working check had lit: one panel open on a train and
+ * the update is forgotten until the timer comes round hours later.
+ *
+ * The backend's watch already had this rule. Both frontend callers were written
+ * without it, which is why it is here now rather than at each of them.
+ */
+export function noteCheck(check: UpdateCheck | null | undefined): void {
+  if (!check?.checked) return;
+  noteUpdate(Boolean(check.available), check.latest?.version ?? "");
 }
 
 /** Subscribe. The returned function unsubscribes, and must be called. */

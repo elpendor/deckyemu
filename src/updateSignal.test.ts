@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   currentUpdate,
+  noteCheck,
   noteUpdate,
   setUpdateDotEnabled,
   updateDotVisible,
@@ -61,6 +62,54 @@ describe("the update signal behind the icon dot", () => {
     watchUpdates(seen)();
     noteUpdate(true, "1.4.0");
     expect(seen).not.toHaveBeenCalled();
+  });
+
+  // A reply is not the same as an answer. `available: false` is what a check
+  // that could not reach GitHub reports, and it cannot be told apart from "you
+  // are up to date" unless `checked` is read as well.
+  it("leaves the dot alone when the check could not reach GitHub", () => {
+    noteUpdate(true, "1.4.0");
+    noteCheck({
+      available: false,
+      current: "1.2.0",
+      checked: false,
+      error: "GitHub did not answer.",
+      count: 0,
+    });
+    expect(currentUpdate()).toEqual({ available: true, version: "1.4.0" });
+  });
+
+  it("but puts it out when a check that worked found nothing", () => {
+    noteUpdate(true, "1.4.0");
+    noteCheck({ available: false, current: "1.4.0", checked: true, error: "", count: 3 });
+    expect(currentUpdate().available).toBe(false);
+  });
+
+  it("and lights it when a check that worked found something", () => {
+    noteCheck({
+      available: true,
+      current: "1.2.0",
+      checked: true,
+      error: "",
+      count: 3,
+      latest: {
+        version: "1.4.0",
+        tag: "v1.4.0",
+        notes: "",
+        asset_url: "https://example.com/deckyemu.zip",
+        asset_name: "deckyemu.zip",
+        sha256: "",
+        prerelease: false,
+        published_at: "",
+      },
+    });
+    expect(currentUpdate()).toEqual({ available: true, version: "1.4.0" });
+  });
+
+  it("and nothing at all happens for a check that never ran", () => {
+    noteUpdate(true, "1.4.0");
+    noteCheck(null);
+    expect(currentUpdate().available).toBe(true);
   });
 
   it("shows the dot when an update is out and the dot is wanted", () => {

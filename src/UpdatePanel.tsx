@@ -22,7 +22,7 @@ import {
 } from "./backend";
 import { callWithRetry } from "./timeout";
 import { canInstallUpdates, installUpdate } from "./updater";
-import { noteUpdate, setUpdateDotEnabled } from "./updateSignal";
+import { noteCheck, setUpdateDotEnabled } from "./updateSignal";
 import { describe, FRONTEND_BUILD, FRONTEND_VERSION, isStale } from "./version";
 import { ReportModal } from "./ReportModal";
 import { logError } from "./logError";
@@ -180,7 +180,7 @@ export function UpdatePanel() {
       // and learning there is none would leave the dot lit until the panel was
       // opened or the timer came round again -- the one screen that knows the
       // most would be the one place that could not put it right.
-      noteUpdate(Boolean(found.available), found.latest?.version ?? "");
+      noteCheck(found);
     } catch (error) {
       // The real message, not a guess at what went wrong. Two rounds were spent
       // on "the backend did not answer" while the actual error sat in a console
