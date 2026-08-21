@@ -2533,6 +2533,11 @@ else:
           "PENDING_BASE" in page and "X-Upload-Offset" in page, True)
     check("it reconnects rather than giving up on one dropped connection",
           "reconnecting" in page, True)
+    # And says so as a state rather than as a word. The first version put
+    # "reconnecting" in the same muted grey as the file size it replaced, which
+    # is where nobody is looking: the row has to change, not just the text.
+    check("with the row marked, not just relabelled",
+          ("li.waiting" in page, "job.row.className = 'waiting'" in page), (True, True))
     check("and asks the sending device to stay awake while files are moving",
           "navigator.wakeLock" in page, True)
 

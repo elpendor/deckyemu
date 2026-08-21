@@ -128,6 +128,32 @@ const COLUMN = { display: "flex", flexDirection: "column" as const, gap: "8px" }
 const MUTED = { fontSize: "13px", opacity: 0.7 };
 
 /**
+ * Something worth reading, which is not an error.
+ *
+ * This dialog is mostly muted grey by design -- the address, the folder, the
+ * idle countdown, the hints under the toggles -- so a fifth line of it is
+ * invisible however carefully it is worded. A paused transfer is the one thing
+ * here somebody has to notice *before* pressing Done, and it first shipped as
+ * exactly that fifth line.
+ *
+ * The bar down the left is doing the work rather than the colour: it is the
+ * only vertical accent in the dialog, so the block reads as a different kind of
+ * thing at a glance, before any of it has been read. Amber rather than the red
+ * used for errors, because nothing has gone wrong -- the transfer is coming
+ * back.
+ */
+const NOTICE = {
+  display: "flex",
+  flexDirection: "column" as const,
+  gap: "2px",
+  padding: "8px 10px",
+  borderLeft: "4px solid #e8a33d",
+  borderRadius: "4px",
+  background: "rgba(232, 163, 61, 0.12)",
+  fontSize: "13px",
+};
+
+/**
  * QR on one side, the typed address on the other.
  *
  * Stacked, the code sat below the fold and the dialog scrolled -- which defeats
@@ -759,10 +785,15 @@ export function TransferModal({
             reads just before pressing it -- which would end the transfer they
             are waiting for. */}
         {uploads.length === 0 && (status?.paused ?? 0) > 0 && (
-          <div style={MUTED}>
-            {status?.paused === 1
-              ? "A transfer stopped partway. It carries on where it left off when the sender reconnects."
-              : `${status?.paused} transfers stopped partway. They carry on where they left off when the sender reconnects.`}
+          <div style={NOTICE}>
+            <div style={{ fontWeight: 600 }}>
+              {status?.paused === 1 ? "A transfer is paused" : `${status?.paused} transfers are paused`}
+            </div>
+            <div style={{ opacity: 0.85 }}>
+              {status?.paused === 1
+                ? "It carries on where it left off when the sender reconnects. Closing this does not stop it."
+                : "They carry on where they left off when the sender reconnects. Closing this does not stop them."}
+            </div>
           </div>
         )}
 

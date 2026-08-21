@@ -76,6 +76,7 @@ _STYLE = """
     --text: #e8eaed; --muted: #9aa1ac; --line: #333a45;
     --accent: #4c6ef5; --accent-soft: rgba(76,110,245,0.16);
     --ok: #5bd15b; --bad: #e35d5d;
+    --warn: #e8a33d; --warn-soft: rgba(232,163,61,0.14);
   }
   @media (prefers-color-scheme: light) {
     :root {
@@ -83,6 +84,7 @@ _STYLE = """
       --text: #1a1d23; --muted: #5f6672; --line: #dde0e5;
       --accent-soft: rgba(76,110,245,0.10);
       --ok: #2f9e44; --bad: #c92a2a;
+      --warn: #b26a00; --warn-soft: rgba(178,106,0,0.10);
     }
   }
   * { box-sizing: border-box; }
@@ -149,6 +151,16 @@ _STYLE = """
   li.done .name::before { content: "\\2713  "; color: var(--ok); }
   li.failed .name::before { content: "\\2717  "; color: var(--bad); }
   li.failed .size { color: var(--bad); }
+  /* Between two attempts: not done, not failed, and it used to look like
+     neither. "reconnecting" landed in the same muted grey as the file size it
+     replaced -- the one corner of the row nobody reads for news -- so the state
+     that most needs noticing was the least visible thing on the page. It gets
+     the third colour, its own mark, and a dimmed bar: the file has not lost
+     what it had, it is simply not moving this second. */
+  li.waiting { border-color: var(--warn); background: var(--warn-soft); }
+  li.waiting .name::before { content: "\\21BB  "; color: var(--warn); }
+  li.waiting .size { color: var(--warn); font-weight: 600; }
+  li.waiting .bar i { opacity: .55; }
   form { display: flex; flex-direction: column; gap: 12px; }
   input[type=text] { font-size: 30px; width: 100%; padding: 12px;
                      text-align: center; letter-spacing: .28em;
@@ -307,6 +319,9 @@ function attempt(job) {
   askPending(job.file).then((offset) => {
     if (job !== current) return;
     job.tries += 1;
+    // Out of the waiting state and back to an ordinary row: this is a transfer
+    // again rather than one that stopped.
+    job.row.className = '';
     job.size.textContent = offset > 0
       ? 'resuming at ' + Math.round((offset / job.file.size) * 100) + '%'
       : humanSize(job.file.size);
@@ -342,8 +357,16 @@ function again(job, moved, message) {
   job.stalls = moved > 0 ? 0 : job.stalls + 1;
   if (job.stalls > MAX_STALLS || job.tries >= MAX_TRIES) { fail(job, message); return; }
   // "failed" on a row that is about to try again would be a lie, and this is
-  // the state the page is in for most of a bad connection.
-  job.size.textContent = 'reconnecting...';
+  // the state the page is in for most of a bad connection. Marked on the row
+  // rather than said in the corner, so it is a different-looking thing and not
+  // a different word in the same grey.
+  //
+  // The Deck calls this "Paused" and this side calls it "reconnecting" on
+  // purpose: they are the same state seen from the two ends, and the sender is
+  // the end that is doing something about it. Anything the two must call by the
+  // same name is checked in test_transfer_wording.py.
+  job.row.className = 'waiting';
+  job.size.textContent = 'reconnecting';
   job.timer = setTimeout(() => {
     job.timer = 0;
     attempt(job);
