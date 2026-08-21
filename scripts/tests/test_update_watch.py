@@ -40,41 +40,53 @@ _NOTHING = {"available": False, "current": "1.0.0", "checked": True, "error": ""
 
 section("how often it asks")
 
-# Not asserted as literals -- the numbers are decky's, and copying them into a
-# check would only prove they were copied. What matters is what they buy.
+# Not asserted as literals -- copying a number into a check only proves it was
+# copied. What matters is what the numbers buy.
 _plugin = plugin_main.Plugin()
-check("the first check waits, because the network is not up when Steam starts",
-      _plugin._UPDATE_FIRST_DELAY > 0, True)
+
 # 60 unauthenticated requests an hour, shared by every caller on the address.
 # One check every six hours is four a day.
-check("and the interval cannot come close to GitHub's hourly budget",
+check("the settled interval cannot come close to GitHub's hourly budget",
       3600.0 / _plugin._UPDATE_INTERVAL <= 1, True)
 check("nor is it so long that a day could pass without a check",
       _plugin._UPDATE_INTERVAL <= 24 * 60 * 60, True)
+
+# The ladder replaces a fixed delay before the first check. The property that
+# matters is that a network arriving late is not punished with six hours of
+# silence -- so the first retry has to be minutes, not hours.
+check("a check that failed is retried in minutes",
+      _plugin._UPDATE_RETRY_DELAYS[0] <= 5 * 60, True)
+check("every rung is shorter than simply waiting for the next round",
+      max(_plugin._UPDATE_RETRY_DELAYS) < _plugin._UPDATE_INTERVAL, True)
+# Bounded on the other side too: a device with no network at all must not sit
+# in a retry loop spending requests.
+check("and the whole ladder is over inside an hour",
+      sum(_plugin._UPDATE_RETRY_DELAYS) <= 60 * 60, True)
 
 
 section("what one pass tells the icon")
 
 _plugin.loop = asyncio.new_event_loop()
-# Nothing here should actually sleep; the delays are what the section above is
-# for. Set on the instance so the class keeps the real values.
-_plugin._UPDATE_FIRST_DELAY = 0
-_plugin._UPDATE_INTERVAL = 0
 
 _calls = []
 # The last entry ends the watch: the handler re-raises CancelledError, which is
 # also the real way this loop stops -- decky unloading the plugin.
+#
+# Two kinds of failure on purpose. A raised exception is the network being
+# unreachable; a reply with checked=False is GitHub refusing, which does not
+# raise anywhere. Both have to climb the ladder, and neither may emit.
 _script = [
-    _release("1.4.0"),
     RuntimeError("the network was not up"),
-    _NOTHING,
+    {"available": False, "current": "1.0.0", "checked": False,
+     "error": "GitHub did not answer.", "count": 0},
+    _release("1.4.0"),
     asyncio.CancelledError(),
 ]
 
 
-async def _fake_check():
+async def _fake_check(force=False):
     item = _script[len(_calls)] if len(_calls) < len(_script) else asyncio.CancelledError()
-    _calls.append(1)
+    _calls.append(force)
     if isinstance(item, BaseException):
         raise item
     return item
@@ -82,32 +94,77 @@ async def _fake_check():
 
 _plugin.check_for_update = _fake_check
 
+# Nothing should really sleep, but what it *would* have slept is the whole point
+# of this section, so it is recorded. Put back in the finally below: the suite
+# shares one asyncio.
+_delays = []
+_real_sleep = asyncio.sleep
+
+
+async def _fake_sleep(seconds, *args, **kwargs):
+    _delays.append(seconds)
+    return await _real_sleep(0)
+
+_emitted = []
+
+
+async def _record(event, *args):
+    _emitted.append((event, args))
+
+
+# A recorder of our own, saved and put back. `decky.emitted` is not usable here:
+# two other files in this suite install their own `decky.emit` and do not
+# restore it, so whichever ran first decides where these events land. This is
+# the shared-state hazard the suite is full of -- it passed alone and failed
+# together, which is the tell.
 _level = decky.logger.level
-_before = len(decky.emitted)
+_real_emit = decky.emit
 try:
+    asyncio.sleep = _fake_sleep
+    decky.emit = _record
     decky.logger.level = logging.CRITICAL  # the failed check is deliberate
     try:
         _plugin.loop.run_until_complete(_plugin._watch_for_updates())
     except asyncio.CancelledError:
         pass
 finally:
+    asyncio.sleep = _real_sleep
+    decky.emit = _real_emit
     decky.logger.level = _level
 
-_emitted = [entry for entry in decky.emitted[_before:] if entry[0] == "update_available"]
+_emitted = [entry for entry in _emitted if entry[0] == "update_available"]
 
-check("a check that found something says so", _emitted[0] if _emitted else None,
+check("a check that answered says what it found", _emitted[0] if _emitted else None,
       ("update_available", (True, "1.4.0")))
-# The transition after the first one: the user installed it. An event that only
-# ever means yes can light the dot but never put it out.
-check("and a check that found nothing says that too",
-      _emitted[-1] if _emitted else None, ("update_available", (False, "")))
-check("exactly one event per check that answered", len(_emitted), 2)
+# The one that matters most: a check that could not reach GitHub must say
+# nothing at all. `available=False` is indistinguishable from "you are up to
+# date", so emitting it would put out a dot a working check had lit.
+check("and the two that could not answer said nothing", len(_emitted), 1)
 
-# The whole point of the section. Three checks ran after the one that raised,
-# which could not have happened if the exception ended the task.
+# Four checks ran after the first one raised, which could not have happened if
+# the exception had ended the task.
 check("a failed check does not end the watch", len(_calls), 4)
-check("and nothing is claimed on its behalf",
-      [args for _, args in _emitted if args[0] and not args[1]], [])
+
+section("and how long it waits before trying again")
+
+# 60 then 120 from the ladder, then the settled interval once a check answered.
+check("the first failure is retried on the first rung",
+      _delays[0], _plugin._UPDATE_RETRY_DELAYS[0])
+check("a second failure climbs rather than repeating",
+      _delays[1], _plugin._UPDATE_RETRY_DELAYS[1])
+check("and an answer settles it back to the ordinary interval",
+      _delays[2], _plugin._UPDATE_INTERVAL)
+check("nothing waited that was not one of those", len(_delays), 3)
+
+# The first attempt of a cycle may use the cache -- a reload minutes after the
+# last check should not spend a request. A retry may not: it exists because the
+# last attempt failed, and the module's own 15-minute failure backoff would turn
+# every rung below that into a call that never reaches the network.
+check("the first check is happy with a cached answer", _calls[0], False)
+check("while a retry insists on asking", _calls[1:3], [True, True])
+# And the counter resets: the fourth check follows one that answered, so it is
+# the first attempt of a new cycle rather than a fourth retry.
+check("an answer puts the next check back on the cached path", _calls[3], False)
 
 _plugin.loop.close()
 

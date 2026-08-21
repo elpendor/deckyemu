@@ -277,6 +277,13 @@ class Plugin(
         # wrong on it.
         hardware.log_once()
 
+        # Before the startup steps rather than after them, and it does not wait:
+        # the first check happens straight away and a failure climbs the retry
+        # ladder. Nothing here blocks on it -- it is a task -- and one hanging
+        # migration must not be the reason nobody is ever told about the fix
+        # for it.
+        self._update_task = self.loop.create_task(self._watch_for_updates())
+
         # Ordered, and each one on its own. The sequence stays here because this
         # is where it is read; the steps themselves are plugin_startup.py.
         #
@@ -330,6 +337,14 @@ class Plugin(
         # listening sockets must not outlive the plugin, and a socket left bound
         # because an unrelated cancel raised on the way past is exactly the
         # failure that makes the *next* start unable to bind its port.
+        # Not in the list below: that one runs sync callables in the executor,
+        # and this is a task to cancel. An update watch left running would hold
+        # a reference to a plugin decky has finished with, and would wake up six
+        # hours later to call methods on it.
+        task = getattr(self, "_update_task", None)
+        if task is not None:
+            task.cancel()
+
         for label, step in (
             ("cancel transfers in flight", fileserver.cancel),
             ("stop the transfer server", fileserver.stop),
@@ -2613,6 +2628,96 @@ class Plugin(
             (" error=%s" % result["error"]) if result.get("error") else "",
         )
         return result
+
+    #: How long to wait after a check that answered. Decky's own updater uses
+    #: six hours, and six hours is four requests a day against a budget of sixty
+    #: an hour that every unauthenticated caller on the address shares.
+    _UPDATE_INTERVAL = 6 * 60 * 60
+
+    #: How long to wait after a check that did *not* answer, per attempt.
+    #:
+    #: This replaces the fixed 30-second delay decky puts before its first check
+    #: ("Internet might not immediately be up"). That delay is a guess about how
+    #: long the network takes to arrive: it covers a wifi association that
+    #: finishes in ten seconds and does nothing for one that finishes in four
+    #: minutes -- and the cost of guessing short is not a retry, it is six hours
+    #: of silence, because the loop's next move is the interval above.
+    #:
+    #: Climbing instead. The first check happens immediately, and a failure is
+    #: retried on this ladder before settling back into the ordinary cadence, so
+    #: the answer arrives whenever the network does rather than whenever the
+    #: guess said it would.
+    #:
+    #: Four rungs inside twenty minutes: long enough to outlast a slow boot,
+    #: short enough that a device with no network spends five requests every six
+    #: hours failing instantly.
+    _UPDATE_RETRY_DELAYS = (60, 120, 300, 600)
+
+    async def _watch_for_updates(self):
+        """Look for a newer release on a timer, and say so when there is one.
+
+        A task rather than something the panel drives, because of what it feeds:
+        the dot on the plugin's icon has to be right *before* the panel is
+        opened, and a check that only runs on open can never make it so.
+
+        Nothing here is gated on the device being a Steam Deck. `_watch_` starts
+        with an underscore so the gate decorator skips it, and `check_for_update`
+        is on the ungated list on purpose -- a machine the gate refuses is
+        exactly the machine that may need to hear a newer version exists.
+
+        The result is not returned anywhere. It goes into the same cache the
+        panel reads, and out as an event for the icon.
+        """
+        attempt = 0
+        while True:
+            answered = False
+            try:
+                # Forced only on a retry. The first attempt of a cycle is happy
+                # with a cached answer -- a reload ten minutes after the last
+                # check should not spend a request -- but a retry exists
+                # *because* the last attempt failed, and the module's own
+                # failure backoff would otherwise turn every rung below fifteen
+                # minutes into a call that never leaves the house.
+                found = await self.check_for_update(attempt > 0)
+                answered = bool(found.get("checked"))
+
+                # Only when there is an answer. Emitting on a failed check would
+                # send `available=False` -- indistinguishable from "you are up
+                # to date" -- and put out a dot that a working check had lit.
+                if answered:
+                    # Both directions when it did answer, though: "no longer
+                    # available" is a real transition, and an event that only
+                    # ever means yes can light the dot but never put it out.
+                    await decky.emit(
+                        "update_available",
+                        bool(found.get("available")),
+                        (found.get("latest") or {}).get("version", ""),
+                    )
+            except asyncio.CancelledError:
+                # decky shutting the plugin down. Must be allowed to.
+                raise
+            except Exception:
+                # A failed check is expected here -- no network at a Deck's
+                # first boot of the day is the ordinary case -- so it is logged
+                # and the loop continues. Raising would end the task and there
+                # would be no more checks until the next restart.
+                decky.logger.exception("Update watch: could not check")
+
+            if answered:
+                attempt = 0
+                delay = self._UPDATE_INTERVAL
+            elif attempt < len(self._UPDATE_RETRY_DELAYS):
+                delay = self._UPDATE_RETRY_DELAYS[attempt]
+                attempt += 1
+            else:
+                # The ladder is for a network still arriving. Past the end of it
+                # this is a network that is not coming, so stop climbing and
+                # wait like everybody else -- and start the ladder again after,
+                # because by then it may well be a different situation.
+                attempt = 0
+                delay = self._UPDATE_INTERVAL
+
+            await asyncio.sleep(delay)
 
     async def stage_update(self):
         """Download the newest release and offer it to decky over loopback.
