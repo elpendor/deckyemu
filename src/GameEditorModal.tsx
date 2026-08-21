@@ -54,8 +54,10 @@ interface Props {
    *
    * This modal is opened from the added-games list, which is itself a modal, so
    * closing only this one navigates to the setup page and leaves that list
-   * stacked over it. Not called on save or cancel -- going back to the list is
-   * right then, and it is the only reason the list is still open.
+   * stacked over it. A test launch is the same jump: Steam takes the screen and
+   * the list would come back over the game. Not called on a plain save or on
+   * cancel -- going back to the list is right then, and it is the only reason
+   * the list is still open.
    */
   onLeave?: () => void;
 }
@@ -373,7 +375,14 @@ export function GameEditorModal({ game, onSaved, closeModal, onLeave }: Props) {
     return options;
   }, [osd, fullscreen, extraArgs]);
 
-  const save = useCallback(async () => {
+  /**
+   * Write the changes, and report whether they landed.
+   *
+   * The answer is for the test launch: a failed save leaves this modal open
+   * showing why, and starting the game on top of that would run the settings
+   * the user was trying to change.
+   */
+  const save = useCallback(async (): Promise<boolean> => {
     setSaving(true);
     setError("");
     try {
@@ -382,7 +391,7 @@ export function GameEditorModal({ game, onSaved, closeModal, onLeave }: Props) {
       );
       if (!result.ok) {
         setError(result.error);
-        return;
+        return false;
       }
 
       const notes: string[] = [];
@@ -424,9 +433,11 @@ export function GameEditorModal({ game, onSaved, closeModal, onLeave }: Props) {
       });
       onSaved();
       closeModal?.();
+      return true;
     } catch (saveError) {
       logError("could not save game", saveError);
       setError("Could not save those changes.");
+      return false;
     } finally {
       setSaving(false);
     }
@@ -436,18 +447,25 @@ export function GameEditorModal({ game, onSaved, closeModal, onLeave }: Props) {
    * Launch the game to check the change worked.
    *
    * Saves first: the launcher on disk is what Steam runs, so testing before
-   * writing it would test the old settings. The panel closes because Steam is
-   * about to take over the screen anyway.
+   * writing it would test the old settings. Nothing is launched if that save
+   * failed -- the error is on screen here, and the game would run the old
+   * settings anyway.
+   *
+   * Every modal closes before the launch, this one and the list that opened it.
+   * Steam re-reveals each modal as the one above it dismisses, so a list left
+   * standing comes back over the game that is starting -- the same ordering the
+   * navigation buttons above need, for the same reason.
    */
   const testLaunch = useCallback(async () => {
-    await save();
+    if (!(await save())) return;
+    onLeave?.();
     if (!launchApp(game.app_id)) {
       toaster.toast({
         title: "Could not start the game",
         body: "Steam did not accept the launch request. Try it from the library.",
       });
     }
-  }, [save, game.app_id]);
+  }, [save, game.app_id, onLeave]);
 
   const coreChanged = coreId !== game.core_id;
   const busy = saving || refreshing;
