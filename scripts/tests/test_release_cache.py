@@ -80,6 +80,11 @@ try:
     _restart()
     check("the first check asks GitHub", (bool(releases.fetch_releases()), _asked[0]), (True, 1))
     check("and leaves an answer on disk", os.path.exists(releases.CACHE_PATH), True)
+    # Written beside and renamed over, so a crash mid-write cannot leave a
+    # half-file where the whole one belongs. The leftover is what says the
+    # rename happened rather than a plain write.
+    check("without leaving the temporary it wrote first",
+          os.path.exists(releases.CACHE_PATH + ".tmp"), False)
 
     _restart()
     _found = releases.fetch_releases()

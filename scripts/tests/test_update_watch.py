@@ -171,6 +171,40 @@ _plugin.loop.close()
 
 section("and it can be stopped")
 
+# The structural checks below say the wiring is there. This says the task
+# actually ends when asked -- a watch that ignored its cancel would hold a
+# plugin decky has finished with and wake up hours later to call methods on it.
+_second = plugin_main.Plugin()
+_second.loop = asyncio.new_event_loop()
+
+
+async def _answering_check(force=False):
+    return _NOTHING
+
+
+_second.check_for_update = _answering_check
+
+
+async def _start_then_stop():
+    task = _second.loop.create_task(_second._watch_for_updates())
+    # Long enough for it to run one check and settle into the interval, which is
+    # the state it spends effectively all of its life in.
+    await asyncio.sleep(0.05)
+    task.cancel()
+    done, pending = await asyncio.wait({task}, timeout=2)
+    return task, done, pending
+
+
+_task, _done, _pending = _second.loop.run_until_complete(_start_then_stop())
+check("a cancelled watch stops instead of being abandoned",
+      (len(_done), len(_pending)), (1, 0))
+# Cancelled rather than "raised something": asyncio reports a task that died of
+# an exception differently, and the handler re-raises CancelledError precisely
+# so this stays the clean case.
+check("and stops as a cancellation, not as a failure", _task.cancelled(), True)
+_second.loop.close()
+
+
 # decky calls _unload when it is done with the plugin. A watch left running
 # holds a reference to a plugin nobody wants and wakes up hours later to call
 # methods on it.

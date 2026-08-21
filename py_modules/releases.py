@@ -214,9 +214,13 @@ def _load_cache():
 
 def _save_cache():
     """Keep the current answer for the next process. Failure is not worth raising."""
+    # Written beside and renamed over, the way store.py writes settings: a
+    # half-written file is still valid JSON often enough to be worth not risking,
+    # and os.replace is atomic on the same filesystem.
+    tmp = CACHE_PATH + ".tmp"
     try:
         os.makedirs(os.path.dirname(CACHE_PATH), exist_ok=True)
-        with open(CACHE_PATH, "w", encoding="utf-8") as handle:
+        with open(tmp, "w", encoding="utf-8") as handle:
             json.dump(
                 {
                     "format": CACHE_FORMAT,
@@ -225,8 +229,13 @@ def _save_cache():
                 },
                 handle,
             )
+        os.replace(tmp, CACHE_PATH)
     except OSError as error:
         decky.logger.warning("Could not keep the release cache: %s", error)
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
 
 
 def fetch_releases(force=False):

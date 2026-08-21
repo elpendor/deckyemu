@@ -282,6 +282,13 @@ class Plugin(
         # ladder. Nothing here blocks on it -- it is a task -- and one hanging
         # migration must not be the reason nobody is ever told about the fix
         # for it.
+        # Whatever was watching before this call stops first. decky calls `_main`
+        # once per load, so this should never find anything -- but if it ever
+        # did, the old task would keep checking forever against a plugin nobody
+        # holds any more, and nothing would ever say so.
+        previous = getattr(self, "_update_task", None)
+        if previous is not None:
+            previous.cancel()
         self._update_task = self.loop.create_task(self._watch_for_updates())
 
         # Ordered, and each one on its own. The sequence stays here because this
@@ -344,6 +351,21 @@ class Plugin(
         task = getattr(self, "_update_task", None)
         if task is not None:
             task.cancel()
+            # Waited for, briefly. A cancel only *requests*, and a task still
+            # pending when the loop goes away is logged by asyncio as "Task was
+            # destroyed but it is pending!" -- noise in decky's own output that
+            # reads like a bug of ours. Sleeping is the state it is in almost
+            # always, and that unwinds instantly.
+            #
+            # Bounded rather than awaited outright: if the cancel lands while the
+            # check is inside the executor, the request has to reach its own
+            # 20-second timeout before the thread returns, and an unload must not
+            # hold decky up for that.
+            try:
+                await asyncio.wait({task}, timeout=2)
+            except Exception:
+                decky.logger.exception("Unload: could not stop the update watch")
+            self._update_task = None
 
         for label, step in (
             ("cancel transfers in flight", fileserver.cancel),
