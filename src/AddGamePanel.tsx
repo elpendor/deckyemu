@@ -43,7 +43,13 @@ import {
   type RetroArchStatus,
 } from "./backend";
 import { addPreparedGame } from "./addGame";
-import { getDraft, resetDraft, subscribeDraft, updateDraft } from "./romDraft";
+import {
+  draftGeneration,
+  getDraft,
+  resetDraft,
+  subscribeDraft,
+  updateDraft,
+} from "./romDraft";
 import {
   LOOKUP_FAILED,
   lookupArtwork,
@@ -272,6 +278,13 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
    */
   const unpackPackage = useCallback((system: Console, keyName = "") => {
     if (!romPath) return;
+    // Which draft this install belongs to. It is the longest-running thing the
+    // panel starts and nothing awaits it, so the user can pick another ROM
+    // while it runs -- and then the answer is about a file they have moved on
+    // from. Written in anyway, it replaced their new selection with the game
+    // that came out of the package. See `newDraftGeneration`.
+    const asked = draftGeneration();
+    const stale = () => draftGeneration() !== asked;
     updateDraft({
       error: "",
       unpacking: true,
@@ -290,7 +303,17 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
                 await installVitaPackage(romPath, keyName)
               : await installPs3Package(romPath);
         if (!result.ok || !result.title_id) {
-          updateDraft({ error: result.error ?? "The package did not install." });
+          // A failure still has to reach somebody. The error row is the right
+          // place for it only while this is still the game on screen; after
+          // that it would be an error about a file the panel is not showing.
+          if (stale()) {
+            toaster.toast({
+              title: "That package did not install",
+              body: result.error ?? "",
+            });
+          } else {
+            updateDraft({ error: result.error ?? "The package did not install." });
+          }
           return;
         }
         toaster.toast({
@@ -298,13 +321,21 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
           // Worth saying: a licence going in without being asked for is the
           // difference between a game that boots and one that does not.
           body:
-            "licence" in result && result.licence
-              ? "Its licence was installed too. Finding its artwork."
-              : "Finding its artwork.",
+            ("licence" in result && result.licence
+              ? "Its licence was installed too. "
+              : "") +
+            // The install happened either way; only the flow into the panel is
+            // abandoned, and the game is still reachable from the list of what
+            // the emulator has installed.
+            (stale()
+              ? "Choose a game to add it from the installed list."
+              : "Finding its artwork."),
         });
+        if (stale()) return;
         await selectPackagedGame(system, result.title_id);
       } catch (installError) {
-        logError("PS3 package install failed", installError);
+        logError("package install failed", installError);
+        if (stale()) return;
         updateDraft({
           error:
             installError instanceof Error
@@ -314,7 +345,9 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
       } finally {
         // In a finally, so no path out of here can leave the panel claiming to
         // still be unpacking -- which is the whole reason this was rewritten.
-        updateDraft({ unpacking: false, unpackPercent: 0, unpackStatus: "" });
+        // Not once the draft has moved on: the flag there belongs to whatever
+        // is being added now, and clearing it is not this install's business.
+        if (!stale()) updateDraft({ unpacking: false, unpackPercent: 0, unpackStatus: "" });
       }
     })();
   }, [romPath]);
