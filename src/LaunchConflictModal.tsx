@@ -1,4 +1,13 @@
-import { ConfirmModal, showModal, type ConfirmModalProps } from "@decky/ui";
+import {
+  DialogBody,
+  DialogButtonPrimary,
+  DialogButtonSecondary,
+  DialogFooter,
+  DialogHeader,
+  Focusable,
+  ModalRoot,
+  showModal,
+} from "@decky/ui";
 import { useState } from "react";
 
 import { steamText, terminateGame, type RunningGame } from "./steam";
@@ -15,20 +24,6 @@ export interface LaunchConflict {
 interface Props extends LaunchConflict {
   closeModal?: () => void;
 }
-
-/**
- * Keep the dialog up when OK is pressed.
- *
- * Steam's `GenericDialog` destructures `bCloseAfterOK` with a default of true
- * and skips its own `closeModal` when it is false, which is what makes a
- * two-press button possible inside a `ConfirmModal` at all. `@decky/ui` does
- * not list the prop, but `ConfirmModal` spreads everything it does not
- * recognise straight through to that dialog, so it arrives.
- *
- * The cast is the honest shape of that: a real prop of the component underneath,
- * missing from the types in between.
- */
-const STAYS_OPEN_ON_OK = { bCloseAfterOK: false } as unknown as ConfirmModalProps;
 
 /** Steam's own class for this line is `margin-top: .75rem` and nothing else. */
 const WARNING = { marginTop: "0.75rem" };
@@ -57,13 +52,26 @@ export function showLaunchConflict(conflict: LaunchConflict) {
  * that reads as a stutter and a hot device rather than as a mistake, and the
  * first game is still sitting there holding memory when the second one quits.
  *
- * Deliberately a copy rather than an improvement, down to the layout. It is a
- * `ConfirmModal` with a middle button because that is exactly what Steam's own
- * is -- its three-button footer is the branch `strMiddleButtonText` selects --
- * and an earlier version of this built the same three buttons by hand out of
- * `ModalRoot` and `DialogButton`, which put a stack of full-width buttons where
- * Steam puts a footer row. It looked like a different dialog saying the same
- * words, which is the one thing a copy must not do.
+ * **The layout below is the real one, read off the running client rather than
+ * guessed at.** Two earlier attempts got it wrong from opposite directions: a
+ * column of full-width buttons in a bare `ModalRoot`, then a `ConfirmModal` with
+ * `strMiddleButtonText`, which gives Steam's *standard* three-button footer.
+ * This dialog does not use either. Its footer is a full-width **primary** button
+ * on its own row, with Cancel and the secondary action side by side underneath:
+ *
+ *     <div class="DialogFooter">
+ *       <button class="Stacked DialogButton _DialogLayout Primary …">   close and launch
+ *       <div class="DialogTwoColLayout _DialogColLayout Panel Focusable">
+ *         <button class="DialogButton _DialogLayout Secondary …">       Cancel
+ *         <button class="DialogButton _DialogLayout Secondary …">       launch anyway
+ *
+ * Cancel comes **first** in that pair, which is the sort of thing no amount of
+ * reading the minified component tells you. `DialogTwoColLayout`,
+ * `_DialogColLayout` and `Stacked` are unhashed global classes and safe to name;
+ * `Stacked` is what gives the top button its 10px gap, and the two hashed
+ * classes on the real one turn out to be a `margin-top` for the warning line and
+ * the yellow tint the confirm state gets, neither worth chasing a build-specific
+ * hash for.
  *
  * The words come from the client too (`GameAction_Launch_Multiple_*`), so they
  * arrive in whatever language it is set to and fall back to the English below.
@@ -79,7 +87,8 @@ export function LaunchConflictModal({ closeModal, title, running, onLaunch }: Pr
   // Steam asks twice before closing a game and so does this. The first press
   // swaps the label rather than acting, which is the whole mechanism: the
   // button that can lose unsaved data is never the one under a thumb that was
-  // already moving.
+  // already moving. Owning the footer is what makes it possible -- `ConfirmModal`
+  // closes itself, and the prop that stops it is not one @decky/ui declares.
   const [confirming, setConfirming] = useState(false);
 
   const other = running[0].title;
@@ -117,49 +126,60 @@ export function LaunchConflictModal({ closeModal, title, running, onLaunch }: Pr
   };
 
   return (
-    <ConfirmModal
-      {...STAYS_OPEN_ON_OK}
-      closeModal={closeModal}
-      strTitle={steamText("#GameAction_Launch_Multiple_Title", "Launch %1$s", title)}
-      // The same shape Steam builds: the sentence, a break, then the warning on
-      // its own indented line.
-      strDescription={
-        <>
-          {description}
-          <br />
-          <div style={WARNING}>
+    <ModalRoot closeModal={closeModal}>
+      <DialogHeader>
+        {steamText("#GameAction_Launch_Multiple_Title", "Launch %1$s", title)}
+      </DialogHeader>
+
+      {/* Steam's shape exactly: the sentence, a break, then the warning on its
+          own line. */}
+      <DialogBody>
+        {description}
+        <br />
+        <div style={WARNING}>
+          {steamText(
+            "#GameAction_Launch_Multiple_Warning",
+            "Warning: closing a game may result in losing unsaved data.",
+          )}
+        </div>
+      </DialogBody>
+
+      <DialogFooter>
+        <DialogButtonPrimary
+          className="Stacked"
+          onClick={() => {
+            if (!confirming) {
+              setConfirming(true);
+              return;
+            }
+            for (const game of running) terminateGame(game.gameId);
+            launch();
+          }}
+        >
+          {confirming
+            ? steamText(
+                "#GameAction_Launch_Multiple_CloseAndLaunch_Confirm",
+                "Confirm close and launch",
+              )
+            : closeAndLaunch}
+        </DialogButtonPrimary>
+
+        {/* Focusable supplies the `Panel Focusable` half of the class list the
+            real one carries, so this is the same four classes in the same
+            order. */}
+        <Focusable className="DialogTwoColLayout _DialogColLayout">
+          <DialogButtonSecondary onClick={() => closeModal?.()}>
+            {steamText("#GameAction_Launch_Multiple_Cancel", "Cancel")}
+          </DialogButtonSecondary>
+          <DialogButtonSecondary onClick={launch}>
             {steamText(
-              "#GameAction_Launch_Multiple_Warning",
-              "Warning: closing a game may result in losing unsaved data.",
+              "#GameAction_Launch_Multiple_LaunchSimultaneous",
+              "Launch %1$s anyway",
+              title,
             )}
-          </div>
-        </>
-      }
-      strOKButtonText={
-        confirming
-          ? steamText(
-              "#GameAction_Launch_Multiple_CloseAndLaunch_Confirm",
-              "Confirm close and launch",
-            )
-          : closeAndLaunch
-      }
-      onOK={() => {
-        if (!confirming) {
-          setConfirming(true);
-          return;
-        }
-        for (const game of running) terminateGame(game.gameId);
-        // Closed by hand, because STAYS_OPEN_ON_OK turned off the automatic one.
-        launch();
-      }}
-      strMiddleButtonText={steamText(
-        "#GameAction_Launch_Multiple_LaunchSimultaneous",
-        "Launch %1$s anyway",
-        title,
-      )}
-      // The middle button closes the dialog itself, whatever bCloseAfterOK says.
-      onMiddleButton={onLaunch}
-      strCancelButtonText={steamText("#GameAction_Launch_Multiple_Cancel", "Cancel")}
-    />
+          </DialogButtonSecondary>
+        </Focusable>
+      </DialogFooter>
+    </ModalRoot>
   );
 }
