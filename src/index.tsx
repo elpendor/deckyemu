@@ -42,6 +42,7 @@ import { shortcutNudge, type ShortcutCounts } from "./shortcutNudge";
 import { TransferStatusPanel } from "./TransferStatusPanel";
 import { ManagePage, MANAGE_ROUTE, openManagePage } from "./ManagePage";
 import { patchGameContextMenu } from "./steam/contextMenu";
+import { watchForDoubleLaunch } from "./doubleLaunch";
 import { callWithRetry } from "./timeout";
 
 const EMPTY_STATUS: RetroArchStatus = {
@@ -441,6 +442,12 @@ export default definePlugin(() => {
   void refreshAddedGames();
   const unpatchContextMenu = patchGameContextMenu(editGameMenuItem);
 
+  // Two games at once, which Steam warns about for its own games and cannot
+  // warn about for ours -- its check is gated on an app_type our shortcuts do
+  // not carry. Not an interception: it says so once the second one is up, and
+  // offers to close the first. See doubleLaunch.ts for why that is the shape.
+  const stopWatchingLaunches = watchForDoubleLaunch();
+
   /*
    * The backend checks on a timer and says so here. Registered at plugin scope
    * rather than inside the panel because that is the whole point of it: the icon
@@ -511,6 +518,9 @@ export default definePlugin(() => {
       // Steam keeps the patched component, so leaving this would put a dead
       // item in every game menu until the client restarts.
       unpatchContextMenu();
+      // Same reason: Steam keeps the registration, and a plugin update would
+      // otherwise leave the old copy toasting alongside the new one.
+      stopWatchingLaunches();
     },
   };
 });
