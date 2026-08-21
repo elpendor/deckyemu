@@ -41,6 +41,26 @@ import sysenv  # noqa: E402
 section("recommended settings -- writing into a config the user owns")
 import emu_config  # noqa: E402
 
+
+def _toml_tables(path):
+    """Read a TOML file as {table: {key: literal}}, values left as written.
+
+    Enough of TOML for a config xemu wrote, and deliberately no more: the point
+    is which table a key ended up in and whether its value went in bare or
+    quoted, and a real parser would normalise both of those away.
+    """
+    tables = {}
+    current = tables.setdefault("", {})
+    for line in io.open(path, encoding="utf-8"):
+        line = line.strip()
+        if line.startswith("[") and line.endswith("]"):
+            current = tables.setdefault(line[1:-1], {})
+        elif "=" in line and not line.startswith("#"):
+            key, _, value = line.partition("=")
+            current[key.strip()] = value.strip()
+    return tables
+
+
 # Azahar reads a value only when its companion `\default` line is absent or
 # true; `\default=true` means the stored value is thrown away entirely. So a
 # value written without clearing that flag does nothing at all, and this is the
@@ -322,6 +342,45 @@ try:
     check("and the mark itself survives",
           io.open(_pp_ini, "rb").read(3), b"\xef\xbb\xbf")
     check("with everything around it left alone", "FirstRun = False" in _pp_text, True)
+
+    # xemu answers an unknown key with a warning on stderr and then carries on,
+    # so a setting in the wrong table is not an error -- it is a setting that
+    # quietly does nothing, which in Game Mode is indistinguishable from the
+    # feature not existing. `show_menubar` sat in `[general]` for a release for
+    # exactly that reason. These checks are about the table each key lands in,
+    # because that is the part that was wrong and the part nothing else catches.
+    _xemu_toml = os.path.join(
+        _cfg_home, ".var", "app", "app.xemu.xemu",
+        "data", "xemu", "xemu", "xemu.toml",
+    )
+    os.makedirs(os.path.dirname(_xemu_toml), exist_ok=True)
+    with io.open(_xemu_toml, "w", encoding="utf-8", newline="\n") as _handle:
+        # What xemu itself leaves behind after one run: only the values that
+        # differ from its own defaults, in dotted-table form.
+        _handle.write(
+            "[general]\nshow_welcome = false\n\n"
+            "[input.bindings]\nport1_driver = 'usb-xbox-gamepad'\n"
+        )
+    emu_config.apply_setup(emu_catalog.find("xemu"))
+    _xemu_tables = _toml_tables(_xemu_toml)
+    check("xemu's menu bar is turned off in the table xemu reads",
+          _xemu_tables["display.ui"].get("show_menubar"), "false")
+    check("and not in [general], where it is an unrecognized key",
+          "show_menubar" in _xemu_tables["general"], False)
+    # "Connected '<pad>' to port 1", over the boot of every launch from Steam.
+    check("the notification toasts go with it",
+          _xemu_tables["display.ui"].get("show_notifications"), "false")
+    # The most xemu offers: hidden after three seconds of not moving. The Deck's
+    # right trackpad can still bring the pointer back, so this is a floor.
+    check("and the mouse pointer hides itself when idle",
+          _xemu_tables["display.ui"].get("hide_cursor"), "true")
+    check("while the welcome panel stays in [general], where it does work",
+          _xemu_tables["general"].get("show_welcome"), "false")
+    # Quoted, `show_menubar = 'false'` is the string "false" -- which is true.
+    check("all of them written as TOML booleans rather than strings",
+          sorted(_xemu_tables["display.ui"].values()), ["false", "false", "true"])
+    check("with what xemu wrote for itself untouched",
+          _xemu_tables["input.bindings"].get("port1_driver"), "'usb-xbox-gamepad'")
 
     # Cemu ships no controller profile and writes no settings until it is used,
     # so there is nothing to edit and nothing to parse -- the file is supplied

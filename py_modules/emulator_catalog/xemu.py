@@ -5,31 +5,58 @@ _XEMU_DATA = ".var/app/app.xemu.xemu/data/xemu/xemu"
 _XEMU_TOML = "%s/xemu.toml" % _XEMU_DATA
 
 
-# xemu's menu bar slides in over the top of the picture for the first few
-# seconds of every boot and then hides itself. Harmless on a desktop, wrong on a
-# handheld where the game is the only thing on screen -- and there is no way to
-# dismiss it from a pad, so it is simply something that happens to you.
+# Everything xemu draws over the game, turned off. On a handheld the game is
+# the only thing on screen and there is no pointer to dismiss anything with, so
+# each of these is furniture that can only get in the way.
 #
-# `show_welcome` is the same argument one step earlier: a first-run panel in
-# front of the game.
+#   show_menubar        the bar that slides in over the top of the picture.
+#                       `false` is not "auto-hide sooner" -- xemu never calls
+#                       ShowMainMenu() at all, so the bar cannot come back on
+#                       a stray trackpad nudge.
+#   show_notifications  the toasts in the upper-right. Mostly "Connected
+#                       '<pad>' to port 1", which fires over the boot of every
+#                       single launch from Steam.
+#   hide_cursor         the mouse pointer, after three seconds of it not
+#                       moving. This is the whole of what xemu offers -- there
+#                       is no "never show a cursor" -- so the Deck's right
+#                       trackpad can still put it back for three seconds. It is
+#                       the floor, not a fix.
+#   show_welcome        the first-run panel, in front of the game.
 #
-# Both key names are read out of the installed binary; the table is not, because
-# xemu builds those paths at runtime and they are not in it as strings. `general`
-# is where xemu itself put `show_welcome` on a real Deck, which is the evidence
-# for putting `show_menubar` beside it.
+# **The table names are the load-bearing part.** `show_menubar` lived in
+# `[general]` here for a release and did nothing: xemu answers
+# `Warning: unrecognized key 'general.show_menubar'` on stderr and carries on
+# with the bar switched on, which in Game Mode is indistinguishable from the
+# setting not existing. The three interface keys are `[display.ui]`;
+# `show_welcome` really is `[general]`, which is why it worked and the other one
+# did not, and why one working key is not evidence for its neighbour.
+#
+# Checked against the installed build rather than guessed, and it is cheap to
+# check again: xemu takes `-config_path`, so pointing it at a scratch file and
+# reading stderr names every key it did not recognise, without touching the real
+# configuration or needing a display.
+#
+#   flatpak run app.xemu.xemu -config_path /path/to/scratch.toml
 _XEMU_SETUP = {
     "format": emu_config.TOML_KEYS,
     "label": "interface",
     #   1  the menu bar and the welcome panel kept off the game
-    "version": 1,
+    #   2  ... except the menu bar was written to a table xemu does not read.
+    #      Moved to [display.ui], with the notifications and the cursor.
+    "version": 2,
     "path": _XEMU_TOML,
     "sections": {
         "general": {
             # `raw`, because these are TOML booleans. Quoted, they would be the
             # string "false", which is true.
-            "show_menubar": {"value": "false", "default": "true", "raw": True},
             "show_welcome": {"value": "false", "default": "true", "raw": True},
-        }
+        },
+        "display.ui": {
+            "show_menubar": {"value": "false", "default": "true", "raw": True},
+            "show_notifications": {
+                "value": "false", "default": "true", "raw": True},
+            "hide_cursor": {"value": "true", "default": "false", "raw": True},
+        },
     },
 }
 
