@@ -22,6 +22,8 @@ export * from "./layout";
 export * from "./artwork";
 export * from "./collections";
 export * from "./focus";
+export * from "./running";
+export * from "./text";
 // contextMenu is deliberately NOT re-exported, for the same reason client.ts
 // is not: it imports @decky/ui's webpack helpers, which initialise against
 // `window.webpackChunksteamui` the moment the module loads. That global does

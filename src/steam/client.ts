@@ -69,6 +69,17 @@ export const appStore = (): any => (window as any).appStore;
 export const collectionStore = (): CollectionStore | null =>
   (window as any).collectionStore ?? null;
 
+/**
+ * The Game Mode UI store, which is the only thing that knows what is running.
+ *
+ * `RunningApps` and `MainRunningApp` live here and nowhere else that is
+ * reachable: `SteamClient.GameSessions` offers only a subscription
+ * (`RegisterForAppLifetimeNotifications`), so answering "is anything running
+ * right now" from it would mean keeping a tally from plugin load and getting
+ * the starting state wrong.
+ */
+export const uiStore = (): any => (window as any).SteamUIStore ?? null;
+
 export const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /** A freshly added shortcut takes a moment to appear in appStore. */

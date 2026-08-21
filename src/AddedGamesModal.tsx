@@ -110,7 +110,7 @@ export function AddedGamesModal({ closeModal, onChanged }: Props) {
                       which games are the plugin's. `playGame` takes this
                       modal's dismiss so nothing is left over the game. */}
                   <DialogButton
-                    onClick={() => playGame(game.app_id, closeModal)}
+                    onClick={() => playGame(game.app_id, game.title, closeModal)}
                     style={{ minWidth: "auto", width: "auto", padding: "6px 12px" }}
                   >
                     <FaPlay />

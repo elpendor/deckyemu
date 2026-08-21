@@ -456,9 +456,12 @@ export function GameEditorModal({ game, onSaved, closeModal, onLeave }: Props) {
    */
   const testLaunch = useCallback(async () => {
     if (!(await save())) return;
-    // `save` closed this modal; `playGame` closes the list that opened it.
-    playGame(game.app_id, onLeave);
-  }, [save, game.app_id, onLeave]);
+    // `save` closed this modal; `playGame` closes the list that opened it --
+    // unless something else is running, in which case it asks first and the
+    // list is what its Cancel goes back to. The edited title, not the stored
+    // one: the save above is what just made it the game's name.
+    playGame(game.app_id, title.trim(), onLeave);
+  }, [save, game.app_id, title, onLeave]);
 
   const coreChanged = coreId !== game.core_id;
   const busy = saving || refreshing;
