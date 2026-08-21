@@ -35,8 +35,9 @@ vi.mock("./backend", () => ({
   vitaCoreId: "emu:vita3k",
 }));
 
-const { lookupArtwork } = await import("./addFlow");
+const { lookupArtwork, selectRom } = await import("./addFlow");
 const { getDraft, resetDraft, updateDraft } = await import("./romDraft");
+const { probeRom, setSettings, suggestCoresForExtension } = await import("./backend");
 
 const found = { title: "Katamari Damacy", art: {}, system: "", matched_name: "", match_kind: "exact" };
 
@@ -95,5 +96,36 @@ describe("a lookup that comes back late", () => {
     await pending;
     expect(getDraft().error).toBe("");
     expect(getDraft().looking).toBe(false);
+  });
+});
+
+describe("picking another ROM while a package is unpacking", () => {
+  it("takes the progress bar with the game it belonged to", async () => {
+    // The bar says a *package* is being extracted, and the new selection is not
+    // that package. Left standing it reports the previous file's install as
+    // this one's, which is a progress bar for something that was never started.
+    // The extraction itself carries on and reports its own end.
+    vi.mocked(probeRom).mockResolvedValue({
+      provisional_title: "Luigi's Mansion",
+      matching_cores: [],
+      match_extension: "iso",
+      suggested_core_id: "",
+    } as never);
+    vi.mocked(setSettings).mockResolvedValue(undefined as never);
+    vi.mocked(suggestCoresForExtension).mockResolvedValue([] as never);
+
+    resetDraft();
+    updateDraft({
+      romPath: "/home/deck/deckyemu/transfer/game.pkg",
+      unpacking: true,
+      unpackPercent: 40,
+      unpackStatus: "Unpacking",
+    });
+
+    await selectRom("/roms/gc/luigi.iso");
+
+    expect(getDraft().unpacking).toBe(false);
+    expect(getDraft().unpackPercent).toBe(0);
+    expect(getDraft().unpackStatus).toBe("");
   });
 });

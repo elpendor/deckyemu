@@ -84,11 +84,9 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
   // The draft lives outside React so it survives this panel being unmounted
   // while the file picker modal is open. See romDraft.ts.
   const [draft, setDraft] = useState(getDraft);
-  // Unpacking a PS3 package. Local rather than in the draft: it is a transient
-  // state of this panel, and nothing that survives a remount depends on it.
-  const [unpacking, setUnpacking] = useState(false);
-  const [unpackPercent, setUnpackPercent] = useState(0);
-  const [unpackStatus, setUnpackStatus] = useState("");
+  // Unpacking a package is in the draft rather than here: it outlasts this
+  // panel by minutes, and the flag is what keeps the Install button from
+  // starting a second extraction. See romDraft.ts.
   // Which licence key the user said belongs to a Vita package lives in the
   // draft, not here: choosing one opens a ContextMenu, which unmounts this
   // panel, so component state was discarded on the way back and the choice
@@ -184,6 +182,9 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
     looking,
     adding,
     installingCore,
+    unpacking,
+    unpackPercent,
+    unpackStatus,
     error,
   } = draft;
 
@@ -240,8 +241,14 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
    */
   useEffect(() => {
     const onProgress = (_name: string, text: string, percent: number) => {
-      setUnpackStatus(text.length > 110 ? `${text.slice(0, 107)}...` : text);
-      if (percent >= 0) setUnpackPercent(Math.max(0, Math.min(100, percent)));
+      // Only while this draft says something is unpacking. The emulator keeps
+      // printing for a moment after the call returns, and those last lines
+      // would otherwise put a status on a panel that has finished.
+      if (!getDraft().unpacking) return;
+      updateDraft({
+        unpackStatus: text.length > 110 ? `${text.slice(0, 107)}...` : text,
+        ...(percent >= 0 ? { unpackPercent: Math.max(0, Math.min(100, percent)) } : {}),
+      });
     };
     // Both consoles, because only one of them can be unpacking at a time and
     // the bar does not care which.
@@ -265,10 +272,12 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
    */
   const unpackPackage = useCallback((system: Console, keyName = "") => {
     if (!romPath) return;
-    updateDraft({ error: "" });
-    setUnpacking(true);
-    setUnpackPercent(0);
-    setUnpackStatus("Starting...");
+    updateDraft({
+      error: "",
+      unpacking: true,
+      unpackPercent: 0,
+      unpackStatus: "Starting...",
+    });
     void (async () => {
       try {
         const result =
@@ -305,9 +314,7 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
       } finally {
         // In a finally, so no path out of here can leave the panel claiming to
         // still be unpacking -- which is the whole reason this was rewritten.
-        setUnpacking(false);
-        setUnpackPercent(0);
-        setUnpackStatus("");
+        updateDraft({ unpacking: false, unpackPercent: 0, unpackStatus: "" });
       }
     })();
   }, [romPath]);

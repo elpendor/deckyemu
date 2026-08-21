@@ -62,4 +62,17 @@ describe("romDraft", () => {
     resetDraft();
     expect(getDraft().installableId).toBe("");
   });
+
+  it("still knows a package is unpacking after the same remount", () => {
+    // The one in here that is not a choice but a running job. A PS4 package is
+    // minutes of extraction, so the panel is certain to be unmounted during one
+    // -- the file picker, the added-games list, or the panel simply being
+    // closed. Held in component state the flag went with it, and the panel came
+    // back offering to install a package that was already installing. Pressing
+    // that runs a second extraction into the directory the first is writing.
+    updateDraft({ unpacking: true, unpackPercent: 40, unpackStatus: "Unpacking" });
+    const afterRemount = getDraft();
+    expect(afterRemount.unpacking).toBe(true);
+    expect(afterRemount.unpackPercent).toBe(40);
+  });
 });

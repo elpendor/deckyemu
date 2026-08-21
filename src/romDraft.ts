@@ -62,6 +62,25 @@ export interface RomDraft {
   looking: boolean;
   adding: boolean;
   installingCore: string;
+  /**
+   * A package being unpacked into its emulator, and how far it has got.
+   *
+   * Here rather than in component state for the reason `installingCore` is, and
+   * it costs more: a PS4 package is minutes of work, so the panel is certain to
+   * be unmounted during one -- the ROM picker, the added-games list, or simply
+   * closing the panel. Held in `useState`, the bar and the flag went with it,
+   * and the panel came back offering to install a package that was already
+   * being installed. Pressing that runs a second extraction into the directory
+   * the first one is still writing.
+   *
+   * The percentage lags while nothing is mounted, because the progress events
+   * are subscribed to by the panel and nobody is listening. It catches up on
+   * the next event, which is the cheap half of the answer and enough: what the
+   * bar has to say is that this is running, not what byte it is on.
+   */
+  unpacking: boolean;
+  unpackPercent: number;
+  unpackStatus: string;
   error: string;
 }
 
@@ -80,6 +99,9 @@ export const EMPTY_DRAFT: RomDraft = {
   looking: false,
   adding: false,
   installingCore: "",
+  unpacking: false,
+  unpackPercent: 0,
+  unpackStatus: "",
   error: "",
 };
 

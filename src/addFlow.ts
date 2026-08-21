@@ -159,7 +159,21 @@ export async function selectRom(romPath: string): Promise<void> {
   // `titleId` cleared with the rest: a file picked from disk is launched as a
   // file, and a leftover id from a previous selection would send the launcher
   // at the wrong game entirely.
-  updateDraft({ romPath, titleId: "", resolved: null, installable: [], error: "" });
+  //
+  // The unpack state goes too, and it is the one that outlives its own draft: a
+  // package can still be extracting while this runs, and the progress bar it
+  // owns belongs to the file the user has just moved on from. The extraction
+  // finishes on its own and its own writes are dropped as stale.
+  updateDraft({
+    romPath,
+    titleId: "",
+    resolved: null,
+    installable: [],
+    unpacking: false,
+    unpackPercent: 0,
+    unpackStatus: "",
+    error: "",
+  });
 
   try {
     const info = await probeRom(romPath);
