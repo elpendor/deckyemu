@@ -579,14 +579,23 @@ export function EmulatorCatalogPanel({ onChanged }: Props) {
           <Field
             label={refused.label}
             description={
-              <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                {refused.reasons.map((reason) => (
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                {refused.refusals.map((item) => (
                   /* Wrapped rather than truncated, unlike a filename in a
                      status row: this is the whole of what the user gets to act
                      on, and half a reason is no reason. `anywhere` because the
                      sentence carries a filename with no spaces in it. */
-                  <div key={reason} style={{ overflowWrap: "anywhere" }}>
-                    {reason}
+                  <div key={item.headline} style={{ overflowWrap: "anywhere" }}>
+                    <div>{item.headline}</div>
+                    {/* A line per fault, indented under the file that has them.
+                        Run together they read as one broken thought instead of
+                        three separate things to fix, and the list of what is
+                        missing is exactly what gets lost. */}
+                    {item.details.map((detail) => (
+                      <div key={detail} style={{ paddingLeft: "12px" }}>
+                        {detail}
+                      </div>
+                    ))}
                   </div>
                 ))}
                 <div style={MUTED}>
