@@ -31,6 +31,12 @@ One kind of file is not a ROM: a `.deckyemu.json` **emulator definition** gets a
 **Import** button instead. That is how an emulator this plugin does not ship gets
 set up — see [Emulators this plugin does not ship](emulators.md#emulators-this-plugin-does-not-ship).
 
+The list is the folder, not a record of what arrived while the dialog was open,
+so a file sent last week is still there to act on. Anything you decide against
+gets a **delete** button beside its action — a ROM you thought better of, a BIOS
+for an emulator you removed, a definition that was refused. That is the only way
+to clear the inbox from Game Mode, and it asks first, naming the size.
+
 Arriving files show a progress bar of bytes received against the declared total,
 and each can be **cancelled**, which deletes the partial rather than leaving it
 behind. That status also appears in the Quick Access panel, so dismissing the

@@ -21,6 +21,17 @@ linked to or named as a download here; a definition is something you bring.
 3. Read it, then confirm.
 4. The emulator appears under **Emulators**, alongside the built-in ones.
 
+The same thing is reachable from the other end: **Emulators → Import a
+definition** lists every `.deckyemu.json` waiting in the transfer folder,
+including one sent in an earlier session. That dialog also has its own
+**Transfer to Deck** button, so a definition can be sent and imported without
+leaving it.
+
+Importing takes the file out of the transfer folder — the plugin keeps its own
+copy, and a second one in the inbox would only be there to delete later. A
+definition that is *refused* stays where it is: it is still the only copy on the
+Deck, and the reasons it was refused are what tell its author what to change.
+
 No Desktop Mode and no typing on the Deck: whatever device you sent the file
 from does the typing.
 

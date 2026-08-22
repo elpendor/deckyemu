@@ -80,7 +80,9 @@ already added to Steam start working again the moment you reinstall it.
 
 The list above is fixed, and nothing outside it is linked to or named as a
 download here. Anything else can still be set up for you by importing a small
-JSON file that describes it: send the `.deckyemu.json` over **Transfer** and
+JSON file that describes it: send the `.deckyemu.json` over **Transfer**, or
+press **Import a definition** at the bottom of this tab to reach one already on
+the Deck, and
 press **Import**. It then behaves like any other entry — right system, right
 file extensions, working launch arguments, firmware rows that say what is
 missing.

@@ -117,8 +117,13 @@ does not cover rendering.
 pnpm run check
 ```
 
-That is the whole gate: typecheck, bundle, both test suites, mypy, and the
+That is the whole gate: typecheck, lint, bundle, both test suites, mypy, and the
 release-build guard. CI runs the same things, so a green `check` is a green CI.
+
+The lint step is ESLint, and `react-hooks/exhaustive-deps` is why it is there: a
+wrong dependency array is a stale closure, which is found by holding a Deck
+rather than by reading a diff. `eslint.config.js` says which rules are off and
+why. Warnings do not fail the gate; errors do.
 
 **Prefix the commit subject** with one of `feat:`, `fix:`, `perf:`, `internal:`,
 `docs:`, `chore:` or `refactor:`. Release notes are generated from these subjects
