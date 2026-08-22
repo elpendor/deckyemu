@@ -61,7 +61,13 @@ LAUNCH_GATE_DIR = os.path.join(decky.DECKY_PLUGIN_RUNTIME_DIR, "launch")
 #      does not carry -- and nothing on the Steam side can stop the launch
 #      either, so the script does it. Existing games need this or the warning
 #      only ever appears for games added afterwards.
-FORMAT_VERSION = 7
+#   8  the menu shortcut clears a quit binding on the same buttons. EmuDeck
+#      binds Start+Select to quitting -- twice, as a combo and as a hotkey
+#      pair -- which is the same press as the default menu shortcut, so opening
+#      the menu also quit. The override file carries the fix and is written
+#      when a launcher is, so an existing library needs rewriting or the
+#      shortcut goes on quitting for everyone who already had one.
+FORMAT_VERSION = 8
 
 # One file per OSD mode rather than one shared file. Games can override the
 # global setting individually, and a single file would mean the last game
@@ -228,7 +234,85 @@ MENU_COMBOS = {
 }
 
 
-def write_override_config(hide_osd, menu_combo="off", cheevos_settings=None):
+#: RetroArch's button numbers for the pad, as its config writes them.
+#:
+#: Only the two the exit hotkey is built from are needed: EmuDeck binds
+#: `input_enable_hotkey_btn` to Select and `input_exit_emulator_btn` to Start,
+#: which is the same press as the `start_select` menu combo.
+_SELECT_BTN = "4"
+_START_BTN = "6"
+
+#: The buttons each menu combo uses, for the ones that can collide with an exit
+#: hotkey. Keyed by the value written to `input_menu_toggle_gamepad_combo`.
+#:
+#: Only Start and Select matter here: an exit hotkey is a modifier plus a
+#: button, and every layout worth worrying about builds it from those two.
+#: A combo using neither cannot collide, so it is absent rather than empty.
+_COMBO_BUTTONS = {
+    "3": {_SELECT_BTN, _START_BTN},   # L1+R1+Start+Select
+    "4": {_SELECT_BTN, _START_BTN},   # Start+Select
+    "7": {_START_BTN},                # hold Start
+    "8": {_SELECT_BTN},               # hold Select
+    "9": {_SELECT_BTN},               # Down+Select
+}
+
+
+def _quit_bindings_that_collide(config_dir, combo):
+    """Settings that neutralise a quit binding sharing buttons with `combo`.
+
+    **The problem this exists for is EmuDeck, and it is not an edge case.**
+    EmuDeck's RetroArch config binds Start+Select to quit twice over -- once as
+    `input_quit_gamepad_combo = "4"`, and once as the hotkey pair
+    `input_enable_hotkey_btn = "4"` (Select) with `input_exit_emulator_btn =
+    "6"` (Start). This plugin's default menu shortcut is the same press. With
+    both installed, opening the menu also quits: RetroArch tears the core down
+    and the user sees their game vanish. On a core that aborts in
+    `retro_deinit` -- Beetle bsnes does -- it vanishes with a crash instead,
+    which reads as the game being broken.
+
+    Measured on a device: a config from before EmuDeck ran was 661 bytes with
+    no combo lines at all, and the menu shortcut worked. The one EmuDeck wrote
+    is 111KB and carries all three bindings.
+
+    Written into the per-launch override and nowhere else, so what EmuDeck set
+    still holds for everything started outside this plugin -- the same rule the
+    rest of this file follows, and the reason `config_save_on_exit` is turned
+    off beside it.
+
+    Returns [] when there is no collision, which is the ordinary case: a config
+    RetroArch wrote itself has no quit combo at all.
+    """
+    wanted = _COMBO_BUTTONS.get(combo)
+    if not wanted or not config_dir:
+        return []
+
+    config = ra_detect.parse_cfg(os.path.join(config_dir, "retroarch.cfg"))
+    if not config:
+        return []
+
+    settings = []
+
+    # The standalone combo. Compared by the buttons it means rather than by the
+    # number, so `3` (L1+R1+Start+Select) and `4` (Start+Select) are seen to
+    # overlap -- pressing the four includes pressing the two.
+    quit_combo = config.get("input_quit_gamepad_combo", "0")
+    if _COMBO_BUTTONS.get(quit_combo, set()) & wanted:
+        settings.append(("input_quit_gamepad_combo", "0"))
+
+    # And the hotkey pair, which is a second way to spell the same press.
+    # Cleared by unbinding the exit key rather than the modifier: the modifier
+    # is shared by every other hotkey the user has, and taking it away would
+    # cost them all of those.
+    hotkey = config.get("input_enable_hotkey_btn", "nul")
+    exit_btn = config.get("input_exit_emulator_btn", "nul")
+    if hotkey in wanted and exit_btn in wanted and hotkey != exit_btn:
+        settings.append(("input_exit_emulator_btn", "nul"))
+
+    return settings
+
+
+def write_override_config(hide_osd, menu_combo="off", cheevos_settings=None,
+                          config_dir=""):
     """Write the --appendconfig file for these settings, or '' to pass nothing.
 
     `cheevos_settings` is the whole settings dict; RetroAchievements contributes
@@ -244,6 +328,8 @@ def write_override_config(hide_osd, menu_combo="off", cheevos_settings=None):
     combo = MENU_COMBOS.get(menu_combo, "")
     if combo:
         settings.append(("input_menu_toggle_gamepad_combo", combo))
+        # A menu shortcut that also quits is worse than no menu shortcut.
+        settings.extend(_quit_bindings_that_collide(config_dir, combo))
 
     # Always, regardless of the OSD mode: without it the pad Steam hands the
     # game matches no profile and nothing responds. See AUTOCONFIG_DIR.
@@ -500,7 +586,10 @@ def write_launcher(
         argv = emulators.launch_argv(emulator, rom_path, fullscreen, title_id)
         core_path = emulator.get("target", "")
     else:
-        override = write_override_config(hide_osd, menu_combo, cheevos_settings)
+        override = write_override_config(
+            hide_osd, menu_combo, cheevos_settings,
+            config_dir=(install or {}).get("config_dir", ""),
+        )
         argv = ra_detect.launch_argv(install, core_path, rom_path, appendconfig=override)
 
     extra = split_extra_args(extra_args)
