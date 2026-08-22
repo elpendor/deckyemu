@@ -20,6 +20,7 @@ import {
   setSettings,
   type CheevosStatus,
 } from "./backend";
+import { pasteInto } from "./pasteText";
 import { callWithRetry } from "./timeout";
 
 /**
@@ -168,36 +169,13 @@ export function AchievementsPanel() {
   /**
    * Fill the password from the clipboard, the same way the SteamGridDB key is
    * pasted: through the paste event, and through the window the input actually
-   * lives in. See the comment in ArtworkPanel for why both matter.
+   * lives in. Both of those live in pasteText.ts, which explains why.
    */
   const pastePassword = useCallback(async () => {
     const input = passwordBoxRef.current?.querySelector("input");
     if (!input) return;
 
-    const pasted = new Promise<string>((resolve) => {
-      const onPaste = (event: ClipboardEvent) => {
-        event.preventDefault();
-        window.clearTimeout(timer);
-        resolve(event.clipboardData?.getData("text") ?? "");
-      };
-      const timer = window.setTimeout(() => {
-        input.removeEventListener("paste", onPaste);
-        resolve("");
-      }, 1000);
-      input.addEventListener("paste", onPaste, { once: true });
-    });
-
-    input.focus();
-    try {
-      const view = input.ownerDocument.defaultView as
-        /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
-        (Window & { SteamClient?: any }) | null;
-      view?.SteamClient?.Browser?.Paste?.();
-    } catch (error) {
-      console.error("[deckyemu] Steam paste failed", error);
-    }
-
-    const text = (await pasted).trim();
+    const text = (await pasteInto(input)).trim();
     if (text) setPassword(text);
     else
       toaster.toast({

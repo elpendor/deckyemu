@@ -297,34 +297,67 @@ export function EmulatorCatalogPanel({ onChanged }: Props) {
     [start],
   );
 
+  /**
+   * The bracketing every awaited catalog action shares: row busy, act, refresh.
+   *
+   * Busy for the same reason installing is, and one that is not cosmetic:
+   * without it the row looked idle for the seconds a flatpak transaction takes
+   * and its buttons stayed live, so Remove could be pressed twice -- the second
+   * call failing with "not installed" and reporting an error for something that
+   * had just worked.
+   *
+   * No percentage, because none of these report one. The bar travels instead,
+   * which is what "working, no idea how long" looks like.
+   *
+   * Cleared in `finally` here rather than by an event: unlike an install, these
+   * are awaited rather than streamed, so nothing else will ever clear it.
+   */
+  const runBusy = useCallback(
+    async (job: {
+      entry: CatalogEmulator;
+      /** Both the progress row's caption and the status line, e.g. "Removing PCSX2". */
+      label: string;
+      action: () => Promise<{ ok: boolean; error?: string }>;
+      failure: string;
+      success: { title: string; body: string };
+    }) => {
+      setBusyId(job.entry.id);
+      setBusyLabel(job.label);
+      setStatus(job.label);
+      setPercent(-1);
+      try {
+        const result = await job.action();
+        if (!result.ok) {
+          toaster.toast({ title: job.failure, body: result.error ?? "" });
+          return;
+        }
+        toaster.toast(job.success);
+        load();
+        onChanged();
+      } finally {
+        setBusyId("");
+        setStatus("");
+      }
+    },
+    [load, onChanged],
+  );
+
   // No confirmation: this only adds a registration, and the Remove button
   // beside it undoes the whole thing.
   const register = useCallback(
     (entry: CatalogEmulator) => {
-      setBusyId(entry.id);
-      setBusyLabel(`Setting up ${entry.name}`);
-      setStatus(`Setting up ${entry.name}`);
-      setPercent(-1);
-      void (async () => {
-        try {
-          const result = await registerEmulator(entry.id);
-          if (!result.ok) {
-            toaster.toast({ title: "Could not set up", body: result.error ?? "" });
-            return;
-          }
-          toaster.toast({
-            title: `${entry.name} is ready`,
-            body: `It can now be picked when adding a ${entry.system} game.`,
-          });
-          load();
-          onChanged();
-        } finally {
-          setBusyId("");
-          setStatus("");
-        }
-      })();
+      void runBusy({
+        entry,
+        label: `Setting up ${entry.name}`,
+        action: () => registerEmulator(entry.id),
+        failure: "Could not set up",
+        success: {
+          title: `${entry.name} is ready`,
+          body: `It can now be picked when adding a ${entry.system} game.`,
+        },
+      });
     },
-    [load, onChanged],
+    [runBusy],
   );
 
   // Opens the emulator's own interface as a Steam shortcut, then launches it.
@@ -392,31 +425,23 @@ export function EmulatorCatalogPanel({ onChanged }: Props) {
         } catch {
           return;
         }
-        if (!picked?.path) return;
+        // Bound to a const so it stays narrowed inside the action closure.
+        const path = picked?.path;
+        if (!path) return;
 
-        setBusyId(entry.id);
-        setBusyLabel(`Setting up ${entry.name}`);
-        setStatus(`Setting up ${entry.name}`);
-        setPercent(-1);
-        try {
-          const result = await locateEmulator(entry.id, picked.path);
-          if (!result.ok) {
-            toaster.toast({ title: "Could not set up", body: result.error ?? "" });
-            return;
-          }
-          toaster.toast({
+        await runBusy({
+          entry,
+          label: `Setting up ${entry.name}`,
+          action: () => locateEmulator(entry.id, path),
+          failure: "Could not set up",
+          success: {
             title: `${entry.name} is ready`,
             body: `It can now be picked when adding a ${entry.system} game.`,
-          });
-          load();
-          onChanged();
-        } finally {
-          setBusyId("");
-          setStatus("");
-        }
+          },
+        });
       })();
     },
-    [homeDir, load, onChanged],
+    [homeDir, runBusy],
   );
 
   // Removing an imported emulator means removing the definition, not
@@ -440,33 +465,21 @@ export function EmulatorCatalogPanel({ onChanged }: Props) {
           strOKButtonText="Forget"
           bDestructiveWarning
           onOK={() => {
-            void (async () => {
-              // The slowest of the three: this uninstalls the emulator before
-              // deleting the definition, so it carries a whole flatpak or
-              // AppImage removal behind one press.
-              setBusyId(entry.id);
-              setBusyLabel(`Removing ${entry.name}`);
-              setStatus(`Removing ${entry.name}`);
-              setPercent(-1);
-              try {
-                const result = await removeImportedEmulator(entry.id);
-                if (!result.ok) {
-                  toaster.toast({ title: "Could not remove", body: result.error ?? "" });
-                  return;
-                }
-                toaster.toast({ title: "Definition removed", body: entry.name });
-                load();
-                onChanged();
-              } finally {
-                setBusyId("");
-                setStatus("");
-              }
-            })();
+            // The slowest of the three: this uninstalls the emulator before
+            // deleting the definition, so it carries a whole flatpak or
+            // AppImage removal behind one press.
+            void runBusy({
+              entry,
+              label: `Removing ${entry.name}`,
+              action: () => removeImportedEmulator(entry.id),
+              failure: "Could not remove",
+              success: { title: "Definition removed", body: entry.name },
+            });
           }}
         />,
       );
     },
-    [load, onChanged],
+    [runBusy],
   );
 
   const confirmRemove = useCallback(
@@ -478,50 +491,21 @@ export function EmulatorCatalogPanel({ onChanged }: Props) {
         <RemoveEmulatorModal
           emulator={entry}
           onConfirm={(deleteData) => {
-            void (async () => {
-              /*
-               * Busy for the same reason installing is, and one that is not
-               * cosmetic: without it the row looked idle for the seconds a
-               * flatpak uninstall takes and its buttons stayed live, so Remove
-               * could be pressed twice -- the second call failing with "not
-               * installed" and reporting an error for something that had just
-               * worked.
-               *
-               * No percentage, because flatpak reports none for a removal. The
-               * bar travels instead, which is what "working, no idea how long"
-               * looks like.
-               */
-              setBusyId(entry.id);
-              setBusyLabel(`Removing ${entry.name}`);
-              setStatus(`Removing ${entry.name}`);
-              setPercent(-1);
-              try {
-                const result = await uninstallEmulator(entry.id, deleteData);
-                if (!result.ok) {
-                  toaster.toast({
-                    title: "Could not remove emulator",
-                    body: result.error ?? "",
-                  });
-                  return;
-                }
-                toaster.toast({
-                  title: "Emulator removed",
-                  body: deleteData ? `${entry.name}, with its data` : entry.name,
-                });
-                load();
-                onChanged();
-              } finally {
-                // Cleared here rather than by an event: a removal is awaited
-                // rather than streamed, so nothing else will ever clear it.
-                setBusyId("");
-                setStatus("");
-              }
-            })();
+            void runBusy({
+              entry,
+              label: `Removing ${entry.name}`,
+              action: () => uninstallEmulator(entry.id, deleteData),
+              failure: "Could not remove emulator",
+              success: {
+                title: "Emulator removed",
+                body: deleteData ? `${entry.name}, with its data` : entry.name,
+              },
+            });
           }}
         />,
       );
     },
-    [load, onChanged],
+    [runBusy],
   );
 
   return (

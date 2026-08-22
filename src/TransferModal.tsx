@@ -8,8 +8,7 @@ import {
   ToggleField,
 } from "@decky/ui";
 import { FileSelectionType, openFilePicker, toaster } from "@decky/api";
-import qrcode from "qrcode-generator";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   cancelUpload,
@@ -28,6 +27,7 @@ import {
   type FileServerStatus,
 } from "./backend";
 import { selectRom } from "./addFlow";
+import { QrCode } from "./QrCode";
 
 /**
  * What marks a sent file as an emulator definition rather than a ROM.
@@ -47,37 +47,6 @@ import { closeOpenModals, openModal } from "./modalStack";
 const POLL_MS = 3000;
 /** While bytes are moving the numbers change, so they are read more often. */
 const ACTIVE_POLL_MS = 1000;
-
-// 190 rather than 210: still comfortably scannable at arm's length, and the
-// dialog has gained a progress section and a settings toggle since this was
-// sized, so the height it gives back is worth more than the pixels.
-function QrCode({ text, size = 190 }: { text: string; size?: number }) {
-  const svg = useMemo(() => {
-    // Type 0 lets the library pick the smallest version that fits; "M" is the
-    // usual balance of density against damage tolerance.
-    const qr = qrcode(0, "M");
-    qr.addData(text);
-    qr.make();
-    // createSvgTag scales to the requested size and needs no canvas.
-    return qr.createSvgTag({ cellSize: 4, margin: 4, scalable: true });
-  }, [text]);
-
-  return (
-    <div
-      style={{
-        width: size,
-        height: size,
-        // A quiet zone is part of the spec; white behind it keeps contrast for
-        // cameras regardless of the surrounding theme.
-        background: "#ffffff",
-        borderRadius: "8px",
-        padding: "8px",
-        boxSizing: "border-box",
-      }}
-      dangerouslySetInnerHTML={{ __html: svg }}
-    />
-  );
-}
 
 /** Exported for the panel, which reports the same sizes and must round them alike. */
 export function humanSize(bytes: number): string {
@@ -746,6 +715,10 @@ export function TransferModal({
 
         {running && status && (
           <div style={SPLIT}>
+            {/* The default 190 rather than 210: still comfortably scannable at
+                arm's length, and this dialog has gained a progress section and
+                a settings toggle since it was sized, so the height it gives
+                back is worth more than the pixels. */}
             <QrCode text={status.url} />
 
             {/* For anything without a camera. The token URL is 22 characters of

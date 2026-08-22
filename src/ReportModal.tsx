@@ -1,9 +1,9 @@
 import { DialogButton, Focusable, ModalRoot, Spinner } from "@decky/ui";
-import { useEffect, useMemo, useRef, useState } from "react";
-import qrcode from "qrcode-generator";
+import { useEffect, useRef, useState } from "react";
 
 import { endReport, startReport, type FileServerStatus } from "./backend";
 import { logError } from "./logError";
+import { QrCode } from "./QrCode";
 
 /**
  * Reading a diagnostic report off the Deck, from a device with a keyboard.
@@ -17,31 +17,6 @@ import { logError } from "./logError";
  * backwards: a QR code for anything with a camera, and a short address with six
  * digits for anything without one. Same server, same token, same lockout.
  */
-
-function QrCode({ text, size = 190 }: { text: string; size?: number }) {
-  const svg = useMemo(() => {
-    const qr = qrcode(0, "M");
-    qr.addData(text);
-    qr.make();
-    return qr.createSvgTag({ cellSize: 4, margin: 4, scalable: true });
-  }, [text]);
-
-  return (
-    <div
-      style={{
-        width: size,
-        height: size,
-        // The quiet zone is part of the spec, and white behind it keeps the
-        // contrast a camera needs whatever the surrounding theme is doing.
-        background: "#ffffff",
-        borderRadius: "8px",
-        padding: "8px",
-        boxSizing: "border-box",
-      }}
-      dangerouslySetInnerHTML={{ __html: svg }}
-    />
-  );
-}
 
 const LABEL: React.CSSProperties = { opacity: 0.7, fontSize: "13px" };
 const VALUE: React.CSSProperties = { fontSize: "17px", fontWeight: 600, wordBreak: "break-all" };
