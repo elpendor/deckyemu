@@ -16,7 +16,11 @@ import urllib.error
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from harness import check, section, summary, TMP  # noqa: E402
+from harness import check, section, summary, REPO_ROOT, TMP  # noqa: E402
+
+# For `main`, which the staging check reaches through the composed class so
+# that it follows the method rather than a filename.
+sys.path.insert(0, REPO_ROOT)
 
 import decky  # noqa: E402
 import fileserver  # noqa: E402
@@ -60,13 +64,21 @@ check("handoff uses that comparison rather than its own",
 section("the update is written under a name that cannot leave the runtime dir")
 
 # The name arrives from the releases API and decides a path. Asserted against
-# main.py's own line rather than by staging a release, which would need the
-# network: what matters is that the value is reduced to a basename first.
-with open(os.path.join(os.path.dirname(os.path.dirname(
-        os.path.dirname(os.path.abspath(__file__)))), "main.py"), encoding="utf-8") as _handle:
-    _main = _handle.read()
+# the source of the method rather than by staging a release, which would need
+# the network: what matters is that the value is reduced to a basename first.
+#
+# Read through `inspect.getsource` rather than by opening main.py and searching
+# it. That is how this was written and it broke the moment `stage_update` moved
+# into a mixin -- the check went on passing a filename that no longer held the
+# line, so it failed for a reason that had nothing to do with what it tests. A
+# source assertion is fragile enough without also naming the file.
+import inspect  # noqa: E402 -- next to the one check that needs it
+
+import main  # noqa: E402
+
+_staging = inspect.getsource(main.Plugin.stage_update)
 check("stage_update takes the basename of the asset name",
-      'os.path.basename(release.get("asset_name") or "") or "deckyemu.zip"' in _main,
+      'os.path.basename(release.get("asset_name") or "") or "deckyemu.zip"' in _staging,
       True)
 
 section("a refusal from GitHub is not reported as no answer at all")

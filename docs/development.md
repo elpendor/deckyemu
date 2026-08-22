@@ -204,7 +204,8 @@ py_modules/                 Backend logic. Plain Python, stdlib only -- it runs
   plugin_startup.py         One-time migrations of data already on the device.
                             The sequence they run in stays in main.py's _main
   plugin_transfers.py       Sending files to the Deck, and reading a report back
-                            These eight are mixins: decky exposes the methods it
+  plugin_updates.py         What build this is, and finding + staging newer ones
+                            These nine are mixins: decky exposes the methods it
                             finds on the plugin object, so the names must stay
                             on Plugin while the code lives somewhere findable.
                             None of them may be instantiated alone.
