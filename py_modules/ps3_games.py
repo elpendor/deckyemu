@@ -29,6 +29,8 @@ import re
 import shutil
 
 import decky
+
+import jsonstore
 import sfo
 import sysenv
 
@@ -304,11 +306,7 @@ def remember_content_id(title_id, content_id):
         return
     known[title_id] = content_id
     try:
-        os.makedirs(os.path.dirname(CONTENT_IDS_PATH), exist_ok=True)
-        tmp = CONTENT_IDS_PATH + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as handle:
-            json.dump(known, handle, indent=2, sort_keys=True)
-        os.replace(tmp, CONTENT_IDS_PATH)
+        jsonstore.write_json(CONTENT_IDS_PATH, known, sort_keys=True)
     except OSError as error:
         # Only costs the licence warning for this game; the install is done.
         decky.logger.warning("Could not record the content id: %s", error)

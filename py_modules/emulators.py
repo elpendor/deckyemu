@@ -13,7 +13,6 @@ collection naming -- then works without knowing the difference.
 """
 
 import hashlib
-import json
 import os
 import posixpath
 import re
@@ -23,6 +22,7 @@ import stat
 import decky
 
 import emulator_catalog
+import jsonstore
 
 EMULATORS_PATH = os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "emulators.json")
 
@@ -69,20 +69,11 @@ def suggest_fullscreen_args(target):
 
 
 def _read():
-    try:
-        with open(EMULATORS_PATH, "r", encoding="utf-8") as handle:
-            data = json.load(handle)
-        return data if isinstance(data, list) else []
-    except (OSError, ValueError):
-        return []
+    return jsonstore.read_json(EMULATORS_PATH, [])
 
 
 def _write(emulators):
-    os.makedirs(os.path.dirname(EMULATORS_PATH), exist_ok=True)
-    tmp = EMULATORS_PATH + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as handle:
-        json.dump(emulators, handle, indent=2)
-    os.replace(tmp, EMULATORS_PATH)
+    jsonstore.write_json(EMULATORS_PATH, emulators)
 
 
 def slugify(name):

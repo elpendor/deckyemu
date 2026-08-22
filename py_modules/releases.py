@@ -29,6 +29,7 @@ import time
 
 import decky
 
+import jsonstore
 import net
 
 REPO = "elpendor/deckyemu"
@@ -215,28 +216,19 @@ def _load_cache():
 
 def _save_cache():
     """Keep the current answer for the next process. Failure is not worth raising."""
-    # Written beside and renamed over, the way store.py writes settings: a
-    # half-written file is still valid JSON often enough to be worth not risking,
-    # and os.replace is atomic on the same filesystem.
-    tmp = CACHE_PATH + ".tmp"
     try:
-        os.makedirs(os.path.dirname(CACHE_PATH), exist_ok=True)
-        with open(tmp, "w", encoding="utf-8") as handle:
-            json.dump(
-                {
-                    "format": CACHE_FORMAT,
-                    "at": _cache["at"],
-                    "releases": _cache["releases"],
-                },
-                handle,
-            )
-        os.replace(tmp, CACHE_PATH)
+        jsonstore.write_json(
+            CACHE_PATH,
+            {
+                "format": CACHE_FORMAT,
+                "at": _cache["at"],
+                "releases": _cache["releases"],
+            },
+        )
     except OSError as error:
+        # The `.tmp` this used to clear up itself is jsonstore's job now, and
+        # it does it for every caller rather than only the one that remembered.
         decky.logger.warning("Could not keep the release cache: %s", error)
-        try:
-            os.remove(tmp)
-        except OSError:
-            pass
 
 
 #: Held while a check is talking to GitHub, so callers cannot overlap.

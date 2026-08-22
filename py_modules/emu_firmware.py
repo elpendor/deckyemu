@@ -41,7 +41,6 @@ remembering that a button was pressed.
 """
 
 import hashlib
-import json
 import os
 import posixpath
 import re
@@ -52,6 +51,7 @@ import decky
 
 import emu_config
 import emu_install
+import jsonstore
 import net
 import sysenv
 
@@ -70,21 +70,12 @@ def read_state():
     once and hand it down, rather than have each requirement open the file
     again. `status` and `_recorded` both take it for that reason.
     """
-    try:
-        with open(STATE_PATH, "r", encoding="utf-8") as handle:
-            data = json.load(handle)
-        return data if isinstance(data, dict) else {}
-    except (OSError, ValueError):
-        return {}
+    return jsonstore.read_json(STATE_PATH, {})
 
 
 def _write_state(state):
     try:
-        os.makedirs(os.path.dirname(STATE_PATH), exist_ok=True)
-        tmp = STATE_PATH + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as handle:
-            json.dump(state, handle, indent=2, sort_keys=True)
-        os.replace(tmp, STATE_PATH)
+        jsonstore.write_json(STATE_PATH, state, sort_keys=True)
     except OSError as error:
         # The copy still happened; the only cost is that a later removal has to
         # say it cannot tell whose file it is.
@@ -548,21 +539,12 @@ HANDOFF_PATH = os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "firmware_handoff.j
 
 
 def _read_handoff():
-    try:
-        with open(HANDOFF_PATH, "r", encoding="utf-8") as handle:
-            data = json.load(handle)
-        return data if isinstance(data, dict) else {}
-    except (OSError, ValueError):
-        return {}
+    return jsonstore.read_json(HANDOFF_PATH, {})
 
 
 def _write_handoff(state):
     try:
-        os.makedirs(os.path.dirname(HANDOFF_PATH), exist_ok=True)
-        tmp = HANDOFF_PATH + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as handle:
-            json.dump(state, handle, indent=2, sort_keys=True)
-        os.replace(tmp, HANDOFF_PATH)
+        jsonstore.write_json(HANDOFF_PATH, state, sort_keys=True)
     except OSError as error:
         # Not fatal: without the record nothing is swept, which is the safe
         # direction -- the file stays and the button is still there.

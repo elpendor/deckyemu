@@ -1,11 +1,11 @@
 """Persistent settings and the registry of games this plugin has added to Steam."""
 
-import json
 import os
-import stat
 import threading
 
 import decky
+
+import jsonstore
 
 SETTINGS_PATH = os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "settings.json")
 LIBRARY_PATH = os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "library.json")
@@ -149,32 +149,19 @@ _lock = threading.Lock()
 _collections_lock = threading.Lock()
 
 
-def _read_json(path, fallback):
-    try:
-        with open(path, "r", encoding="utf-8") as handle:
-            return json.load(handle)
-    except (OSError, ValueError):
-        return fallback
+_read_json = jsonstore.read_json
 
 
 def _write_json(path, payload):
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    tmp = path + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as handle:
-        json.dump(payload, handle, indent=2)
-    # 0600 before the rename, so the file is never readable at its real name
-    # even briefly. settings.json holds the SteamGridDB key, the GitHub token
+    # `private` on every file this module writes, not only the one with the
+    # secrets in it. settings.json holds the SteamGridDB key, the GitHub token
     # and the RetroAchievements Connect token, which is password-equivalent --
     # the same value launchers.write_override_config already restricts where it
-    # writes it. Set unconditionally and on both files: a mode that depends on
-    # what is being written is one that will be wrong the first time the
-    # contents change, and library.json records where every ROM on the device
-    # lives.
-    try:
-        os.chmod(tmp, stat.S_IRUSR | stat.S_IWUSR)
-    except OSError as error:
-        decky.logger.warning("Could not restrict %s: %s", path, error)
-    os.replace(tmp, path)
+    # writes it. Set unconditionally across all of them because a mode that
+    # depends on what is being written is one that will be wrong the first time
+    # the contents change, and library.json records where every ROM on the
+    # device lives.
+    jsonstore.write_json(path, payload, private=True)
 
 
 def get_settings():

@@ -39,6 +39,7 @@ import re
 
 import decky
 
+import jsonstore
 import sysenv
 
 QT_INI = "qt-ini"
@@ -242,21 +243,12 @@ def needs_priming(entry):
 
 
 def _read_state():
-    try:
-        with open(STATE_PATH, "r", encoding="utf-8") as handle:
-            data = json.load(handle)
-        return data if isinstance(data, dict) else {}
-    except (OSError, ValueError):
-        return {}
+    return jsonstore.read_json(STATE_PATH, {})
 
 
 def _write_state(state):
     try:
-        os.makedirs(os.path.dirname(STATE_PATH), exist_ok=True)
-        tmp = STATE_PATH + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as handle:
-            json.dump(state, handle, indent=2, sort_keys=True)
-        os.replace(tmp, STATE_PATH)
+        jsonstore.write_json(STATE_PATH, state, sort_keys=True)
     except OSError as error:
         # Not fatal: the settings were still applied, and the only cost is that
         # the next run treats them as the user's and leaves them alone.
