@@ -16,8 +16,22 @@ scripts unset these too -- see SHELL_PREAMBLE.
 
 import os
 
-# Variables Steam injects to redirect library loading. LD_PRELOAD is included
-# because Steam's overlay preloads into it.
+#: Where this plugin is installed -- the directory holding main.py.
+#:
+#: Derived from this file's own location rather than from `__file__` in main.py,
+#: because the parts that need it no longer live there: the reset tab asks
+#: whether CI stamped this build, and the version endpoint reads package.json
+#: beside it, and both are mixins under py_modules/ where `__file__` would
+#: answer one directory too deep.
+#:
+#: **Read it as `sysenv.PLUGIN_ROOT`, never `from sysenv import PLUGIN_ROOT`.**
+#: The suite points it at a scratch directory to exercise a stamped build and an
+#: unstamped one, and a name bound at import time would go on seeing the real
+#: install -- the same rule `emulator_catalog.CATALOG` carries for the same
+#: reason.
+PLUGIN_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
 def user_home():
     """The user's home directory.
 
@@ -58,6 +72,11 @@ def user_dir(*parts, create=True):
     return path
 
 
+# Variables Steam injects to redirect library loading. LD_PRELOAD is included
+# because Steam's overlay preloads into it.
+#
+# This comment sat at the top of the file, forty lines above what it describes,
+# after user_home() and user_dir() were added between the two.
 LOADER_VARS = (
     "LD_LIBRARY_PATH",
     "LD_PRELOAD",

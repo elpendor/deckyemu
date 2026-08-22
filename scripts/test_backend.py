@@ -5154,8 +5154,8 @@ section("version -- the two halves must be able to disagree out loud")
 # from a bug. That only works if the backend reports honestly.
 version_root = os.path.join(TMP, "plugin-root")
 os.makedirs(version_root, exist_ok=True)
-_real_root = plugin_main.PLUGIN_ROOT
-plugin_main.PLUGIN_ROOT = version_root
+_real_root = sysenv.PLUGIN_ROOT
+sysenv.PLUGIN_ROOT = version_root
 
 check("with nothing to read it does not raise", run(plugin.plugin_version())["build"], "dev")
 
@@ -5192,7 +5192,7 @@ check(
     run(plugin.plugin_version())["version"],
     "1.2.3",
 )
-plugin_main.PLUGIN_ROOT = _real_root
+sysenv.PLUGIN_ROOT = _real_root
 # Against the file, not a literal: CI bumps package.json on every release, so a
 # hardcoded number here fails the build for the one commit that matters most.
 with open(os.path.join(REPO_ROOT, "package.json"), encoding="utf-8") as handle:
@@ -5613,21 +5613,21 @@ os.makedirs(_stamp_root, exist_ok=True)
 check("a build from source may reset", devreset.available(_stamp_root), True)
 io.open(os.path.join(_stamp_root, "build.json"), "w").close()
 check("a build CI stamped may not", devreset.available(_stamp_root), False)
-_root_before = plugin_main.PLUGIN_ROOT
-plugin_main.PLUGIN_ROOT = _stamp_root
+_root_before = sysenv.PLUGIN_ROOT
+sysenv.PLUGIN_ROOT = _stamp_root
 check("and the endpoint refuses on a stamped build",
       run(plugin.dev_reset("state"))["ok"], False)
 check("saying why", "development build" in run(plugin.dev_reset("state"))["error"].lower(), True)
 # An unknown action is refused too, so a typo cannot fall through to something
 # destructive. Checked against a root with no stamp, or the gate above would
 # refuse it first and this would pass without testing anything.
-plugin_main.PLUGIN_ROOT = os.path.join(TMP, "unstamped")
-os.makedirs(plugin_main.PLUGIN_ROOT, exist_ok=True)
+sysenv.PLUGIN_ROOT = os.path.join(TMP, "unstamped")
+os.makedirs(sysenv.PLUGIN_ROOT, exist_ok=True)
 _unknown = run(plugin.dev_reset("everything"))
 check("an unrecognised action does nothing", _unknown["ok"], False)
 check("and says it was the action, not the gate",
       "unknown reset" in _unknown["error"].lower(), True)
-plugin_main.PLUGIN_ROOT = _root_before
+sysenv.PLUGIN_ROOT = _root_before
 
 # Every file the plugin remembers anything in has to be on the list, or a reset
 # leaves the machine believing something that is no longer true. The setup

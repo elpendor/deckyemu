@@ -83,6 +83,26 @@ class PluginContext:
         """Re-read the registered emulators and return them."""
         raise NotImplementedError
 
+    def refresh_retroarch(self) -> Awaitable[dict]:
+        """Re-detect RetroArch and its cores, and return the status.
+
+        Anything that deletes or installs has to call this before returning: the
+        detected install, the core list and the registered emulators are held on
+        this object, and a caller who asks after a reset gets the state from
+        before it with nothing about the answer looking stale.
+        """
+        raise NotImplementedError
+
+    def _flatpak_uninstall(self, app_id: str, delete_data: bool = False) -> Awaitable[dict]:
+        """Remove one flatpak for this user; `{"ok": ...}` and the reason if not."""
+        raise NotImplementedError
+
+    def uninstall_emulator(
+        self, entry_id: str, delete_data: bool = False
+    ) -> Awaitable[dict]:
+        """Remove a catalog emulator, optionally with the data it wrote."""
+        raise NotImplementedError
+
     @staticmethod
     def _stray_launchers(referenced: set) -> list:
         """Launcher scripts in our own directory that nothing in `referenced` claims."""
