@@ -234,9 +234,18 @@ export function EmulatorCatalogPanel({ onChanged }: Props) {
       "emulator_install_done",
       onDone,
     );
+    // Whoever changed the catalog, not only this panel. A definition can be
+    // imported from the transfer dialog with this list open behind it, and
+    // removing one is reachable from more than one place -- so the list is told
+    // rather than each caller remembering to refresh it.
+    const catalogListener = addEventListener("emulator_catalog_changed", () => {
+      load();
+      onChanged();
+    });
     return () => {
       removeEventListener("emulator_install_progress", progressListener);
       removeEventListener("emulator_install_done", doneListener);
+      removeEventListener("emulator_catalog_changed", catalogListener);
     };
   }, [entries, load, onChanged]);
 

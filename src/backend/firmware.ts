@@ -182,6 +182,26 @@ export const previewEmulatorDefinition = callable<
     replaces?: boolean;
   }
 >("preview_emulator_definition");
+
+/** A definition file sitting in the transfer folder. */
+export interface DefinitionFile {
+  name: string;
+  size: number;
+  /** Modified time, seconds since the epoch. Newest first. */
+  at: number;
+}
+
+/**
+ * What is waiting to be imported, read off the transfer folder.
+ *
+ * Deliberately not the transfer dialog's received list, which holds what this
+ * session took delivery of: a definition sent before the last reload is still
+ * on the device and still importable, and was previously unreachable.
+ */
+export const listEmulatorDefinitions = callable<
+  [],
+  { ok: boolean; suffix: string; path: string; files: DefinitionFile[] }
+>("list_emulator_definitions");
 /** Imports a definition sitting in the transfer folder, by its filename. */
 export const importEmulatorDefinition = callable<
   [name: string, replace?: boolean],

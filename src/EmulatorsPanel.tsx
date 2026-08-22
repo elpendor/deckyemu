@@ -12,6 +12,7 @@ import { FaPen, FaTrash } from "react-icons/fa";
 
 import { listEmulators, removeEmulator, type CustomEmulator } from "./backend";
 import { EmulatorCatalogPanel } from "./EmulatorCatalogPanel";
+import { ImportDefinitionModal } from "./ImportDefinitionModal";
 import { EmulatorEditorModal } from "./EmulatorEditorModal";
 import { FirmwarePanel } from "./FirmwarePanel";
 import { byName } from "./order";
@@ -140,6 +141,24 @@ export function EmulatorsPanel({ onChanged }: Props) {
         <PanelSectionRow>
           <ButtonItem layout="below" onClick={() => edit()}>
             Add an emulator
+          </ButtonItem>
+        </PanelSectionRow>
+
+        {/* Beside adding one by hand, because it is the same errand reached a
+            different way: an emulator this plugin does not ship, made usable.
+            The only route in used to be the transfer dialog's received list,
+            which holds what this session took delivery of -- so a definition
+            sent before a reload sat in the folder with nothing able to open
+            it. */}
+        <PanelSectionRow>
+          <ButtonItem
+            layout="below"
+            description="A .deckyemu.json somebody gave you, sent with Transfer to Deck. You are shown what it installs before anything happens."
+            onClick={() =>
+              openModal(<ImportDefinitionModal onImported={afterChange} />)
+            }
+          >
+            Import a definition
           </ButtonItem>
         </PanelSectionRow>
       </PanelSection>

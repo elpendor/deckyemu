@@ -1,5 +1,4 @@
 import {
-  ConfirmModal,
   DialogButton,
   Focusable,
   ModalRoot,
@@ -17,9 +16,7 @@ import {
   firmwareStatus,
   type FirmwareReport,
   getSettings,
-  importEmulatorDefinition,
   installFirmware,
-  previewEmulatorDefinition,
   resetTransferLink,
   setSettings,
   startFileServer,
@@ -42,7 +39,8 @@ import { DANGER_CLASS, DANGER_CSS } from "./danger";
 import { logError } from "./logError";
 import { installThroughEmulator } from "./firmwareInstall";
 import { requirementForFile, type RequirementMatch } from "./firmwareMatch";
-import { closeOpenModals, openModal } from "./modalStack";
+import { importDefinition } from "./importDefinition";
+import { closeOpenModals } from "./modalStack";
 
 /** How often to re-check while running, to pick up newly arrived files. */
 const POLL_MS = 3000;
@@ -603,94 +601,6 @@ export function TransferModal({
     [matchFor, load, close],
   );
 
-  /**
-   * Import an emulator definition the user sent.
-   *
-   * The same gesture as sending a BIOS, which is the point: an emulator this
-   * plugin will not distribute becomes usable by supplying a file, with no
-   * Desktop Mode and no typing on the Deck.
-   */
-  const importDefinition = useCallback(
-    (name: string) => {
-      void (async () => {
-        // Read the file and show what it will do *before* storing it. The same
-        // parse the import runs, so the preview cannot describe something other
-        // than what will happen.
-        const preview = await previewEmulatorDefinition(name);
-        if (!preview.ok) {
-          // Multi-line on purpose: a refused definition is refused per rule,
-          // and the rules are what tell the author what to change.
-          toaster.toast({ title: "Could not import", body: preview.error ?? "" });
-          return;
-        }
-
-        const go = () =>
-          void (async () => {
-            const result = await importEmulatorDefinition(name, preview.replaces);
-            if (!result.ok) {
-              toaster.toast({ title: "Could not import", body: result.error ?? "" });
-              return;
-            }
-            toaster.toast({
-              title: `${result.name} imported`,
-              body: preview.installs
-                ? "Find it under Emulators and press install."
-                : "Find it under Emulators and point it at the binary.",
-            });
-            load();
-          })();
-
-        openModal(
-          <ConfirmModal
-            strTitle={preview.replaces ? `Replace ${preview.name}?` : `Import ${preview.name}?`}
-            strOKButtonText={preview.replaces ? "Replace" : "Import"}
-            onOK={go}
-            strDescription={
-              <div style={{ ...COLUMN, gap: "10px" }}>
-                <div>
-                  {preview.summary}
-                  {preview.system ? ` · ${preview.system}` : ""}
-                </div>
-
-                {/* The two facts worth reading before agreeing. */}
-                <div>
-                  <div>
-                    <b>Installs:</b>{" "}
-                    {preview.installs || "nothing — you supply the emulator yourself"}
-                  </div>
-                  <div>
-                    <b>May write to:</b> {(preview.writes ?? []).join(", ") || "nothing"}
-                  </div>
-                </div>
-
-                {/* Deliberately blunt, and deliberately not softened by the
-                    checks that already ran. Those bound what a definition can
-                    reach; they cannot tell you whether its author meant well,
-                    and this file did not come from the plugin. */}
-                <div className={DANGER_CLASS}>
-                  <b>You are responsible for what you import.</b> This definition was
-                  written by whoever gave it to you, not by this plugin, and nobody
-                  here has reviewed or tested it. It can make your Deck download and
-                  run software.{" "}
-                  <b>Open the .json in a text editor and read it before continuing</b>{" "}
-                  — it is a few lines, and every line is plain text.
-                </div>
-
-                {preview.replaces && (
-                  <div style={MUTED}>
-                    A definition for {preview.id} is already imported and will be
-                    overwritten.
-                  </div>
-                )}
-              </div>
-            }
-          />,
-        );
-      })();
-    },
-    [load],
-  );
-
   const running = Boolean(status?.running);
   const received = status?.received ?? [];
   const uploads = status?.uploads ?? [];
@@ -890,7 +800,7 @@ export function TransferModal({
                       made a Steam entry out of a firmware dump. */}
                   {file.name.endsWith(DEFINITION_SUFFIX) ? (
                     <DialogButton
-                      onClick={() => importDefinition(file.name)}
+                      onClick={() => importDefinition(file.name, load)}
                       style={{ minWidth: "auto", width: "auto", padding: "6px 16px" }}
                     >
                       Import

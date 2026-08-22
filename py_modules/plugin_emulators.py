@@ -132,6 +132,28 @@ class Emulators(plugin_base.PluginContext):
         }
 
 
+    async def list_emulator_definitions(self):
+        """Definition files waiting in the transfer folder.
+
+        Read off the folder, so a file sent in an earlier session is still
+        offered -- the received list the transfer dialog shows is this session's
+        and does not survive a reload, which left a definition already on the
+        device with no route into the plugin at all.
+        """
+        waiting = await self._run(
+            fileserver.inbox_files, emulator_catalog.imported.SUFFIX
+        )
+        return {
+            "ok": True,
+            "suffix": emulator_catalog.imported.SUFFIX,
+            "path": await self._run(fileserver.default_dir, False),
+            "files": [
+                {"name": item["name"], "size": item["size"], "at": item["at"]}
+                for item in waiting
+            ],
+        }
+
+
     async def preview_emulator_definition(self, name: str):
         """What a definition says it will do, without storing it.
 
@@ -145,13 +167,12 @@ class Emulators(plugin_base.PluginContext):
         different code could describe something other than what runs, which
         would be worse than no preview at all.
         """
-        sent = await self._run(fileserver.received_files)
-        match = next((item for item in sent if item["name"] == name), None)
-        if not match:
+        path = await self._run(fileserver.inbox_path, name)
+        if not path:
             return {"ok": False, "error": "%s is not in the transfer folder." % name}
 
         try:
-            text = await self._run(_read_text, match["path"],
+            text = await self._run(_read_text, path,
                                    emulator_catalog.imported.MAX_BYTES)
         except OSError as failure:
             return {"ok": False, "error": "Could not read %s: %s" % (name, failure)}
@@ -201,13 +222,12 @@ class Emulators(plugin_base.PluginContext):
         same way, which is the point: adding an emulator this plugin does not
         ship is the same gesture as supplying a BIOS.
         """
-        sent = await self._run(fileserver.received_files)
-        match = next((item for item in sent if item["name"] == name), None)
-        if not match:
+        path = await self._run(fileserver.inbox_path, name)
+        if not path:
             return {"ok": False, "error": "%s is not in the transfer folder." % name}
 
         try:
-            text = await self._run(_read_text, match["path"],
+            text = await self._run(_read_text, path,
                                    emulator_catalog.imported.MAX_BYTES)
         except OSError as failure:
             return {"ok": False, "error": "Could not read %s: %s" % (name, failure)}
@@ -223,6 +243,11 @@ class Emulators(plugin_base.PluginContext):
 
         await self._run(emulator_catalog.reload_imported)
         decky.logger.info("Imported emulator definition %s (%s)", entry["id"], name)
+        # The catalog changed, and whoever is looking at it may not be whoever
+        # imported it: the transfer dialog can do this with the Emulators tab
+        # open behind it. Emitted rather than returned so the list reloads
+        # wherever it is, instead of only where the button was pressed.
+        await decky.emit("emulator_catalog_changed")
         return {"ok": True, "error": "", "id": entry["id"], "name": entry["name"]}
 
 
@@ -274,6 +299,9 @@ class Emulators(plugin_base.PluginContext):
         await self._run(emulators.remove, entry_id)
         await self._run(emulator_catalog.reload_imported)
         await self._refresh_emulators()
+        # Same reason as the import: the catalog is shorter than it was, and a
+        # list already on screen should say so.
+        await decky.emit("emulator_catalog_changed")
         return {"ok": True, "error": ""}
 
 

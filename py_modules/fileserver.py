@@ -1192,6 +1192,63 @@ def current_token():
         return _token
 
 
+def inbox_files(suffix=""):
+    """What is sitting in the transfer folder now, newest first.
+
+    Read off the disk rather than from `_received`, and that is the difference
+    that matters: `received_files` lists what *this session* took delivery of,
+    which is empty after a reload and empty on a Deck that was sent a file
+    yesterday. Anything offering to act on a file the user already sent has to
+    look in the folder.
+
+    The folder rather than a path the caller supplies. A definition names things
+    to install and directories to write into, so which file is being read is not
+    a decision the frontend gets to make -- it names one of these.
+    """
+    directory = default_dir(create=False)
+    try:
+        names = sorted(os.listdir(directory))
+    except OSError:
+        return []
+
+    found = []
+    for name in names:
+        if suffix and not name.lower().endswith(suffix.lower()):
+            continue
+        if name.lower().endswith(_IGNORED_SUFFIXES):
+            continue
+        path = os.path.join(directory, name)
+        try:
+            info = os.stat(path)
+        except OSError:
+            continue
+        if not os.path.isfile(path):
+            continue
+        found.append({"name": name, "path": path, "size": info.st_size,
+                      "at": int(info.st_mtime)})
+    found.sort(key=lambda item: item["at"], reverse=True)
+    return found
+
+
+def inbox_path(name):
+    """The full path of `name` inside the transfer folder, or "".
+
+    A name that is not already its own basename is refused outright rather than
+    reduced to one. `safe_name` would turn `subdir/thing.json` into
+    `thing.json`, which cannot escape the folder but *can* resolve to a
+    different real file than the one that was asked for -- and acting
+    confidently on the wrong file is worse than not finding it. The frontend
+    only ever passes names this listed, so anything with a separator in it is a
+    bug or a probe, and both are better answered with "not there".
+    """
+    name = (name or "").strip()
+    if not name or name != safe_name(name):
+        return ""
+    directory = default_dir(create=False)
+    path = os.path.join(directory, name)
+    return path if os.path.isfile(path) else ""
+
+
 def received_files():
     """Uploaded files that are still on disk, newest first."""
     with _state_lock:
