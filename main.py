@@ -136,10 +136,11 @@ def _log_failures(cls):
     in it. What the log does get is asyncio complaining about the wreckage,
     which names neither the method nor the line.
 
-    That has cost this project twice. Six rounds went into a module-shadowing
-    bug whose exception never reached the log (a module in py_modules shadowing one of the standard library's), and `_installed_catalog_ids` returning a coroutine instead of a
-    list surfaced only as "The report could not be prepared" beside a log full
-    of "Task was destroyed but it is pending".
+    That has cost this project twice. Six rounds went into a bug where a module
+    in `py_modules` shadowed one of the standard library's and the exception
+    never reached the log, and `_installed_catalog_ids` returning a coroutine
+    instead of a list surfaced only as "The report could not be prepared"
+    beside a log full of "Task was destroyed but it is pending".
 
     Applied to the class rather than written at each of the hundred-odd methods:
     a rule that has to be remembered at every call site is one that will be
