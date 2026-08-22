@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { FaTrash } from "react-icons/fa";
 
 import { listEmulatorDefinitions, type DefinitionFile } from "./backend";
+import { FileName } from "./FileName";
 import { humanSize } from "./TransferModal";
 import { DANGER_CLASS, DANGER_CSS } from "./danger";
 import { confirmDiscardTransfer } from "./discardTransfer";
@@ -75,29 +76,13 @@ export function ImportDefinitionModal({ closeModal, onImported }: Props) {
       {files?.map((file) => (
         <Field
           key={file.name}
-          // Wrapped, for the reason the delete confirmation is: a filename has
-          // no spaces to break at, so a long one runs out of the row rather
-          // than onto a second line.
-          label={<span style={{ overflowWrap: "anywhere" }}>{file.name}</span>}
+          // Clamped rather than wrapped: this is a row in a list, and the
+          // delete confirmation shows the whole name when it matters.
+          label={<FileName name={file.name} />}
           description={humanSize(file.size)}
           childrenContainerWidth="min"
         >
           <div style={{ display: "flex", gap: "6px" }}>
-            {/* A definition this plugin refused stays in the folder on purpose
-                -- it is still the only copy on the device, and the reasons are
-                what tell its author what to fix. But then it is here forever,
-                and this is the way out. */}
-            <div className={DANGER_CLASS}>
-              <DialogButton
-                onClick={() => {
-                  closeModal?.();
-                  confirmDiscardTransfer(file, onImported);
-                }}
-                style={{ minWidth: "auto", width: "auto", padding: "6px 12px" }}
-              >
-                <FaTrash />
-              </DialogButton>
-            </div>
             <DialogButton
               onClick={() => {
                 // The dialog goes before the confirmation opens. Steam re-reveals
@@ -111,6 +96,26 @@ export function ImportDefinitionModal({ closeModal, onImported }: Props) {
             >
               Import
             </DialogButton>
+
+            {/* After Import, matching every other row in the plugin: gamepad
+                focus enters from the left, so the destructive control must not
+                be what a thumb lands on first.
+
+                It is here at all because a definition this plugin refused stays
+                in the folder on purpose -- it is still the only copy on the
+                device, and the reasons are what tell its author what to fix.
+                But then it is here forever, and this is the way out. */}
+            <div className={DANGER_CLASS}>
+              <DialogButton
+                onClick={() => {
+                  closeModal?.();
+                  confirmDiscardTransfer(file, onImported);
+                }}
+                style={{ minWidth: "auto", width: "auto", padding: "6px 12px" }}
+              >
+                <FaTrash />
+              </DialogButton>
+            </div>
           </div>
         </Field>
       ))}

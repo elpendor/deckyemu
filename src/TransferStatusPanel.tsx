@@ -10,7 +10,7 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { fileServerStatus, type FileServerStatus } from "./backend";
 import { humanSize, ProgressBar, TransferModal } from "./TransferModal";
 import { openModal } from "./modalStack";
-import { splitTail } from "./filenameTail";
+import { FileName } from "./FileName";
 
 /**
  * What is happening with the file server, for the panel you land on afterwards.
@@ -24,40 +24,6 @@ import { splitTail } from "./filenameTail";
  * So the state lives here instead, for as long as it is true.
  */
 const POLL_MS = 2000;
-
-/**
- * A filename on one line, cut in the middle when it does not fit.
- *
- * The measuring is the browser's, which is the point: the head is allowed to
- * shrink and ellipsizes when it does, the tail never shrinks, and the row is
- * whatever width the panel is. A character budget was tried first and produced
- * a name with two ellipses in it -- see filenameTail.ts.
- *
- * `minWidth: 0` on both the row and the head, because a flex child defaults to
- * `min-width: auto` and will refuse to shrink below its content, which is
- * exactly the overflow this is here to prevent.
- */
-function FileName({ name }: { name: string }) {
-  const [head, tail] = splitTail(name);
-  return (
-    <div style={{ display: "flex", minWidth: 0, overflow: "hidden" }}>
-      <span
-        style={{
-          minWidth: 0,
-          flex: "0 1 auto",
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
-        }}
-      >
-        {head}
-      </span>
-      {/* Never shrinks, so the region, revision and extension survive whatever
-          happens to the front of the name. */}
-      <span style={{ flex: "0 0 auto", whiteSpace: "nowrap" }}>{tail}</span>
-    </div>
-  );
-}
 
 export function TransferStatusPanel() {
   const [status, setStatus] = useState<FileServerStatus | null>(null);

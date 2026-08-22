@@ -2,6 +2,7 @@ import { ConfirmModal } from "@decky/ui";
 import { toaster } from "@decky/api";
 
 import { discardTransferredFile } from "./backend";
+import { FileName } from "./FileName";
 import { DANGER_TEXT } from "./danger";
 import { logError } from "./logError";
 import { openModal } from "./modalStack";
@@ -80,7 +81,7 @@ export function confirmDiscardTransfer(
            * sure which file it is. `anywhere` because these names have no
            * spaces to break at.
            */}
-          <div style={{ overflowWrap: "anywhere", fontWeight: 600 }}>{file.name}</div>
+          <FileName name={file.name} mode="wrap" style={{ fontWeight: 600 }} />
 
           <div style={DANGER_TEXT}>
             This deletes {humanSize(file.size)} from the transfer folder on this Deck.

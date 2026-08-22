@@ -26,6 +26,7 @@ import {
   type FileServerStatus,
 } from "./backend";
 import { selectRom } from "./addFlow";
+import { FileName } from "./FileName";
 import { QrCode } from "./QrCode";
 
 /**
@@ -744,17 +745,7 @@ export function TransferModal({
                 <Focusable
                   style={{ display: "flex", alignItems: "center", gap: "10px" }}
                 >
-                  <div
-                    style={{
-                      flex: 1,
-                      minWidth: 0,
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {file.name}
-                  </div>
+                  <FileName name={file.name} style={{ flex: 1 }} />
                   <div style={{ ...MUTED, whiteSpace: "nowrap" }}>
                     {file.cancelled
                       ? "Cancelling..."
@@ -786,31 +777,12 @@ export function TransferModal({
                   style={{ display: "flex", alignItems: "center", gap: "10px" }}
                 >
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div
-                      style={{
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {file.name}
-                    </div>
+                    <FileName name={file.name} />
                     <div style={MUTED}>{humanSize(file.size)}</div>
                   </div>
                   {/* What the file is for decides the button. A BIOS offered
                       "Add" was being offered the ROM add flow, which would have
                       made a Steam entry out of a firmware dump. */}
-                  {/* Beside the action rather than instead of it: a file can
-                      be both usable and unwanted, and until this existed the
-                      only way out of the folder was to use it. */}
-                  <div className={DANGER_CLASS}>
-                    <DialogButton
-                      onClick={() => confirmDiscardTransfer(file, load)}
-                      style={{ minWidth: "auto", width: "auto", padding: "6px 12px" }}
-                    >
-                      <FaTrash />
-                    </DialogButton>
-                  </div>
                   {file.name.endsWith(DEFINITION_SUFFIX) ? (
                     <DialogButton
                       onClick={() => importDefinition(file.name, load)}
@@ -839,6 +811,25 @@ export function TransferModal({
                       Add
                     </DialogButton>
                   )}
+
+                  {/* Last, and that is the whole of the reasoning: gamepad
+                      focus enters a row from the left, so the first control is
+                      the one a thumb lands on without aiming. Every other row
+                      in this plugin already puts the destructive one at the end
+                      -- edit before remove, register before forget -- and this
+                      was briefly the exception.
+
+                      Beside the action rather than instead of it: a file can be
+                      both usable and unwanted, and until this existed the only
+                      way out of the folder was to use it. */}
+                  <div className={DANGER_CLASS}>
+                    <DialogButton
+                      onClick={() => confirmDiscardTransfer(file, load)}
+                      style={{ minWidth: "auto", width: "auto", padding: "6px 12px" }}
+                    >
+                      <FaTrash />
+                    </DialogButton>
+                  </div>
                 </Focusable>
               ))}
             </Focusable>
