@@ -3,7 +3,7 @@
 
     python scripts/tests/test_plugin_mixins.py
 
-Ten modules contribute methods to one class. If two of them ever define the
+Eleven modules contribute methods to one class. If two of them ever define the
 same name, the MRO picks the leftmost silently: no error, no warning, and an
 endpoint that quietly runs the wrong code. It is the one hazard the split
 introduced, and nothing else can see it -- the frontend gets an answer either
@@ -15,6 +15,9 @@ forgetting the base class is the other way this arrangement fails, and it fails
 as "that endpoint does not exist" at runtime on a Deck.
 """
 
+import ast
+import builtins
+import glob
 import inspect
 import os
 import sys
@@ -33,9 +36,9 @@ section("the Plugin mixins -- one name, one home")
 _bases = [cls for cls in main.Plugin.__mro__ if cls is not object]
 check("every mixin written is mixed in",
       sorted(cls.__name__ for cls in _bases),
-      ["Accounts", "Audit", "DevReset", "Emulators", "Firmware", "PackagedGames",
-       "Plugin", "PluginContext", "RetroArchInstall", "Startup", "Transfers",
-       "Updates"])
+      ["Accounts", "Audit", "Collections", "DevReset", "Emulators", "Firmware",
+       "PackagedGames", "Plugin", "PluginContext", "RetroArchInstall", "Startup",
+       "Transfers", "Updates"])
 
 # PluginContext is the exception and the only one: it *declares* the shared
 # surface every mixin uses and implements none of it, so overlapping with
@@ -57,7 +60,7 @@ check("no name is defined by more than one of them", _collisions, {})
 # Not a tautology: the classes really do contribute, so an empty collision set
 # means something.
 check("and they contribute enough for that to mean something",
-      len(_owners) > 100 and len(_bases) == 12, True)
+      len(_owners) > 100 and len(_bases) == 13, True)
 
 # The other direction, which is what the declarations are for: everything a
 # mixin is promised must actually exist further along the MRO. Without this a
@@ -111,6 +114,52 @@ for _name in sorted(_declared):
         _signatures[_name] = "; ".join(_shown)
 
 check("and its signature is the one that is implemented", _signatures, {})
+
+# A module that reads a name it never imported, which Python does not say until
+# the line runs.
+#
+# This is the other way the split goes wrong, and it is the one that gets you
+# while you are doing the splitting: code moved out of main.py leaves its
+# imports behind. mypy cannot see it -- `check_untyped_defs` is off and these
+# implementations are all unannotated, so the bodies are never read -- and the
+# suite only catches it if something happens to exercise that line. Moving the
+# collections block lost `re`, and the failure was a NameError from inside a
+# collection name being rendered, four files away from the import that was
+# missing.
+_unbound = {}
+for _path in sorted(glob.glob(os.path.join(REPO_ROOT, "py_modules", "*.py"))):
+    _tree = ast.parse(open(_path, encoding="utf-8").read())
+    # The module globals Python supplies rather than anything importing them.
+    _bound = set(dir(builtins)) | {
+        "__file__", "__name__", "__doc__", "__package__", "__spec__",
+        "__loader__", "__builtins__",
+    }
+    for _node in ast.walk(_tree):
+        if isinstance(_node, ast.Import):
+            _bound |= {(a.asname or a.name).split(".")[0] for a in _node.names}
+        elif isinstance(_node, ast.ImportFrom):
+            _bound |= {a.asname or a.name for a in _node.names}
+        elif isinstance(_node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            _bound.add(_node.name)
+        elif isinstance(_node, ast.Name) and isinstance(_node.ctx, ast.Store):
+            _bound.add(_node.id)
+        elif isinstance(_node, ast.arg):
+            _bound.add(_node.arg)
+        elif isinstance(_node, ast.ExceptHandler) and _node.name:
+            _bound.add(_node.name)
+        elif isinstance(_node, (ast.Global, ast.Nonlocal)):
+            _bound |= set(_node.names)
+    _used = {n.id for n in ast.walk(_tree)
+             if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load)}
+    _short = sorted(_used - _bound)
+    if _short:
+        _unbound[os.path.basename(_path)] = _short
+
+check("no module reads a name it never imported", _unbound, {})
+# Not vacuous: the scan has to be finding names at all for an empty result to
+# mean anything.
+check("and the scan is actually reading the package",
+      len(glob.glob(os.path.join(REPO_ROOT, "py_modules", "*.py"))) > 20, True)
 
 # The frontend reaches these by name through getattr, which is what decky does.
 # Covered from the other direction by the contract check in test_backend.py;
