@@ -680,11 +680,13 @@ def remove(names, directory=None):
 
 
 def install(entry, requirement_name, files=None):
-    """Copy everything matching one requirement into place.
+    """Move everything matching one requirement into place.
 
-    Returns a result dict. Copies rather than moves: the folder the user sent to
-    is also the folder they can resend from, and a destination that turns out
-    wrong should not have consumed the file.
+    Returns a result dict. Moves rather than copies -- see the module docstring
+    for why, and note that this said the opposite for a long time while the code
+    below called `shutil.move`. A docstring that contradicts the module it is in
+    is worse than none: this one was quoted, in good faith, as the reason
+    definitions should be left in the transfer folder.
     """
     files = available() if files is None else files
 

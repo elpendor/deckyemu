@@ -16,16 +16,18 @@ file is read must not be a choice the frontend gets to make: it names one of the
 files in the inbox, and anything else is refused.
 """
 
+import json
 import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from harness import check, section, summary  # noqa: E402  -- installs the decky stub
+from harness import check, section, summary, REPO_ROOT  # noqa: E402  -- decky stub
 
 sys.path.insert(0, os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "py_modules"))
 
+import emulator_catalog  # noqa: E402
 import fileserver  # noqa: E402
 from emulator_catalog import imported  # noqa: E402
 
@@ -113,6 +115,110 @@ check("a partial is not in the inbox listing",
 check("though it is there to be excluded",
       os.path.isfile(os.path.join(INBOX, "half-sent.iso.abc123.uploading")), True)
 check("and the real files still are listed", "notes.txt" in _listed, True)
+
+
+section("importing takes the file out of the staging folder")
+
+# The transfer folder is a middle point between sending and importing, not a
+# store. A definition that has been imported is a duplicate of the one the
+# plugin now keeps under `emulators.d`, so leaving it means the Import list
+# grows every time somebody uses it and never shrinks. Firmware settled this the
+# same way -- see emu_firmware's module docstring, and note that `install`'s own
+# docstring claimed the opposite for a long time while calling `shutil.move`.
+
+import asyncio  # noqa: E402
+
+sys.path.insert(0, REPO_ROOT)
+import main  # noqa: E402
+
+_loop = asyncio.new_event_loop()
+_plugin = main.Plugin()
+# `_main` is what normally sets this, and it does a great deal else besides.
+# These endpoints need the loop and nothing more.
+_plugin.loop = _loop
+
+
+def _run(coro):
+    return _loop.run_until_complete(coro)
+
+
+_GOOD = json.dumps({
+    "id": "inboxtest",
+    "name": "Inbox Test",
+    "summary": "A system.",
+    "source": {"kind": "byo"},
+    "args": "-g {rom}",
+    "root": ".config/inboxtest",
+    "platform": "Nintendo - Switch",
+})
+
+_write("inboxtest%s" % imported.SUFFIX, _GOOD)
+check("the file is waiting before anything happens",
+      bool(fileserver.inbox_path("inboxtest%s" % imported.SUFFIX)), True)
+
+_result = _run(_plugin.import_emulator_definition("inboxtest%s" % imported.SUFFIX))
+check("it imports", _result.get("ok"), True)
+check("and the plugin keeps its own copy",
+      os.path.isfile(imported.path_for("inboxtest")), True)
+check("and the staging copy is gone",
+      fileserver.inbox_path("inboxtest%s" % imported.SUFFIX), "")
+check("so the Import list no longer offers it",
+      [item["name"] for item in fileserver.inbox_files(imported.SUFFIX)
+       if item["name"].startswith("inboxtest")],
+      [])
+
+# The half with the real cost. A refused definition is still the user's only
+# copy on the device, and consuming it would leave them holding the reasons it
+# was refused and nothing to fix.
+_write("brokentest%s" % imported.SUFFIX, "{ not json at all")
+_bad = _run(_plugin.import_emulator_definition("brokentest%s" % imported.SUFFIX))
+check("a definition that will not parse is refused", _bad.get("ok"), False)
+check("and is left where it was",
+      bool(fileserver.inbox_path("brokentest%s" % imported.SUFFIX)), True)
+
+# Refused by a rule rather than by the parser: valid JSON, forbidden content.
+_write("nastytest%s" % imported.SUFFIX, json.dumps({
+    "id": "nastytest",
+    "name": "Nasty",
+    "summary": "A system.",
+    "source": {"kind": "byo"},
+    "args": "-g {rom}",
+    "root": ".config/nastytest",
+    "platform": "Nintendo - Switch",
+    "removes": [".config/something"],
+}))
+_nasty = _run(_plugin.import_emulator_definition("nastytest%s" % imported.SUFFIX))
+check("a definition refused by a rule is refused", _nasty.get("ok"), False)
+check("and is also left where it was",
+      bool(fileserver.inbox_path("nastytest%s" % imported.SUFFIX)), True)
+
+# Previewing must never consume anything: it is what somebody presses to decide.
+_preview = _run(_plugin.preview_emulator_definition("brokentest%s" % imported.SUFFIX))
+check("previewing does not remove the file",
+      bool(fileserver.inbox_path("brokentest%s" % imported.SUFFIX)), True)
+
+# Put it back. `emulators.d` and the transfer folder are shared by the whole
+# run, and a definition left imported here changes what the catalog holds for
+# every file after this one -- which is how three checks in test_imported.py
+# started failing about a bundled count they had nothing to do with. The rule
+# the suite works to: derive the expectation from what is there, or set the
+# state aside and put it back.
+_run(_plugin.remove_imported_emulator("inboxtest"))
+check("the imported definition is cleaned up",
+      os.path.isfile(imported.path_for("inboxtest")), False)
+for _leftover in ("brokentest", "nastytest"):
+    _path = fileserver.inbox_path("%s%s" % (_leftover, imported.SUFFIX))
+    if _path:
+        os.remove(_path)
+check("and so are the refused ones",
+      [item["name"] for item in fileserver.inbox_files(imported.SUFFIX)
+       if item["name"].endswith("test%s" % imported.SUFFIX)],
+      [])
+check("the catalog is back to what it was",
+      any(entry.get("id") == "inboxtest" for entry in emulator_catalog.CATALOG),
+      False)
+
+_loop.close()
 
 
 if __name__ == "__main__":

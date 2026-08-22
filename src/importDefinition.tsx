@@ -98,6 +98,14 @@ export function importDefinition(name: string, onImported?: () => void): void {
                 overwritten.
               </div>
             )}
+
+            {/* Said here because this is where it lands, the same rule firmware
+                follows for the same reason: the transfer folder is a staging
+                post, so importing takes the file out of it. Somebody who wants
+                to keep the .json has one on the device they sent it from. */}
+            <div style={MUTED}>
+              The file is moved out of the transfer folder once it is imported.
+            </div>
           </div>
         }
       />,

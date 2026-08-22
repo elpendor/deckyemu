@@ -34,6 +34,15 @@ import ra_detect
 import store
 
 
+def _discard(path):
+    """Delete a file that has served its purpose. True if it is gone."""
+    try:
+        os.remove(path)
+        return True
+    except OSError:
+        return not os.path.exists(path)
+
+
 def _read_text(path, limit):
     """The file's text, or None when it is larger than `limit`."""
     with open(path, "r", encoding="utf-8", errors="replace") as handle:
@@ -240,6 +249,21 @@ class Emulators(plugin_base.PluginContext):
         )
         if error:
             return {"ok": False, "error": error}
+
+        # The transfer folder is a staging post, not a store: a definition that
+        # has been imported is a duplicate of one the plugin now keeps under
+        # `emulators.d`, and leaving it means the Import list grows by one every
+        # time somebody uses it and never shrinks. Firmware settled this the same
+        # way and for the same reason -- one file in one place.
+        #
+        # Only after the save succeeded. A definition that was refused is still
+        # the user's only copy, and consuming it would leave them with the
+        # reasons it was refused and nothing to fix.
+        removed = await self._run(_discard, path)
+        if not removed:
+            # Not a failure: the import happened, and the plugin has its copy.
+            # Worth a line because the Import list will go on offering it.
+            decky.logger.warning("Imported %s but could not clear it from %s", name, path)
 
         await self._run(emulator_catalog.reload_imported)
         decky.logger.info("Imported emulator definition %s (%s)", entry["id"], name)
