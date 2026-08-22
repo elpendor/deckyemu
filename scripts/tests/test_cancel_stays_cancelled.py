@@ -19,8 +19,12 @@ sender can tell a retry from a person picking the file a second time, so it says
 which one it is, and the checks below cover both.
 """
 
+import json
 import os
 import sys
+import urllib.error
+import urllib.parse
+import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -124,29 +128,75 @@ finally:
     fileserver.stop()
 
 
-section("the sender is what tells a retry from a fresh pick")
+section("the sender learns about a cancel before it sends a body")
 
-# Not the header handling itself -- that needs the HTTP server, and
-# test_backend.py drives one -- but the contract the two ends share. A page that
-# stops sending the header, or a server that stops reading it, breaks the half
-# of this with the real cost: the file could never be sent again.
-def _module_source(name):
-    with open(os.path.join(REPO_ROOT, "py_modules", name), encoding="utf-8") as handle:
-        return handle.read()
+# Against a real server, because the half that failed on the device passed every
+# check that did not involve one: refusing the upload was correct and the sender
+# never saw the refusal. A PUT carries the whole file, and a reply sent without
+# reading it reaches the sender as a reset connection -- so what it displayed was
+# "reconnecting", then "connection lost" once the retries ran out, on a transfer
+# somebody had deliberately cancelled.
+#
+# The probe is the fix and the thing worth checking: a GET with no body, whose
+# answer always arrives, asked before every attempt.
+
+_dir = os.path.join(TMP, "cancel-http")
+os.makedirs(_dir, exist_ok=True)
+_state = fileserver.start(_dir)
+check("the server started", _state.get("error", ""), "")
+
+_BASE = "http://127.0.0.1:%d/%s" % (_state["port"], fileserver._token)
+_NAME = "Big Game.iso"
+_FP = "12345-67890"
 
 
-_source = _module_source("fileserver_page.py")
-check("the page announces a first attempt", "X-Upload-Restart" in _source, True)
-check("and only on a first attempt, not on a retry",
-      "job.tries === 1" in _source, True)
-check("and treats the Deck's refusal as final rather than retrying it",
-      "request.status === 410" in _source, True)
+def _pending(restart):
+    """What the page asks before every attempt."""
+    url = "%s/pending/%s?fp=%s&restart=%s" % (
+        _BASE, urllib.parse.quote(_NAME), _FP, "1" if restart else "0")
+    with urllib.request.urlopen(url, timeout=10) as response:
+        return json.loads(response.read())
 
-_server_source = _module_source("fileserver.py")
-check("the server reads the same header the page sends",
-      "X-Upload-Restart" in _server_source, True)
-check("and answers a refused file with the status the page treats as final",
-      "self._send(410," in _server_source, True)
+
+def _put(restart):
+    """A small upload, standing in for the sender's next attempt."""
+    request = urllib.request.Request(
+        "%s/upload/%s" % (_BASE, urllib.parse.quote(_NAME)), data=bytes(1024),
+        method="PUT")
+    request.add_header("X-Upload-Id", _FP)
+    request.add_header("X-Upload-Offset", "0")
+    if restart:
+        request.add_header("X-Upload-Restart", "1")
+    try:
+        with urllib.request.urlopen(request, timeout=15) as response:
+            return response.status
+    except urllib.error.HTTPError as error:
+        return error.code
+
+
+try:
+    check("nothing is refused before anything is cancelled",
+          _pending(False), {"received": 0, "cancelled": False})
+
+    # Cancel a live upload the way the panel does.
+    _partial = fileserver._partial_path(os.path.join(_dir, _NAME), _FP)
+    _in_flight(9001, _partial)
+    check("the cancel is signalled", fileserver.cancel(9001), 1)
+
+    # The check the device needed. Told here, the page shows "cancelled on the
+    # Deck" instead of starting a body it is not allowed to send.
+    check("a retry is told the file was cancelled, before it sends anything",
+          _pending(False)["cancelled"], True)
+    check("and the upload itself is refused as well, for a sender that did not ask",
+          _put(False), 410)
+
+    # The half with the real cost. A cancellation that could not be undone would
+    # make the file unsendable for the rest of the session.
+    check("picking the file again clears it", _pending(True)["cancelled"], False)
+    check("and the upload then goes through", _put(True), 200)
+    check("with nothing left refusing it", _pending(False)["cancelled"], False)
+finally:
+    fileserver.stop()
 
 
 if __name__ == "__main__":

@@ -459,12 +459,36 @@ class _Handler(BaseHTTPRequestHandler):
             if not uploads or not directory:
                 self._deny()
                 return
-            fingerprint = urllib.parse.parse_qs(query).get("fp", [""])[0]
+            asked = urllib.parse.parse_qs(query)
+            fingerprint = asked.get("fp", [""])[0]
             partial = _partial_path(
                 os.path.join(directory, safe_name(rest[1])), fingerprint
             )
+            # A cancellation is reported *here*, before the sender starts a body
+            # it is not allowed to send.
+            #
+            # Refusing the PUT is what stops the bytes, but it cannot be what
+            # tells the sender why. The body of a PUT is the whole file, and a
+            # reply sent without reading it closes a socket the sender is still
+            # writing gigabytes into -- so the sender sees a reset connection
+            # rather than a status, which is indistinguishable from the wifi
+            # dropping. That is exactly what it did: "reconnecting", then
+            # "connection lost" once the retries ran out, on a transfer that had
+            # been deliberately cancelled.
+            #
+            # The probe is a GET with no body, so its answer always arrives.
+            # `restart` is the sender saying this is a fresh pick rather than a
+            # retry, and clearing the record here means the PUT that follows is
+            # an ordinary one.
+            restart = asked.get("restart", [""])[0] == "1"
+            with _state_lock:
+                if restart:
+                    _cancelled.pop(partial, None)
+                cancelled = not restart and partial in _cancelled
             self._send(
-                200, json.dumps({"received": _partial_size(partial)}), "application/json"
+                200,
+                json.dumps({"received": _partial_size(partial), "cancelled": cancelled}),
+                "application/json",
             )
         elif rest == ["report"]:
             with _state_lock:

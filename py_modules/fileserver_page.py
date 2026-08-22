@@ -293,18 +293,26 @@ function fingerprint(file) {
 // How much of this file the Deck already has. Asked before every attempt, so
 // the first upload and the fifth retry are the same code path -- and re-picking
 // a file after reloading this page carries on rather than starting again.
-function askPending(file) {
+function askPending(file, restart) {
   return new Promise((resolve) => {
     const probe = new XMLHttpRequest();
     probe.open('GET', PENDING_BASE + encodeURIComponent(file.name)
-                      + '?fp=' + encodeURIComponent(fingerprint(file)));
+                      + '?fp=' + encodeURIComponent(fingerprint(file))
+                      + '&restart=' + (restart ? '1' : '0'));
     probe.addEventListener('load', () => {
-      let received = 0;
-      try { received = JSON.parse(probe.responseText).received || 0; } catch (e) { received = 0; }
-      resolve(received > file.size ? 0 : received);
+      let data = {};
+      try { data = JSON.parse(probe.responseText) || {}; } catch (e) { data = {}; }
+      const received = data.received || 0;
+      resolve({
+        offset: received > file.size ? 0 : received,
+        // The Deck saying this file was cancelled. Learned here rather than
+        // from the upload, because a PUT carries the whole file and a reply to
+        // one arrives as a reset connection -- see the server's `pending`.
+        cancelled: !!data.cancelled,
+      });
     });
     // An answer we cannot get is not a reason to refuse to send: start over.
-    probe.addEventListener('error', () => resolve(0));
+    probe.addEventListener('error', () => resolve({ offset: 0, cancelled: false }));
     probe.send();
   });
 }
@@ -316,8 +324,15 @@ const MAX_STALLS = 6;
 const MAX_TRIES = 30;
 
 function attempt(job) {
-  askPending(job.file).then((offset) => {
+  // Before `tries` moves: a first attempt is a person choosing this file, and
+  // every one after it is this page retrying. Only that end can tell them
+  // apart, and the Deck has to be told which it is or cancelling a file would
+  // stop it ever being sent again.
+  const first = job.tries === 0;
+  askPending(job.file, first).then((pending) => {
     if (job !== current) return;
+    if (pending.cancelled) { fail(job, 'cancelled on the Deck'); return; }
+    const offset = pending.offset;
     job.tries += 1;
     // Out of the waiting state and back to an ordinary row: this is a transfer
     // again rather than one that stopped.
@@ -334,8 +349,7 @@ function attempt(job) {
     // knows and the Deck cannot: a person picking the same file again looks
     // exactly like a retry from there. Without the distinction, cancelling
     // could not both stop this transfer and let the file be sent again.
-    // `tries` was incremented above, so 1 is the first attempt.
-    if (job.tries === 1) request.setRequestHeader('X-Upload-Restart', '1');
+    if (first) request.setRequestHeader('X-Upload-Restart', '1');
 
     // Bytes this attempt handed to the network. Not what the Deck has -- only
     // it knows that, and the next attempt asks -- but enough to tell an attempt
