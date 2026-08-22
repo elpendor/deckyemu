@@ -29,6 +29,7 @@ import { EmulatorLegendModal } from "./EmulatorLegendModal";
 import {
   emulatorBuilds,
   getStatus,
+  importedEmulators,
   installEmulator,
   listEmulatorCatalog,
   locateEmulator,
@@ -49,6 +50,7 @@ import { openSetupShortcut } from "./setupShortcut";
 import { callWithRetry } from "./timeout";
 import { logError } from "./logError";
 import { openModal } from "./modalStack";
+import { importProblems } from "./importProblems";
 
 interface Props {
   /** Re-read cores and emulators, so a new install becomes selectable. */
@@ -151,12 +153,33 @@ export function EmulatorCatalogPanel({ onChanged }: Props) {
   // Two flatpak queries for all of them, so it is cheap enough to read here and
   // saves the version dialog asking again for the row that opened it.
   const [builds, setBuilds] = useState<Record<string, EmulatorBuild>>({});
+  // Why any definition file was refused. Empty is the ordinary case.
+  const [problems, setProblems] = useState<string[]>([]);
 
   const load = useCallback(() => {
-    callWithRetry(listEmulatorCatalog)
-      .then(setEntries)
-      .catch((loadError) => logError("could not read the catalog", loadError))
-      .finally(() => setLoading(false));
+    /*
+     * Definitions first, and awaited before the catalog is listed.
+     *
+     * `imported_emulators` re-reads emulators.d and rebuilds the catalog as a
+     * side effect, so listing in parallel with it is a race whose two outcomes
+     * are "the definition you just sent is there" and "it is not". Awaited, the
+     * tab also picks up a file that arrived since it was last open.
+     *
+     * A failure here must not cost the catalog -- not knowing why a definition
+     * was refused is one missing row; not knowing what is installed is an empty
+     * tab.
+     */
+    void (async () => {
+      try {
+        setProblems((await callWithRetry(importedEmulators)).problems);
+      } catch (problemError) {
+        logError("could not read the imported definitions", problemError);
+      }
+      callWithRetry(listEmulatorCatalog)
+        .then(setEntries)
+        .catch((loadError) => logError("could not read the catalog", loadError))
+        .finally(() => setLoading(false));
+    })();
     // Separate call, and a failure here must not blank the catalog: not knowing
     // whether an update is waiting is a missing button, while not knowing what
     // is installed is an empty tab.
@@ -508,6 +531,8 @@ export function EmulatorCatalogPanel({ onChanged }: Props) {
     [runBusy],
   );
 
+  const refused = importProblems(problems);
+
   return (
     // Untitled section: SidebarNavigation already renders the tab's heading
     // above it. The name goes on the intro row instead, which had to exist
@@ -543,6 +568,34 @@ export function EmulatorCatalogPanel({ onChanged }: Props) {
       {loading && (
         <PanelSectionRow>
           <Field label="Loading..." />
+        </PanelSectionRow>
+      )}
+
+      {/* Above the list, because the emulator a refused definition describes is
+          the row that is *not* below -- reported after the catalog it is absent
+          from would be answering a question the reader has stopped asking. */}
+      {refused && (
+        <PanelSectionRow>
+          <Field
+            label={refused.label}
+            description={
+              <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                {refused.reasons.map((reason) => (
+                  /* Wrapped rather than truncated, unlike a filename in a
+                     status row: this is the whole of what the user gets to act
+                     on, and half a reason is no reason. `anywhere` because the
+                     sentence carries a filename with no spaces in it. */
+                  <div key={reason} style={{ overflowWrap: "anywhere" }}>
+                    {reason}
+                  </div>
+                ))}
+                <div style={MUTED}>
+                  Fix the file and send it again, or remove it. Everything else
+                  below is unaffected.
+                </div>
+              </div>
+            }
+          />
         </PanelSectionRow>
       )}
 
