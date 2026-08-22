@@ -10,7 +10,7 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { fileServerStatus, type FileServerStatus } from "./backend";
 import { humanSize, ProgressBar, TransferModal } from "./TransferModal";
 import { openModal } from "./modalStack";
-import { shortenMiddle } from "./shortenMiddle";
+import { splitTail } from "./filenameTail";
 
 /**
  * What is happening with the file server, for the panel you land on afterwards.
@@ -26,28 +26,38 @@ import { shortenMiddle } from "./shortenMiddle";
 const POLL_MS = 2000;
 
 /**
- * How much of a filename to keep before cutting its middle out.
+ * A filename on one line, cut in the middle when it does not fit.
  *
- * Chosen to fit the Quick Access panel at the description's font size with room
- * to spare rather than measured exactly -- and it does not have to be exact,
- * because `CLAMP` below is what actually guarantees one line. This decides
- * *where* the name is cut, which is the part CSS gets wrong; the CSS is the
- * backstop for a panel narrower than assumed.
- */
-const NAME_BUDGET = 44;
-
-/**
- * One line, whatever arrives.
+ * The measuring is the browser's, which is the point: the head is allowed to
+ * shrink and ellipsizes when it does, the tail never shrinks, and the row is
+ * whatever width the panel is. A character budget was tried first and produced
+ * a name with two ellipses in it -- see filenameTail.ts.
  *
- * `shortenMiddle` handles the names it can predict; this covers the rest --
- * there is no width this is measured against, so the guarantee has to come from
- * the layout rather than from a character count being right.
+ * `minWidth: 0` on both the row and the head, because a flex child defaults to
+ * `min-width: auto` and will refuse to shrink below its content, which is
+ * exactly the overflow this is here to prevent.
  */
-const CLAMP: React.CSSProperties = {
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-  whiteSpace: "nowrap",
-};
+function FileName({ name }: { name: string }) {
+  const [head, tail] = splitTail(name);
+  return (
+    <div style={{ display: "flex", minWidth: 0, overflow: "hidden" }}>
+      <span
+        style={{
+          minWidth: 0,
+          flex: "0 1 auto",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {head}
+      </span>
+      {/* Never shrinks, so the region, revision and extension survive whatever
+          happens to the front of the name. */}
+      <span style={{ flex: "0 0 auto", whiteSpace: "nowrap" }}>{tail}</span>
+    </div>
+  );
+}
 
 export function TransferStatusPanel() {
   const [status, setStatus] = useState<FileServerStatus | null>(null);
@@ -114,7 +124,7 @@ export function TransferStatusPanel() {
         {/* No `title` attribute holding the full name: it would only ever
             surface on hover, and there is no pointer in Game Mode. The whole
             name is a button away, in the dialog behind "Show transfer". */}
-        <div style={CLAMP}>{shortenMiddle(file.name, NAME_BUDGET)}</div>
+        <FileName name={file.name} />
         {!file.cancelled && <div>{`${humanSize(received)} of ${humanSize(total)}`}</div>}
       </>
     );
