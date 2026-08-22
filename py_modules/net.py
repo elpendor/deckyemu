@@ -278,6 +278,43 @@ def head_ok(url, headers=None):
 MAX_IMAGE_BYTES = 32 * 1024 * 1024
 
 
+#: Hosts whose answers are rationed, so a request to one is worth writing down.
+#:
+#: GitHub allows 60 unauthenticated requests an hour **per address**, shared by
+#: everything on it -- the update check, every non-Flatpak emulator's release
+#: listing, the xemu disk image, each firmware fetch, and a second Deck or a
+#: developer's machine on the same network.
+_RATIONED = ("api.github.com",)
+
+
+def _note_request(url, headers_out=None):
+    """Log a request against a rationed host, and what is left of the budget.
+
+    **Successes were invisible before this.** Only failures were logged, so the
+    plugin could spend its whole hourly budget without leaving any record, and
+    "why am I rate-limited when I pressed the button twice" had no answer but
+    inference. It took a storm of 23 requests in fifteen seconds to notice the
+    spending at all, and even then the count came from what happened to fail.
+
+    Cheap and quiet: one line per rationed request, nothing at all for the rest
+    of the web. The remaining count comes from the response's own header, so it
+    is GitHub's number rather than one kept here and drifting.
+    """
+    try:
+        host = urllib.parse.urlsplit(url).hostname or ""
+        if not any(host == rationed for rationed in _RATIONED):
+            return
+        remaining = (headers_out or {}).get("X-RateLimit-Remaining")
+        if remaining is None:
+            decky.logger.info("GitHub request: %s", url)
+        else:
+            decky.logger.info(
+                "GitHub request: %s (%s of the hourly budget left)", url, remaining
+            )
+    except Exception:  # noqa: BLE001 - a log line may never break a request
+        pass
+
+
 def get_bytes(url, headers=None, max_bytes=12 * 1024 * 1024, failure=None):
     """Returns (bytes, content_type) or (None, None).
 
@@ -292,6 +329,7 @@ def get_bytes(url, headers=None, max_bytes=12 * 1024 * 1024, failure=None):
         return None, None
     try:
         with _urlopen(_request(url, headers)) as response:
+            _note_request(url, response.headers)
             payload = response.read(max_bytes + 1)
             if len(payload) > max_bytes:
                 # The size and the ceiling both, because "oversized" alone
@@ -313,6 +351,9 @@ def get_bytes(url, headers=None, max_bytes=12 * 1024 * 1024, failure=None):
         # message names the caller's public address, and this text reaches the
         # log and the diagnostic report a user is asked to share.
         decky.logger.warning("GET failed for %s: %s", url, error)
+        # A refused or failed answer is still a request that was charged for --
+        # the 504s that started this were counted like any other.
+        _note_request(url, error.headers or {})
         if failure is not None:
             headers_out = error.headers or {}
             failure["status"] = error.code
