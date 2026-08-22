@@ -4,7 +4,8 @@ import { FaTrash } from "react-icons/fa";
 
 import { listEmulatorDefinitions, type DefinitionFile } from "./backend";
 import { FileName } from "./FileName";
-import { humanSize } from "./TransferModal";
+import { openModal } from "./modalStack";
+import { humanSize, TransferModal } from "./TransferModal";
 import { DANGER_CLASS, DANGER_CSS } from "./danger";
 import { confirmDiscardTransfer } from "./discardTransfer";
 import { importDefinition } from "./importDefinition";
@@ -66,7 +67,9 @@ export function ImportDefinitionModal({ closeModal, onImported }: Props) {
         <Field
           label="Nothing waiting"
           description={
-            `Send a ${suffix} file with Transfer to Deck and it appears here. ` +
+            `A definition is a ${suffix} file somebody gave you. Send one with ` +
+            `the button below and it appears here — or import it from the ` +
+            `transfer dialog as it arrives. ` +
             (path ? `They are read from ${path}.` : "")
           }
         />
@@ -120,7 +123,41 @@ export function ImportDefinitionModal({ closeModal, onImported }: Props) {
         </Field>
       ))}
 
-      <Focusable style={{ display: "flex", marginTop: "12px" }}>
+      <Focusable style={{ display: "flex", gap: "8px", marginTop: "12px" }}>
+        {/*
+         * The way to get a definition here, rather than a sentence naming a
+         * control somewhere else.
+         *
+         * The empty state used to say "send one with Transfer to Deck", which
+         * from this tab is a dead end: that button lives in the Quick Access
+         * panel, so the instruction meant closing this, leaving the settings
+         * page and finding it. An instruction that describes an action should
+         * be the action.
+         *
+         * This dialog closes rather than sitting underneath -- Steam re-reveals
+         * each modal as the one above it dismisses, and a list left below would
+         * come back over whatever follows. Nothing is lost by it: the transfer
+         * dialog offers Import on a `.deckyemu.json` the moment it lands, so
+         * the file can be sent and imported without coming back here at all.
+         */}
+        <DialogButton
+          onClick={() => {
+            closeModal?.();
+            openModal(
+              <TransferModal
+                expecting={[
+                  {
+                    label: "Emulator definition",
+                    expects: `A ${suffix} file.`,
+                  },
+                ]}
+              />,
+            );
+          }}
+          style={{ flex: 2 }}
+        >
+          Transfer to Deck
+        </DialogButton>
         <DialogButton onClick={() => closeModal?.()} style={{ flex: 1 }}>
           Close
         </DialogButton>
