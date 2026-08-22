@@ -36,7 +36,8 @@ const showModal = vi.fn((_modal: unknown, _parent: unknown, props: any) => {
 
 vi.mock("@decky/ui", () => ({ showModal: (...args: unknown[]) => (showModal as any)(...args) }));
 
-const { openModal, closeOpenModals, openModalCount } = await import("./modalStack");
+const { openModal, closeOpenModals, closeModalsOnPanelOpen, openModalCount } =
+  await import("./modalStack");
 
 beforeEach(() => {
   closeOpenModals();
@@ -114,6 +115,34 @@ describe("closeOpenModals", () => {
     closeOpenModals();
     expect(closes).toHaveLength(1);
     expect(openModalCount()).toBe(0);
+  });
+});
+
+describe("closeModalsOnPanelOpen", () => {
+  it("clears the stack when the panel becomes visible", () => {
+    // The reported fault: the added-games list left open, Quick Access opened,
+    // a ROM picked -- and as the file browser dismissed, the list came back
+    // over the panel and took the overlay, so the panel would not open again.
+    openModal(null);
+    openModal(null);
+    closeModalsOnPanelOpen(true);
+    expect(closes).toHaveLength(2);
+    expect(openModalCount()).toBe(0);
+  });
+
+  // The guard, and the reason it exists. Opening one of our modals is what
+  // hides the panel, so closing on the way down would dismiss the modal the
+  // user just asked for about a frame after it appeared.
+  it("leaves them alone when the panel is hiding", () => {
+    openModal(null);
+    closeModalsOnPanelOpen(false);
+    expect(closes).toEqual([]);
+    expect(openModalCount()).toBe(1);
+  });
+
+  it("is fine with nothing open", () => {
+    expect(() => closeModalsOnPanelOpen(true)).not.toThrow();
+    expect(closes).toEqual([]);
   });
 });
 

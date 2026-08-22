@@ -72,6 +72,24 @@ export function closeOpenModals(): void {
   }
 }
 
+/**
+ * What the Quick Access panel does about our modals as it appears.
+ *
+ * Takes the visibility rather than reading it, so the rule is a function that
+ * can be checked instead of a condition inside an effect that can only be tried
+ * on the device.
+ *
+ * **The guard is the whole point, and it is not a tidiness check.** Opening one
+ * of our modals is itself what hides the panel, so a version of this that ran
+ * on any change to visibility would dismiss the modal the user had just asked
+ * for, roughly a frame after it appeared -- turning "open the added-games list"
+ * into a button that flashes and does nothing.
+ */
+export function closeModalsOnPanelOpen(visible: boolean): void {
+  if (!visible) return;
+  closeOpenModals();
+}
+
 /** How many are open. For checks; nothing in the plugin asks. */
 export function openModalCount(): number {
   return open.size;

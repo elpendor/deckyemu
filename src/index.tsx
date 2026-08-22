@@ -36,6 +36,7 @@ import { editGameMenuItem } from "./EditGameMenuItem";
 import { refreshAddedGames, rememberAddedGames } from "./addedGames";
 import { AddedGamesPanel } from "./AddedGamesPanel";
 import { ErrorBoundary } from "./ErrorBoundary";
+import { closeModalsOnPanelOpen } from "./modalStack";
 import { OrphanModal } from "./OrphanModal";
 import { shortcutNudge, type ShortcutCounts } from "./shortcutNudge";
 import { TransferStatusPanel } from "./TransferStatusPanel";
@@ -178,6 +179,27 @@ function Content() {
     void loadHealth();
     void loadUpdate();
   }, [visible, loadStatus, loadGames, loadHealth, loadUpdate]);
+
+  /*
+   * Nothing of ours may still be on the modal stack while this panel is up.
+   *
+   * Steam re-reveals each modal as the one above it dismisses, so one left
+   * standing arrives on top of the panel rather than behind it -- and takes the
+   * active overlay with it. Leaving the added-games list open, opening Quick
+   * Access, and picking a ROM was enough: the file browser dismissed, the list
+   * came back over the panel, and the panel could not be opened again.
+   *
+   * `closeOpenModals` was written for exactly this and had one caller, in the
+   * transfer dialog, covering the one route that had been found. The rule is not
+   * about that route -- it is that opening Quick Access means the user has moved
+   * on from whatever was in front of them. One place, so no call site can be the
+   * one that forgets.
+   *
+   * **Only when becoming visible, never when hiding.** Opening one of our modals
+   * is itself what hides this panel, so running this on the way down would
+   * dismiss the modal the user just asked for, about a frame after it appeared.
+   */
+  useEffect(() => closeModalsOnPanelOpen(visible), [visible]);
 
   const nudge = shortcutNudge(health);
   const badge = updateBadge(update);

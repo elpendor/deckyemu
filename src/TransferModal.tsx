@@ -42,6 +42,7 @@ import { logError } from "./logError";
 import { installThroughEmulator } from "./firmwareInstall";
 import { requirementForFile, type RequirementMatch } from "./firmwareMatch";
 import { closeOpenModals, openModal } from "./modalStack";
+import { shouldStopServer } from "./transferStop";
 
 /** How often to re-check while running, to pick up newly arrived files. */
 const POLL_MS = 3000;
@@ -228,6 +229,39 @@ export function TransferModal({
   closedRef.current = onClosed;
   useEffect(() => () => closedRef.current?.(), []);
 
+  /*
+   * Stopping the server has to happen however the dialog goes.
+   *
+   * `close` is only one of the ways out. Opening the Quick Access panel now
+   * dismisses every modal this plugin has open (see index.tsx), and that path
+   * calls Steam's own `Close` on the handle rather than anything in here -- so
+   * for a while the two disagreed, and a dialog dismissed from outside left an
+   * idle server standing until its own timeout swept it up.
+   *
+   * Through refs so the unmount cleanup can stay dependency-free: given `status`
+   * in its dependency list it would tear down and re-run on every poll, and the
+   * one thing it must do is run exactly once, at the end, reading the last
+   * status rather than whichever one it was created with.
+   */
+  const statusRef = useRef<FileServerStatus | null>(null);
+  statusRef.current = status;
+  // So a dismissal that already stopped the server does not ask again on the
+  // way out. Not merely wasteful: the second call would race a server the user
+  // has since restarted from the panel.
+  const stoppedRef = useRef(false);
+
+  const stopIfIdle = useCallback(async () => {
+    if (stoppedRef.current || !shouldStopServer(statusRef.current)) return;
+    stoppedRef.current = true;
+    try {
+      await stopFileServer();
+    } catch (stopError) {
+      logError("could not stop the file server", stopError);
+    }
+  }, []);
+
+  useEffect(() => () => void stopIfIdle(), [stopIfIdle]);
+
   useEffect(() => {
     getSettings()
       .then((loaded) => setRemember(Boolean(loaded.transfer_remember)))
@@ -333,18 +367,7 @@ export function TransferModal({
    * once idle.
    */
   const close = useCallback(async () => {
-    // Paused counts as arriving. A transfer between two attempts -- the wifi
-    // dropped, the phone locked -- has nothing in flight for as long as the
-    // sender's backoff lasts, and stopping the server in that window is what
-    // the resume was there to prevent.
-    const busy = (status?.uploading ?? 0) + (status?.paused ?? 0);
-    if (status?.running && busy === 0) {
-      try {
-        await stopFileServer();
-      } catch (stopError) {
-        logError("could not stop the file server", stopError);
-      }
-    }
+    await stopIfIdle();
     // Nothing is announced when a transfer is left running. A toast here was
     // measured on the device as unreadable: the Quick Access panel slides in over
     // the same corner as the dialog closes, so it was occluded before it could be
@@ -352,7 +375,7 @@ export function TransferModal({
     // sits at the top of it with the live progress, for as long as the transfer
     // lasts, which is both more visible and true for longer than a toast.
     closeModal?.();
-  }, [status?.running, status?.uploading, status?.paused, closeModal]);
+  }, [stopIfIdle, closeModal]);
 
   /**
    * Turn the durable link on or off.
