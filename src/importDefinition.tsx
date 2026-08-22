@@ -2,7 +2,7 @@ import { ConfirmModal } from "@decky/ui";
 import { toaster } from "@decky/api";
 
 import { importEmulatorDefinition, previewEmulatorDefinition } from "./backend";
-import { DANGER_CLASS } from "./danger";
+import { DANGER_TEXT } from "./danger";
 import { openModal } from "./modalStack";
 
 /**
@@ -83,7 +83,7 @@ export function importDefinition(name: string, onImported?: () => void): void {
                 that already ran. Those bound what a definition can reach; they
                 cannot tell you whether its author meant well, and this file did
                 not come from the plugin. */}
-            <div className={DANGER_CLASS}>
+            <div style={DANGER_TEXT}>
               <b>You are responsible for what you import.</b> This definition was
               written by whoever gave it to you, not by this plugin, and nobody here
               has reviewed or tested it. It can make your Deck download and run

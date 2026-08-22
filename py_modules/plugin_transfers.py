@@ -22,6 +22,8 @@ methods it finds on the plugin object, so the names have to stay there while the
 code lives somewhere findable. Nothing here may be instantiated alone.
 """
 
+import os
+
 import decky
 
 import plugin_base
@@ -209,6 +211,39 @@ class Transfers(plugin_base.PluginContext):
         result = await self._run(fileserver.stop_if_idle)
         result["received"] = await self._run(fileserver.received_files)
         return {"ok": True, **result}
+
+    async def discard_transferred_file(self, name: str):
+        """Delete one file from the transfer folder. The only way to, in Game Mode.
+
+        Everything else that removes something from there does it as a side
+        effect of using it: an import consumes the definition, a firmware
+        install moves the file where the emulator reads it, a cancel deletes the
+        partial it was writing. Nothing removed a file that was simply not
+        wanted -- a refused definition, a ROM thought better of, a BIOS for an
+        emulator since uninstalled -- so the staging folder only ever grew, and
+        the alternative was Desktop Mode and a file manager, which is the thing
+        this plugin exists to avoid.
+
+        By name out of the folder rather than by a path the frontend supplies.
+        `inbox_path` refuses anything that is not already the basename of a real
+        file in there, so this cannot be pointed at a save game or a launcher.
+        """
+        path = await self._run(fileserver.inbox_path, name)
+        if not path:
+            # Already gone is the answer the caller wanted, not a failure: two
+            # presses on a slow list should not produce an error the second time.
+            return {"ok": True, "removed": False,
+                    "received": await self._run(fileserver.received_files)}
+
+        try:
+            await self._run(os.remove, path)
+        except OSError as error:
+            return {"ok": False, "error": "Could not delete %s: %s" % (name, error)}
+
+        decky.logger.info("Discarded %s from the transfer folder", name)
+        return {"ok": True, "removed": True,
+                "received": await self._run(fileserver.received_files)}
+
 
     async def cancel_upload(self, upload_id: int = 0):
         """Abandon a transfer in progress. 0 means every one of them.

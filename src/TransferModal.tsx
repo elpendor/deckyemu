@@ -8,6 +8,7 @@ import {
 } from "@decky/ui";
 import { FileSelectionType, openFilePicker, toaster } from "@decky/api";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { FaTrash } from "react-icons/fa";
 
 import {
   cancelUpload,
@@ -39,6 +40,7 @@ import { DANGER_CLASS, DANGER_CSS } from "./danger";
 import { logError } from "./logError";
 import { installThroughEmulator } from "./firmwareInstall";
 import { requirementForFile, type RequirementMatch } from "./firmwareMatch";
+import { confirmDiscardTransfer } from "./discardTransfer";
 import { importDefinition } from "./importDefinition";
 import { closeOpenModals } from "./modalStack";
 
@@ -798,6 +800,17 @@ export function TransferModal({
                   {/* What the file is for decides the button. A BIOS offered
                       "Add" was being offered the ROM add flow, which would have
                       made a Steam entry out of a firmware dump. */}
+                  {/* Beside the action rather than instead of it: a file can
+                      be both usable and unwanted, and until this existed the
+                      only way out of the folder was to use it. */}
+                  <div className={DANGER_CLASS}>
+                    <DialogButton
+                      onClick={() => confirmDiscardTransfer(file, load)}
+                      style={{ minWidth: "auto", width: "auto", padding: "6px 12px" }}
+                    >
+                      <FaTrash />
+                    </DialogButton>
+                  </div>
                   {file.name.endsWith(DEFINITION_SUFFIX) ? (
                     <DialogButton
                       onClick={() => importDefinition(file.name, load)}

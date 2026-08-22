@@ -304,6 +304,21 @@ export const cancelUpload = callable<
 >("cancel_upload");
 
 /**
+ * Delete one file from the transfer folder.
+ *
+ * The only way to, in Game Mode. Everything else that removes something from
+ * there does it as a side effect of using the file; a file that was simply not
+ * wanted had no route out except Desktop Mode and a file manager.
+ *
+ * `removed` is false when it had already gone, which is success rather than
+ * failure -- a stale list pressed twice must not report an error.
+ */
+export const discardTransferredFile = callable<
+  [name: string],
+  { ok: boolean; error?: string; removed?: boolean; received?: ReceivedFile[] }
+>("discard_transferred_file");
+
+/**
  * Invalidate every saved transfer link and issue a fresh one.
  *
  * All or nothing: the link is the credential, so there is nothing per-device to

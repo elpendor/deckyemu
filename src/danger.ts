@@ -32,3 +32,24 @@ export const DANGER_CSS = `
   background: rgba(176, 44, 44, 0.45) !important;
 }
 `;
+
+/**
+ * The same red, for a paragraph rather than a button.
+ *
+ * `DANGER_CSS` styles `button` elements *inside* the class and nothing else, so
+ * putting `DANGER_CLASS` on a div of text does nothing at all -- which is what
+ * the import warning did for as long as it has existed. Inline, so it needs no
+ * stylesheet injected into whichever modal happens to be rendering it: a
+ * ConfirmModal opened from a panel is its own tree, and the `<style>` tag a
+ * panel injects is not always in the document when the dialog is up.
+ *
+ * A left bar rather than red text, matching the paused-transfer notice: at this
+ * size a block of coloured prose reads as decoration, and the bar makes it a
+ * different kind of thing before any of it has been read.
+ */
+export const DANGER_TEXT = {
+  padding: "8px 10px",
+  borderLeft: "4px solid rgb(214, 58, 58)",
+  borderRadius: "4px",
+  background: "rgba(176, 44, 44, 0.15)",
+};

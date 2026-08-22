@@ -197,6 +197,45 @@ _preview = _run(_plugin.preview_emulator_definition("brokentest%s" % imported.SU
 check("previewing does not remove the file",
       bool(fileserver.inbox_path("brokentest%s" % imported.SUFFIX)), True)
 
+section("a file that was simply not wanted can be deleted")
+
+# The only way to, in Game Mode. Everything else that takes something out of the
+# transfer folder does it as a side effect of *using* the file, so a refused
+# definition or a ROM thought better of stayed forever and the alternative was
+# Desktop Mode and a file manager.
+
+_write("zz-unwanted%s" % imported.SUFFIX, "{ not valid")
+check("it is there", bool(fileserver.inbox_path("zz-unwanted%s" % imported.SUFFIX)), True)
+
+_gone = _run(_plugin.discard_transferred_file("zz-unwanted%s" % imported.SUFFIX))
+check("deleting it works", (_gone.get("ok"), _gone.get("removed")), (True, True))
+check("and it is gone", fileserver.inbox_path("zz-unwanted%s" % imported.SUFFIX), "")
+
+# Pressing twice on a stale list is the ordinary case, not a fault: the folder
+# is in the state the caller asked for either way.
+_again = _run(_plugin.discard_transferred_file("zz-unwanted%s" % imported.SUFFIX))
+check("deleting it twice is not an error",
+      (_again.get("ok"), _again.get("removed")), (True, False))
+
+# The name decides which file is deleted, so this is the half worth checking
+# hardest. `inbox_path` refuses anything that is not already the basename of a
+# real file in the folder, and nothing here should reach a file outside it.
+_outside = os.path.join(os.path.dirname(INBOX), "not-a-transfer.txt")
+with open(_outside, "w", encoding="utf-8") as _handle:
+    _handle.write("keep me")
+for _escape in ("../not-a-transfer.txt", "..\not-a-transfer.txt",
+                _outside, "subdir/notes.txt", "", "..", "."):
+    _refused = _run(_plugin.discard_transferred_file(_escape))
+    check("%r deletes nothing" % (_escape,), _refused.get("removed"), False)
+check("and the file outside the folder is untouched", os.path.isfile(_outside), True)
+os.remove(_outside)
+
+# A file in the folder that is not a definition is still deletable -- the point
+# is the folder, not the file type. This is the case of a ROM thought better of.
+check("a ROM in the inbox can go too",
+      _run(_plugin.discard_transferred_file("Some Game.iso")).get("removed"), True)
+
+
 # Put it back. `emulators.d` and the transfer folder are shared by the whole
 # run, and a definition left imported here changes what the catalog holds for
 # every file after this one -- which is how three checks in test_imported.py
