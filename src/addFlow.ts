@@ -50,12 +50,6 @@ const CONSOLES = {
   vita: { games: listInstalledVitaGames, core: vitaCoreId, name: "Vita3K" },
 } as const;
 
-export const SYSTEM_NAME: Record<Console, string> = {
-  ps3: "Sony - PlayStation 3",
-  ps4: "Sony - PlayStation 4",
-  vita: "Sony - PlayStation Vita",
-};
-
 /**
  * What the draft's error says when the lookup itself did not complete.
  *
@@ -153,9 +147,6 @@ export async function selectPackagedGame(
     return false;
   }
 }
-
-/** Kept for the PS3 games picker, which only ever lists one console's games. */
-export const selectPs3Game = (titleId: string) => selectPackagedGame("ps3", titleId);
 
 /**
  * Make `romPath` the game being added: probe it, choose a core, resolve artwork.

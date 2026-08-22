@@ -333,8 +333,3 @@ export const deleteStrayLaunchers = callable<
   [paths: string[]],
   { ok: boolean; deleted: number }
 >("delete_stray_launchers");
-
-export const rebuildLaunchers = callable<
-  [],
-  { ok: boolean; error?: string; rebuilt?: number; skipped?: string[] }
->("rebuild_launchers");

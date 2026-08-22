@@ -125,6 +125,9 @@ export const installVitaPackage = callable<
  * the on-screen keyboard is not a route anybody would take — but pasting is, if
  * the key is open in Steam's own browser on the Deck. It lands where a key sent
  * by transfer would land, so both routes end at the same search.
+ *
+ * Nothing calls this today -- the paste field was taken out of the UI -- and it
+ * stays anyway, so putting that field back is a change to the panel alone.
  */
 export const saveVitaKey = callable<
   [pkgPath: string, key: string],
