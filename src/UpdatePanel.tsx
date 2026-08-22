@@ -19,7 +19,7 @@ import {
   type PluginVersion,
   type UpdateCheck,
 } from "./backend";
-import { callWithRetry } from "./timeout";
+import { OVER_THE_NETWORK, callWithRetry } from "./timeout";
 import { canInstallUpdates, installUpdate } from "./updater";
 import { noteCheck, setUpdateDotEnabled } from "./updateSignal";
 import { describe, FRONTEND_BUILD, FRONTEND_VERSION, isStale } from "./version";
@@ -174,7 +174,21 @@ export function UpdatePanel() {
       // backend whenever its files change and drops whatever was in flight, so a
       // single attempt reports "the backend did not answer" for what is really a
       // reload that has already finished.
-      const found = await callWithRetry(() => checkForUpdate(force));
+      //
+      // **But not on the default timings**, and this is the one call in the
+      // plugin where that matters. The defaults -- eight attempts, two seconds
+      // each -- are justified by the work behind a backend call taking single
+      // -digit milliseconds. This one crosses the network to GitHub, so two
+      // seconds is a perfectly ordinary duration rather than evidence of a lost
+      // reply. Retrying then does not recover anything: decky cannot cancel, so
+      // the abandoned attempt's request keeps running and the retry starts
+      // another. Measured while GitHub was timing out: 23 requests in fifteen
+      // seconds against a budget of sixty an hour, which is how a slow check
+      // turns into a rate-limited one.
+      //
+      // Long enough to let a real answer arrive, and one retry -- which is all
+      // the reload case ever needed.
+      const found = await callWithRetry(() => checkForUpdate(force), OVER_THE_NETWORK);
       setUpdate(found);
       // The icon reads this too. Without it, pressing "check for updates" here
       // and learning there is none would leave the dot lit until the panel was

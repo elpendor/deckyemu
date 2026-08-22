@@ -24,6 +24,7 @@ does not answer instead of having to wonder whether a token was wrong.
 import json
 import os
 import re
+import threading
 import time
 
 import decky
@@ -238,6 +239,25 @@ def _save_cache():
             pass
 
 
+#: Held while a check is talking to GitHub, so callers cannot overlap.
+#:
+#: The backoff above is sequential: `failed_at` is written when a request
+#: *finishes*, so it says nothing about one still in flight. Overlapping callers
+#: therefore each saw an empty backoff and each went out.
+#:
+#: That is not hypothetical. A single slow reply produced **23 requests in about
+#: fifteen seconds** from one backend process, against a budget of sixty an
+#: hour. The panel wraps this call in a retry with a two-second per-attempt
+#: timeout -- reasonable for a backend call that takes milliseconds, wrong for
+#: one that crosses the network -- and decky cannot cancel work, so every
+#: abandoned attempt left its request running and started another.
+#:
+#: Taken without blocking, deliberately. A caller who cannot have the lock is
+#: not made to wait for a request that may take thirty seconds: it gets whatever
+#: is cached and returns immediately, which is the right answer for an update
+#: check and keeps slow calls from filling the executor's thread pool.
+_fetch_lock = threading.Lock()
+
 def fetch_releases(force=False):
     """Installable releases, newest first. Cached, and never raises."""
     if not _loaded:
@@ -252,6 +272,23 @@ def fetch_releases(force=False):
     # on purpose, so the Updates tab keeps explaining the real reason rather
     # than reporting a check that never ran.
     if not force and _cache["failed_at"] and now - _cache["failed_at"] < FAILURE_BACKOFF_SECONDS:
+        return _cache["releases"]
+
+    if not _fetch_lock.acquire(blocking=False):
+        # Somebody else is already asking. Their answer will be this one.
+        return _cache["releases"]
+    try:
+        return _fetch_locked(force)
+    finally:
+        _fetch_lock.release()
+
+
+def _fetch_locked(force):
+    """The request itself. Only ever entered by one caller at a time."""
+    now = time.time()
+    # Re-read the cache now the lock is held: a request that finished while this
+    # caller was queued behind it has already answered the question.
+    if not force and _cache["releases"] and now - _cache["at"] < CACHE_SECONDS:
         return _cache["releases"]
 
     failure = {}

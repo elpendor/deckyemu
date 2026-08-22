@@ -42,7 +42,7 @@ import { TransferStatusPanel } from "./TransferStatusPanel";
 import { ManagePage, MANAGE_ROUTE, openManagePage } from "./ManagePage";
 import { patchGameContextMenu } from "./steam/contextMenu";
 import { watchLaunches } from "./launchGate";
-import { callWithRetry } from "./timeout";
+import { OVER_THE_NETWORK, callWithRetry } from "./timeout";
 import { openModal } from "./modalStack";
 
 const EMPTY_STATUS: RetroArchStatus = {
@@ -470,7 +470,7 @@ export default definePlugin(() => {
    * Cheap: the backend has just checked, and this is unforced, so it is
    * answered from the same cache rather than another request.
    */
-  void callWithRetry(() => checkForUpdate(false))
+  void callWithRetry(() => checkForUpdate(false), OVER_THE_NETWORK)
     .then(noteCheck)
     .catch((error) => console.error("[deckyemu] could not check for updates", error));
 

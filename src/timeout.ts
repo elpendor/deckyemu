@@ -38,6 +38,23 @@ export interface RetryOptions {
   onAttempt?: (attempt: number, attempts: number) => void;
 }
 
+/**
+ * Timings for a backend call that crosses the network, rather than one that
+ * only crosses to the backend.
+ *
+ * The defaults below assume the work takes single-digit milliseconds, so two
+ * seconds without an answer means the reply was dropped by a reload and
+ * retrying recovers it. That reasoning does not survive a call to GitHub: two
+ * seconds is an ordinary duration there, decky cannot cancel the abandoned
+ * attempt, and the retry starts a second request while the first is still
+ * running. Measured against a timing-out GitHub, the defaults turned one slow
+ * check into 23 requests in fifteen seconds -- against a budget of sixty an
+ * hour, which is how being slow becomes being rate-limited.
+ *
+ * One retry, because the dropped-reply case never needed more than that.
+ */
+export const OVER_THE_NETWORK: RetryOptions = { attempts: 2, ms: 30000 };
+
 export async function callWithRetry<T>(
   call: () => Promise<T>,
   {
