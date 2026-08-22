@@ -28,6 +28,7 @@ import emu_install
 import emulator_catalog
 import emulators
 import launchers
+import procout
 import store
 import sysenv
 
@@ -441,32 +442,19 @@ class Firmware(plugin_base.PluginContext):
             decky.logger.exception("Could not start %s", argv[0])
             return False, "Could not run %s: %s" % (emulator.get("name", "emulator"), error)
 
-        tail = []
+        output = procout.Output()
         # An emulator that prints a line per file would otherwise fill the log
         # with one install. See CollapsedLog.
         collapsed = CollapsedLog(emulator.get("id", "emu"))
 
         async def _read():
-            buffer = ""
-            while True:
-                chunk = await process.stdout.read(256)
-                if not chunk:
-                    break
-                buffer += chunk.decode("utf-8", errors="replace")
-                segments = re.split(r"[\r\n]+", buffer)
-                buffer = segments.pop()
-                for segment in segments:
-                    text = segment.strip()
-                    if not text:
-                        continue
-                    collapsed.write(text)
-                    tail.append(text)
-                    del tail[:-5]
-                    # Never collapsed: this drives the progress bar, and a bar
-                    # that stops moving during the longest part of an install is
-                    # indistinguishable from one that has died.
-                    if on_line:
-                        await on_line(text)
+            async for text in output.segments(process.stdout):
+                collapsed.write(text)
+                # Never collapsed: this drives the progress bar, and a bar
+                # that stops moving during the longest part of an install is
+                # indistinguishable from one that has died.
+                if on_line:
+                    await on_line(text)
             collapsed.finish()
             return await process.wait()
 
@@ -485,9 +473,8 @@ class Firmware(plugin_base.PluginContext):
             )
 
         if code != 0:
-            reason = " ".join(tail).strip() or "no output"
             return False, "%s exited with code %d: %s" % (
-                emulator.get("name", "The emulator"), code, reason
+                emulator.get("name", "The emulator"), code, output.reason
             )
         return True, ""
 

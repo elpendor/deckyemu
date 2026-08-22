@@ -6,6 +6,7 @@ import inspect
 import json
 import os
 import posixpath
+import procout
 import re
 import sys
 from typing import Optional
@@ -2144,39 +2145,12 @@ class Plugin(
                     )
                     return
 
-                # Kept so a failure can be explained rather than reduced to a
-                # number -- flatpak writes the actual reason here.
-                tail = []
-                # flatpak redraws its progress line with carriage returns, so
-                # output is split on those as well as newlines. Buffering whole
-                # segments keeps numbers intact across chunk boundaries.
-                buffer = ""
-                while True:
-                    chunk = await process.stdout.read(256)
-                    if not chunk:
-                        break
-                    buffer += chunk.decode("utf-8", errors="replace")
-
-                    segments = re.split(r"[\r\n]+", buffer)
-                    # The final piece may be incomplete; hold it back.
-                    buffer = segments.pop()
-
-                    for segment in segments:
-                        text = segment.strip()
-                        if not text:
-                            continue
-                        decky.logger.info("flatpak: %s", text)
-                        tail.append(text)
-                        del tail[:-5]
-                        await decky.emit(
-                            "retroarch_install_progress", text, self._parse_percent(text)
-                        )
-
-                if buffer.strip():
-                    text = buffer.strip()
+                # The output keeps its own last few lines, so a failure can be
+                # explained rather than reduced to a number -- flatpak writes
+                # the actual reason there.
+                output = procout.Output()
+                async for text in output.segments(process.stdout):
                     decky.logger.info("flatpak: %s", text)
-                    tail.append(text)
-                    del tail[:-5]
                     await decky.emit(
                         "retroarch_install_progress", text, self._parse_percent(text)
                     )
@@ -2186,11 +2160,10 @@ class Plugin(
 
                 # remote-add is allowed to fail: the remote usually already exists.
                 if code != 0 and "install" in argv:
-                    reason = " ".join(tail).strip() or "no output"
                     await decky.emit(
                         "retroarch_install_done",
                         False,
-                        "flatpak exited with code %d: %s" % (code, reason),
+                        "flatpak exited with code %d: %s" % (code, output.reason),
                     )
                     return
 

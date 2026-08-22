@@ -15,7 +15,6 @@ Mixed into `Plugin` rather than called by it -- see plugin_firmware for why.
 
 import asyncio
 import os
-import re
 
 import decky
 
@@ -29,6 +28,7 @@ import fileserver
 import installer
 import launchers
 import platforms
+import procout
 import ps3_games
 import ra_detect
 import store
@@ -799,38 +799,21 @@ class Emulators(plugin_base.PluginContext):
                 decky.logger.exception("Could not start %s", argv[0])
                 return False, "Could not run flatpak: %s" % error
 
-            # flatpak redraws its progress line with carriage returns, and a
-            # percentage split across two reads yields a nonsense number, so
-            # whole segments are buffered before anything is parsed out of them.
-            tail = []
-            buffer = ""
-            while True:
-                chunk = await process.stdout.read(256)
-                if not chunk:
-                    break
-                buffer += chunk.decode("utf-8", errors="replace")
-                segments = re.split(r"[\r\n]+", buffer)
-                buffer = segments.pop()
-                for segment in segments:
-                    text = segment.strip()
-                    if not text:
-                        continue
-                    decky.logger.info("flatpak: %s", text)
-                    tail.append(text)
-                    del tail[:-5]
-                    await decky.emit(
-                        "emulator_install_progress",
-                        entry_id,
-                        text,
-                        self._parse_percent(text),
-                    )
+            output = procout.Output()
+            async for text in output.segments(process.stdout):
+                decky.logger.info("flatpak: %s", text)
+                await decky.emit(
+                    "emulator_install_progress",
+                    entry_id,
+                    text,
+                    self._parse_percent(text),
+                )
 
             code = await process.wait()
             if code != 0 and any(verb in argv for verb in must_succeed):
                 # The last lines are where flatpak puts the reason; the exit code
                 # alone has cost a debugging round before.
-                reason = " ".join(tail).strip() or "no output"
-                return False, "flatpak exited with code %d: %s" % (code, reason)
+                return False, "flatpak exited with code %d: %s" % (code, output.reason)
 
         return True, ""
 
