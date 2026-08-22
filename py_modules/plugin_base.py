@@ -38,8 +38,15 @@ class PluginContext:
     _install: Optional[dict]
 
     # --- running things --------------------------------------------------
-    def _run(self, function: Callable[..., Any], *args: Any) -> Awaitable[Any]:
-        """Run a blocking call in the executor. Every filesystem touch goes through this."""
+    def _run(
+        self, func: Callable[..., Any], *args: Any, **kwargs: Any
+    ) -> Awaitable[Any]:
+        """Run a blocking call in the executor. Every filesystem touch goes through this.
+
+        Keyword arguments pass through, which this said nothing about for a
+        while: a mixin reading only the declaration had no way to know it could
+        write `self._run(f, path, create=False)` rather than a lambda.
+        """
         raise NotImplementedError
 
     def _detach(self, coro: Any, event: str, *args: Any) -> "asyncio.Task[None]":
@@ -47,10 +54,20 @@ class PluginContext:
         raise NotImplementedError
 
     def _run_emulator_tool(
-        self, emulator: dict, args: list, allow: Any = (), seconds: int = 0,
-        on_line: Any = None, display: bool = False,
+        self, emulator: dict, args: list, allow: Any = (), seconds: int = 600,
+        on_line: Any = None, display: bool = False, env_overrides: Any = None,
+        wrapper: Any = (),
     ) -> Awaitable[Any]:
-        """Run an emulator as a command-line tool, with no window."""
+        """Run an emulator as a command-line tool, with no window.
+
+        Every parameter is repeated from the implementation in plugin_firmware,
+        defaults included: a declaration that is merely close enough is worse
+        than none, because it reads as checked. This one had drifted two
+        parameters and a default behind -- `env_overrides` and `wrapper` were
+        added for the config-priming run, and `seconds` said 0 here against 600
+        there -- and nothing noticed, because mypy leaves the bodies of
+        unannotated defs alone and every caller happened to pass `seconds`.
+        """
         raise NotImplementedError
 
     @staticmethod
@@ -80,7 +97,8 @@ class PluginContext:
         """The standalone emulator behind a core id, or None for a libretro core."""
         raise NotImplementedError
 
-    def _entry_platform(self, settings: dict, core: Optional[dict], entry: Any = None) -> str:
+    @classmethod
+    def _entry_platform(cls, settings: dict, core: Optional[dict], entry: Any = None) -> str:
         """The platform label for a game, which decides its collection."""
         raise NotImplementedError
 

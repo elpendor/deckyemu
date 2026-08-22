@@ -15,8 +15,10 @@ forgetting the base class is the other way this arrangement fails, and it fails
 as "that endpoint does not exist" at runtime on a Deck.
 """
 
+import inspect
 import os
 import sys
+from itertools import zip_longest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -68,6 +70,46 @@ _unimplemented = sorted(
 check("every declared helper is implemented by something in the class",
       _unimplemented, [])
 check("and the declaration is not empty", len(_declared) > 8, True)
+
+# Existing is not the same as matching. `_run_emulator_tool` gained
+# `env_overrides` and `wrapper` for the config-priming run and disagreed with
+# its declaration for several releases; `_run` never declared the `**kwargs` it
+# has always accepted, and `_entry_platform` was declared an instance method
+# against a classmethod. None of it failed anywhere: the calls resolve on the
+# instance regardless, and mypy does not read the bodies of unannotated defs,
+# which is what every implementation here is. So a declaration that is merely
+# close enough reads as checked while promising the wrong thing, and this is
+# the only place that can say otherwise.
+#
+# Names, kinds and defaults, but deliberately not annotations: the declarations
+# are typed and the implementations are not, which is the arrangement mypy.ini
+# argues for and not a drift to report.
+_signatures = {}
+for _name in sorted(_declared):
+    _pair = []
+    for _source in (_context, main.Plugin):
+        _static = inspect.getattr_static(_source, _name)
+        _func = _static.__func__ if isinstance(_static, (staticmethod, classmethod)) else None
+        try:
+            _sig = inspect.signature(_func if _func is not None else getattr(_source, _name))
+        except (TypeError, ValueError):
+            _sig = None
+        _pair.append(
+            None if _sig is None
+            else [(p.name, p.kind, p.default) for p in _sig.parameters.values()]
+        )
+    if _pair[0] != _pair[1]:
+        # Named down to the parameter that differs, because the first version of
+        # this reported both signatures as lists of names -- and the drift it
+        # caught was a *default*, so the failure printed two identical-looking
+        # lists and said they were not equal.
+        _shown = []
+        for _left, _right in zip_longest(_pair[0] or [], _pair[1] or []):
+            if _left != _right:
+                _shown.append("%s != %s" % (_left, _right))
+        _signatures[_name] = "; ".join(_shown)
+
+check("and its signature is the one that is implemented", _signatures, {})
 
 # The frontend reaches these by name through getattr, which is what decky does.
 # Covered from the other direction by the contract check in test_backend.py;
