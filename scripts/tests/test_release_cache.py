@@ -50,11 +50,25 @@ def _fake_get_json(url, headers=None, failure=None):
 
 
 def _refuse(url, headers=None, failure=None):
-    """GitHub answering with something unusable, e.g. a rate limit."""
+    """GitHub refusing on the budget: 403 with the counter at zero."""
     _asked[0] += 1
     if failure is not None:
         failure["status"] = 403
         failure["rate_remaining"] = "0"
+    return None
+
+
+def _refuse_plainly(url, headers=None, failure=None):
+    """GitHub failing for some other reason.
+
+    Told apart from the one above because the two now behave differently: a
+    rate limit names the moment it lifts, so asking again before then cannot
+    work and is refused even when forced. Anything else is only backed off for
+    a while, and "check now" still goes out.
+    """
+    _asked[0] += 1
+    if failure is not None:
+        failure["status"] = 500
     return None
 
 
@@ -66,7 +80,12 @@ def _restart():
     the wrong reason.
     """
     releases._cache.update({"releases": [], "at": 0.0, "ok": False,
-                            "error": "Not checked yet.", "failed_at": 0.0})
+                            "error": "Not checked yet.", "failed_at": 0.0,
+                            # Held in memory only, so a real new process has
+                            # none. Left out of here, a window recorded before
+                            # the restart went on refusing checks afterwards --
+                            # which is the fake being wrong, not the code.
+                            "blocked_until": 0.0})
     releases._loaded = False
     _asked[0] = 0
 
@@ -150,7 +169,7 @@ try:
     # or a Deck beside the machine its developer is working on, reaches it
     # without anybody doing anything wrong.
     releases.clear_cache()
-    net.get_json = _refuse
+    net.get_json = _refuse_plainly
     decky.logger.level = logging.CRITICAL  # the failures are deliberate
     _restart()
     releases.fetch_releases()
@@ -174,8 +193,39 @@ try:
     releases.fetch_releases()
     check("and once the wait is over it tries again on its own", _asked[0], 1)
 
+    section("a rate limit is waited out, even when somebody presses check now")
+
+    # Stronger than the backoff above, and deliberately so. GitHub says when the
+    # budget returns; a request sent before then is certain to fail and counts
+    # against the next window as well. Pressing the button harder cannot help,
+    # so it is refused with the wait named instead.
+    #
+    # The hole this closes was watched happening: the panel showed
+    # "rate limit exceeded", and every press spent another request on an answer
+    # that could not exist yet.
+    releases.clear_cache()
+    net.get_json = _refuse
+    _restart()
+    releases.fetch_releases()
+    check("the first one goes out and comes back refused", _asked[0], 1)
+
+    _asked[0] = 0
+    releases.fetch_releases(force=True)
+    check("forcing does not spend another request", _asked[0], 0)
+    check("and the panel is told how long to wait",
+          "minute" in releases.check("1.0.0")["error"], True)
+
+    # The window is GitHub's to end, so a check after it may go out again.
+    releases._cache["blocked_until"] = time.time() - 1
+    _asked[0] = 0
+    releases.fetch_releases(force=True)
+    check("once the window passes, checking works again", _asked[0], 1)
+
+    section("a working check clears what a failed one recorded")
+
     net.get_json = _fake_get_json
     releases._cache["failed_at"] = time.time()
+    releases._cache["blocked_until"] = 0.0
     releases.fetch_releases(force=True)
     check("a check that works clears the wait rather than serving it out",
           releases._cache["failed_at"], 0.0)

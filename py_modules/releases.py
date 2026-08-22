@@ -62,7 +62,7 @@ _SHA256_RE = re.compile(r"sha256:\s*([0-9a-f]{64})", re.IGNORECASE)
 # reporting that as a failure told the user GitHub was unreachable when it had
 # answered perfectly.
 _cache = {"at": 0.0, "releases": [], "ok": False, "error": "Not checked yet.",
-          "failed_at": 0.0}
+          "failed_at": 0.0, "blocked_until": 0.0}
 
 #: How long a *failed* check waits before going back to GitHub.
 #:
@@ -258,12 +258,38 @@ def _save_cache():
 #: check and keeps slow calls from filling the executor's thread pool.
 _fetch_lock = threading.Lock()
 
+
+def _rate_limit_wait(now):
+    """How long until GitHub will answer again, or "" if it will answer now."""
+    until = _cache.get("blocked_until") or 0.0
+    if not until or now >= until:
+        return ""
+    minutes = int((until - now) / 60) + 1
+    return "%d minute%s" % (minutes, "" if minutes == 1 else "s")
+
+
 def fetch_releases(force=False):
     """Installable releases, newest first. Cached, and never raises."""
     if not _loaded:
         _load_cache()
 
     now = time.time()
+
+    # Before everything else, including `force`. GitHub told us when the budget
+    # comes back, and nothing sent before then can succeed -- a forced check
+    # while rate-limited spends a request that is certain to fail and counts
+    # against the next window too. "Check now" is somebody asking for a fresh
+    # look, not for a request nobody could answer.
+    wait = _rate_limit_wait(now)
+    if wait:
+        _cache["ok"] = False
+        _cache["error"] = (
+            "GitHub is rate-limiting this network, so a newer DeckyEmu cannot be "
+            "looked up for another %s. Unauthenticated requests share a budget of "
+            "60 an hour per address, and it clears on its own." % wait
+        )
+        return _cache["releases"]
+
     if not force and _cache["releases"] and now - _cache["at"] < CACHE_SECONDS:
         return _cache["releases"]
 
@@ -308,6 +334,8 @@ def _fetch_locked(force):
         _cache["ok"] = False
         _cache["error"] = _failure_message(failure)
         _cache["failed_at"] = now
+        # Remembered so the next caller is refused here rather than at GitHub.
+        _cache["blocked_until"] = net.rate_limit_reset(failure, now)
         return _cache["releases"]
 
     if not isinstance(raw, list):
@@ -327,6 +355,7 @@ def _fetch_locked(force):
     _cache["ok"] = True
     _cache["error"] = ""
     _cache["failed_at"] = 0.0
+    _cache["blocked_until"] = 0.0
     _save_cache()
     return releases
 
@@ -382,6 +411,7 @@ def clear_cache():
     _cache["ok"] = False
     _cache["error"] = "Not checked yet."
     _cache["failed_at"] = 0.0
+    _cache["blocked_until"] = 0.0
     # Both halves, or "clear" would only mean "until the next call reads the
     # file back". `_loaded` stays true for the same reason: this is a request
     # for no cached answer, not for the old one to be loaded again.

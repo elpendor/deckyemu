@@ -35,9 +35,14 @@ import releases  # noqa: E402
 
 
 def _reset():
-    releases._cache.update(
-        {"at": 0.0, "releases": [], "ok": False, "error": "", "failed_at": 0.0}
-    )
+    """Back to a cache that has answered nothing.
+
+    `clear_cache` rather than a hand-written dict of keys. The hand-written
+    version listed five of them and went stale the moment a sixth was added --
+    a rate-limit window left by an earlier file then refused every check here,
+    and the failure looked like the lock rather than the fixture.
+    """
+    releases.clear_cache()
     releases._loaded = True          # do not read the developer's own cache file
 
 

@@ -318,6 +318,11 @@ def get_bytes(url, headers=None, max_bytes=12 * 1024 * 1024, failure=None):
             failure["status"] = error.code
             failure["retry_after"] = headers_out.get("Retry-After", "")
             failure["rate_remaining"] = headers_out.get("X-RateLimit-Remaining", "")
+            # When the budget comes back, as a unix timestamp. GitHub sends it
+            # with every rate-limited answer, and it is the only thing that
+            # makes waiting the right length rather than a guess -- see
+            # `rate_limit_reset`.
+            failure["rate_reset"] = headers_out.get("X-RateLimit-Reset", "")
         return None, None
     except (urllib.error.URLError, OSError) as error:
         decky.logger.warning("GET failed for %s: %s", url, error)
@@ -434,6 +439,39 @@ def get_json(url, headers=None, failure=None):
         return None
 
 
+def is_rate_limited(failure):
+    """Whether this failure is GitHub refusing on the budget rather than at all.
+
+    A 403 is not enough on its own -- it is also what a bad token answers -- so
+    the exhausted counter is what tells them apart. Here rather than at each
+    caller because two callers reading this dict independently is exactly how
+    the same 403 was once reported as a rate limit in one place and as the
+    project having moved off GitHub in another.
+    """
+    failure = failure or {}
+    return (failure.get("status") in (403, 429)
+            and str(failure.get("rate_remaining")) == "0")
+
+
+def rate_limit_reset(failure, now):
+    """When it is worth asking again, as a timestamp, or 0.0 if not rate limited.
+
+    `X-RateLimit-Reset` is GitHub's own answer and is preferred; `Retry-After`
+    is the fallback for anything that sends one instead. Without either, an
+    hour: that is the window the budget is measured over, so it is the longest
+    the wait could be and the safest thing to assume when nobody said.
+    """
+    if not is_rate_limited(failure):
+        return 0.0
+    reset = str((failure or {}).get("rate_reset") or "").strip()
+    if reset.isdigit():
+        return float(reset)
+    after = str((failure or {}).get("retry_after") or "").strip()
+    if after.isdigit():
+        return now + float(after)
+    return now + 3600.0
+
+
 def failure_message(failure, subject, not_found=""):
     """What to tell the user about a filled-in `failure` dict.
 
@@ -452,7 +490,7 @@ def failure_message(failure, subject, not_found=""):
     in the diagnostic report.
     """
     status = failure.get("status")
-    if status in (403, 429) and str(failure.get("rate_remaining")) == "0":
+    if is_rate_limited(dict(failure or {}, status=status)):
         # Nothing here authenticates, so the budget is 60 requests an hour for
         # the whole address -- which a household, or a Deck beside the machine
         # its developer is working on, can reach without anybody doing anything
