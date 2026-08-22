@@ -5,9 +5,10 @@
   "type": "module",
   "scripts": {
     "build": "rollup -c",
-    "check": "tsc --noEmit && rollup -c && vitest run && python -m mypy py_modules main.py && python scripts/test_backend.py --offline && python -m compileall -q main.py py_modules && python scripts/check_release_build.py",
+    "check": "tsc --noEmit && eslint . && rollup -c && vitest run && python -m mypy py_modules main.py && python scripts/test_backend.py --offline && python -m compileall -q main.py py_modules && python scripts/check_release_build.py",
     "deploy": "bash scripts/deploy.sh",
     "dev": "rollup -c && bash scripts/deploy.sh",
+    "lint": "eslint .",
     "test": "python scripts/test_backend.py",
     "test:offline": "python scripts/test_backend.py --offline",
     "test:ui": "vitest run",
@@ -36,12 +37,16 @@
   "devDependencies": {
     "@decky/rollup": "^1.0.2",
     "@decky/ui": "^4.11.0",
+    "@eslint/js": "^10.0.1",
     "@rollup/rollup-linux-x64-musl": "^4.53.3",
     "@types/react": "19.1.1",
     "@types/react-dom": "19.1.1",
     "@types/webpack": "^5.28.5",
+    "eslint": "^10.9.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
     "rollup": "^4.53.3",
     "typescript": "^5.6.2",
+    "typescript-eslint": "^8.67.0",
     "vitest": "^4.1.10"
   },
   "dependencies": {

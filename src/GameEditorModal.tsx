@@ -324,7 +324,7 @@ export function GameEditorModal({ game, onSaved, closeModal, onLeave }: Props) {
     // callback keeps the name the field had when the editor opened, so typing
     // a name and *then* picking a game threw the typed name away -- the one
     // case the rule exists to protect.
-  }, [romPath, game.app_id, coreId, game.title, title]);
+  }, [romPath, game.app_id, coreId, game.title, title, byFilename]);
 
   /**
    * Re-run the normal name and artwork lookup for the current core.
@@ -365,7 +365,13 @@ export function GameEditorModal({ game, onSaved, closeModal, onLeave }: Props) {
     } finally {
       setRefreshing(false);
     }
-  }, [romPath, coreId, system, game.app_id, game.title]);
+    // `title` and not only `game.title`, for the reason spelled out on
+    // `pickRom` above: `game.title` is the name the editor opened with, and
+    // `title` is what is in the field now. Without it this button looked the
+    // game up under the old name after somebody typed a new one -- the same
+    // fault `pickRom` was fixed for, in the callback beside it, left behind
+    // because the fix was made by hand and this array was not read again.
+  }, [romPath, coreId, system, game.app_id, game.title, title, byFilename]);
 
   const currentOptions = useCallback((): GameOptions => {
     const options: GameOptions = {};

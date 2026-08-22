@@ -226,7 +226,15 @@ export function TransferModal({
   // `onClosed` in its dependency list, a caller passing an inline function would
   // make it fire on every render instead of once at the end.
   const closedRef = useRef(onClosed);
-  closedRef.current = onClosed;
+  // Updated in an effect rather than assigned during render. A ref written
+  // while rendering is written again if React discards and replays that render,
+  // and the value is not the one the committed tree is holding -- so the rule
+  // against it is not pedantry even where, as here, the write happens to be
+  // idempotent. No dependency array: it has to track the latest prop, and the
+  // cost of running after every render is one assignment.
+  useEffect(() => {
+    closedRef.current = onClosed;
+  });
   useEffect(() => () => closedRef.current?.(), []);
 
   /*
@@ -244,7 +252,10 @@ export function TransferModal({
    * status rather than whichever one it was created with.
    */
   const statusRef = useRef<FileServerStatus | null>(null);
-  statusRef.current = status;
+  // In an effect, for the same reason as `closedRef` above.
+  useEffect(() => {
+    statusRef.current = status;
+  });
   // So a dismissal that already stopped the server does not ask again on the
   // way out. Not merely wasteful: the second call would race a server the user
   // has since restarted from the panel.

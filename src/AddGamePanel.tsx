@@ -522,7 +522,7 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
         }}
       />,
     );
-  }, [romPath, coreId, title]);
+  }, [romPath, coreId]);
 
   const addToSteam = useCallback(async () => {
     if (!romPath || !coreId) return;

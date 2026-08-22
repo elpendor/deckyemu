@@ -36,10 +36,10 @@ const open = new Set<ShowModalResult>();
  * replaces them.
  */
 export function openModal(modal: ReactNode): ShowModalResult {
-  // Declared first: the callback closes over it, and it has to be the same
-  // object the caller gets back.
-  let handle: ShowModalResult;
-  handle = showModal(modal, undefined, {
+  // `fnOnClose` closes over `handle` before the assignment completes, which is
+  // fine and not a trick: the arrow is only built here, and by the time Steam
+  // calls it the binding is the same object the caller was handed back.
+  const handle: ShowModalResult = showModal(modal, undefined, {
     strTitle: "Decky Dialog",
     bHideMainWindowForPopouts: false,
     fnOnClose: () => {

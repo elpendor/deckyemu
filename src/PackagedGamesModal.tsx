@@ -68,7 +68,7 @@ export function PackagedGamesModal({ system, closeModal }: Props) {
         console.error(`[deckyemu] could not list installed ${system} games`, error);
         setGames([]);
       });
-  }, [system]);
+  }, [system, console_]);
 
   return (
     <ModalRoot closeModal={closeModal}>
