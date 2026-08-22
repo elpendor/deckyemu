@@ -35,7 +35,16 @@ export function confirmDiscardTransfer(
 ): void {
   openModal(
     <ConfirmModal
-      strTitle={`Delete ${file.name}?`}
+      /*
+       * The name is in the body, not the title.
+       *
+       * A .pkg arrives named
+       * UP4415-NPUB31749_00-GOATSIMULATORPS3_bg_1_fbd920a6....pkg -- a hundred
+       * characters with no spaces in them, so a title built from it has no
+       * break to wrap at and runs out of the dialog. The title says what the
+       * question is; the name is the detail it is about.
+       */
+      strTitle="Delete this file?"
       strOKButtonText="Delete"
       bDestructiveWarning
       onOK={() =>
@@ -60,11 +69,25 @@ export function confirmDiscardTransfer(
         })()
       }
       strDescription={
-        <div style={DANGER_TEXT}>
-          This deletes {humanSize(file.size)} from the transfer folder on this Deck.
-          It cannot be undone from here — the file would have to be sent again.
-          Anything already added to your library or installed into an emulator is
-          unaffected.
+        <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+          {/*
+           * Wrapped whole rather than cut short, which is the opposite of what
+           * the transfer status row does with the same names -- and the
+           * difference is what the reader is doing. That row repolls and a name
+           * allowed to reflow would change the panel's height every couple of
+           * seconds, so it gets one line and a middle ellipsis. This is a
+           * destructive question asked once, and the answer depends on being
+           * sure which file it is. `anywhere` because these names have no
+           * spaces to break at.
+           */}
+          <div style={{ overflowWrap: "anywhere", fontWeight: 600 }}>{file.name}</div>
+
+          <div style={DANGER_TEXT}>
+            This deletes {humanSize(file.size)} from the transfer folder on this Deck.
+            It cannot be undone from here — the file would have to be sent again.
+            Anything already added to your library or installed into an emulator is
+            unaffected.
+          </div>
         </div>
       }
     />,

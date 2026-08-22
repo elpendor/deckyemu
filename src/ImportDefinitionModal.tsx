@@ -75,7 +75,10 @@ export function ImportDefinitionModal({ closeModal, onImported }: Props) {
       {files?.map((file) => (
         <Field
           key={file.name}
-          label={file.name}
+          // Wrapped, for the reason the delete confirmation is: a filename has
+          // no spaces to break at, so a long one runs out of the row rather
+          // than onto a second line.
+          label={<span style={{ overflowWrap: "anywhere" }}>{file.name}</span>}
           description={humanSize(file.size)}
           childrenContainerWidth="min"
         >
