@@ -274,8 +274,66 @@ jobs:
           )
           PY
 
+      # The sourcemap is around 60% of the download and nothing a user can reach
+      # will ever read it. Reading one means enabling remote CEF debugging,
+      # restarting Steam, and attaching a browser from a second machine on the
+      # network -- Desktop Mode, a keyboard and another device, which is the
+      # exact combination this plugin exists to do without. Anybody in a
+      # position to do it built the bundle and already has the map beside it.
+      #
+      # What a user actually has instead is Updates -> Report a problem, which
+      # is why that feature exists: frontend errors reach the backend log
+      # through `log_frontend_error` and travel in a redacted report.
+      #
+      # Dropped from the *release* only. `scripts/deploy.sh` still sends the
+      # whole of dist/ to the Deck, where the map does help while debugging on
+      # the device -- these are deliberately two paths, and the map is worth
+      # its size on exactly one of them.
+      - name: Drop the sourcemap from the release
+        run: |
+          python - <<'PY'
+          import pathlib, sys
+
+          dist = pathlib.Path("artifact/deckyemu/dist")
+          bundle, sourcemap = dist / "index.js", dist / "index.js.map"
+
+          # Asserted before removing, so this step fails loudly if rollup ever
+          # stops emitting a map rather than quietly becoming a no-op that
+          # everyone goes on believing in.
+          if not sourcemap.is_file() or not sourcemap.stat().st_size:
+              sys.exit("::error::No sourcemap to drop -- has the build changed?")
+          dropped = sourcemap.stat().st_size
+          sourcemap.unlink()
+
+          # The comment has to go with it, or devtools asks for a file that is
+          # no longer there. Matched on the whole trailing line rather than the
+          # bare filename: the point is to leave no reference at all.
+          text = bundle.read_text(encoding="utf-8")
+          if "sourceMappingURL" not in text:
+              sys.exit("::error::Bundle carries no sourcemap reference to strip.")
+          stripped = "\n".join(
+              line for line in text.splitlines() if "sourceMappingURL" not in line
+          ) + "\n"
+          if "sourceMappingURL" in stripped:
+              sys.exit("::error::A sourcemap reference survived stripping.")
+          bundle.write_text(stripped, encoding="utf-8", newline="\n")
+
+          # The bundle still has to be the bundle. Stripping a trailing comment
+          # should cost a line and nothing else, and a check that only proves
+          # the reference is gone would pass just as well on an empty file.
+          if not bundle.stat().st_size:
+              sys.exit("::error::Stripping emptied the bundle.")
+          if len(stripped.splitlines()) != len(text.splitlines()) - 1:
+              sys.exit("::error::Stripping removed more than the one line.")
+          print("Dropped %d KB of sourcemap from the release." % (dropped // 1024))
+          PY
+
       # Fails the build rather than shipping halves that disagree, which is the
       # confusing state this stamping exists to make visible.
+      #
+      # Reads `artifact/` for the frontend half rather than `dist/`, because the
+      # step above rewrites the bundle on its way into the artifact and the only
+      # copy worth asserting on is the one that ships.
       #
       # Asserted on `FRONTEND_BUILD`, the constant the bundle actually exports,
       # rather than on the `__DECKYEMU_BUILD__` placeholder it is built from.
@@ -286,7 +344,7 @@ jobs:
       # for a day.
       - name: Check both halves carry the same stamp
         run: |
-          grep -q "FRONTEND_BUILD = \"${{ steps.commit.outputs.sha }}\"" dist/index.js
+          grep -q "FRONTEND_BUILD = \"${{ steps.commit.outputs.sha }}\"" artifact/deckyemu/dist/index.js
           grep -q "${{ steps.commit.outputs.sha }}" artifact/deckyemu/build.json
 
       - uses: actions/upload-artifact@v7

@@ -77,7 +77,8 @@ ssh deck@steamdeck.local 'sudo systemctl restart plugin_loader'
 For frontend logs and React state, open `chrome://inspect` in a desktop Chrome,
 add `<deck-ip>:8081` under *Discover network targets*, and inspect
 **SharedJSContext**. The deployed sourcemap points stack traces at the original
-`.tsx`.
+`.tsx` — deployed only: a published release ships without one, so traces there
+are minified. Deploy from this repo when you need to read them.
 
 The backend log carries no prefix of its own — decky writes the timestamp and
 level, and the message follows. Every public method on `Plugin` is wrapped, so a
