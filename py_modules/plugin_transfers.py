@@ -40,7 +40,6 @@ class Transfers(plugin_base.PluginContext):
 
     async def file_server_status(self):
         status = await self._run(fileserver.status)
-        status["received"] = await self._run(fileserver.received_files)
         # Its own folder, not wherever ROMs are browsed from -- see
         # fileserver.default_dir.
         status["suggested_dir"] = await self._run(fileserver.default_dir)
@@ -165,7 +164,6 @@ class Transfers(plugin_base.PluginContext):
                 },
             )
 
-        result["received"] = await self._run(fileserver.received_files)
         return {"ok": True, **result}
 
     async def reset_transfer_link(self):
@@ -195,7 +193,6 @@ class Transfers(plugin_base.PluginContext):
     async def stop_file_server(self):
         """Stop the server, whatever is happening. The Stop button."""
         result = await self._run(fileserver.stop)
-        result["received"] = await self._run(fileserver.received_files)
         return {"ok": True, **result}
 
     async def stop_file_server_if_idle(self):
@@ -209,7 +206,6 @@ class Transfers(plugin_base.PluginContext):
         top of the upload that had just begun.
         """
         result = await self._run(fileserver.stop_if_idle)
-        result["received"] = await self._run(fileserver.received_files)
         return {"ok": True, **result}
 
     async def discard_transferred_file(self, name: str):
@@ -256,5 +252,4 @@ class Transfers(plugin_base.PluginContext):
         """
         cancelled = await self._run(fileserver.cancel, upload_id or None)
         status = await self._run(fileserver.status)
-        status["received"] = await self._run(fileserver.received_files)
         return {"ok": True, "cancelled": cancelled, **status}

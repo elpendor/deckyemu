@@ -43,8 +43,12 @@ def _write(name, text="{}"):
 
 section("what is waiting is read off the folder, not off this session")
 
-# Nothing was received by this process, so the old route sees none of these.
-check("this session took delivery of nothing", fileserver.received_files(), [])
+# The dialog's list and the inbox listing are the same answer now. They were
+# not: `received_files` held what this *process* took delivery of, so it was
+# empty after a reload while the files sat on disk -- which is why a ROM sent
+# yesterday had nothing pointing at it and could be neither added nor deleted.
+check("the dialog's list is the folder, not this session's uploads",
+      fileserver.received_files(), fileserver.inbox_files())
 
 _write("first%s" % imported.SUFFIX)
 _write("second%s" % imported.SUFFIX)
@@ -65,6 +69,17 @@ _recent = _write("newest%s" % imported.SUFFIX)
 os.utime(_recent, (2 ** 31 - 1, 2 ** 31 - 1))
 check("newest first", fileserver.inbox_files(imported.SUFFIX)[0]["name"],
       "newest%s" % imported.SUFFIX)
+
+
+# But the *sender's* page is not the panel, and must not become it. The upload
+# page is served to whoever holds the QR code, and it lists what they sent so
+# they do not send it twice. Listing the folder there would show a house guest
+# every ROM staged on the Deck, which is a different promise from the one the
+# panel makes to its owner.
+check("the sender's page still lists only what this session took delivery of",
+      fileserver._received, [])
+check("even though the folder has files in it",
+      len(fileserver.inbox_files()) > 0, True)
 
 
 section("a name reaches one of those files, and nothing else")

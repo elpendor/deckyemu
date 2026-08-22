@@ -71,6 +71,14 @@ _thread = None
 _token = ""
 _target_dir = ""
 _last_activity = 0.0
+#: What *this process* took delivery of, for the sender's own page.
+#:
+#: Deliberately not what the panel lists. The panel answers "what is waiting on
+#: the Deck" and reads the folder, because a file sent yesterday is still there
+#: and still wanted. This answers "what you have sent", which is a different
+#: question with a different audience: the upload page is served to whoever
+#: holds the QR code, and listing the whole staging folder to them would show a
+#: house guest every ROM on it. They see what they sent.
 _received: list = []
 # A diagnostic report waiting to be read off the device, or "".
 #
@@ -941,6 +949,10 @@ def status():
     # Before the lock: it reads the directory, and holding the lock across a
     # filesystem call would put every upload's per-chunk progress write behind it.
     paused = _paused_count()
+    # Outside the lock, for the same reason `paused` is: both read the disk, and
+    # holding the state lock across a directory scan would block every upload
+    # handler trying to register itself.
+    waiting = received_files()
     with _state_lock:
         running = _server is not None
         return {
@@ -984,7 +996,11 @@ def status():
             ],
             "port": _server.server_port if running else 0,
             "target_dir": _target_dir,
-            "received": list(reversed(_received)),
+            # What is in the folder, not what this process took delivery of.
+            # The plugin layer used to overwrite this field with exactly that,
+            # in four places, because the two disagreed -- so they agree here
+            # instead and there is one answer to the question.
+            "received": waiting,
             "idle_seconds": int(_now() - _last_activity) if running else 0,
             "idle_timeout": IDLE_TIMEOUT,
         }
@@ -1192,18 +1208,29 @@ def current_token():
         return _token
 
 
+#: How many files the inbox listing will report.
+#:
+#: The list this replaced kept the last 50 uploads in memory and so was bounded
+#: by accident. A folder scan is not: somebody staging a ROM library into this
+#: folder would otherwise hand the panel a thousand rows to draw, on a device
+#: where that is felt. Newest first, so the cap drops the ones least likely to
+#: be what anybody is looking for.
+INBOX_LISTED = 100
+
+
 def inbox_files(suffix=""):
     """What is sitting in the transfer folder now, newest first.
 
-    Read off the disk rather than from `_received`, and that is the difference
-    that matters: `received_files` lists what *this session* took delivery of,
-    which is empty after a reload and empty on a Deck that was sent a file
-    yesterday. Anything offering to act on a file the user already sent has to
-    look in the folder.
+    Read off the disk rather than from a list of what this process happened to
+    take delivery of, which is what this used to be and why a file sent
+    yesterday had nothing pointing at it: the list was cleared by every new
+    server session and by every backend reload, while the file stayed where it
+    was. A way back to a sent file that forgets overnight is not one.
 
     The folder rather than a path the caller supplies. A definition names things
-    to install and directories to write into, so which file is being read is not
-    a decision the frontend gets to make -- it names one of these.
+    to install and directories to write into, and the delete button acts on
+    whatever is named -- so which file that is must not be the frontend's
+    decision. It names one of these.
     """
     directory = default_dir(create=False)
     try:
@@ -1227,7 +1254,7 @@ def inbox_files(suffix=""):
         found.append({"name": name, "path": path, "size": info.st_size,
                       "at": int(info.st_mtime)})
     found.sort(key=lambda item: item["at"], reverse=True)
-    return found
+    return found[:INBOX_LISTED]
 
 
 def inbox_path(name):
@@ -1250,14 +1277,16 @@ def inbox_path(name):
 
 
 def received_files():
-    """Uploaded files that are still on disk, newest first."""
-    with _state_lock:
-        entries = list(reversed(_received))
-    alive = []
-    for entry in entries:
-        if not os.path.isfile(entry["path"]):
-            continue
-        if entry["name"].lower().endswith(_IGNORED_SUFFIXES):
-            continue
-        alive.append(entry)
-    return alive
+    """What the transfer dialog lists as waiting, newest first.
+
+    The folder, not a record of this session's uploads. It was the latter, and
+    the cost was written down in the frontend long before it was fixed: the
+    received list is the only way back to a sent file, and it did not survive a
+    reload -- after one the file was on disk with nothing pointing at it, so a
+    ROM sent yesterday could not be added, and nothing could delete it either.
+
+    Kept as its own name rather than folded into `inbox_files` because the two
+    answer different questions and only happen to agree today: this one is what
+    the dialog shows, and if that ever needs filtering it belongs here.
+    """
+    return inbox_files()
