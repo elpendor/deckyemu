@@ -3,7 +3,7 @@
 
     python scripts/tests/test_plugin_mixins.py
 
-Nine modules contribute methods to one class. If two of them ever define the
+Ten modules contribute methods to one class. If two of them ever define the
 same name, the MRO picks the leftmost silently: no error, no warning, and an
 endpoint that quietly runs the wrong code. It is the one hazard the split
 introduced, and nothing else can see it -- the frontend gets an answer either
@@ -34,7 +34,8 @@ _bases = [cls for cls in main.Plugin.__mro__ if cls is not object]
 check("every mixin written is mixed in",
       sorted(cls.__name__ for cls in _bases),
       ["Accounts", "Audit", "DevReset", "Emulators", "Firmware", "PackagedGames",
-       "Plugin", "PluginContext", "Startup", "Transfers", "Updates"])
+       "Plugin", "PluginContext", "RetroArchInstall", "Startup", "Transfers",
+       "Updates"])
 
 # PluginContext is the exception and the only one: it *declares* the shared
 # surface every mixin uses and implements none of it, so overlapping with
@@ -56,7 +57,7 @@ check("no name is defined by more than one of them", _collisions, {})
 # Not a tautology: the classes really do contribute, so an empty collision set
 # means something.
 check("and they contribute enough for that to mean something",
-      len(_owners) > 100 and len(_bases) == 11, True)
+      len(_owners) > 100 and len(_bases) == 12, True)
 
 # The other direction, which is what the declarations are for: everything a
 # mixin is promised must actually exist further along the MRO. Without this a

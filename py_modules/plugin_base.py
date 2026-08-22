@@ -39,6 +39,9 @@ class PluginContext:
     #: The registered standalone emulators, as the catalog shapes them. Rebuilt
     #: by `_refresh_emulators`, and stale for the same reason `_install` is.
     _emulators: list
+    #: The libretro cores found in the detected install. Rebuilt by
+    #: `refresh_retroarch`, and empty when there is no RetroArch.
+    _cores: list
 
     # --- running things --------------------------------------------------
     def _run(
@@ -82,8 +85,23 @@ class PluginContext:
         """Run one flatpak command to completion; `{"ok": ...}` and the reason if not."""
         raise NotImplementedError
 
+    @classmethod
+    def _parse_percent(cls, text: str) -> int:
+        """The last sane percentage in a line of a program's output, or -1.
+
+        Undeclared here until the RetroArch installer moved out, although three
+        mixins were already calling it -- which is the gap this file exists to
+        close, found by the one thing that looks: a mixin that had to say what
+        it needed.
+        """
+        raise NotImplementedError
+
     def _refresh_emulators(self) -> Awaitable[list]:
         """Re-read the registered emulators and return them."""
+        raise NotImplementedError
+
+    def list_cores(self) -> Awaitable[list]:
+        """The installed cores, re-scanned. What a ROM can actually be run with."""
         raise NotImplementedError
 
     def refresh_retroarch(self) -> Awaitable[dict]:

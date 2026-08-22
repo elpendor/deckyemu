@@ -4,7 +4,6 @@ import glob
 import inspect
 import os
 import posixpath
-import procout
 import re
 import sys
 from typing import Optional
@@ -28,6 +27,7 @@ import plugin_devreset
 import plugin_emulators
 import plugin_firmware
 import plugin_packages
+import plugin_retroarch
 import plugin_startup
 import plugin_transfers
 import plugin_updates
@@ -259,6 +259,7 @@ class Plugin(
     plugin_emulators.Emulators,
     plugin_firmware.Firmware,
     plugin_packages.PackagedGames,
+    plugin_retroarch.RetroArchInstall,
     plugin_startup.Startup,
     plugin_transfers.Transfers,
     plugin_updates.Updates,
@@ -439,6 +440,124 @@ class Plugin(
                     decky.logger.exception("Could not report the failure of %s", event)
 
         return self.loop.create_task(guarded())
+
+    # ------------------------------------------------- running other programs
+    #
+    # Reached by four of the mixins through plugin_base, not only by the
+    # RetroArch installer they used to sit inside. They were in the middle of
+    # that section, between installing RetroArch and streaming its output,
+    # which read as if they belonged to it.
+
+    @staticmethod
+    def _subprocess_env():
+        """Environment for flatpak, with HOME guaranteed to be the user's.
+
+        The plugin does not inherit a login shell's environment. `flatpak --user`
+        resolves its installation from HOME/XDG_DATA_HOME, so a missing or wrong
+        HOME makes it fail immediately -- and the exit code alone gives no hint
+        why.
+        """
+        # Steam's runtime libraries make flatpak fail instantly with an
+        # OPENSSL symbol error, so they are cleared first.
+        env = sysenv.clean_env()
+        home = env.get("DECKY_USER_HOME") or ra_detect.user_home()
+        if home:
+            env["HOME"] = home
+            env.setdefault("XDG_DATA_HOME", os.path.join(home, ".local", "share"))
+            env.setdefault("XDG_CACHE_HOME", os.path.join(home, ".cache"))
+        env.setdefault("PATH", "/usr/bin:/bin:/usr/local/bin")
+
+        # The session bus, which `flatpak uninstall --delete-data` needs and
+        # nothing else here does.
+        #
+        # The plugin is started by a systemd service and inherits no bus
+        # address, so flatpak tried to autolaunch one and answered "Cannot
+        # autolaunch D-Bus without X11 $DISPLAY" -- on a device that has no X11
+        # and does not need one, since the bus is already running and its socket
+        # is right there. What made it expensive is where it failed: the app was
+        # uninstalled first and the data deletion second, so removing RetroArch
+        # *with* its saves reported an error having already removed RetroArch.
+        #
+        # Set only when the socket exists, and never overriding an inherited
+        # one: naming an address for a bus that is not there turns a clear
+        # autolaunch message into a connection refused.
+        runtime = env.get("XDG_RUNTIME_DIR")
+        if not runtime and hasattr(os, "getuid"):
+            runtime = "/run/user/%d" % os.getuid()
+        if runtime and os.path.exists(os.path.join(runtime, "bus")):
+            env.setdefault("XDG_RUNTIME_DIR", runtime)
+            env.setdefault(
+                "DBUS_SESSION_BUS_ADDRESS",
+                "unix:path=%s" % posixpath.join(runtime, "bus"),
+            )
+        return env
+
+    async def _run_flatpak(self, argv):
+        """Run one flatpak command to completion and report what it said.
+
+        For the flatpak operations with nothing worth streaming -- removing
+        RetroArch, removing an emulator -- as opposed to `_stream_flatpak`, which
+        buffers the carriage-return redraws of a download to drive a progress
+        bar. Both exist; this is the one for a verb that either works or does
+        not.
+
+        Written once because it has already been written wrongly twice. The
+        dev-reset tab grew its own copy and left out `env=` -- and without that,
+        Steam's runtime libraries are still on the path and flatpak dies on
+        `libcrypto.so.3: version OPENSSL_3.4.0 not found` before it does
+        anything. That copy also logged nothing, so the failure arrived as a
+        toast and left no trace to read afterwards. Then the emulator uninstall
+        and the RetroArch uninstall carried two more copies, identical line for
+        line, one of them under a docstring saying this should be shared.
+
+        Every line flatpak prints is logged: a removal that fails needs its
+        reason kept somewhere the user was not required to be looking. The last
+        two lines come back as the error, because that is where flatpak puts the
+        reason and the exit code alone has cost a debugging round before.
+        """
+        decky.logger.info("Running: %s", " ".join(argv))
+        try:
+            process = await asyncio.create_subprocess_exec(
+                *argv,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+                # Steam's runtime libraries break system binaries. Without this
+                # the command never gets as far as doing anything.
+                env=self._subprocess_env(),
+            )
+            output, _ = await asyncio.wait_for(process.communicate(), timeout=180)
+        except asyncio.TimeoutError:
+            return {"ok": False, "error": "flatpak did not finish within three minutes."}
+        except (OSError, NotImplementedError) as error:
+            decky.logger.exception("Could not run flatpak")
+            return {"ok": False, "error": "Could not run flatpak: %s" % error}
+
+        text = (output or b"").decode("utf-8", errors="replace").strip()
+        for line in text.splitlines():
+            decky.logger.info("flatpak: %s", line)
+
+        if process.returncode != 0:
+            tail = [line for line in text.splitlines() if line.strip()][-2:]
+            return {
+                "ok": False,
+                "error": " | ".join(tail) or "flatpak exited with %s" % process.returncode,
+            }
+        return {"ok": True}
+
+    # `(?<!\d)` matters: output is read in fixed-size chunks, so a number can be
+    # split across two reads. Without the guard, "1425%" yields 425 and the
+    # progress bar is driven past 100 and off the right edge of its track.
+    _PERCENT_RE = re.compile(r"(?<!\d)(\d{1,3})\s*%")
+
+    @classmethod
+    def _parse_percent(cls, text):
+        """The last sane percentage in `text`, or -1 when there is none."""
+        best = -1
+        for match in cls._PERCENT_RE.finditer(text):
+            value = int(match.group(1))
+            if 0 <= value <= 100:
+                best = value
+        return best
 
     # ---------------------------------------------------------------- discovery
 
@@ -1864,318 +1983,6 @@ class Plugin(
                 decky.logger.warning("Could not delete %s: %s", rom_path, error)
             return gone
         return 0
-
-    # ---------------------------------------------------------------- installing
-
-    async def list_installable_cores(self, refresh: bool = False):
-        """The full buildbot catalog, annotated with what is already installed."""
-        catalog = await self._run(installer.core_catalog, refresh)
-        installed = {core["id"] for core in await self.list_cores()}
-        for entry in catalog:
-            entry["installed"] = entry["id"] in installed
-        return catalog
-
-    async def suggest_cores_for_extension(self, extension: str):
-        """Installable cores that claim `extension`, for ROMs with no local core."""
-        ext = (extension or "").lower().lstrip(".")
-        if not ext:
-            return []
-        catalog = await self.list_installable_cores()
-        return [entry for entry in catalog if ext in entry["extensions"]]
-
-    async def install_core(self, core_id: str):
-        if not self._install:
-            return {"ok": False, "error": "RetroArch was not found on this system."}
-
-        await decky.emit("core_install_progress", core_id, "downloading", 0)
-        result = await self._run(installer.install_core, self._install, core_id)
-
-        if result.get("ok"):
-            # Re-scan so the new core is immediately selectable.
-            self._cores = await self._run(ra_cores.list_cores, self._install)
-            result["core_count"] = len(self._cores)
-            await decky.emit("core_install_progress", core_id, "done", 100)
-        else:
-            await decky.emit("core_install_progress", core_id, "failed", 0)
-
-        return result
-
-    async def uninstall_core(self, core_id: str):
-        if not self._install:
-            return {"ok": False, "error": "RetroArch was not found on this system."}
-        result = await self._run(installer.uninstall_core, self._install, core_id)
-        if result.get("ok"):
-            self._cores = await self._run(ra_cores.list_cores, self._install)
-            result["core_count"] = len(self._cores)
-        return result
-
-    async def can_install_retroarch(self):
-        return {"flatpak_available": bool(await self._run(installer.flatpak_binary))}
-
-    async def can_uninstall_retroarch(self):
-        """Whether removing RetroArch is something this plugin may attempt.
-
-        Reported rather than decided in the UI so the reason can be shown: a
-        greyed-out button with no explanation is worse than no button.
-        """
-        if not self._install:
-            return {"ok": False, "reason": "RetroArch is not installed."}
-
-        kind = self._install.get("kind")
-        if kind != "flatpak":
-            return {
-                "ok": False,
-                "kind": kind,
-                "reason": (
-                    "This is a native package install, which belongs to the system's package "
-                    "manager and would need SteamOS's read-only filesystem unlocked."
-                    if kind == "native"
-                    else "This is a loose AppImage that DeckyEmu did not install, so it is not "
-                    "DeckyEmu's to delete. Remove the file yourself if you want it gone."
-                ),
-            }
-
-        scope = await self._run(ra_detect.flatpak_scope)
-        if scope == "system":
-            return {
-                "ok": False,
-                "kind": kind,
-                "scope": scope,
-                "reason": (
-                    "This flatpak was installed system-wide, most likely by EmuDeck or Discover. "
-                    "Removing it needs root, which the plugin cannot supply. Uninstall it from "
-                    "Discover in desktop mode."
-                ),
-            }
-
-        return {"ok": True, "kind": kind, "scope": scope or "user"}
-
-    async def uninstall_retroarch(self, delete_data: bool = False):
-        """Remove the user-scope RetroArch flatpak.
-
-        Deliberately synchronous, unlike the install: removal takes a couple of
-        seconds and has nothing worth streaming, and a result the UI can act on
-        beats a progress bar here.
-
-        Games already added to Steam keep their shortcuts and launcher scripts.
-        Nothing is rewritten, because reinstalling RetroArch makes every one of
-        them work again -- and deleting them here would be an unrelated,
-        irreversible act hidden behind a button labelled "uninstall RetroArch".
-        """
-        allowed = await self.can_uninstall_retroarch()
-        if not allowed.get("ok"):
-            return {"ok": False, "error": allowed.get("reason", "RetroArch cannot be removed.")}
-
-        argv = await self._run(installer.retroarch_uninstall_argv, bool(delete_data))
-        if not argv:
-            return {"ok": False, "error": "flatpak is not available on this system."}
-
-        result = await self._run_flatpak(argv)
-
-        # Re-detected whether or not that succeeded, and the failure case is the
-        # one that needs it. `--delete-data` removes the application first and
-        # its data second, so a failure in the second half leaves RetroArch
-        # already gone -- and returning the error without re-detecting left every
-        # tab still showing it as installed, which is a worse answer than the
-        # error. It is also how a failed-but-zero-exit removal gets caught.
-        await self.refresh_retroarch()
-        if not result.get("ok"):
-            return dict(result, still_installed=bool(self._install))
-        return {
-            "ok": True,
-            "still_installed": bool(self._install),
-            "deleted_data": bool(delete_data),
-        }
-
-    async def install_retroarch(self):
-        """Kick off a user-scope flatpak install, streaming progress as events."""
-        if self._install:
-            return {"ok": False, "error": "RetroArch is already installed."}
-
-        steps = await self._run(installer.retroarch_install_argv)
-        if not steps:
-            return {
-                "ok": False,
-                "error": "flatpak is not available on this system, so RetroArch cannot be installed automatically.",
-            }
-
-        self._detach(self._run_retroarch_install(steps), "retroarch_install_done")
-        return {"ok": True, "started": True}
-
-    @staticmethod
-    def _subprocess_env():
-        """Environment for flatpak, with HOME guaranteed to be the user's.
-
-        The plugin does not inherit a login shell's environment. `flatpak --user`
-        resolves its installation from HOME/XDG_DATA_HOME, so a missing or wrong
-        HOME makes it fail immediately -- and the exit code alone gives no hint
-        why.
-        """
-        # Steam's runtime libraries make flatpak fail instantly with an
-        # OPENSSL symbol error, so they are cleared first.
-        env = sysenv.clean_env()
-        home = env.get("DECKY_USER_HOME") or ra_detect.user_home()
-        if home:
-            env["HOME"] = home
-            env.setdefault("XDG_DATA_HOME", os.path.join(home, ".local", "share"))
-            env.setdefault("XDG_CACHE_HOME", os.path.join(home, ".cache"))
-        env.setdefault("PATH", "/usr/bin:/bin:/usr/local/bin")
-
-        # The session bus, which `flatpak uninstall --delete-data` needs and
-        # nothing else here does.
-        #
-        # The plugin is started by a systemd service and inherits no bus
-        # address, so flatpak tried to autolaunch one and answered "Cannot
-        # autolaunch D-Bus without X11 $DISPLAY" -- on a device that has no X11
-        # and does not need one, since the bus is already running and its socket
-        # is right there. What made it expensive is where it failed: the app was
-        # uninstalled first and the data deletion second, so removing RetroArch
-        # *with* its saves reported an error having already removed RetroArch.
-        #
-        # Set only when the socket exists, and never overriding an inherited
-        # one: naming an address for a bus that is not there turns a clear
-        # autolaunch message into a connection refused.
-        runtime = env.get("XDG_RUNTIME_DIR")
-        if not runtime and hasattr(os, "getuid"):
-            runtime = "/run/user/%d" % os.getuid()
-        if runtime and os.path.exists(os.path.join(runtime, "bus")):
-            env.setdefault("XDG_RUNTIME_DIR", runtime)
-            env.setdefault(
-                "DBUS_SESSION_BUS_ADDRESS",
-                "unix:path=%s" % posixpath.join(runtime, "bus"),
-            )
-        return env
-
-    async def _run_flatpak(self, argv):
-        """Run one flatpak command to completion and report what it said.
-
-        For the flatpak operations with nothing worth streaming -- removing
-        RetroArch, removing an emulator -- as opposed to `_stream_flatpak`, which
-        buffers the carriage-return redraws of a download to drive a progress
-        bar. Both exist; this is the one for a verb that either works or does
-        not.
-
-        Written once because it has already been written wrongly twice. The
-        dev-reset tab grew its own copy and left out `env=` -- and without that,
-        Steam's runtime libraries are still on the path and flatpak dies on
-        `libcrypto.so.3: version OPENSSL_3.4.0 not found` before it does
-        anything. That copy also logged nothing, so the failure arrived as a
-        toast and left no trace to read afterwards. Then the emulator uninstall
-        and the RetroArch uninstall carried two more copies, identical line for
-        line, one of them under a docstring saying this should be shared.
-
-        Every line flatpak prints is logged: a removal that fails needs its
-        reason kept somewhere the user was not required to be looking. The last
-        two lines come back as the error, because that is where flatpak puts the
-        reason and the exit code alone has cost a debugging round before.
-        """
-        decky.logger.info("Running: %s", " ".join(argv))
-        try:
-            process = await asyncio.create_subprocess_exec(
-                *argv,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.STDOUT,
-                # Steam's runtime libraries break system binaries. Without this
-                # the command never gets as far as doing anything.
-                env=self._subprocess_env(),
-            )
-            output, _ = await asyncio.wait_for(process.communicate(), timeout=180)
-        except asyncio.TimeoutError:
-            return {"ok": False, "error": "flatpak did not finish within three minutes."}
-        except (OSError, NotImplementedError) as error:
-            decky.logger.exception("Could not run flatpak")
-            return {"ok": False, "error": "Could not run flatpak: %s" % error}
-
-        text = (output or b"").decode("utf-8", errors="replace").strip()
-        for line in text.splitlines():
-            decky.logger.info("flatpak: %s", line)
-
-        if process.returncode != 0:
-            tail = [line for line in text.splitlines() if line.strip()][-2:]
-            return {
-                "ok": False,
-                "error": " | ".join(tail) or "flatpak exited with %s" % process.returncode,
-            }
-        return {"ok": True}
-
-    # `(?<!\d)` matters: output is read in fixed-size chunks, so a number can be
-    # split across two reads. Without the guard, "1425%" yields 425 and the
-    # progress bar is driven past 100 and off the right edge of its track.
-    _PERCENT_RE = re.compile(r"(?<!\d)(\d{1,3})\s*%")
-
-    @classmethod
-    def _parse_percent(cls, text):
-        """The last sane percentage in `text`, or -1 when there is none."""
-        best = -1
-        for match in cls._PERCENT_RE.finditer(text):
-            value = int(match.group(1))
-            if 0 <= value <= 100:
-                best = value
-        return best
-
-    async def _run_retroarch_install(self, steps):
-        """RetroArch is a large download, so progress is streamed to the UI."""
-        env = self._subprocess_env()
-        decky.logger.info(
-            "Install environment: HOME=%s XDG_DATA_HOME=%s",
-            env.get("HOME"),
-            env.get("XDG_DATA_HOME"),
-        )
-
-        try:
-            for argv in steps:
-                decky.logger.info("Running: %s", " ".join(argv))
-                try:
-                    process = await asyncio.create_subprocess_exec(
-                        *argv,
-                        stdout=asyncio.subprocess.PIPE,
-                        stderr=asyncio.subprocess.STDOUT,
-                        env=env,
-                    )
-                except (OSError, NotImplementedError) as error:
-                    # NotImplementedError happens when the event loop cannot
-                    # spawn children, which is not obvious from an exit code.
-                    decky.logger.exception("Could not start %s", argv[0])
-                    await decky.emit(
-                        "retroarch_install_done", False, "Could not run flatpak: %s" % error
-                    )
-                    return
-
-                # The output keeps its own last few lines, so a failure can be
-                # explained rather than reduced to a number -- flatpak writes
-                # the actual reason there.
-                output = procout.Output()
-                async for text in output.segments(process.stdout):
-                    decky.logger.info("flatpak: %s", text)
-                    await decky.emit(
-                        "retroarch_install_progress", text, self._parse_percent(text)
-                    )
-
-                code = await process.wait()
-                decky.logger.info("%s exited with %d", argv[1] if len(argv) > 1 else argv[0], code)
-
-                # remote-add is allowed to fail: the remote usually already exists.
-                if code != 0 and "install" in argv:
-                    await decky.emit(
-                        "retroarch_install_done",
-                        False,
-                        "flatpak exited with code %d: %s" % (code, output.reason),
-                    )
-                    return
-
-            status = await self.refresh_retroarch()
-            await decky.emit(
-                "retroarch_install_done",
-                bool(status["found"]),
-                "" if status["found"] else "Install finished but RetroArch was still not found.",
-            )
-        # Only the expected failure, and deliberately not CancelledError: this
-        # runs detached, so `_detach` re-raises a cancellation properly and
-        # reports anything else. Catching it here swallowed an unload, then tried
-        # to emit over the socket that was closing.
-        except OSError as error:
-            decky.logger.exception("RetroArch install failed")
-            await decky.emit("retroarch_install_done", False, str(error))
 
     # ------------------------------------------------------- custom emulators
 
