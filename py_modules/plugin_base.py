@@ -36,6 +36,9 @@ class PluginContext:
     #: The detected RetroArch install, or None when there is not one. Re-read by
     #: `refresh_retroarch`, so never cache it across an await.
     _install: Optional[dict]
+    #: The registered standalone emulators, as the catalog shapes them. Rebuilt
+    #: by `_refresh_emulators`, and stale for the same reason `_install` is.
+    _emulators: list
 
     # --- running things --------------------------------------------------
     def _run(
@@ -156,4 +159,13 @@ class PluginContext:
 
     def rebuild_launchers(self) -> Awaitable[dict]:
         """Rewrite every launcher script from the current settings."""
+        raise NotImplementedError
+
+    def plugin_version(self) -> Awaitable[dict]:
+        """What this build is: the version, the commit CI stamped, and its notes.
+
+        Wanted by more than the Updates tab -- a diagnostic report leads with it,
+        because "which build is this" is the first question any bug report has
+        to answer and the last one anybody thinks to include.
+        """
         raise NotImplementedError
