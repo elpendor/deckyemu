@@ -5,11 +5,12 @@ import {
   PanelSectionRow,
 } from "@decky/ui";
 import { useQuickAccessVisible } from "@decky/api";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 
 import { fileServerStatus, type FileServerStatus } from "./backend";
 import { humanSize, ProgressBar, TransferModal } from "./TransferModal";
 import { openModal } from "./modalStack";
+import { shortenMiddle } from "./shortenMiddle";
 
 /**
  * What is happening with the file server, for the panel you land on afterwards.
@@ -23,6 +24,30 @@ import { openModal } from "./modalStack";
  * So the state lives here instead, for as long as it is true.
  */
 const POLL_MS = 2000;
+
+/**
+ * How much of a filename to keep before cutting its middle out.
+ *
+ * Chosen to fit the Quick Access panel at the description's font size with room
+ * to spare rather than measured exactly -- and it does not have to be exact,
+ * because `CLAMP` below is what actually guarantees one line. This decides
+ * *where* the name is cut, which is the part CSS gets wrong; the CSS is the
+ * backstop for a panel narrower than assumed.
+ */
+const NAME_BUDGET = 44;
+
+/**
+ * One line, whatever arrives.
+ *
+ * `shortenMiddle` handles the names it can predict; this covers the rest --
+ * there is no width this is measured against, so the guarantee has to come from
+ * the layout rather than from a character count being right.
+ */
+const CLAMP: React.CSSProperties = {
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+};
 
 export function TransferStatusPanel() {
   const [status, setStatus] = useState<FileServerStatus | null>(null);
@@ -66,13 +91,33 @@ export function TransferStatusPanel() {
   const fraction = total > 0 ? received / total : 0;
 
   let label: string;
-  let description: string;
+  let description: ReactNode;
   if (uploads.length === 1) {
     const file = uploads[0];
     label = file.cancelled ? "Cancelling" : "Arriving";
-    description = file.cancelled
-      ? file.name
-      : `${file.name} - ${humanSize(received)} of ${humanSize(total)}`;
+    /*
+     * The name on its own line, the sizes on theirs.
+     *
+     * Both were one string, and a long filename pushed the sizes off the end --
+     * losing the only part of this row that changes, in the row whose whole job
+     * is saying how far along a transfer is. A ROM named
+     * `Some Game (USA) (Rev 2) (Disc 1 of 2).chd` is past the width of the Quick
+     * Access panel before the first byte count is reached.
+     *
+     * Two lines rather than a wrap, for the reason InstallProgress keeps
+     * flatpak's output to one: this repolls every couple of seconds, and a name
+     * allowed to reflow would change the panel's height as the numbers beneath
+     * it grow a digit.
+     */
+    description = (
+      <>
+        {/* No `title` attribute holding the full name: it would only ever
+            surface on hover, and there is no pointer in Game Mode. The whole
+            name is a button away, in the dialog behind "Show transfer". */}
+        <div style={CLAMP}>{shortenMiddle(file.name, NAME_BUDGET)}</div>
+        {!file.cancelled && <div>{`${humanSize(received)} of ${humanSize(total)}`}</div>}
+      </>
+    );
   } else if (uploads.length > 1) {
     label = "Arriving";
     description = `${uploads.length} files - ${humanSize(received)} of ${humanSize(total)}`;
