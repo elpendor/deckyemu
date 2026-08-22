@@ -1,22 +1,31 @@
 #!/usr/bin/env python3
-"""Cancelling a transfer stops it, instead of restarting it a second later.
+"""When a transfer stops, and the two ways it stopped when it should not have.
 
-    python scripts/tests/test_cancel_stays_cancelled.py
+    python scripts/tests/test_transfer_stops.py
 
-Cancel flags the upload, shuts the socket down and deletes the half-file. From
-the sender that is a dropped connection -- which is exactly what a flaky network
-looks like, and the page is built to survive one, so it waited a second and sent
-the file again from the beginning. The row disappeared off the Deck and came
-back at 0%, which reads as Cancel not working at all.
+Both faults were the same shape: the Deck and the sending device disagreeing
+about what was happening, because one of them was working from something stale.
 
-Nothing was wrong with either half on its own. The gap was that a cancellation
-did not outlive the request it cancelled, so by the time the sender came back
-there was nothing left that knew the user had said no.
+**Cancel restarted the transfer.** Cancel flags the upload, shuts the socket
+down and deletes the half-file. From the sender that is a dropped connection --
+exactly what a flaky network looks like, and the page is built to survive one --
+so it waited a second and sent the file again from the beginning. Nothing
+outlived the request to say the user had said no.
 
-The other half of the fix is the part with a real cost if it is got wrong:
-a cancellation must not stop the same file from ever being sent again. Only the
-sender can tell a retry from a person picking the file a second time, so it says
-which one it is, and the checks below cover both.
+**Then cancel worked and the sender did not know.** Refusing the upload stops
+the bytes but cannot explain itself: a PUT carries the whole file, and a reply
+sent without reading it reaches the sender as a reset connection. The page
+showed "reconnecting" and then "connection lost" on a transfer somebody had
+deliberately cancelled. The answer belongs on the probe, which is a GET.
+
+**And closing the dialog stopped a transfer that had just begun.** Whether to
+stop the server was decided in the dialog, from its last poll -- up to a few
+seconds old. Sending a file and closing straight after read "nothing is
+uploading" from a snapshot taken before the upload started.
+
+The half with the real cost, checked hardest below: a cancellation must not stop
+the same file from ever being sent again, and the dialog going away must never
+end a transfer.
 """
 
 import json
@@ -197,6 +206,51 @@ try:
     check("with nothing left refusing it", _pending(False)["cancelled"], False)
 finally:
     fileserver.stop()
+
+
+section("closing the dialog never stops a transfer that has started")
+
+# The dialog decided this itself, from its last poll -- and a poll is up to a
+# few seconds old. Sending a file and closing the dialog straight after read
+# "nothing is uploading" from a snapshot taken before the upload began, and
+# stopped the server on top of it. The sending device went on filling a socket
+# that was closing, and the Deck never showed the transfer at all.
+#
+# Asked of the backend, the answer is the live one, so these check the decision
+# where it is now made rather than the shape the dialog used to compute.
+
+_idle_dir = os.path.join(TMP, "stop-if-idle")
+os.makedirs(_idle_dir, exist_ok=True)
+
+fileserver._in_flight.clear()
+_state = fileserver.start(_idle_dir)
+check("a server to test against", _state.get("error", ""), "")
+check("and it is running", fileserver.status()["running"], True)
+
+# An upload registered but not yet seen by any poll: the exact window.
+_in_flight(7001, os.path.join(_idle_dir, "Arriving.iso.deckyemu-part-zz"))
+_after = fileserver.stop_if_idle()
+check("a transfer in flight keeps the server up", _after["running"], True)
+check("and it is still the same server, not a restarted one",
+      fileserver.status()["running"], True)
+
+# The handler owns its entry, so this is what finishing looks like.
+del fileserver._in_flight[7001]
+_after = fileserver.stop_if_idle()
+check("and once nothing is arriving it stops", _after["running"], False)
+
+check("stopping something already stopped is not an error",
+      fileserver.stop_if_idle()["running"], False)
+
+# The unconditional Stop is a different promise and must stay one: it is the
+# user ending the transfer rather than the dialog going away.
+fileserver._in_flight.clear()
+_state = fileserver.start(_idle_dir)
+check("a server again", _state.get("error", ""), "")
+_in_flight(7002, os.path.join(_idle_dir, "Arriving.iso.deckyemu-part-yy"))
+check("Stop stops it even with something arriving",
+      fileserver.stop()["running"], False)
+fileserver._in_flight.clear()
 
 
 if __name__ == "__main__":

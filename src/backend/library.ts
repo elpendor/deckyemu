@@ -280,6 +280,19 @@ export const stopFileServer = callable<
 >("stop_file_server");
 
 /**
+ * Stop it only if nothing is arriving — what dismissing the dialog does.
+ *
+ * The decision is the backend's, and deliberately not this side's. The dialog
+ * only knows what its last poll said, so closing it in the second after a file
+ * was sent read "nothing is uploading" from a snapshot taken before the upload
+ * started, and took the server down with the transfer running.
+ */
+export const stopFileServerIfIdle = callable<
+  [],
+  { ok: boolean; running: boolean; uploading: number; paused: number }
+>("stop_file_server_if_idle");
+
+/**
  * Abandon a transfer in progress. `0` cancels every one of them.
  *
  * The half-written file is deleted with it: nothing can resume an upload, so

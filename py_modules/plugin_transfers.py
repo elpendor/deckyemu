@@ -191,7 +191,22 @@ class Transfers(plugin_base.PluginContext):
         return {"ok": True, "running": False}
 
     async def stop_file_server(self):
+        """Stop the server, whatever is happening. The Stop button."""
         result = await self._run(fileserver.stop)
+        result["received"] = await self._run(fileserver.received_files)
+        return {"ok": True, **result}
+
+    async def stop_file_server_if_idle(self):
+        """Stop it only if nothing is arriving. Dismissing the dialog.
+
+        Its own endpoint rather than a flag on the one above, because the two
+        are different promises: Stop is the user ending the transfer, and this
+        is the dialog going away, which must never do that. The difference used
+        to be decided in the dialog from its last poll -- up to a few seconds
+        old -- so closing it quickly after sending a file stopped the server on
+        top of the upload that had just begun.
+        """
+        result = await self._run(fileserver.stop_if_idle)
         result["received"] = await self._run(fileserver.received_files)
         return {"ok": True, **result}
 

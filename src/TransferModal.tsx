@@ -24,6 +24,7 @@ import {
   setSettings,
   startFileServer,
   stopFileServer,
+  stopFileServerIfIdle,
   type FileServerStatus,
 } from "./backend";
 import { selectRom } from "./addFlow";
@@ -42,7 +43,6 @@ import { logError } from "./logError";
 import { installThroughEmulator } from "./firmwareInstall";
 import { requirementForFile, type RequirementMatch } from "./firmwareMatch";
 import { closeOpenModals, openModal } from "./modalStack";
-import { shouldStopServer } from "./transferStop";
 
 /** How often to re-check while running, to pick up newly arrived files. */
 const POLL_MS = 3000;
@@ -238,34 +238,34 @@ export function TransferModal({
   useEffect(() => () => closedRef.current?.(), []);
 
   /*
-   * Stopping the server has to happen however the dialog goes.
+   * Stopping the server has to happen however the dialog goes, and whether it
+   * *should* stop is not this side's decision.
    *
-   * `close` is only one of the ways out. Opening the Quick Access panel now
+   * `close` is only one of the ways out. Opening the Quick Access panel
    * dismisses every modal this plugin has open (see index.tsx), and that path
    * calls Steam's own `Close` on the handle rather than anything in here -- so
    * for a while the two disagreed, and a dialog dismissed from outside left an
    * idle server standing until its own timeout swept it up.
    *
-   * Through refs so the unmount cleanup can stay dependency-free: given `status`
-   * in its dependency list it would tear down and re-run on every poll, and the
-   * one thing it must do is run exactly once, at the end, reading the last
-   * status rather than whichever one it was created with.
+   * The condition used to be evaluated here, against the last polled status.
+   * That status is up to a few seconds old, so closing the dialog in the second
+   * after sending a file read "nothing is uploading" from a snapshot taken
+   * before the upload began -- and stopped the server on top of a transfer that
+   * had already started. The sending device went on showing progress into a
+   * socket that was closing. `stop_file_server_if_idle` asks the backend, which
+   * reads what is in flight under the same lock the upload handlers write it
+   * with.
    */
-  const statusRef = useRef<FileServerStatus | null>(null);
-  // In an effect, for the same reason as `closedRef` above.
-  useEffect(() => {
-    statusRef.current = status;
-  });
-  // So a dismissal that already stopped the server does not ask again on the
-  // way out. Not merely wasteful: the second call would race a server the user
-  // has since restarted from the panel.
+  // So a dismissal that already asked does not ask again on the way out. Not
+  // merely wasteful: the second call would race a server the user has since
+  // restarted from the panel.
   const stoppedRef = useRef(false);
 
   const stopIfIdle = useCallback(async () => {
-    if (stoppedRef.current || !shouldStopServer(statusRef.current)) return;
+    if (stoppedRef.current) return;
     stoppedRef.current = true;
     try {
-      await stopFileServer();
+      await stopFileServerIfIdle();
     } catch (stopError) {
       logError("could not stop the file server", stopError);
     }

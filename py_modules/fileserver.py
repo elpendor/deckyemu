@@ -1116,6 +1116,39 @@ def _watch_idle():
             return
 
 
+def stop_if_idle():
+    """Stop the server unless something is still arriving. Returns the status.
+
+    The decision belongs here rather than in the dialog that asks for it, and
+    that is the whole point of the endpoint. The dialog knows what the last poll
+    told it, which is up to a few seconds old -- so closing it quickly after
+    sending a file read "nothing is uploading" from a snapshot taken before the
+    upload began, and stopped the server underneath a transfer that had already
+    started. On the sending device it went on showing progress into a socket
+    that was going away; on the Deck the row simply never appeared.
+
+    Asked here, the answer is the live one: `_in_flight` is written by the PUT
+    handlers under the same lock this reads it with.
+
+    Paused transfers count as arriving, for the reason `_paused_count` gives --
+    a sender between two attempts has no request and no entry, and is seconds
+    from coming back.
+    """
+    # First, because it reads the disk and takes the lock itself.
+    paused = _paused_count()
+    with _state_lock:
+        running = _server is not None
+        arriving = len(_in_flight)
+    if not running:
+        return status()
+    if arriving or paused:
+        decky.logger.info(
+            "Leaving the file server up: %d arriving, %d paused", arriving, paused
+        )
+        return status()
+    return stop()
+
+
 def stop():
     global _server, _thread, _token, _pin, _report
     with _state_lock:
