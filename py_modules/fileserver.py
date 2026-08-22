@@ -133,6 +133,27 @@ _durable = False
 _in_flight: dict = {}
 _upload_seq = 0
 
+#: Partial paths the user cancelled, so the sender cannot simply start again.
+#:
+#: **Cancelling has to outlive the request it cancelled.** A cancel flags the
+#: entry and shuts the socket down, and the sender sees a dropped connection --
+#: which is exactly what a flaky network looks like, so it does what it should
+#: do about a flaky network and retries about a second later. The partial has
+#: been deleted by then, so it is offered offset 0 and sends the whole file
+#: again. From the Deck that reads as Cancel not working: the row goes, and
+#: comes back at 0%.
+#:
+#: Keyed on the partial path rather than the upload id, because the id is one
+#: per request and the thing being refused is a *file*: the path carries the
+#: name and the sender's fingerprint, which is what stays the same across a
+#: retry and differs for a genuinely different file.
+#:
+#: A dict rather than a set only so the oldest can be dropped; the values are
+#: unused. Bounded for the same reason `_received` is -- a long session sending
+#: many files should not grow a list nobody reads.
+_cancelled: dict = {}
+_CANCELLED_REMEMBERED = 50
+
 # An inbox, and named as one. It was `roms` until games began being filed into
 # `roms/<system>/` as they are added, which left one folder being both the heap
 # things arrive in and the parent of the tidy library -- loose files sitting
@@ -491,6 +512,28 @@ class _Handler(BaseHTTPRequestHandler):
         # for a complete ROM.
         partial = _partial_path(destination, self.headers.get("X-Upload-Id"))
 
+        # A file the user cancelled is refused rather than restarted.
+        #
+        # `X-Upload-Restart` is how the sender says this is a fresh pick rather
+        # than a retry, which is a distinction only that end can make: a retry
+        # after a dropped connection and a person choosing the same file again
+        # are the same request otherwise. The page sends it on a job's first
+        # attempt and never on a retry, so cancelling stops the transfer and
+        # sending the file again still works.
+        #
+        # 410 rather than 409, which already means "we disagree about the
+        # offset" and is the sender's cue to retry with a corrected one. This
+        # one is terminal, and the page treats it as such.
+        restart = (self.headers.get("X-Upload-Restart") or "") == "1"
+        with _state_lock:
+            if restart:
+                _cancelled.pop(partial, None)
+            refused = not restart and partial in _cancelled
+        if refused:
+            decky.logger.info("Refusing to restart %s; it was cancelled", name)
+            self._send(410, "Cancelled on the Deck.")
+            return
+
         # Where in the file this body starts. Content-Length is the rest from
         # here, not the whole game, so everything the panel shows has to be told
         # about both numbers or a resumed 4 GB ROM reports itself as the 1.5 GB
@@ -679,6 +722,14 @@ def cancel(upload_id=None):
         ]
         for _key, entry in targets:
             entry["cancelled"] = True
+            # Remembered past the end of this request. Without it the sender's
+            # ordinary retry is indistinguishable from a resume and the file
+            # starts over -- see `_cancelled`.
+            partial = entry.get("partial")
+            if partial:
+                _cancelled[partial] = _now()
+                for stale in list(_cancelled)[:-_CANCELLED_REMEMBERED]:
+                    del _cancelled[stale]
         connections = [entry.get("connection") for _key, entry in targets]
 
     # Outside the lock: shutdown can block, and the handler needs the lock to
@@ -1003,6 +1054,9 @@ def start(target_dir, port=0, token="", uploads=True):
         # is still in flight against this one, so a leftover entry would show a
         # transfer that no longer exists and hold the panel open on it.
         _in_flight.clear()
+        # Same reasoning one line up: nothing cancelled against the previous
+        # server should refuse a send to this one.
+        _cancelled.clear()
         _target_dir = target_dir
         _last_activity = _now()
         _received.clear()

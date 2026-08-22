@@ -330,6 +330,12 @@ function attempt(job) {
     request.open('PUT', UPLOAD_BASE + encodeURIComponent(job.file.name));
     request.setRequestHeader('X-Upload-Id', fingerprint(job.file));
     request.setRequestHeader('X-Upload-Offset', String(offset));
+    // Only ever on the first attempt at a job, which is the one thing this end
+    // knows and the Deck cannot: a person picking the same file again looks
+    // exactly like a retry from there. Without the distinction, cancelling
+    // could not both stop this transfer and let the file be sent again.
+    // `tries` was incremented above, so 1 is the first attempt.
+    if (job.tries === 1) request.setRequestHeader('X-Upload-Restart', '1');
 
     // Bytes this attempt handed to the network. Not what the Deck has -- only
     // it knows that, and the next attempt asks -- but enough to tell an attempt
@@ -341,8 +347,15 @@ function attempt(job) {
       job.fill.style.width = (((offset + e.loaded) / job.file.size) * 100) + '%';
     });
     request.addEventListener('load', () => {
-      if (request.status === 200) finish(job);
-      else again(job, moved, request.responseText || ('failed (' + request.status + ')'));
+      if (request.status === 200) { finish(job); return; }
+      // 410 is the Deck saying the user cancelled this file. Terminal, and the
+      // only status here that is: everything else is worth another go, which is
+      // what makes a transfer survive a phone locking itself. Retrying this one
+      // is what made Cancel look broken -- the row vanished and came back at 0%
+      // about a second later, because a cancelled connection is indistinguish-
+      // able from a dropped one at this end.
+      if (request.status === 410) { fail(job, 'cancelled on the Deck'); return; }
+      again(job, moved, request.responseText || ('failed (' + request.status + ')'));
     });
     request.addEventListener('error', () => again(job, moved, 'connection lost'));
     request.addEventListener('abort', () => again(job, moved, 'interrupted'));

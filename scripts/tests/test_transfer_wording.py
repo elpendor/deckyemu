@@ -95,8 +95,15 @@ _finish = _page.partition("function finish(job) {")[2].partition("\n}")[0]
 check("the only move is the one that ran on a 200",
       (_page.count("already.insertBefore"), "already.insertBefore" in _finish),
       (1, True))
+# Asserted as "every call to it is guarded by a 200" rather than by matching
+# the line verbatim, which is how this was written and what broke when a second
+# terminal status was added beside it -- the guard was still there and still
+# correct, and the check failed on the punctuation around it.
+_finish_calls = [line.strip() for line in _page.splitlines() if "finish(job)" in line
+                 and "function finish" not in line]
 check("and nothing else calls it",
-      "if (request.status === 200) finish(job);" in _page, True)
+      (len(_finish_calls), all("status === 200" in line for line in _finish_calls)),
+      (1, True))
 
 section("instructions name the controls the reader will actually see")
 
