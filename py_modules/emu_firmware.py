@@ -63,7 +63,13 @@ import sysenv
 STATE_PATH = os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "firmware_installed.json")
 
 
-def _read_state():
+def read_state():
+    """The whole record of what this plugin installed where.
+
+    Public because a caller asking about every emulator at once should read it
+    once and hand it down, rather than have each requirement open the file
+    again. `status` and `_recorded` both take it for that reason.
+    """
     try:
         with open(STATE_PATH, "r", encoding="utf-8") as handle:
             data = json.load(handle)
@@ -85,8 +91,17 @@ def _write_state(state):
         decky.logger.warning("Could not record what was installed: %s", error)
 
 
-def _recorded(entry_id, requirement_name):
-    return _read_state().get(entry_id, {}).get(requirement_name, [])
+def _recorded(entry_id, requirement_name, state=None):
+    """What this plugin put in place for one requirement.
+
+    `state` is for a caller asking this many times over: without it every
+    requirement of every emulator re-opened and re-parsed the same small file,
+    which is how the firmware panel came to read `firmware_installed.json`
+    dozens of times to draw itself once. The same hoist `status` already does
+    with `available()`.
+    """
+    state = read_state() if state is None else state
+    return state.get(entry_id, {}).get(requirement_name, [])
 
 
 def resplit_record(entry_id, old_name, entry):
@@ -102,7 +117,7 @@ def resplit_record(entry_id, old_name, entry):
     it, so the split is decided by the same patterns that will match the file
     next time rather than by a table written here. Returns what moved.
     """
-    state = _read_state()
+    state = read_state()
     recorded = state.get(entry_id, {}).get(old_name)
     if not recorded:
         return {}
@@ -383,14 +398,19 @@ def matching(spec, files=None):
     return _matching(spec, available() if files is None else files)
 
 
-def status(entry, files=None):
+def status(entry, files=None, state=None):
     """What `entry` still needs, and what is already here for it.
 
     Returns a list of requirement dicts the UI can render without knowing any of
     the rules: each says whether files are waiting, whether they are already in
     place, and whether installing is something this plugin can do at all.
+
+    `files` and `state` are both here so a caller asking about every installed
+    emulator reads the transfer folder and the install record once between them
+    rather than once per requirement.
     """
     files = available() if files is None else files
+    state = read_state() if state is None else state
     report = []
 
     for requirement in entry.get("firmware") or []:
@@ -421,7 +441,7 @@ def status(entry, files=None):
             # transfer folder. Deriving it from the sent files meant a file
             # placed by hand was invisible, and -- worse -- deleting the sent
             # copy made an installed file stop reporting as installed.
-            ours = set(_recorded(entry.get("id", ""), requirement.get("name", "")))
+            ours = set(_recorded(entry.get("id", ""), requirement.get("name", ""), state))
             installed = _installed_at(requirement, destination, ours)
 
             # Anything at the destination this plugin did not put there. Removal
@@ -753,7 +773,7 @@ def install(entry, requirement_name, files=None):
         # Recorded so `uninstall` can tell these from a file the user placed
         # themselves. Merged with whatever was recorded before, since a
         # multi-file BIOS can arrive a piece at a time.
-        state = _read_state()
+        state = read_state()
         for_entry = state.setdefault(entry["id"], {})
         previous = for_entry.get(requirement_name, [])
         for_entry[requirement_name] = sorted(set(previous) | set(copied))
@@ -1067,7 +1087,7 @@ def uninstall(entry, requirement_name):
             return {"ok": False, "error": "Could not remove %s: %s" % (name, error)}
         (removed if name in ours else foreign).append(name)
 
-    state = _read_state()
+    state = read_state()
     if entry["id"] in state:
         state[entry["id"]].pop(requirement_name, None)
         if not state[entry["id"]]:

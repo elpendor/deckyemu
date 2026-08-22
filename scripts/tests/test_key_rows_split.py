@@ -78,7 +78,7 @@ emu_firmware._write_state({
 _moved = emu_firmware.resplit_record("ryujinx", "prod.keys and title.keys", ENTRY)
 check("the file moves to the row that now matches it", _moved, {"prod.keys": ["prod.keys"]})
 
-_state = emu_firmware._read_state()
+_state = emu_firmware.read_state()
 check("recorded under the new name", _state["ryujinx"].get("prod.keys"), ["prod.keys"])
 check("and the old key is gone", "prod.keys and title.keys" in _state["ryujinx"], False)
 check("another emulator's record is untouched",
@@ -107,10 +107,10 @@ section("running it twice changes nothing")
 
 # Startup steps run on every start, so the second pass has to be a no-op rather
 # than a second copy of every filename.
-_before = emu_firmware._read_state()
+_before = emu_firmware.read_state()
 check("a second pass finds nothing to move",
       emu_firmware.resplit_record("ryujinx", "prod.keys and title.keys", ENTRY), {})
-check("and leaves the records alone", emu_firmware._read_state(), _before)
+check("and leaves the records alone", emu_firmware.read_state(), _before)
 
 
 section("a record naming a file no row matches is not lost quietly")
@@ -121,7 +121,7 @@ emu_firmware._write_state({"ryujinx": {"prod.keys and title.keys": ["mystery.bin
 check("nothing is claimed to have moved",
       emu_firmware.resplit_record("ryujinx", "prod.keys and title.keys", ENTRY), {})
 check("and the dead key is still dropped",
-      "prod.keys and title.keys" in emu_firmware._read_state().get("ryujinx", {}), False)
+      "prod.keys and title.keys" in emu_firmware.read_state().get("ryujinx", {}), False)
 
 # Shared with every file after this one.
 emu_firmware._write_state({})

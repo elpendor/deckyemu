@@ -127,7 +127,12 @@ class Firmware(plugin_base.PluginContext):
         """
 
         def _collect(present_ids):
+            # Both reads hoisted out of the loop for the same reason: the answer
+            # is the same for every emulator, and asking per requirement meant
+            # the transfer folder and `firmware_installed.json` were read dozens
+            # of times to draw one panel.
             files = emu_firmware.available()
+            state = emu_firmware.read_state()
             present_entries = [
                 entry
                 for entry in emulator_catalog.CATALOG
@@ -137,7 +142,7 @@ class Firmware(plugin_base.PluginContext):
                 {
                     "id": entry["id"],
                     "name": entry["name"],
-                    "requirements": emu_firmware.status(entry, files),
+                    "requirements": emu_firmware.status(entry, files, state),
                 }
                 for entry in present_entries
             ]
