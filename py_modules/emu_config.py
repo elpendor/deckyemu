@@ -307,7 +307,15 @@ def _split_sections(lines):
         stripped = line.strip()
         if stripped.startswith("[") and stripped.endswith("]"):
             spans.append((current, start, index))
-            current = stripped[1:-1]
+            # Stripped inside the brackets, because `[ Global ]` and `[Global]`
+            # are the same section to every parser that reads these files --
+            # Supermodel's `FromINIFile` trims the name, TOML allows the
+            # whitespace outright -- and Supermodel writes the spaced form into
+            # the config it generates itself. Without this a setup block naming
+            # "Global" matched nothing, appended a second `[Global]` header
+            # below the first, and wrote its keys where the emulator reads the
+            # ones above.
+            current = stripped[1:-1].strip()
             start = index + 1
     spans.append((current, start, len(lines)))
     return spans
@@ -452,13 +460,34 @@ def _toml_split_comment(text):
     return text[:hash_at].rstrip(), text[hash_at:]
 
 
+def _ini_split_comment(text):
+    """`value, comment` for an INI assignment, cut at the first unquoted `;`.
+
+    The INI half of `_toml_split_comment`, and written against the same parser
+    the file belongs to: Supermodel's `StripComment` toggles on every `"` and
+    cuts at the first `;` that is not inside a pair, so a binding that contains
+    one keeps it. Nothing in this plugin writes such a value; the quote tracking
+    is here so that reading one back does not truncate somebody else's.
+    """
+    inside = False
+    for index, char in enumerate(text):
+        if char == '"':
+            inside = not inside
+        elif char == ";" and not inside:
+            return text[:index].rstrip(), text[index:]
+    return text.rstrip(), ""
+
+
+def _split_comment(text, quoted):
+    """`value, comment` for either format, by that format's comment marker."""
+    return _toml_split_comment(text) if quoted else _ini_split_comment(text)
+
+
 def _read_value(line, quoted=False):
     """The value assigned on `line`, in unquoted terms."""
     text = line.split("=", 1)[1].strip()
-    if not quoted:
-        return text
-    value, _comment = _toml_split_comment(text)
-    return _toml_unquote(value)
+    value, _comment = _split_comment(text, quoted)
+    return _toml_unquote(value) if quoted else value
 
 
 def _plain_find(lines, start, end, key):
@@ -668,13 +697,19 @@ def _apply_plain_ini(path, sections, previous=None, superseded=(), quoted=False)
                     skipped.append(name)
                     continue
                 # The emulator's own description of the setting, kept. Xenia
-                # writes one after every value, and a rewrite that dropped it
-                # would leave the file looking half-corrupted next to the four
-                # hundred lines that still have theirs.
-                _comment = (
-                    _toml_split_comment(lines[at].split("=", 1)[1])[1]
-                    if quoted else ""
-                )
+                # writes one after every value and Supermodel after many of
+                # them, and a rewrite that dropped it would leave the file
+                # looking half-corrupted next to the lines that still have
+                # theirs.
+                #
+                # Reading the comment off is the half that has to happen either
+                # way. `_read_value` compares what it finds against the default
+                # the entry declares, so a value with a comment glued to it
+                # matches nothing, and the key is skipped in silence -- which is
+                # how Xenia's `fullscreen` was left at false by a setup block
+                # that reported writing it.
+                _comment = _split_comment(
+                    lines[at].split("=", 1)[1], quoted)[1]
                 lines[at] = "%s = %s%s" % (
                     key, rendered, ("  " + _comment) if _comment else "")
             else:

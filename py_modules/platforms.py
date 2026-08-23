@@ -111,6 +111,10 @@ NO_LIBRETRO_PLATFORMS = (
     ("Sony - PlayStation 3", "PlayStation 3", "PS3"),
     ("Sony - PlayStation 4", "PlayStation 4", "PS4"),
     ("Sony - PlayStation Vita", "PlayStation Vita", "Vita"),
+    # The one arcade board here, and it is on this list for the same reason as
+    # the consoles above it: libretro has no Model 3 database and no core that
+    # runs one. MAME carries Model 3 drivers, but they do not play the games.
+    ("Sega - Model 3", "Sega Model 3", "Model 3"),
     ("Microsoft - Xbox", "Xbox", "Xbox"),
     ("Microsoft - Xbox 360", "Xbox 360", "Xbox 360"),
     ("Microsoft - Windows", "Windows", "Windows"),
@@ -249,8 +253,11 @@ def system_for_extension(databases, extension):
 # honest rather than an import -- every database named here must round-trip
 # through folder_name() back to a key in this table.
 #
-# Only disc systems are listed. Everything else already has a better answer
-# from the file itself, and a folder is the weaker evidence of the two.
+# Disc systems, and one arcade board. The rule is not the medium -- it is
+# whether the file can answer for itself, and everything else here is listed
+# because a disc image cannot. An arcade ROM set cannot either, for the opposite
+# reason: `see ra_cores.is_romset`, it is matched on `zip`, and twenty-two cores
+# claim that. Where the file has a better answer, the folder is not consulted.
 SYSTEM_FOLDERS = {
     # Sony
     "psx": "Sony - PlayStation",
@@ -267,6 +274,8 @@ SYSTEM_FOLDERS = {
     "megacd": "Sega - Mega-CD - Sega CD",
     "megacdjp": "Sega - Mega-CD - Sega CD",
     "sega-cd": "Sega - Mega-CD - Sega CD",
+    "model3": "Sega - Model 3",
+    "model-3": "Sega - Model 3",
     "naomi": "Sega - Naomi",
     "naomigd": "Sega - Naomi",
     "naomi2": "Sega - Naomi 2",
@@ -295,6 +304,52 @@ SYSTEM_FOLDERS = {
     "cdimono1": "Philips - CD-i",
     "cd-i": "Philips - CD-i",
 }
+
+
+#: The systems whose games arrive as a ROM set rather than as a file.
+#:
+#: `.zip` is claimed by twenty-two libretro cores, because most of them merely
+#: unpack an archive to get at the one game inside. Only these read the archive
+#: *as* the cartridge, and for a ROM set they are the only honest answers -- so
+#: they sort to the front, and the wrong ones stop being suggested. Amstrad CPC
+#: was preselected for Daytona USA 2 before this existed.
+#:
+#: Not a list of emulators: a core declares its systems and this is matched
+#: against those, so a new arcade core is covered without being named here.
+ARCADE_SYSTEMS = frozenset((
+    "MAME",
+    "MAME 2000",
+    "MAME 2003",
+    "MAME 2003 (Midway)",
+    "MAME 2003-Plus",
+    "MAME 2010",
+    "HBMAME",
+    "FBNeo - Arcade Games",
+    "Sega - Model 3",
+    "Sega - Naomi",
+    "Sega - Naomi 2",
+    "Sega - ST-V",
+    "Atomiswave",
+    "SNK - Neo Geo",
+))
+
+
+#: Display name back to picker label, e.g. "Sega Model 3" -> "Sega - Model 3".
+#:
+#: A registered emulator stores the display name, because that is the one that
+#: does not move when the user changes the short/long naming setting -- so the
+#: label an entry was written with is not what comes back out, and matching on
+#: it without this quietly matches nothing.
+_FULL_TO_LABEL = {full: label for label, full, _short in NO_LIBRETRO_PLATFORMS}
+
+
+def reads_rom_sets(core):
+    """Whether a core or emulator takes an arcade ROM set as it stands."""
+    systems = list(core.get("databases") or ())
+    platform = core.get("platform_full") or core.get("platform") or ""
+    if platform:
+        systems.append(_FULL_TO_LABEL.get(platform, platform))
+    return any(system in ARCADE_SYSTEMS for system in systems)
 
 
 def system_for_folder(rom_path):

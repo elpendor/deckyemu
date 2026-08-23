@@ -973,6 +973,18 @@ class Emulators(plugin_base.PluginContext):
             len(saved["extensions"]),
         )
 
+        # Before anything else, because it is not configuration -- it is the
+        # package being incomplete, and Supermodel does not reach its first
+        # frame without it. See `emu_install.seed_bundled_files`.
+        _seeded, seed_error = await self._run(
+            emu_install.seed_bundled_files,
+            (entry.get("source") or {}).get("id", ""),
+            entry.get("seed"),
+        )
+        if seed_error:
+            return "%s was installed, but files it needs could not be placed: %s" % (
+                entry["name"], seed_error)
+
         # Some emulators are not playable as they ship -- Azahar binds a
         # keyboard and starts windowed -- so the recommended settings go in
         # here, while it is certainly not running and cannot save over them.

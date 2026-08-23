@@ -62,6 +62,13 @@ OPTIONAL = {
                 "FIRMWARE_REQUIRED below.",
     "data": "Paths this emulator owns, relative to home, for the reset tab to "
             "clear. The flatpak's own directory is already covered.",
+    "seed": "Files the package ships that the application cannot find, as "
+            "{source under the flatpak's `files` directory: destination "
+            "relative to home}. Copied after installing and again at startup, "
+            "and only where the destination has no file of that name. Flatpak "
+            "sources only -- there is no deployed tree to copy out of "
+            "otherwise. See `emu_install.seed_bundled_files` for the packaging "
+            "fault this exists for.",
     "note": "A caveat shown in the UI, e.g. that a system needs firmware "
             "the user must supply.",
     "recipe": "Version of the launch arguments. Bump it when correcting `args` "
@@ -261,6 +268,23 @@ def validate(entry, known_platforms=(), imported=False):
             bad("data path %r must be relative to home and must not escape it"
                 % path)
 
+    seed = entry.get("seed")
+    if seed:
+        if not isinstance(seed, dict):
+            bad("seed maps a source path to a destination, so it must be an "
+                "object")
+        elif kind and kind != "flatpak":
+            bad("seed copies out of an installed flatpak's files, so it means "
+                "nothing for a %r source" % kind)
+        else:
+            for source, destination in seed.items():
+                if _escapes(source):
+                    bad("seed source %r must be a plain relative path inside "
+                        "the flatpak's files directory" % source)
+                if _escapes(destination):
+                    bad("seed destination %r must be relative to home and must "
+                        "not escape it" % destination)
+
     problems.extend(_validate_setup(entry_id, entry.get("setup")))
 
     for item in entry.get("firmware") or ():
@@ -377,6 +401,8 @@ def _written_paths(entry):
         if item.get("dest"):
             found.append(("firmware %r dest" % item.get("name", "<unnamed>"),
                           item["dest"]))
+    for _source, destination in (entry.get("seed") or {}).items():
+        found.append(("seed destination", destination))
     setup = entry.get("setup") or {}
     if setup.get("path"):
         found.append(("setup path", setup["path"]))

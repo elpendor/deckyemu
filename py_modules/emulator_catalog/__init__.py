@@ -22,6 +22,43 @@ Nothing else in the plugin needs to learn about the new emulator. The install
 flow, the ROM picker, collection grouping, the firmware panel and the reset tab
 all read the catalog rather than a list of their own.
 
+## Before the first deploy
+
+Adding an emulator is cheap; *finding out what is wrong with it* is not, because
+every answer costs a round trip through a Deck and a person. Each line below was
+learned by spending one. Doing them in a single pass before deploying is the
+difference between two cycles and twelve.
+
+1. **Run it once with a real ROM path and read what it prints.** Not `--help`,
+   which many emulators answer without touching their own data. Packaging faults
+   surface here and nowhere else: Supermodel's flatpak ships `Games.xml` and its
+   crosshair bitmaps where Supermodel does not look for them, so it detected no
+   ROM at all and then aborted before its first frame. Both were one line of
+   stderr apart.
+2. **Find out which input backend it selected before trusting any button
+   number.** Supermodel has two -- `sdl` reads raw joystick indices, `sdlgamepad`
+   reads named buttons -- and the default is the raw one, where `BUTTON9` is
+   whatever the device published ninth. On Steam's virtual pad that is the Steam
+   button, which never reaches a game. The config, the emulator's own
+   `-print-inputs` and the source all agreed the binding was right; all three
+   were describing the backend that was not running.
+3. **Launch it the way Steam does**, `steam "steam://rungameid/<id>"`, where the
+   id is `(appid << 32) | 0x02000000`. An ssh launch reproduces neither Steam
+   Input nor the on-screen keyboard, so it cannot show you either fault.
+4. **Check `~/.steam/steam/logs/console_log.txt` for `steam://open/keyboard`.**
+   Any SDL2 emulator that starts text input opens Steam's keyboard over the game
+   -- see the `env` on this entry -- and the log records every time it happened,
+   after the fact.
+5. **A stdlib import no other module here already uses is a claim about the
+   plugin sandbox.** It ships a trimmed Python; `xml.etree` is absent and its
+   absence stops the whole backend from loading, while every test on a
+   development machine passes. `tests/test_module_guard.py` holds the proven set.
+
+And the one that is not about emulators at all: **before changing a value, find
+everything that reads it.** A ROM set's name went to the wrong function, and
+then correcting it broke the artwork search, because `matched_name` -- not
+`title` -- is what SteamGridDB is scored against. Two round trips, one habit.
+
 **Extensions are derived, not stored.** An entry declares `databases` -- the same
 libretro system names a core declares -- and the extension list is the union of
 `supported_extensions` across every core in `installer.core_catalog()` that
@@ -75,6 +112,7 @@ from . import (
     rpcs3,
     ryujinx,
     shadps4,
+    supermodel,
     vita3k,
     xemu,
     xenia,
@@ -97,6 +135,7 @@ _MODULES = (
     azahar,
     vita3k,
     xenia,
+    supermodel,
 )
 
 #: The entries written in this package. Never changes at runtime.
@@ -204,6 +243,14 @@ MANUAL_EXTENSIONS = {
     # Those formats are recognised in `probe_rom` now and explained rather than
     # offered. See vita3k.py's own note.
     "Sony - PlayStation Vita": ["pkg"],
+    # `zip`, alone, and the archive is the ROM rather than a wrapper round one.
+    # A Model 3 ROM set is forty-odd chip dumps that mean nothing apart, and
+    # Supermodel opens the zip and reads them out by name -- so there is no
+    # inner extension to list, and unpacking one produces a folder no emulator
+    # can do anything with. `ra_cores.is_romset` is the other half of this: it
+    # keeps the file matched on `zip` rather than on whichever chip dump happens
+    # to come first, and keeps the Unpack row out of the panel.
+    "Sega - Model 3": ["zip"],
     "Microsoft - Xbox": ["iso", "xiso"],
     # Xenia dispatches on the file's magic bytes rather than its name --
     # `CreateDeviceForFile` switches on a signature, and XBE, EXE and Unknown

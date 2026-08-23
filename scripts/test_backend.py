@@ -3155,6 +3155,26 @@ check("the same zip somewhere else cannot",
 check("and nor can something that is not a zip",
       run(plugin.probe_rom(_stfs_rom))["can_unpack"], False)
 
+# An arcade ROM set is the one archive here where the button would have done
+# damage rather than nothing: Supermodel reads the chip dumps out of the zip, so
+# unpacking scatters files nothing can load and consumes the only playable one.
+# See tests/test_romset.py for how the two kinds of archive are told apart.
+_romset = os.path.join(fileserver.default_dir(), "scud.zip")
+with zipfile.ZipFile(_romset, "w") as _archive:
+    for _member in ("epr-19731.17", "epr-19732.18", "mpr-20364.ic2", "snd.bin"):
+        _archive.writestr(_member, bytes(32))
+_romset_probe = run(plugin.probe_rom(_romset))
+check("a ROM set in the transfer folder cannot be unpacked",
+      _romset_probe["can_unpack"], False)
+check("and it is matched on the archive rather than the first chip dump",
+      _romset_probe["match_extension"], "zip")
+
+# The ordering that follows from this -- ROM-set readers first -- is not checked
+# here: no core in this fixture claims `zip`, so `matching_cores` is empty and
+# any assertion about its order would pass for the wrong reason. It is covered
+# in tests/test_romset.py, where `platforms.reads_rom_sets` is exercised
+# directly against the systems a core declares.
+
 # Filing a ROM for a system libretro has no core for. `_system_for` answers from
 # a core's libretro databases and these have none, so it returns "" -- which
 # `folder_name` turned into "" and `file_rom` treated as "system unknown, leave
@@ -4169,6 +4189,65 @@ check("a lookup with no title falls back to the filename",
       run(plugin.resolve_game(_ps3_eboot, "emu:rpcs3"))["title"], "EBOOT")
 check("and the PARAM.SFO name overrides it",
       run(plugin.resolve_game(_ps3_eboot, "emu:rpcs3", "Braid"))["title"], "Braid")
+
+# The same problem one system over, and it needed the same answer in the same
+# place. A ROM set is named after the MAME set, so this resolved to `daytona2`
+# -- and `probe_rom` knowing better was not enough, because changing the "Run
+# with" core passes no title on purpose and the good name was dropped.
+import model3_games  # noqa: E402
+
+_set_deploy = os.path.join(
+    sysenv.user_home(), ".local", "share", "flatpak", "app",
+    model3_games.SUPERMODEL_APP, "current", "active", "files", "bin", "Config")
+os.makedirs(_set_deploy, exist_ok=True)
+with open(os.path.join(_set_deploy, "Games.xml"), "w", encoding="utf-8") as _handle:
+    _handle.write('<?xml version="1.0"?><games><game name="daytona2">'
+                  '<identity><title>Daytona USA 2 - Battle on the Edge</title>'
+                  '</identity></game></games>')
+model3_games.forget_cached_games()
+
+_named_set = os.path.join(fileserver.default_dir(), "daytona2.zip")
+with zipfile.ZipFile(_named_set, "w") as _archive:
+    for _member in ("epr-20864a.20", "epr-20865a.21", "mpr-20850.ic2", "snd.bin"):
+        _archive.writestr(_member, bytes(32))
+check("a ROM set is named from the emulator's game list, with no title passed in",
+      run(plugin.resolve_game(_named_set, "emu:rpcs3"))["title"],
+      "Daytona USA 2: Battle on the Edge")
+
+# And only a real ROM set. Set names are short lowercase words -- scud, harley,
+# eca -- and a console ROM that happens to be called one must keep its own name.
+_impostor = os.path.join(fileserver.default_dir(), "daytona2.sfc")
+with open(_impostor, "wb") as _handle:
+    _handle.write(bytes(64))
+check("a file that merely shares the name is left alone",
+      run(plugin.resolve_game(_impostor, "emu:rpcs3"))["title"], "daytona2")
+
+# The name and the artwork search are not the same string, and getting that
+# wrong cost the artwork. SteamGridDB catalogues this game as "Daytona USA 2";
+# scored against the full title the correct answer came back at 0.65, under the
+# cutoff, so a game that had been finding art under the *wrong* name stopped
+# finding it under the right one. `matched_name` is what the search is scored
+# against -- see sgdb.search_candidates -- so the subtitle is dropped there and
+# kept in the title.
+_set_resolved = run(plugin.resolve_game(_named_set, "emu:rpcs3"))
+check("the shelf gets the full name", _set_resolved["title"],
+      "Daytona USA 2: Battle on the Edge")
+check("and the artwork search is given the name that source actually uses",
+      _set_resolved["matched_name"], "Daytona USA 2")
+
+# A set with no subtitle must not be trimmed to nothing, or every other game on
+# the board would search for half a name.
+with open(os.path.join(_set_deploy, "Games.xml"), "w", encoding="utf-8") as _handle:
+    _handle.write('<?xml version="1.0"?><games><game name="scud">'
+                  '<identity><title>Scud Race</title></identity></game></games>')
+model3_games.forget_cached_games()
+_plain_set = os.path.join(fileserver.default_dir(), "scud.zip")
+with zipfile.ZipFile(_plain_set, "w") as _archive:
+    for _member in ("epr-19731.17", "epr-19732.18", "mpr-20364.ic2"):
+        _archive.writestr(_member, bytes(32))
+_plain = run(plugin.resolve_game(_plain_set, "emu:rpcs3"))
+check("a set with no subtitle keeps its whole name", _plain["title"], "Scud Race")
+check("and searches for it unchanged", _plain["matched_name"], "Scud Race")
 
 _ps3_prepared = run(plugin.prepare_shortcut(
     "Braid", "emu:rpcs3", _ps3_eboot, "Sony - PlayStation 3"))

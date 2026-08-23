@@ -897,5 +897,65 @@ check("a hash inside a quoted value is not read as a comment",
       "C:/games/#1 hits")
 check("while a bare value stops at the hash",
       emu_config._read_value("fullscreen = false   # note", quoted=True), "false")
-check("and an unquoted format is left exactly as it was",
+# `#` is not a comment in an INI, and this is not an oversight: Dolphin and
+# DuckStation both write values that could contain one, and nothing that reads
+# these files treats it as anything but text. `;` is the marker INIs actually
+# use, and the one Supermodel's own parser cuts on.
+check("a hash is part of an unquoted INI value, not a comment",
       emu_config._read_value("Fullscreen = False   # note"), "False   # note")
+
+section("the comment an INI really has, which is a semicolon")
+
+# The Xenia bug in its INI clothing. Supermodel writes a description after many
+# of its bindings, and a default read back with the description still glued to
+# it matches nothing the entry declares -- so the key is skipped, silently, and
+# the setup block reports success having written nothing.
+check("a semicolon comment is not part of the value",
+      emu_config._read_value('InputGearShiftUp = "KEY_Y"    ; sequential shift up'),
+      '"KEY_Y"')
+check("a semicolon inside quotes is part of it",
+      emu_config._read_value('InputThing = "KEY_A;KEY_B"   ; two keys'),
+      '"KEY_A;KEY_B"')
+check("and a value with no comment is unchanged",
+      emu_config._read_value('InputCoin1 = "KEY_3,JOY1_BUTTON10"'),
+      '"KEY_3,JOY1_BUTTON10"')
+
+# Spaced brackets, as Supermodel writes them. `[ Global ]` and `[Global]` are
+# the same section to its parser, which trims the name before looking it up, so
+# a setup block naming "Global" has to reach this one rather than append a
+# second header below it.
+_SUPERMODEL_INI = '''\
+;; Supermodel Configuration File
+
+[ Global ]
+InputStart1 = "KEY_1,JOY1_BUTTON9"
+InputGearShiftUp = "KEY_Y"           ; sequential shift up
+'''
+
+_ini = os.path.join(TMP, "supermodel.ini")
+with io.open(_ini, "w", encoding="utf-8", newline="") as _handle:
+    _handle.write(_SUPERMODEL_INI)
+
+_applied, _skipped, _written, _error = emu_config._apply_plain_ini(
+    _ini,
+    {"Global": {
+        "InputStart1": {"value": '"KEY_1,JOY1_BUTTON8"',
+                        "default": '"KEY_1,JOY1_BUTTON9"'},
+        "InputGearShiftUp": {"value": '"KEY_Y,JOY1_BUTTON6"',
+                             "default": '"KEY_Y"'},
+        "XResolution": "1280",
+    }},
+)
+check("a spaced section header is the section it names", _error, "")
+check("both existing keys were replaced, and the new one added",
+      sorted(_applied),
+      ["Global/InputGearShiftUp", "Global/InputStart1", "Global/XResolution"])
+check("and nothing was skipped as somebody else's", _skipped, [])
+
+_text = io.open(_ini, encoding="utf-8").read()
+check("no second [Global] was appended", _text.count("Global ]"), 1)
+check("and none was appended without the spaces", "[Global]" in _text, False)
+check("the commented binding changed", 'InputGearShiftUp = "KEY_Y,JOY1_BUTTON6"' in _text, True)
+check("and kept its description", "; sequential shift up" in _text, True)
+check("the appended key landed inside the section",
+      _text.rstrip().endswith("XResolution = 1280"), True)

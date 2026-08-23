@@ -30,6 +30,7 @@ types it accepts and its launch arguments are all filled in for you.
 | Azahar | 3DS | GitHub — [`azahar-emu/azahar`](https://github.com/azahar-emu/azahar) |
 | xemu | Xbox | Flathub — [`app.xemu.xemu`](https://flathub.org/apps/app.xemu.xemu) |
 | Xenia Canary | Xbox 360 | GitHub — [`xenia-canary/xenia-canary`](https://github.com/xenia-canary/xenia-canary) |
+| Supermodel | Sega Model 3 arcade | Flathub — [`com.supermodel3.Supermodel`](https://flathub.org/apps/com.supermodel3.Supermodel) |
 
 Nothing here is a mirror or a repack: the application id or the repository above
 is where the build comes from, and following one takes you to the publisher's
@@ -121,6 +122,60 @@ start adding it, and press **Unpack this zip** in the panel: inside is a folder
 like `58410954/000D0000/` holding one long-named file, and that file — the game —
 comes out named after the zip, ready to add. See
 [Unpacking a zip](transfers.md#unpacking-a-zip).
+
+## Arcade ROM sets
+
+Supermodel runs the Sega Model 3 board, and an arcade game for it is not one
+file — it is a set of forty-odd chip dumps, kept together in a `.zip` named
+after the game (`scud.zip`, `daytona2.zip`). Supermodel opens the zip and reads
+the dumps out of it by name, exactly as MAME does.
+
+**Leave it zipped.** This is the one archive on the Deck that is not a wrapper
+around a game: unpacking it produces a folder of files nothing can load, and
+takes away the one file that could be played. The panel knows the difference and
+does not offer **Unpack this zip** for a ROM set.
+
+It also stops guessing. A ROM set used to be matched on whatever the first chip
+dump inside was called, which meant `scud.zip` looked like a PlayStation image
+and was offered PlayStation cores. It is now matched on `.zip` itself, which is
+what Supermodel, MAME and FinalBurn Neo all declare — and since plenty of other
+cores claim `.zip` only because they unpack archives, the ones that read a ROM
+set *as* the cartridge are sorted to the front and preselected. The rest are
+still in the list if you want them.
+
+Names come from Supermodel's own game list, so `daytona2.zip` is added as
+*Daytona USA 2: Battle on the Edge* rather than as `daytona2` — which also gives
+the artwork search something it can find.
+
+**Test and Service are the stick buttons.** Push the **left stick straight down
+until it clicks** — the button usually called L3 — and that is Test. The right
+stick clicked in (R3) is Service. This is pressing the sticks *in*, not moving
+them; nothing happens if you tilt them.
+
+Those two are the buttons inside a real cabinet's coin door, and on this board
+they are not an operator's convenience: they are the only way into a game's own
+settings, and some games do not start without going there.
+
+Daytona USA 2 is one. It arrives configured as a linked cabinet and stops at
+*CANCELLED / NETWORK BOARD NOT PRESENT*. To fix it:
+
+1. Press the **left stick in** (Test). The test menu opens.
+2. Go to **Game System** — the **right stick in** (Service) moves through the
+   menu.
+3. Change **Link ID** from Master to **Single**.
+4. Exit the menu.
+
+**Once per game, and then never again.** The setting goes into the game's
+emulated NVRAM — `daytona2.nv` and friends, under the emulator's own data —
+which is written when Supermodel exits and read at every start. There is no
+launch argument or shortcut setting that can do it instead: Link ID is a
+setting on the arcade board, not an emulator option, and Supermodel models it
+as one. The only way to lose it is to clear the emulator's data from **Reset**,
+which deletes the NVRAM along with everything else; the menu steps are then the
+way back.
+
+Only 63 games were ever made for the board, and it is demanding hardware to
+emulate; the racers are the heaviest of them.
 
 A few emulators are marked as having unconfirmed launch arguments. They install
 the same way, but if a game opens the emulator without loading the game, edit the

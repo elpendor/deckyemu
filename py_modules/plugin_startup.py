@@ -192,6 +192,23 @@ class Startup(plugin_base.PluginContext):
                 emulator["fullscreen_args"] = entry.get("fullscreen_args") or ""
                 changed.append(emulator["id"])
 
+            # Files the package ships where the emulator cannot find them,
+            # replaced if they have gone. Here rather than only at install for
+            # the reason the extensions below are here: a fault found after
+            # somebody already has the emulator reaches nobody otherwise, and
+            # this one is not a degraded feature -- without it Supermodel exits
+            # before its first frame. Costs a `listdir` per catalog emulator
+            # that declares one, which is one of them.
+            if entry.get("seed"):
+                _seeded, _seed_error = await self._run(
+                    emu_install.seed_bundled_files,
+                    (entry.get("source") or {}).get("id", ""),
+                    entry["seed"],
+                )
+                if _seed_error:
+                    decky.logger.warning(
+                        "Could not seed %s: %s", emulator["id"], _seed_error)
+
             # Taken from the entry whenever the recipe moved, unlike the
             # arguments above: neither is editable in the emulator editor, so
             # neither can be the user's.

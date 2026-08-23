@@ -67,7 +67,15 @@ LAUNCH_GATE_DIR = os.path.join(decky.DECKY_PLUGIN_RUNTIME_DIR, "launch")
 #      the menu also quit. The override file carries the fix and is written
 #      when a launcher is, so an existing library needs rewriting or the
 #      shortcut goes on quitting for everyone who already had one.
-FORMAT_VERSION = 8
+#   9  an emulator's environment can now suppress Steam's on-screen keyboard,
+#      which SDL2 opens over the game on a Deck unless the hint says otherwise.
+#      The environment is baked into the argv when a launcher is written, so
+#      like version 5 this reaches nothing already on disk until they are
+#      rewritten -- and a game already added is exactly where it was seen.
+#  10  and the same environment carries the joystick hint an emulator needs to
+#      read a pad at all when its window has no input focus. Same reason as 9:
+#      the argv is baked in when the launcher is written.
+FORMAT_VERSION = 10
 
 # One file per OSD mode rather than one shared file. Games can override the
 # global setting individually, and a single file would mean the last game

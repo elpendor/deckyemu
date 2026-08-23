@@ -88,6 +88,83 @@ def flatpak_install_steps(app_id):
     ]
 
 
+def flatpak_files_dir(app_id):
+    """The deployed `files/` tree of an installed flatpak, or "".
+
+    `<root>/app/<id>/current/active/files` -- the same symlinks
+    `sysenv.flatpak_deployed` follows, one level further in, so what comes back
+    is whatever build is installed right now rather than a path recorded when it
+    was.
+    """
+    if not _valid_app_id(app_id):
+        return ""
+    for root in sysenv.flatpak_roots():
+        if not sysenv.flatpak_deployed(root, app_id):
+            continue
+        files = os.path.join(root, "app", app_id, "current", "active", "files")
+        if os.path.isdir(files):
+            return files
+    return ""
+
+
+def seed_bundled_files(app_id, seed):
+    """Copy files a flatpak ships into the place its application looks for them.
+
+    For the case where those are not the same place. Supermodel is why this
+    exists and states the problem exactly: the Flathub build installs its
+    `Assets` to `/app/bin/Assets`, while `FileSystemPath::GetPath(Assets)`
+    resolves under the application's own data directory, and nothing bridges the
+    two. The result is not a degraded feature -- `CCrosshair::Init` loads both
+    crosshair bitmaps unconditionally, whatever the crosshair setting, and
+    aborts the program when it cannot. So a stock install launches every game,
+    prints "Unable to load bitmap crosshair texture", and exits before the
+    emulator is built. There is no flag for it, unlike `Games.xml`, which has
+    the same fault and can at least be pointed at the packaged copy.
+
+    Only what is missing is copied, so a file the user replaced is theirs and
+    stays. Only regular files directly inside the source directory: this is for
+    small data an application ships beside itself, and a recursive copy of an
+    arbitrary tree is a bigger promise than anything needs.
+
+    Returns (paths copied, error).
+    """
+    if not seed:
+        return [], ""
+    files = flatpak_files_dir(app_id)
+    if not files:
+        return [], "%s is not installed" % app_id
+
+    copied = []
+    for source, destination in sorted(seed.items()):
+        origin = os.path.join(files, *source.split("/"))
+        target = os.path.join(sysenv.user_home(), *destination.split("/"))
+        if not os.path.isdir(origin):
+            # The package moved its data, which is a thing to say rather than a
+            # thing to fail over: everything else about the install is fine, and
+            # the emulator may well have been fixed upstream.
+            decky.logger.warning(
+                "%s ships no %s to seed from", app_id, source)
+            continue
+        try:
+            os.makedirs(target, exist_ok=True)
+            for name in sorted(os.listdir(origin)):
+                one = os.path.join(origin, name)
+                if not os.path.isfile(one):
+                    continue
+                landing = os.path.join(target, name)
+                if os.path.exists(landing):
+                    continue
+                shutil.copyfile(one, landing)
+                copied.append(landing)
+        except OSError as error:
+            return copied, "could not place %s: %s" % (source, error)
+
+    if copied:
+        decky.logger.info("Seeded %d file(s) %s ships but does not find",
+                          len(copied), app_id)
+    return copied, ""
+
+
 def flatpak_uninstall_argv(app_id, delete_data=False):
     """Remove a user-scope flatpak. Never `--system`, for the usual reason.
 

@@ -9,6 +9,7 @@ user picked" to "where this game's boxart lives".
 
 import glob
 import os
+import re
 import zipfile
 
 import decky
@@ -206,6 +207,73 @@ def cores_for_extension(cores, extension):
     return [core for core in cores if ext in core["extensions"]]
 
 
+# The extension a chip dump carries inside an arcade ROM set: a bare number, or
+# `icN` for the socket it came out of. Not invented -- read off Supermodel's own
+# Games.xml, which names every file of all 63 Model 3 sets. Across those 1211
+# files the only extensions are `.1` to `.60`, `.01` to `.09`, `.ic2` to `.ic24`,
+# `.bin`, and none at all.
+#
+# `bin` and the empty extension are not evidence and are not in here. `bin` is
+# the one extension a ROM set shares with real console formats -- a raw Mega
+# Drive cartridge, a PlayStation track -- so on its own it says nothing.
+_CHIP_DUMP_RE = re.compile(r"^(?:\d{1,2}|ic\d{1,2})$")
+
+# What may sit beside the chip dumps and still leave the archive a ROM set.
+_ROMSET_MEMBER_RE = re.compile(r"^(?:\d{1,2}|ic\d{1,2}|bin|)$")
+
+
+def _zip_members(rom_path):
+    """Every non-directory member's lowercase extension, or None if unreadable."""
+    try:
+        with zipfile.ZipFile(rom_path) as archive:
+            return [
+                os.path.splitext(entry.filename)[1].lower().lstrip(".")
+                for entry in archive.infolist()
+                if not entry.is_dir()
+            ]
+    except (OSError, zipfile.BadZipFile, RuntimeError) as error:
+        decky.logger.warning("Could not inspect archive %s: %s", rom_path, error)
+        return None
+
+
+def is_romset(rom_path):
+    """Whether a `.zip` is an arcade ROM set rather than one game in a wrapper.
+
+    The distinction matters because the two are opened from opposite ends. A
+    zipped console ROM is a container -- RetroArch unpacks it and loads the one
+    file inside, so the file inside is what decides which cores can run it. An
+    arcade ROM set is not a container at all: it is the cartridge, forty chip
+    dumps that mean nothing apart, and every emulator that reads one -- MAME,
+    FBNeo, Supermodel -- takes the `.zip` itself and says so by declaring `zip`
+    among its extensions.
+
+    Told apart from the outside they are the same file, and the plugin used to
+    treat them the same way: `scud.zip` reported `bin`, matched the PlayStation
+    and Mega Drive cores that claim it, and suggested SwanStation for Scud Race
+    while no arcade emulator was offered at all.
+
+    Three conditions, and each one is load-bearing:
+
+      * more than one member, or a lone `game.bin` would qualify;
+      * at least one member is a chip dump, or a multi-track `.bin` rip with no
+        cue sheet would qualify;
+      * every member is a chip dump, a `.bin`, or extensionless, or a zip
+        holding `game.sfc` beside a stray `patch.1` would qualify.
+
+    Checked against all 63 sets Supermodel knows: every one satisfies all three,
+    including `fvipers2`, whose four `mpr-*` members carry no extension.
+    """
+    extensions = _zip_members(rom_path) if _is_zip(rom_path) else None
+    if not extensions or len(extensions) < 2:
+        return False
+    return (all(_ROMSET_MEMBER_RE.match(ext) for ext in extensions)
+            and any(_CHIP_DUMP_RE.match(ext) for ext in extensions))
+
+
+def _is_zip(rom_path):
+    return os.path.splitext(rom_path)[1].lower() == ".zip"
+
+
 def archive_inner_extension(rom_path):
     """The content extension inside an archive, e.g. 'n64' for a zipped ROM.
 
@@ -213,20 +281,17 @@ def archive_inner_extension(rom_path):
     `game.zip` -- RetroArch unpacks it first. Only zip can be inspected with the
     standard library; 7z returns nothing and the caller falls back to offering
     every core.
+
+    Empty for a ROM set, which has no single file inside it to name. The caller
+    then falls back to `zip`, which is the extension the emulators that read one
+    actually declare.
     """
-    if os.path.splitext(rom_path)[1].lower() != ".zip":
+    if not _is_zip(rom_path) or is_romset(rom_path):
         return ""
 
-    try:
-        with zipfile.ZipFile(rom_path) as archive:
-            for entry in archive.infolist():
-                if entry.is_dir():
-                    continue
-                ext = os.path.splitext(entry.filename)[1].lower().lstrip(".")
-                if ext and ext not in ARCHIVE_EXTENSIONS:
-                    return ext
-    except (OSError, zipfile.BadZipFile, RuntimeError) as error:
-        decky.logger.warning("Could not inspect archive %s: %s", rom_path, error)
+    for ext in _zip_members(rom_path) or ():
+        if ext and ext not in ARCHIVE_EXTENSIONS:
+            return ext
 
     return ""
 

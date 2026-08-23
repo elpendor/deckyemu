@@ -105,6 +105,71 @@ finally:
     main.decky.logger = _real_logger
 
 
+section("the standard library the sandbox actually has")
+
+# The other way an import fails, and it is not shadowing: decky's plugin sandbox
+# ships a *trimmed* Python, and a stdlib module that is missing there is not a
+# degraded feature -- it is ModuleNotFoundError at import time and the backend
+# never starts. `import xml.etree.ElementTree` did exactly that. Nothing on a
+# development machine can notice: the host has the whole standard library, every
+# test passes, and the first sign is a plugin that will not load.
+#
+# So the set is recorded rather than reasoned about. Every name in it has been
+# seen working on a Deck; a new one has not, and the point of failing here is to
+# make somebody check before it ships rather than after. Adding to this list is
+# a deliberate act, which is the whole idea.
+#
+# Only top-level names, because that is the granularity the failure has: `xml`
+# is present in the sandbox and `xml.etree` is not, so listing `xml` would have
+# allowed the exact import that broke.
+PROVEN_STDLIB = frozenset((
+    "asyncio", "base64", "collections", "concurrent", "difflib", "functools",
+    "glob", "hashlib", "html", "http", "inspect", "io", "json", "os",
+    "posixpath", "re", "secrets", "shlex", "shutil", "socket", "ssl", "stat",
+    "struct", "subprocess", "sys", "threading", "time", "typing", "urllib",
+    "zipfile",
+))
+
+import ast  # noqa: E402  -- host-side only, this file never runs on a Deck
+
+_local = {os.path.splitext(name)[0]
+          for name in os.listdir(os.path.join(REPO_ROOT, "py_modules"))
+          if name.endswith(".py")}
+_local |= {name for name in os.listdir(os.path.join(REPO_ROOT, "py_modules"))
+           if os.path.isdir(os.path.join(REPO_ROOT, "py_modules", name))}
+_local.add("decky")
+
+_sources = [os.path.join(REPO_ROOT, "main.py")]
+for _root, _dirs, _names in os.walk(os.path.join(REPO_ROOT, "py_modules")):
+    _dirs[:] = [d for d in _dirs if d != "__pycache__"]
+    _sources += [os.path.join(_root, n) for n in _names if n.endswith(".py")]
+
+_unproven = {}
+for _path in sorted(_sources):
+    with open(_path, encoding="utf-8") as _handle:
+        _tree = ast.parse(_handle.read(), _path)
+    for _node in ast.walk(_tree):
+        if isinstance(_node, ast.Import):
+            _names = [alias.name for alias in _node.names]
+        elif isinstance(_node, ast.ImportFrom):
+            # A relative import is one of ours by definition.
+            _names = [] if _node.level else [_node.module or ""]
+        else:
+            continue
+        for _name in _names:
+            _top = _name.split(".")[0]
+            if _top and _top not in _local and _top not in PROVEN_STDLIB:
+                _unproven.setdefault(_name, os.path.relpath(_path, REPO_ROOT))
+
+check("nothing imports a module the sandbox has not been shown to have",
+      _unproven, {})
+
+# And the guard has to be able to fail, or it is a list nobody maintains that
+# reports success for every possible tree.
+check("an import outside the list is caught",
+      "xml.etree.ElementTree".split(".")[0] in PROVEN_STDLIB, False)
+
+
 if __name__ == "__main__":
     from harness import summary
 

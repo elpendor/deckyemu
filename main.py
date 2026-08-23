@@ -18,6 +18,7 @@ import installer
 import handoff
 import launchers
 import libretro_meta
+import model3_games
 import net
 import platforms
 import ps4_games
@@ -724,6 +725,11 @@ class Plugin(
             )
         matching = [] if archived else ra_cores.cores_for_extension(
             cores, match_extension)
+        # An arcade ROM set is matched on `zip`, which twenty-two cores claim
+        # because most of them simply unpack an archive to reach the one game
+        # inside. Asked once and used twice below: for the ordering, and for
+        # whether the Unpack row belongs in the panel at all.
+        romset = await self._run(ra_cores.is_romset, rom_path)
 
         settings = await self._run(store.get_settings)
         remembered = settings.get("last_core_by_ext", {}).get(match_extension, "")
@@ -748,6 +754,14 @@ class Plugin(
             key=lambda core: (
                 bool(folder_system)
                 and folder_system not in (core.get("databases") or []),
+                # Only for a ROM set, and then decisive. The cores that read one
+                # *as* the cartridge are the only ones that can run it; the rest
+                # claim `zip` because they unpack archives, and one of them
+                # being suggested is a confident wrong answer -- Amstrad CPC was
+                # preselected for Daytona USA 2. Below the folder term, which is
+                # evidence about this particular file rather than about the
+                # shape of it.
+                romset and not platforms.reads_rom_sets(core),
                 core["id"] != remembered,
             )
         )
@@ -756,15 +770,23 @@ class Plugin(
             "extension": extension,
             "match_extension": match_extension,
             "is_archive": extension in ra_cores.ARCHIVE_EXTENSIONS,
-            # Whether the Unpack row belongs in the panel. Both halves matter:
-            # `.zip` because nothing on a stock SteamOS reads .7z or .rar, and
-            # *in the transfer folder* because that is the only directory this
-            # plugin will write an archive's contents into -- see
-            # `unpack_transferred_file`. A zip on an SD card is left alone, and
-            # saying so by not offering the button beats offering one that
-            # refuses.
+            # Whether the Unpack row belongs in the panel. All three halves
+            # matter: `.zip` because nothing on a stock SteamOS reads .7z or
+            # .rar; *in the transfer folder* because that is the only directory
+            # this plugin will write an archive's contents into -- see
+            # `unpack_transferred_file` -- so a zip on an SD card is left alone,
+            # and saying so by not offering the button beats offering one that
+            # refuses; and *not a ROM set*, because unpacking one destroys it.
+            #
+            # That last is the only case here where the button would have done
+            # real damage rather than nothing. An arcade ROM set is the
+            # cartridge, not a wrapper around it: Supermodel and MAME both open
+            # the `.zip` and read the chip dumps out of it by name, so unpacking
+            # scatters forty files nothing can load and then consumes the one
+            # file that could be played.
             "can_unpack": (
                 extension == "zip"
+                and not romset
                 and await self._run(fileserver.inbox_path, os.path.basename(rom_path))
                 == rom_path
             ),
@@ -831,6 +853,15 @@ class Plugin(
         # `.pkg` and its zRIF or nothing: a release handed over as a path is
         # re-split on its spaces by the emulator's own launcher, and even
         # without spaces the content has to be installed and decrypted before
+        # A ROM set is named after the MAME set rather than the game, so the
+        # panel offered "daytona2" and Steam got a shelf entry called that.
+        # It is also what the artwork search is given, and SteamGridDB has a
+        # great deal of Daytona USA 2 and nothing whatever under `daytona2`.
+        # The full title is in the game list Supermodel ships; see model3_games.
+        romset_title, _hint = await self._romset_names(rom_path, romset)
+        if romset_title:
+            result["provisional_title"] = romset_title
+
         # anything can start it. This used to suggest Vita3K as the core to run
         # it with, which wrote a Steam shortcut that could never work and said
         # so only when the game was launched.
@@ -892,6 +923,36 @@ class Plugin(
 
     # ----------------------------------------------------------------- metadata
 
+    async def _romset_names(self, rom_path, romset=None):
+        """(name, artwork search hint) for an arcade ROM set, or ("", "").
+
+        Two names because the sources disagree about how long a title is.
+        Supermodel's game list gives the full one -- "Daytona USA 2 - Battle on
+        the Edge" -- and that is the right thing to see on a shelf. SteamGridDB
+        catalogues the same game as "Daytona USA 2", and the search is scored
+        against the name it is given: the full title scored the correct answer
+        at 0.65, under the cutoff, so a game that used to find its artwork under
+        the wrong name stopped finding it under the right one.
+
+        So the subtitle is dropped for the search and kept for the name. Only
+        two of the sixty-three sets have one, both of them Daytona USA 2, and
+        for both the part before the dash is exactly SteamGridDB's title.
+
+        `romset` is passed in where the caller has already asked, so probing a
+        file does not open the same archive twice.
+        """
+        if romset is None:
+            romset = await self._run(ra_cores.is_romset, rom_path)
+        if not romset:
+            return "", ""
+        named = await self._run(
+            model3_games.title_for, libretro_meta.rom_stem(rom_path))
+        if not named:
+            return "", ""
+        title = libretro_meta.display_title(named)
+        hint = libretro_meta.display_title(named.split(" - ")[0])
+        return title, (hint if hint and hint != title else "")
+
     async def resolve_game(
         self, rom_path: str, core_id: str, title: str = "", system: str = ""
     ):
@@ -930,6 +991,27 @@ class Plugin(
         art_source = settings.get("art_source", "auto")
 
         meta = await self._run(libretro_meta.resolve, rom_path, databases)
+
+        # A ROM set is named after the MAME set, and this is the only place that
+        # matters: `probe_rom` already puts the real title in the panel, but the
+        # panel hands it back only on some paths -- changing the "Run with" core
+        # deliberately passes no title, because for an ordinary ROM the name
+        # should be re-derived from the file. So a game added the usual way went
+        # to Steam as `daytona2` with the right name sitting one call away.
+        #
+        # Settled here instead, where every caller arrives: the add flow, the
+        # core dropdown, the editor, and the re-lookup after an API key is
+        # entered. It also improves the SteamGridDB query, which is handed
+        # `meta["title"]` and was searching for `daytona2`.
+        #
+        # `is_romset` gates it rather than the name alone. Sixty-three set names
+        # are short lowercase words -- `scud`, `harley`, `eca` -- and a console
+        # ROM that happened to be called one of them should not be renamed.
+        if not title:
+            title, hint = await self._romset_names(rom_path)
+            if hint:
+                meta = dict(meta, matched_name=hint)
+
         if title:
             # Both, because they are used differently below: `title` is what the
             # search asks for and what the UI shows, `matched_name` is the hint
@@ -993,8 +1075,14 @@ class Plugin(
         """
         core = self._core_by_id(core_id)
         databases = core["databases"] if core else []
-        term = (query or "").strip() or libretro_meta.display_title(
-            libretro_meta.rom_stem(rom_path)
+        # The ROM set's own name, for the same reason resolve_game uses it: the
+        # picker opened on `daytona2`, which is not a search anybody would type.
+        # The search hint rather than the full title, because this list is
+        # scored the same way and a subtitle SteamGridDB does not carry pushes
+        # the right game down it.
+        _set_title, _set_hint = await self._romset_names(rom_path)
+        term = (query or "").strip() or _set_hint or _set_title or (
+            libretro_meta.display_title(libretro_meta.rom_stem(rom_path))
         )
 
         settings = await self._run(store.get_settings)
