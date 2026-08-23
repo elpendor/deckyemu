@@ -111,6 +111,26 @@ class Updates(plugin_base.PluginContext):
     #: How long to wait after a check that answered. Decky's own updater uses
     #: six hours, and six hours is four requests a day against a budget of sixty
     #: an hour that every unauthenticated caller on the address shares.
+    #:
+    #: **It is six hours of *awake* time, not six hours of clock.**
+    #: `asyncio.sleep` measures with `time.monotonic()`, which on Linux is
+    #: `CLOCK_MONOTONIC` and does not advance while the machine is suspended --
+    #: and a Deck suspends rather than shutting down. Measured on the device:
+    #: 6.36 hours since boot, 5.35 counted, 1.01 spent asleep and invisible to
+    #: this timer. Somebody who plays an hour a night reaches the second check
+    #: nearly a week after the first.
+    #:
+    #: That is survivable only because this is not the path a user waits on.
+    #: Opening the Quick Access panel checks too -- see `loadUpdate` in
+    #: index.tsx -- bounded by `releases.CACHE_SECONDS`, an hour. This timer is
+    #: the floor for a device whose panel is never opened, and the first check
+    #: of the loop runs immediately rather than after a sleep, so a reload or a
+    #: reboot gets a fresh answer at once.
+    #:
+    #: `CLOCK_BOOTTIME` would count the suspend, and `asyncio` will not use it.
+    #: Changing that means not sleeping for the whole interval -- waking often
+    #: and comparing wall clocks -- which buys very little over the panel path
+    #: and costs a timer that fires on a sleeping device.
     _UPDATE_INTERVAL = 6 * 60 * 60
 
     #: How long to wait after a check that did *not* answer, per attempt.

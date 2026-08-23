@@ -20,6 +20,27 @@ tab shows the running version's changelog with no network at all.
 Installing goes through decky's own loader, which has permissions this plugin
 does not. The download is checked against the digest published with the release.
 
+### When it checks
+
+A dot appears on the plugin's Quick Access icon when a newer release exists.
+This plugin is not in decky's store, so nothing else will ever tell you.
+
+**Opening the Quick Access panel checks**, and that is the one that decides what
+you see. The answer is cached for an hour, so opening the panel twenty times in
+an evening asks GitHub once — and the cache survives a plugin reload, so it does
+not start again every time decky restarts.
+
+There is also a background check every six hours, for a Deck left on the library
+screen with the panel never opened. Do not rely on it for anything else: it
+counts time the Deck is **awake**, and a Deck suspends rather than shutting down,
+so an hour of play a night reaches the second check nearly a week later. It also
+runs once immediately whenever the plugin loads, which is why a reboot shows a
+current answer straight away.
+
+Nothing is downloaded by any of this — the check reads the releases page and
+nothing more. **Check for updates** on that tab forces one past the cache
+whenever you want a definite answer.
+
 ## Reporting a problem
 
 **Updates → Report a problem** gathers what a bug report needs and puts it where

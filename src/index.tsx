@@ -123,11 +123,14 @@ function Content() {
     try {
       const found = await checkForUpdate(false);
       setUpdate(found);
-      // Shared with the icon, which has no other way to hear about this one:
-      // the backend's timer runs every six hours, and the first open of a fresh
-      // session should not have to wait that long for the dot to agree with the
-      // row underneath it. `noteCheck` because a check that failed must leave
-      // the dot exactly as it found it.
+      // Shared with the icon, which has no other way to hear about this one.
+      // This is also the check that decides what a user actually experiences:
+      // the backend's timer is a six-hour floor for a device whose panel is
+      // never opened, and it counts awake time rather than clock time, so on a
+      // Deck that suspends it can be days. Opening the panel checks -- bounded
+      // by the backend's own hour-long cache, so this is cheap to call on every
+      // open. `noteCheck` because a check that failed must leave the dot
+      // exactly as it found it.
       noteCheck(found);
     } catch (error) {
       console.error("[deckyemu] could not check for updates", error);

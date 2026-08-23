@@ -11,8 +11,10 @@ import { type UpdateCheck } from "./backend";
  *
  * Two things write here. The backend's timer, through decky's event channel,
  * which is what makes the dot right before anybody opens anything; and the
- * panel's own check on open, so the first open of a fresh session does not have
- * to wait up to six hours for the timer to agree with it.
+ * panel's own check on open, which is the one that governs what a user sees:
+ * the timer is a floor for a device nobody opens the panel on, and it counts
+ * awake time rather than clock time (see `_UPDATE_INTERVAL`). Opening the panel
+ * checks, at most hourly.
  *
  * The same pattern and the same reasoning as `addedGames.ts`, which keeps the
  * library list here for a context menu that cannot await.
