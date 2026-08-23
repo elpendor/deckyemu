@@ -32,6 +32,7 @@ import {
   coreOptions as buildCoreOptions,
   defaultSystem,
   isEmulatorId,
+  coreLabel,
   pinnedLabel,
   systemOptions,
   withCurrentCore,
@@ -428,7 +429,18 @@ export function GameEditorModal({ game, onSaved, closeModal, onLeave }: Props) {
       }
 
       if (result.rom_changed) notes.push(`now runs ${basename(result.rom_path)}`);
-      if (coreId !== game.core_id) notes.push(`now runs on ${result.platform}`);
+      if (coreId !== game.core_id) {
+        // Both, and the core first: this note exists *because* the core
+        // changed, and it used to report only the platform -- which is the
+        // thing that usually does not change when you switch core, so
+        // swapping snes9x for bsnes said "now runs on Super Nintendo".
+        const label = coreLabel(cores?.all ?? [], coreId);
+        notes.push(
+          label
+            ? `now runs on ${label} (${result.platform})`
+            : `now runs on ${result.platform}`,
+        );
+      }
       else if (system !== game.system) notes.push(`filed as ${result.platform}`);
 
       toaster.toast({
@@ -447,7 +459,10 @@ export function GameEditorModal({ game, onSaved, closeModal, onLeave }: Props) {
     } finally {
       setSaving(false);
     }
-  }, [game, title, coreId, system, romPath, currentOptions, onSaved, closeModal]);
+    // `cores?.all` because the toast names what the game now runs on, and a
+    // stale list would name the core it ran on before.
+  }, [game, title, coreId, system, romPath, currentOptions, onSaved, closeModal,
+      cores?.all]);
 
   /**
    * Launch the game to check the change worked.

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { type Core, type InstallableCore } from "./backend";
 import {
+  coreLabel,
   coreOptions,
   defaultSystem,
   installableOptions,
@@ -327,5 +328,53 @@ describe("defaultSystem", () => {
 
   it("answers nothing for a core with one system", () => {
     expect(defaultSystem(snes, "Nintendo - Super Nintendo Entertainment System")).toBe("");
+  });
+});
+
+describe("coreLabel", () => {
+  /*
+   * What the editor's save toast calls the thing a game now runs on.
+   *
+   * It used to name the *platform*, which is what does not change when you
+   * switch core: swapping snes9x for bsnes said "now runs on Super Nintendo",
+   * reporting the one fact the change had not touched.
+   */
+  const CORES = [
+    {
+      id: "bsnes_libretro",
+      short_name: "bsnes",
+      display_name: "Nintendo - SNES / SFC (bsnes)",
+    },
+    // A core whose .info had no `corename`, so the backend left short_name
+    // empty and the name is only in the display name.
+    { id: "odd_libretro", short_name: "", display_name: "Sega - MS (BlastEm)" },
+    { id: "emu:rpcs3", short_name: "RPCS3", display_name: "RPCS3" },
+  ];
+
+  it("prefers the core's own name", () => {
+    expect(coreLabel(CORES, "bsnes_libretro")).toBe("bsnes");
+  });
+
+  it("names a standalone emulator without its id prefix", () => {
+    expect(coreLabel(CORES, "emu:rpcs3")).toBe("RPCS3");
+  });
+
+  it("falls back to trimming the display name, as the picker does", () => {
+    expect(coreLabel(CORES, "odd_libretro")).toBe("BlastEm");
+  });
+
+  // A core uninstalled since the game was added is in no list, and the id is
+  // the only name left. `emu:` is machinery, not part of a name.
+  it("falls back to the id for something not in the list", () => {
+    expect(coreLabel(CORES, "gone_libretro")).toBe("gone_libretro");
+    expect(coreLabel(CORES, "emu:vita3k")).toBe("vita3k");
+  });
+
+  it("has nothing to say about no core", () => {
+    expect(coreLabel(CORES, "")).toBe("");
+  });
+
+  it("survives an empty list, which is what a failed probe leaves", () => {
+    expect(coreLabel([], "bsnes_libretro")).toBe("bsnes_libretro");
   });
 });

@@ -109,6 +109,33 @@ export function withCurrentCore<T extends { id: string }>(
  * "" when the core is present, since Steam only shows this when nothing is
  * selected and an unnecessary one would replace a real name.
  */
+/**
+ * What to call the thing a game runs on, in a sentence.
+ *
+ * `short_name` first, which the backend fills from the core's own `corename`
+ * -- "bsnes", "BlastEm" -- or from a standalone emulator's name. Falling back
+ * to trimming the display name the way the picker does, and then to the id,
+ * which is all there is for a core that is no longer installed.
+ *
+ * Wanted because the editor's save toast said "now runs on Super Nintendo" when
+ * somebody switched from snes9x to bsnes -- the note fires *because the core
+ * changed* and was reporting the platform, which is exactly the thing that
+ * usually stays the same when you change core.
+ */
+export function coreLabel<T extends { id: string; short_name?: string; display_name?: string }>(
+  all: T[],
+  coreId: string,
+): string {
+  if (!coreId) return "";
+  const found = all.find((core) => core.id === coreId);
+  if (found) {
+    return found.short_name || coreShortName(found.display_name ?? "") || coreId;
+  }
+  // Not in the list at all: uninstalled, or an emulator removed since. The id
+  // is the only name left, and `emu:` is machinery rather than a name.
+  return isEmulatorId(coreId) ? coreId.slice("emu:".length) : coreId;
+}
+
 export function pinnedLabel<T extends { id: string }>(all: T[], coreId: string): string {
   if (!coreId || all.some((core) => core.id === coreId)) return "";
   const name = isEmulatorId(coreId) ? coreId.slice("emu:".length) : coreId;
