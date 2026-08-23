@@ -19,7 +19,9 @@ first install.
 
 DeckyEmu ships no games, no BIOS files and no encryption keys, and downloads
 none of them. It installs emulators from their own publishers and points them at
-files you already have.
+files you already have. The one thing it fetches that is not an emulator is the
+[PS4 package extractor](docs/emulators.md#unpacking-a-ps4-package), and only if
+you add a PlayStation 4 `.pkg`.
 
 ## Quick start
 
@@ -90,7 +92,8 @@ symptom-by-symptom list for when one of them misbehaves.
 ## Thanks
 
 Parts of this were settled by reading other people's work instead of guessing,
-and each of these saved a round of it.
+and each of those saved a round of it. One is not a reading at all — it is
+software this plugin downloads and runs.
 
 - **[EmuDeck](https://github.com/EmuDeck)** and
   **[RetroDECK](https://github.com/RetroDECK/RetroDECK)** publish controller
@@ -101,6 +104,13 @@ and each of these saved a round of it.
 - **[TabMaster](https://github.com/Tormak9970/TabMaster)** for the Quick Access
   header, which has a title class of its own and is what stopped this plugin's
   name sitting off-centre against Decky's back arrow.
+- **[shadPS4Plus](https://github.com/AzaharPlus/shadPS4Plus)** for the PS4
+  package extractor, which is the one binary here that is not an emulator and
+  not written by this project. shadPS4 cannot unpack a `.pkg` and no fork of it
+  can either — the code that did was taken out and published as a command-line
+  tool, descended from shadPS4's own extractor, so what comes out is what
+  shadPS4 expects. GPL-2.0, fetched from its own release page the first time a
+  PS4 package is added.
 - **[unifideck](https://github.com/mubaraknumann/unifideck)** for the reason the
   update button works in Game Mode: the Quick Access panel is a popup window
   there, so Decky's global websocket sits on its opener rather than on `window`.

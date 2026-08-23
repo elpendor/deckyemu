@@ -6,6 +6,7 @@ emulator yourself.
 Back to [the README](../README.md).
 
 **Contents** — [Installing an emulator](#installing-an-emulator) ·
+[Unpacking a PS4 package](#unpacking-a-ps4-package) ·
 [Updating an emulator, or going back](#updating-an-emulator-or-going-back) ·
 [Adding your own emulator](#adding-your-own-emulator)
 
@@ -68,6 +69,28 @@ only copy is the one the emulator is now using.
 A few cannot be installed for you, because the emulator unpacks them itself:
 RPCS3's `PS3UPDAT.PUP`, a Switch firmware archive, and xemu's BIOS files. Those
 are still detected, and the row tells you the one step left.
+
+## Unpacking a PS4 package
+
+A PlayStation 4 game arrives as a `.pkg`, and shadPS4 cannot unpack one — the
+code that used to do it was taken out of the emulator and published separately.
+So the first time you add a `.pkg`, the plugin downloads a small command-line
+tool to do it: the **PS4 package extractor** from
+[shadPS4Plus](https://github.com/AzaharPlus/shadPS4Plus), GPL-2.0, taken from
+that project's own release page.
+
+It is fetched then rather than with the emulator, because most people never add
+a `.pkg` at all. It lands in `~/deckyemu/tools/`, kept apart from
+`~/deckyemu/emulators/` on purpose — it plays nothing, it turns a `.pkg` into a
+folder shadPS4 can run — and it is not listed as an emulator anywhere. A plugin
+reinstall does not delete it.
+
+It is descended from shadPS4's own extractor, which is why it was chosen over
+anything else that reads the format: what comes out is what shadPS4 expects,
+rather than another project's reading of the same file.
+
+The other two consoles need nothing extra. RPCS3 unpacks its own packages, and
+Vita3K installs from a `.pkg` directly once it has the licence key.
 
 A few emulators are marked as having unconfirmed launch arguments. They install
 the same way, but if a game opens the emulator without loading the game, edit the

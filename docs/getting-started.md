@@ -164,10 +164,14 @@ reaches your library. There is no bulk import.
 
 ### PlayStation and Vita packages
 
-A `.pkg` is not a game yet. Pick one and the panel offers to unpack it first —
-RPCS3, shadPS4 or Vita3K does the work, with a progress bar, and the add flow
-carries on from whatever came out. You never have to know the product code or find
-the executable inside.
+A `.pkg` is not a game yet. Pick one and the panel offers to unpack it first,
+with a progress bar, and the add flow carries on from whatever came out. You
+never have to know the product code or find the executable inside.
+
+RPCS3 and Vita3K do that themselves. shadPS4 cannot, so the first PS4 `.pkg` you
+add downloads a small tool to do it — see
+[Unpacking a PS4 package](emulators.md#unpacking-a-ps4-package) for what it is
+and where it comes from.
 
 ## Everyday tasks
 
