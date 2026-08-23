@@ -418,10 +418,47 @@ def _apply_qt_ini(path, sections, previous=None, superseded=()):
 _PLAIN_KEY_RE_CACHE: dict = {}
 
 
+def _toml_split_comment(text):
+    """(value, trailing comment including its `#`) for the right of a TOML `=`.
+
+    Xenia's config is the reason this exists. It writes every setting with its
+    own description after it --
+
+        fullscreen = false      # Whether to launch the emulator in fullscreen.
+
+    -- and without this the value read back is `false` plus forty characters of
+    prose, which equals neither the literal being written nor the default it is
+    willing to replace. Every key was therefore treated as one the *user* had
+    set, and skipped. Nothing failed and nothing was logged: the emulator simply
+    kept its own settings, which for `fullscreen` meant a windowed game with a
+    menu bar across the top of it on a handheld with no mouse.
+
+    A `#` inside a quoted string is part of the value, not a comment, so a
+    quoted value is measured by its closing quote rather than by the first hash.
+    xemu stores filesystem paths this way and a path may certainly contain one.
+    """
+    text = text.strip()
+    if text[:1] in _TOML_QUOTES:
+        closing = text.find(text[0], 1)
+        if closing != -1:
+            return text[:closing + 1], text[closing + 1:].strip()
+        # An unterminated quote is not something to guess at. Left whole, which
+        # makes it compare unequal to anything this would write, so the line is
+        # treated as the user's and kept.
+        return text, ""
+    hash_at = text.find("#")
+    if hash_at == -1:
+        return text, ""
+    return text[:hash_at].rstrip(), text[hash_at:]
+
+
 def _read_value(line, quoted=False):
     """The value assigned on `line`, in unquoted terms."""
     text = line.split("=", 1)[1].strip()
-    return _toml_unquote(text) if quoted else text
+    if not quoted:
+        return text
+    value, _comment = _toml_split_comment(text)
+    return _toml_unquote(value)
 
 
 def _plain_find(lines, start, end, key):
@@ -630,7 +667,16 @@ def _apply_plain_ini(path, sections, previous=None, superseded=(), quoted=False)
                 ):
                     skipped.append(name)
                     continue
-                lines[at] = "%s = %s" % (key, rendered)
+                # The emulator's own description of the setting, kept. Xenia
+                # writes one after every value, and a rewrite that dropped it
+                # would leave the file looking half-corrupted next to the four
+                # hundred lines that still have theirs.
+                _comment = (
+                    _toml_split_comment(lines[at].split("=", 1)[1])[1]
+                    if quoted else ""
+                )
+                lines[at] = "%s = %s%s" % (
+                    key, rendered, ("  " + _comment) if _comment else "")
             else:
                 lines.insert(end, "%s = %s" % (key, rendered))
 

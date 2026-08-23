@@ -155,14 +155,33 @@ class Startup(plugin_base.PluginContext):
             if not entry:
                 continue
             recipe = entry.get("recipe", 1)
-            if emulator.get("catalog_recipe", 1) == recipe:
-                continue
+            # Whether the *launch recipe* moved. Extensions are checked either
+            # way, below: they carry their own provenance in
+            # `catalog_extensions`, so telling this plugin's last answer from a
+            # user's edit does not need a version at all -- and gating them on
+            # one meant a format added to the catalog reached nobody who already
+            # had the emulator until somebody remembered to bump it. Nobody did:
+            # Xenia gained `zar` and `stfs` and went on claiming `iso` and `xex`
+            # on the one device it was installed on, so an unpacked XBLA title
+            # was offered no emulator at all.
+            fresh = emulator.get("catalog_recipe", 1) != recipe
+            before = (emulator.get("args"), emulator.get("fullscreen_args"),
+                      emulator.get("command"), dict(emulator.get("env") or {}),
+                      emulator.get("installed_args"), emulator.get("splits_args"),
+                      list(emulator.get("extensions") or []),
+                      list(emulator.get("catalog_extensions") or []),
+                      emulator.get("catalog_recipe"))
 
-            if extension_map is None:
+            # Only for an entry that needs it. A libretro-backed emulator
+            # derives its formats from this map; one with no databases derives
+            # entirely from MANUAL_EXTENSIONS and must not pay for the read.
+            if extension_map is None and entry.get("databases"):
                 extension_map = await self._run(installer.database_extensions)
 
             stored = emulator.get("catalog_args")
-            if stored is not None and emulator.get("args") != stored:
+            if not fresh:
+                pass
+            elif stored is not None and emulator.get("args") != stored:
                 # Edited here, so the recipe is no longer ours to change. The
                 # version is still recorded, or this would ask again forever.
                 decky.logger.info(
@@ -173,21 +192,18 @@ class Startup(plugin_base.PluginContext):
                 emulator["fullscreen_args"] = entry.get("fullscreen_args") or ""
                 changed.append(emulator["id"])
 
-            # Refreshed unconditionally, unlike the arguments above: neither is
-            # editable in the emulator editor, so neither can be the user's.
+            # Taken from the entry whenever the recipe moved, unlike the
+            # arguments above: neither is editable in the emulator editor, so
+            # neither can be the user's.
             # They are also the two that decide whether the emulator runs at
             # all -- shadPS4's launches the wrong binary without `command` and
             # renders on the CPU without `env` -- so a stale one is not a
             # cosmetic difference.
-            previous = (emulator.get("command"), emulator.get("env") or {},
-                        emulator.get("installed_args"), emulator.get("splits_args"))
-            emulator["command"] = entry.get("command", "")
-            emulator["env"] = dict(entry.get("env") or {})
-            emulator["installed_args"] = entry.get("installed_args", "")
-            emulator["splits_args"] = bool(entry.get("splits_args"))
-            if previous != (emulator["command"], emulator["env"],
-                            emulator["installed_args"], emulator["splits_args"]):
-                changed.append(emulator["id"])
+            if fresh:
+                emulator["command"] = entry.get("command", "")
+                emulator["env"] = dict(entry.get("env") or {})
+                emulator["installed_args"] = entry.get("installed_args", "")
+                emulator["splits_args"] = bool(entry.get("splits_args"))
 
             # Which files the picker offers this emulator for. Stored at install
             # time and never revisited, so narrowing a system's formats reached
@@ -216,10 +232,23 @@ class Startup(plugin_base.PluginContext):
                     changed.append(emulator["id"])
                 emulator["catalog_extensions"] = derived
 
-            emulator["catalog_recipe"] = recipe
-            emulator["catalog_args"] = entry.get("args") or "{rom}"
-            emulator["catalog_fullscreen_args"] = entry.get("fullscreen_args") or ""
-            await self._run(emulators.save, emulator)
+            if fresh:
+                emulator["catalog_recipe"] = recipe
+                emulator["catalog_args"] = entry.get("args") or "{rom}"
+                emulator["catalog_fullscreen_args"] = entry.get("fullscreen_args") or ""
+
+            # Saved only when something actually moved. This pass now runs over
+            # every catalog emulator on every startup rather than only the ones
+            # whose recipe changed, and rewriting nine unchanged records each
+            # time is how a settings file gets a reputation for churn.
+            after = (emulator.get("args"), emulator.get("fullscreen_args"),
+                     emulator.get("command"), dict(emulator.get("env") or {}),
+                     emulator.get("installed_args"), emulator.get("splits_args"),
+                     list(emulator.get("extensions") or []),
+                     list(emulator.get("catalog_extensions") or []),
+                     emulator.get("catalog_recipe"))
+            if after != before:
+                await self._run(emulators.save, emulator)
 
         if changed:
             # Every launcher already written bakes in the old argv, so the fix

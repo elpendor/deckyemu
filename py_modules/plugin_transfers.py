@@ -32,6 +32,7 @@ import diagnostics
 import emu_install
 import emulator_catalog
 import fileserver
+import unpack
 import store
 
 
@@ -240,6 +241,65 @@ class Transfers(plugin_base.PluginContext):
         return {"ok": True, "removed": True,
                 "received": await self._run(fileserver.received_files)}
 
+
+    async def unpack_transferred_file(self, name: str):
+        """Extract a zip in the transfer folder, in place. The only way to, in Game Mode.
+
+        Xbox 360 content is what forced this. Every XBLA release is distributed
+        zipped, Xenia refuses a zip outright -- it shows an error box, which
+        gamescope will not draw, so it presents as a hang -- and nothing here
+        could extract one. The route from "sent to the Deck" to "playable" went
+        through Desktop Mode and a file manager, which section 1a says a feature
+        may not require. Zipped multi-file games had the same dead end long
+        before Xenia existed; nobody had hit it because RetroArch reads a zip
+        itself, and every emulator that cannot is a recent arrival.
+
+        By name out of the folder, like the delete beside it: `inbox_path`
+        refuses anything that is not already the basename of a real file in
+        there, so this cannot be aimed at an archive somewhere else on the
+        device and made to write its contents into the transfer folder.
+        """
+        path = await self._run(fileserver.inbox_path, name)
+        if not path:
+            return {"ok": False, "error": "%s is not in the transfer folder." % name}
+        if not name.lower().endswith(".zip"):
+            # `.7z` and `.rar` are the ones people ask about next. Neither is in
+            # the standard library and neither has a tool on a stock SteamOS, so
+            # offering the button and failing at the end would be worse than
+            # saying so.
+            return {"ok": False,
+                    "error": "Only .zip files can be unpacked here."}
+
+        written, error = await self._run(
+            unpack.into_folder, path, await self._run(fileserver.default_dir)
+        )
+        if error:
+            return {"ok": False, "error": error}
+
+        # The zip has served its purpose, so it goes -- the same thing importing
+        # a definition does to the definition, installing firmware does by
+        # moving the file where the emulator reads it, and adding a ROM does by
+        # filing it under its system. The transfer folder is a waypoint, and
+        # everything that uses a file takes it out of there.
+        #
+        # This was briefly the exception, on the reasoning that an extraction
+        # can go subtly wrong and the archive is the only way back. That is true
+        # of importing a definition too, and it is not how this folder works:
+        # what it produced was 47MB of duplicate sitting beside the game, and a
+        # second unpack refused because the name was taken.
+        #
+        # Only after a clean extraction. `into_folder` is all-or-nothing, so
+        # reaching here means every member is on disk under its real name.
+        try:
+            await self._run(os.remove, path)
+        except OSError as error:
+            # The contents are out, which is what was asked for. A zip that
+            # could not be deleted is a tidiness problem with a delete button
+            # next to it, not a failed unpack.
+            decky.logger.warning("Unpacked %s but could not remove it: %s", name, error)
+
+        return {"ok": True, "written": written,
+                "received": await self._run(fileserver.received_files)}
 
     async def cancel_upload(self, upload_id: int = 0):
         """Abandon a transfer in progress. 0 means every one of them.

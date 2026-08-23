@@ -29,6 +29,7 @@ types it accepts and its launch arguments are all filled in for you.
 | Cemu | Wii U | Flathub — [`info.cemu.Cemu`](https://flathub.org/apps/info.cemu.Cemu) |
 | Azahar | 3DS | GitHub — [`azahar-emu/azahar`](https://github.com/azahar-emu/azahar) |
 | xemu | Xbox | Flathub — [`app.xemu.xemu`](https://flathub.org/apps/app.xemu.xemu) |
+| Xenia Canary | Xbox 360 | GitHub — [`xenia-canary/xenia-canary`](https://github.com/xenia-canary/xenia-canary) |
 
 Nothing here is a mirror or a repack: the application id or the repository above
 is where the build comes from, and following one takes you to the publisher's
@@ -37,10 +38,10 @@ projects publish and fills in the system, the file types and the launch
 arguments.
 
 Most come from Flathub and install for your user, so no password is asked for.
-RPCS3, Azahar and Vita3K publish no Flatpak and are downloaded from their own
-releases into `~/deckyemu/emulators`. The panel says which is which in brackets
-after the name, because the two behave differently when something goes wrong and
-only one of them has builds you can move between.
+RPCS3, Azahar, Vita3K and Xenia Canary publish no Flatpak and are downloaded
+from their own releases into `~/deckyemu/emulators`. The panel says which is
+which in brackets after the name, because the two behave differently when
+something goes wrong and only one of them has builds you can move between.
 
 Several emulators are not playable as they ship — a keyboard is bound instead of
 a controller, or they start in a window — so installing one also writes a
@@ -97,6 +98,29 @@ rather than another project's reading of the same file.
 
 The other two consoles need nothing extra. RPCS3 unpacks its own packages, and
 Vita3K installs from a `.pkg` directly once it has the licence key.
+
+## Xbox 360 files
+
+Xenia works out what a file is by reading it, not by its name, so the extension
+matters less than it does elsewhere. It runs:
+
+- `.iso` — a game disc image
+- `.xex` — an extracted executable
+- `.zar` — Xenia's own compressed disc image, which it can also create
+- Xbox Live Arcade titles, DLC and title updates, which are **content packages
+  with no extension at all** — the filename is a long string of hex
+
+That last one used to have nowhere to go: everything here matches a game to an
+emulator by its extension, and these files have none. The plugin now reads the
+first few bytes instead, so an XBLA container can be added like any other game
+even though its name says nothing.
+
+**Unzip first.** Xenia refuses `.zip`, `.7z`, `.rar`, `.tar` and `.gz` outright,
+and XBLA titles are almost always distributed zipped. Send the zip to the Deck,
+start adding it, and press **Unpack this zip** in the panel: inside is a folder
+like `58410954/000D0000/` holding one long-named file, and that file — the game —
+comes out named after the zip, ready to add. See
+[Unpacking a zip](transfers.md#unpacking-a-zip).
 
 A few emulators are marked as having unconfirmed launch arguments. They install
 the same way, but if a game opens the emulator without loading the game, edit the

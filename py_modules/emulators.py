@@ -291,6 +291,15 @@ def to_core_entry(emulator, system_name=""):
         "short_name": emulator.get("name", ""),
         "system_name": label,
         "databases": databases,
+        # The system this emulator runs, as a label that does not move. Distinct
+        # from `system_name` above, which follows the user's short/long naming
+        # setting -- fine for a caption, wrong for anything that becomes a path.
+        # `roms/ps3` and `roms/playstation-3` for the same console, depending on
+        # a display preference, is how a library ends up split in two.
+        #
+        # Empty for a libretro-backed emulator, which has `databases` to say it
+        # better.
+        "platform_full": emulator.get("platform_full", ""),
         "extensions": emulator.get("extensions") or [],
         "has_info": True,
         "source": "emulator",

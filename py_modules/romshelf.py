@@ -94,6 +94,12 @@ def _referenced(path):
     return [os.path.basename(name) for name in names if name and not name.startswith("/")]
 
 
+#: Extensions that hold a game rather than being part of one. A file with the
+#: same stem and one of these is the container the ROM arrived in, not a track
+#: or a disc that has to travel with it.
+_ARCHIVES = frozenset(("zip", "7z", "rar", "tar", "gz"))
+
+
 def companions(rom_path):
     """Every file that has to travel with this one, or None if unknowable.
 
@@ -109,10 +115,19 @@ def companions(rom_path):
     except OSError:
         return None
 
+    # The archive a ROM came out of is not part of the game. Unpacking names a
+    # lone extensionless member after its zip, so `Banjo-Kazooie (World) (XBLA)`
+    # and `Banjo-Kazooie (World) (XBLA).zip` share a stem exactly -- and without
+    # this the 47MB source archive was filed into `roms/xbox-360/` alongside the
+    # game and then deleted with it. Never for the ROM itself, which may
+    # legitimately *be* a zip: RetroArch reads one directly.
+    keep = os.path.basename(rom_path)
     group = {
         name for name in siblings
         if os.path.splitext(name)[0].lower() == stem
         and os.path.isfile(os.path.join(folder, name))
+        and (name == keep
+             or os.path.splitext(name)[1].lower().lstrip(".") not in _ARCHIVES)
     }
 
     named = _referenced(rom_path)

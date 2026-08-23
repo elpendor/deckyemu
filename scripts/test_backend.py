@@ -1294,6 +1294,12 @@ check("no artwork database", switch["databases"], [])
 check("label is stored directly", switch["platform"], "Switch")
 switch_entry = emulators.to_core_entry(switch)
 check("the label is used, not the emulator name", switch_entry["system_name"], "Switch")
+# The label that becomes a folder, which must not be the one above: `system_name`
+# follows the user's short/long naming setting, so filing by it would put the
+# same console in `roms/ps3` or `roms/playstation-3` depending on a display
+# preference. `platform_full` does not move.
+check("and a stable label is carried for anything that becomes a path",
+      switch_entry["platform_full"], "Nintendo Switch")
 check(
     "matches its extensions",
     [c["id"] for c in ra_cores.cores_for_extension([switch_entry], "xci")],
@@ -3100,6 +3106,73 @@ zipped = run(plugin.probe_rom(zipped_rom))
 check("an archive is recognised", zipped["is_archive"], True)
 check("cores are matched on the content inside", zipped["match_extension"], "sfc")
 check("so an SNES core is offered for a zip", [c["id"] for c in zipped["matching_cores"]], ["bsnes"])
+
+# A file with no extension at all, which is how every XBLA title arrives: the
+# name is a hash and the format is in the first four bytes. Checked here rather
+# than only against the module, because the module answering correctly is not
+# the behaviour -- `probe_rom` consulting it is, and removing that call left
+# tests/test_xbox360_header.py passing.
+_stfs_rom = os.path.join(TMP, "DA78E477AA5E31A7D01AE8F84109FD4BF89E49E8")
+with open(_stfs_rom, "wb") as _handle:
+    _handle.write(b"LIVE" + bytes(64))
+_stfs = run(plugin.probe_rom(_stfs_rom))
+check("a file with no extension is named by its header", _stfs["match_extension"], "stfs")
+check("and the panel is given a phrase rather than a dot and nothing",
+      _stfs["what"], "Xbox 360 content packages")
+# The archive case must not be swallowed by the header case. A zipped XBLA is
+# one Xenia refuses with a message box gamescope will not draw, so it has to
+# stay unmatched rather than be paired with an emulator that cannot open it.
+_zipped_stfs = os.path.join(TMP, "Zipped XBLA.zip")
+with zipfile.ZipFile(_zipped_stfs, "w") as handle:
+    handle.writestr("58410954/000D0000/DA78E477AA5E31A7D01AE8F84109FD4B", b"LIVE" + bytes(64))
+_zipped_probe = run(plugin.probe_rom(_zipped_stfs))
+check("but a zipped one is still not offered an emulator",
+      _zipped_probe["match_extension"], "zip")
+# And it is not offered the wrong ones either. `.zip` is claimed by twenty-two
+# libretro cores on a real device -- Amstrad CPC, arcade, C64 -- so a zipped
+# Xbox 360 title used to arrive with every one of them listed and `cap32`
+# suggested. Reading the header of what is inside settles it: no core can run
+# this as it stands, and saying so is what leads to the Unpack button.
+check("the header inside the zip is read", _zipped_probe["archived_content"], "stfs")
+check("and no core is suggested for it", _zipped_probe["matching_cores"], [])
+check("nor one preselected", _zipped_probe["suggested_core_id"], "")
+
+# A zipped ROM is untouched by this: its contents have an extension, so the
+# archive is never sniffed and the cores that read it are offered as before.
+check("a zipped SNES ROM still says nothing is archived",
+      zipped["archived_content"], "")
+check("and still offers its core", [c["id"] for c in zipped["matching_cores"]], ["bsnes"])
+
+# `can_unpack` is what puts the Unpack row in the panel, so it has to say no
+# wherever the endpoint would refuse: a zip outside the transfer folder is one
+# this plugin will not write the contents of anywhere.
+_inbox_zip = os.path.join(fileserver.default_dir(), "Zipped XBLA.zip")
+shutil.copyfile(_zipped_stfs, _inbox_zip)
+check("a zip in the transfer folder can be unpacked",
+      run(plugin.probe_rom(_inbox_zip))["can_unpack"], True)
+check("the same zip somewhere else cannot",
+      run(plugin.probe_rom(_zipped_stfs))["can_unpack"], False)
+check("and nor can something that is not a zip",
+      run(plugin.probe_rom(_stfs_rom))["can_unpack"], False)
+
+# Filing a ROM for a system libretro has no core for. `_system_for` answers from
+# a core's libretro databases and these have none, so it returns "" -- which
+# `folder_name` turned into "" and `file_rom` treated as "system unknown, leave
+# it alone". Every Xbox 360, PS3, PS4, Switch and Vita ROM therefore stayed in
+# the transfer folder forever: working, launched from the inbox, and not the
+# plugin's to delete when the game was removed.
+import platforms as _platforms_for_filing  # noqa: E402
+
+check("a libretro-less core still cannot name its own system",
+      Plugin._system_for(switch_entry), "")
+check("but its stable label names the folder the ROM belongs in",
+      _platforms_for_filing.folder_name(Plugin._system_for(switch_entry)
+                                        or switch_entry["platform_full"]),
+      "nintendo-switch")
+check("and a libretro-backed core is unaffected by the fallback",
+      _platforms_for_filing.folder_name(Plugin._system_for(SNES_CORE)
+                                        or SNES_CORE.get("platform_full", "")),
+      "snes")
 
 # Two cores for the same system, so "the one you used last" is a real choice
 # rather than the only option.
@@ -4922,6 +4995,42 @@ emulators.save(
 run(plugin._upgrade_emulator_recipes())
 check(
     "extensions the user changed are left alone",
+    emulators.find("vita3k")["extensions"],
+    ["pkg", "mine"],
+)
+
+# The case that actually shipped broken: the recipe is already current, so the
+# whole pass used to `continue` before it ever looked at the formats. Xenia
+# gained `zar` and `stfs` in the catalog and went on claiming `iso` and `xex` on
+# the device it was installed on, so an unpacked XBLA title matched nothing and
+# the panel offered no emulator at all. Extensions carry their own provenance in
+# `catalog_extensions`, so they never needed a version bump to be safe to
+# refresh -- only to be looked at.
+import emulator_catalog as _catalog_for_recipes  # noqa: E402
+
+_current_recipe = _catalog_for_recipes.find("vita3k").get("recipe", 1)
+emulators.save({
+    **emulators.find("vita3k"),
+    "extensions": ["self", "vpk"],
+    "catalog_extensions": ["self", "vpk"],
+    # Exactly what the catalog says today, so nothing about the recipe has moved.
+    "catalog_recipe": _current_recipe,
+})
+run(plugin._upgrade_emulator_recipes())
+check(
+    "a format added to the catalog reaches an emulator whose recipe did not move",
+    emulators.find("vita3k")["extensions"],
+    ["pkg"],
+)
+# And an edit is still an edit, whether or not the recipe moved.
+emulators.save({
+    **emulators.find("vita3k"),
+    "extensions": ["pkg", "mine"],
+    "catalog_recipe": _current_recipe,
+})
+run(plugin._upgrade_emulator_recipes())
+check(
+    "while an edited list is still left alone with the recipe unchanged",
     emulators.find("vita3k")["extensions"],
     ["pkg", "mine"],
 )

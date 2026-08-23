@@ -77,6 +77,7 @@ from . import (
     shadps4,
     vita3k,
     xemu,
+    xenia,
 )
 from .schema import validate  # noqa: F401  -- re-exported for tests and callers
 
@@ -95,6 +96,7 @@ _MODULES = (
     xemu,
     azahar,
     vita3k,
+    xenia,
 )
 
 #: The entries written in this package. Never changes at runtime.
@@ -203,7 +205,23 @@ MANUAL_EXTENSIONS = {
     # offered. See vita3k.py's own note.
     "Sony - PlayStation Vita": ["pkg"],
     "Microsoft - Xbox": ["iso", "xiso"],
-    "Microsoft - Xbox 360": ["iso", "xex"],
+    # Xenia dispatches on the file's magic bytes rather than its name --
+    # `CreateDeviceForFile` switches on a signature, and XBE, EXE and Unknown
+    # return a null device. So this list is what those signatures are called on
+    # disk, not what Xenia parses.
+    #
+    # `zar` is Xenia's own zarchive: a compressed disc image it can both create
+    # and boot, mounted through DiscZarchiveDevice. It is the only compressed
+    # format that works -- `.zip`, `.7z`, `.rar`, `.tar` and `.gz` are refused
+    # by name before anything is read.
+    #
+    # `stfs` is the LIVE/CON/PIRS container XBLA titles and DLC ship as, and it
+    # is the odd one here: those files normally carry no extension at all, so
+    # this is the name of the format rather than the name of anybody's file.
+    # `xbox360_content.extension_from_header` supplies it from the first four
+    # bytes when the filename has nothing to offer, which is what lets an XBLA
+    # container be paired with Xenia at all.
+    "Microsoft - Xbox 360": ["iso", "xex", "zar", "stfs"],
 }
 
 # The catalog.

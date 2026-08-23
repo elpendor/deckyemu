@@ -42,6 +42,7 @@ import store
 import sysenv
 import vita_games
 import vita_release
+import xbox360_content
 import xbox_disc
 
 ROM_EXTENSION_BLOCKLIST = {"srm", "state", "sav", "png", "jpg", "cfg", "txt", "xml"}
@@ -695,7 +696,34 @@ class Plugin(
         # A zipped ROM is matched on what is inside it, since RetroArch unpacks
         # archives itself and no core advertises `zip`.
         match_extension = await self._run(ra_cores.content_extension, rom_path)
-        matching = ra_cores.cores_for_extension(cores, match_extension)
+        # An archive whose contents could not be named. `content_extension`
+        # falls back to "zip", and twenty-two libretro cores legitimately claim
+        # that -- Amstrad CPC, arcade, C64 -- so a zipped Xbox 360 title was
+        # offered every one of them with `cap32` suggested. Each is a confident
+        # wrong answer to "what runs this".
+        #
+        # Reading the header of what is inside settles it. Nothing gains an
+        # emulator by this: Xenia refuses an archive outright, so the honest
+        # answer stays "nothing installed can run this as it stands" -- but that
+        # sentence, with the Unpack button under it, is the one that leads
+        # somewhere.
+        archived = ""
+        if extension in ra_cores.ARCHIVE_EXTENSIONS and match_extension == extension:
+            archived = await self._run(xbox360_content.inside_archive, rom_path)
+        # And a file with no extension is matched on its header. Only Xbox 360
+        # content packages arrive that way -- an XBLA title is a hash with no
+        # suffix -- and without this there is no extension to match on, so the
+        # panel offers no emulator for a file Xenia would boot from the path it
+        # was given. Deliberately after the archive case and never instead of
+        # it: a zipped XBLA container is one Xenia refuses outright, and it
+        # should stay unmatched rather than be paired with an emulator that
+        # will show an invisible error box.
+        if not match_extension:
+            match_extension = await self._run(
+                xbox360_content.extension_from_header, rom_path
+            )
+        matching = [] if archived else ra_cores.cores_for_extension(
+            cores, match_extension)
 
         settings = await self._run(store.get_settings)
         remembered = settings.get("last_core_by_ext", {}).get(match_extension, "")
@@ -728,6 +756,34 @@ class Plugin(
             "extension": extension,
             "match_extension": match_extension,
             "is_archive": extension in ra_cores.ARCHIVE_EXTENSIONS,
+            # Whether the Unpack row belongs in the panel. Both halves matter:
+            # `.zip` because nothing on a stock SteamOS reads .7z or .rar, and
+            # *in the transfer folder* because that is the only directory this
+            # plugin will write an archive's contents into -- see
+            # `unpack_transferred_file`. A zip on an SD card is left alone, and
+            # saying so by not offering the button beats offering one that
+            # refuses.
+            "can_unpack": (
+                extension == "zip"
+                and await self._run(fileserver.inbox_path, os.path.basename(rom_path))
+                == rom_path
+            ),
+            # What to call this file in the panel. Normally its extension, which
+            # is what every one of those sentences was written around -- but a
+            # file matched on its header has no extension to show, and ".stfs"
+            # names a format rather than anything the user can see on disk.
+            # Saying "Xbox 360 content packages" is the only version of those
+            # sentences that is true of the file they are about.
+            # What is inside an archive that nothing can run as it stands, by
+            # its header: "stfs", "xex", or "" when it is an ordinary zip or
+            # could not be read. The panel uses it to say why there is no
+            # emulator rather than leaving an empty list to be read as a fault.
+            "archived_content": archived,
+            "what": (
+                "Xbox 360 content packages"
+                if match_extension == "stfs" and not extension
+                else ".%s" % match_extension if match_extension else ""
+            ),
             "provisional_title": libretro_meta.display_title(libretro_meta.rom_stem(rom_path)),
             "matching_cores": matching,
             "all_cores": cores,
@@ -1178,10 +1234,20 @@ class Plugin(
         # the launcher's own filename is a hash of it, and the library records
         # it -- so moving a ROM afterwards breaks a game in three places at
         # once. Moving it first means nothing has been told the old path yet.
+        # `_system_for` answers from the core's libretro databases, and an
+        # emulator for a system libretro has no core for -- Xenia, RPCS3,
+        # Ryujinx, shadPS4, Vita3K -- has none. It returned "", `folder_name`
+        # made "" of that, and `file_rom` did nothing: every one of those
+        # consoles left its ROM sitting in the transfer folder forever.
+        #
+        # Nothing said so. The game worked, launched from the inbox, and the
+        # only visible symptom was a folder that never emptied -- until deleting
+        # the game left the file behind too, because only ROMs under `roms/`
+        # count as this plugin's to delete.
         rom_path = await self._run(
             romshelf.file_rom,
             rom_path,
-            self._system_for(core, system),
+            self._system_for(core, system) or core.get("platform_full", ""),
             await self._run(fileserver.default_dir),
             await self._run(romshelf.library_dir),
         )

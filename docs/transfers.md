@@ -82,6 +82,48 @@ transfer is running.
 - It is plain HTTP on a local network: fine for moving ROMs around a house, not
   something to expose beyond one.
 
+## Unpacking a zip
+
+Pick the zip the way you would pick any game — **Add a game**, then the file
+browser or the **Add** button in the received list. The panel then offers
+**Unpack this zip**, in the same place a `.pkg` offers to install itself.
+
+It is offered *beside* the usual core choice, not instead of it, because both
+can be right. RetroArch reads a zip directly, so a zipped SNES ROM can just be
+added. Standalone emulators mostly cannot: Xenia refuses one outright, and a zip
+holding a `.cue` and its `.bin` files has to come apart before any of it works.
+
+Pressing it extracts the contents **flat into the transfer folder**, beside the
+zip, ignoring whatever folders the archive named them in. Xbox Live Arcade
+titles are the reason — they arrive as a single file buried under
+`58410954/000D0000/`, and the rest of the plugin only acts on files sitting
+directly in the transfer folder. If exactly one file comes out, the panel
+switches straight to it, so you carry on adding the game rather than going back
+to a list.
+
+**A single file with no extension is named after the zip.** An XBLA container is
+called something like `DA78E477AA5E31A7D01AE8F84109FD4BF89E49E858`, which is no
+use in a list and no use to the artwork search either, so it takes the zip's name
+instead — `Banjo-Kazooie (World) (XBLA)`. A file that already has an extension
+keeps its own name, since that is one somebody chose.
+
+Only zips already in the transfer folder can be unpacked; that is the one folder
+this plugin writes an archive's contents into, so a zip on an SD card is left
+alone and the button is not offered for it.
+
+Nothing is overwritten. If a name is already taken, or two files inside the zip
+would come out with the same name, the whole thing is refused and says why —
+these arrived over your network and there is no undo in Game Mode.
+
+**The zip is deleted once its contents are out**, the same way importing a
+definition consumes it and adding a ROM files it under its system. The transfer
+folder is a waypoint: everything that uses a file takes it out of there. Only
+after a clean extraction — if anything goes wrong the zip is still sitting where
+it was.
+
+Only `.zip`. Nothing on a stock SteamOS reads `.7z` or `.rar`, so the button is
+not offered for those rather than failing after you press it.
+
 ## Where a ROM ends up
 
 Whether a ROM is moved when you add it, and whether it is deleted when you remove

@@ -229,6 +229,13 @@ export async function selectRom(romPath: string): Promise<void> {
 
     // Nothing installed can run this, so offer the cores that could.
     updateDraft({ coreId: "", systemId: "" });
+    // Except when the file is an archive whose contents nothing can run from
+    // inside it. `match_extension` is "zip" there, and suggesting the cores that
+    // claim `.zip` would offer to install an Amstrad CPC core to open an Xbox
+    // 360 title -- the same wrong answer the matching list was just stopped from
+    // giving, one step further on. The panel's Unpack button is the only route,
+    // and it is already on screen.
+    if (info.archived_content) return;
     try {
       // The selection goes with the list it belonged to: a core chosen for the
       // last ROM is not a choice anyone made about this one.

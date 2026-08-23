@@ -39,6 +39,21 @@ export interface RomProbe {
   extension: string;
   /** What cores were matched against — the content extension inside archives. */
   match_extension: string;
+  /** What to call this file in a sentence: ".iso", or a phrase when it has no extension. */
+  what: string;
+  /**
+   * Whether this file can be unpacked here: a `.zip` sitting in the transfer
+   * folder. False for a zip anywhere else, since that is the only directory an
+   * archive's contents are written into.
+   */
+  can_unpack: boolean;
+  /**
+   * What is inside an archive nothing can run as it stands, by its header:
+   * `"stfs"`, `"xex"`, or empty for an ordinary zip. When set, `matching_cores`
+   * is deliberately empty — the alternative was offering the twenty-two cores
+   * that claim `.zip` for a file none of them can read.
+   */
+  archived_content: string;
   is_archive: boolean;
   provisional_title: string;
   matching_cores: Core[];

@@ -133,6 +133,34 @@ check("every recipe places the ROM",
 check("and no fullscreen switch swallows it",
       [needle for needle, _a, fullscreen in _hints if "{rom}" in fullscreen], [])
 
+# An entry with no fullscreen switch has to reach fullscreen some other way, and
+# the only other way is its own config. This is the failure with no symptom:
+# drop the setup block and nothing errors, no test fails, and every game just
+# launches in a window on a handheld that has no way to un-window it.
+#
+# Dolphin and Azahar have no fullscreen flag at all, so their config is the only
+# route. Xenia is not in this list even though it also seeds one: it has a real
+# flag *and* a config key, because the config only takes effect once Xenia has
+# written a file to merge into, and the first launch happens before that.
+def _mentions_fullscreen(value):
+    if isinstance(value, dict):
+        return any(_mentions_fullscreen(k) or _mentions_fullscreen(v)
+                   for k, v in value.items())
+    if isinstance(value, (list, tuple)):
+        return any(_mentions_fullscreen(item) for item in value)
+    return isinstance(value, str) and "fullscreen" in value.lower()
+
+
+_no_switch = [entry["id"] for entry in emulator_catalog.CATALOG
+              if not (entry.get("fullscreen_args") or "")]
+check("the entries with no fullscreen switch are the ones expected to have none",
+      sorted(_no_switch), ["azahar", "dolphin"])
+check("and each of them sets fullscreen in the emulator's own config instead",
+      [entry_id for entry_id in _no_switch
+       if not _mentions_fullscreen(
+           emulator_catalog.find(entry_id).get("setup") or {})],
+      [])
+
 # Every recipe traces back to an entry. Without this the table could regrow a
 # side list of emulators the catalog does not install, which is the arrangement
 # that let the two halves drift in the first place.

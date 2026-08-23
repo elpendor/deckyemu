@@ -859,3 +859,43 @@ finally:
 
 if __name__ == "__main__":
     summary()
+
+
+section("a TOML value with the emulator's own comment after it")
+
+# Xenia writes a description after every setting, and reading the value back
+# without stripping it made every key look like one the user had set: `false`
+# plus forty characters of prose equals neither the literal nor the default.
+# Nothing failed and nothing was logged -- the emulator just kept its own
+# settings, and a Deck got a windowed game with a menu bar over it.
+_commented = os.path.join(TMP, "commented.toml")
+_lines = [
+    "[Display]",
+    "fullscreen = false                    \t# Whether to launch in fullscreen.",
+    "[Storage]",
+    "content_root = 'C:/games/#1 hits'     # A path with a hash in it.",
+]
+with open(_commented, "w", encoding="utf-8") as _handle:
+    _handle.write("\n".join(_lines) + "\n")
+
+_applied, _skipped, _written, _error = emu_config._apply_toml_keys(
+    _commented,
+    {"Display": {"fullscreen": {"value": "true", "default": "false", "raw": True}}},
+)
+check("the commented default is recognised and replaced", _applied, ["Display/fullscreen"])
+check("and nothing was skipped as somebody else's", _skipped, [])
+
+_text = open(_commented, encoding="utf-8").read()
+check("the value really changed", "fullscreen = true" in _text, True)
+check("and the emulator's own description survived the rewrite",
+      "# Whether to launch in fullscreen." in _text, True)
+
+# A `#` inside a quoted string is part of the path, not a comment. xemu stores
+# filesystem paths this way and a folder may certainly contain one.
+check("a hash inside a quoted value is not read as a comment",
+      emu_config._read_value("content_root = 'C:/games/#1 hits'  # note", quoted=True),
+      "C:/games/#1 hits")
+check("while a bare value stops at the hash",
+      emu_config._read_value("fullscreen = false   # note", quoted=True), "false")
+check("and an unquoted format is left exactly as it was",
+      emu_config._read_value("Fullscreen = False   # note"), "False   # note")

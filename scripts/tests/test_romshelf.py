@@ -158,5 +158,42 @@ check("an unknown system leaves the file alone",
       romshelf.file_rom(_again, "", _inbox, _shelf), _again)
 
 
+section("the archive a ROM came out of does not travel with it")
+
+# Unpacking names a lone extensionless member after its zip, so the two share a
+# stem exactly and the source archive looked like a companion file. It was filed
+# into roms/ alongside the game -- 47MB of duplicate -- and then deleted with it.
+_xbla = _drop("Banjo-Kazooie (World) (XBLA)", "Banjo-Kazooie (World) (XBLA).zip")
+_filed_xbla = romshelf.file_rom(_xbla, "Xbox 360", _inbox, _shelf)
+check("the game is filed", _filed_xbla, os.path.join(_shelf, "xbox-360",
+                                                     "Banjo-Kazooie (World) (XBLA)"))
+check("and the zip it came out of stays where it was",
+      os.path.isfile(os.path.join(_inbox, "Banjo-Kazooie (World) (XBLA).zip")), True)
+check("so it is not in the library either",
+      os.path.isfile(os.path.join(_shelf, "xbox-360",
+                                  "Banjo-Kazooie (World) (XBLA).zip")), False)
+
+# But a ROM that *is* a zip must still file itself -- RetroArch reads one
+# directly, so this is an ordinary zipped ROM rather than a container.
+_zipped = _drop("Zipped Game.zip")
+check("a zipped ROM is still filed",
+      romshelf.file_rom(_zipped, "Nintendo - Super Nintendo Entertainment System",
+                        _inbox, _shelf),
+      os.path.join(_shelf, "snes", "Zipped Game.zip"))
+
+section("a system libretro has no core for is still a folder")
+
+# `folder_name` is fed the emulator's own platform label for these, because
+# `_system_for` answers from libretro databases and they have none. Without it
+# every Xbox 360, PS3, PS4, Switch and Vita ROM stayed in the transfer folder
+# forever -- working, launched from the inbox, and not the plugin's to delete.
+for _label, _folder in (("Xbox 360", "xbox-360"), ("PlayStation 3", "playstation-3"),
+                        ("PlayStation Vita", "playstation-vita")):
+    _rom = _drop("Game For %s.bin" % _folder)
+    check("%r files under %r" % (_label, _folder),
+          romshelf.file_rom(_rom, _label, _inbox, _shelf),
+          os.path.join(_shelf, _folder, "Game For %s.bin" % _folder))
+
+
 if __name__ == "__main__":
     summary()

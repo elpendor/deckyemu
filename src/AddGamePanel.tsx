@@ -32,6 +32,7 @@ import {
   startFileServer,
   prepareShortcut,
   probeRom,
+  unpackTransferredFile,
   type Core,
   type InstallableCore,
   type PluginSettings,
@@ -197,6 +198,11 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
     error,
   } = draft;
 
+  // Its own flag rather than the draft's `unpacking`, which belongs to package
+  // extraction and drives a progress bar this does not have. A zip comes apart
+  // in a second or two with nothing to report in between.
+  const [unzipping, setUnzipping] = useState(false);
+
   const lookup = lookupArtwork;
 
   /**
@@ -299,6 +305,47 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
   }, []);
 
 
+
+  /**
+   * Unpack the picked zip, then carry straight on with what came out of it.
+   *
+   * The panel re-points at the extracted file rather than returning to a list,
+   * which is what makes this the same shape as installing a `.pkg`: press the
+   * button, and the thing you are adding becomes the game rather than the
+   * container it arrived in. Only when exactly one file comes out -- with
+   * several there is nothing to choose on the user's behalf, so the transfer
+   * folder is where they pick.
+   */
+  const unpackRom = useCallback(
+    async (name: string) => {
+      setUnzipping(true);
+      updateDraft({ error: "" });
+      try {
+        const result = await unpackTransferredFile(name);
+        if (!result.ok) {
+          updateDraft({ error: result.error ?? "Could not unpack this zip." });
+          return;
+        }
+        const written = result.written ?? [];
+        const folder = status.waiting_rom_dir || status.default_rom_dir;
+        if (written.length === 1 && folder) {
+          toaster.toast({ title: "Unpacked", body: written[0] });
+          await selectRom(`${folder}/${written[0]}`);
+          return;
+        }
+        toaster.toast({
+          title: "Unpacked",
+          body: `${written.length} files — pick one from Transfer to Deck`,
+        });
+      } catch (unpackError) {
+        logError("could not unpack a zip", unpackError);
+        updateDraft({ error: "Could not unpack this zip." });
+      } finally {
+        setUnzipping(false);
+      }
+    },
+    [status.waiting_rom_dir, status.default_rom_dir],
+  );
 
   const pickRom = useCallback(async () => {
     updateDraft({ error: "" });
@@ -732,6 +779,36 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
         emulatorStatus={emulatorStatus}
       />
 
+      {/* A zip that can come apart here, offered the same way a `.pkg` is: the
+          button is in the panel you are already adding from, and pressing it
+          leaves the panel pointing at what came out rather than sending you
+          back to a list.
+
+          Offered *beside* the core rows rather than instead of them. RetroArch
+          reads a zip itself, so a zipped SNES ROM is addable exactly as it
+          stands and this is one more thing that can be done with it; a zip
+          holding an XBLA container or a .cue and its .bin files is not, and
+          this is the only way forward. Only the person looking at it knows
+          which, so nothing is decided for them. */}
+      {probe?.can_unpack && (
+        <PanelSectionRow>
+          <ButtonItem
+            layout="below"
+            disabled={unzipping || adding}
+            onClick={() => void unpackRom(romName)}
+            description={
+              probe.archived_content
+                ? "This zip holds Xbox 360 content, and Xenia cannot read a zip — it has to come out first. Unpacking puts the game in the transfer folder, named after this file."
+                : probe.matching_cores.length > 0
+                  ? "Or take the zip apart here. Needed for anything that does not run from an archive — an Xbox 360 title, or a disc set whose .cue names its .bin files."
+                  : "Nothing installed can run this zip as it stands. Unpacking it puts the contents in the transfer folder, where they can be added."
+            }
+          >
+            {unzipping ? "Unpacking…" : "Unpack this zip"}
+          </ButtonItem>
+        </PanelSectionRow>
+      )}
+
       {probe && !pendingPackage && probe.matching_cores.length > 0 && (
         <>
           <PanelSectionRow>
@@ -747,7 +824,7 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
               // not cores and do not run inside RetroArch.
               label="Run with"
               description={
-                `${probe.matching_cores.length} of these support .${probe.match_extension}` +
+                `${probe.matching_cores.length} of these support ${probe.what}` +
                 (probe.is_archive && probe.match_extension !== probe.extension
                   ? ` (found inside the .${probe.extension})`
                   : "")
@@ -817,7 +894,7 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
           <DropdownItem
             layout="below"
             label="Run with"
-            description={`Nothing installed claims .${probe.match_extension}`}
+            description={`Nothing installed claims ${probe.what}`}
             rgOptions={coreOptions}
             selectedOption={coreId}
             onChange={onCoreChange}
@@ -838,7 +915,7 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
               label="RetroArch is not installed"
               description={
                 `${installable.length} core${installable.length === 1 ? "" : "s"}` +
-                ` can run .${probe?.match_extension}, and a core needs RetroArch to run in.`
+                ` can run ${probe?.what}, and a core needs RetroArch to run in.`
               }
             />
           </PanelSectionRow>
@@ -867,7 +944,7 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
                 // line and shows the whole name.
                 layout="below"
                 label="No core installed for this ROM"
-                description={`These can run .${probe?.match_extension} — install one to continue.`}
+                description={`These can run ${probe?.what} — install one to continue.`}
                 rgOptions={installableOptions(installable)}
                 selectedOption={chosenInstallable.id}
                 onChange={(option) => updateDraft({ installableId: String(option.data) })}
@@ -882,7 +959,7 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
                 // saying which one, and the button is only the verb. Full name
                 // rather than the short one: a description is full width, and
                 // this is the one place the system is not already established.
-                description={`${chosenInstallable.display_name} can run .${probe?.match_extension}.`}
+                description={`${chosenInstallable.display_name} can run ${probe?.what}.`}
               />
             </PanelSectionRow>
           )}

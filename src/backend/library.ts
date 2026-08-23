@@ -319,6 +319,23 @@ export const discardTransferredFile = callable<
 >("discard_transferred_file");
 
 /**
+ * Extract a zip sitting in the transfer folder, in place.
+ *
+ * The files come out flat beside the zip rather than in the folders the archive
+ * named them in -- partly because honouring a path inside an archive that
+ * arrived over wifi is how you get a file written somewhere it was not meant to
+ * go, and partly because the rest of the plugin only acts on files sitting
+ * directly in the transfer folder.
+ *
+ * The zip is left where it is. An extraction can produce something subtly wrong
+ * and the original is the only way back; the delete button is in the same row.
+ */
+export const unpackTransferredFile = callable<
+  [name: string],
+  { ok: boolean; error?: string; written?: string[]; received?: ReceivedFile[] }
+>("unpack_transferred_file");
+
+/**
  * Invalidate every saved transfer link and issue a fresh one.
  *
  * All or nothing: the link is the credential, so there is nothing per-device to

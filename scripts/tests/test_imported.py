@@ -204,12 +204,14 @@ section("loading them, and living beside the bundled ones")
 
 check("the store lives under the plugin's settings, not the user's home",
       imported.STORE.endswith(os.path.join("emulators.d")), True)
+# Against BUNDLED rather than a literal count. The claim is that nothing has
+# been imported yet, and a number tests that only by accident -- it was 11,
+# and the sole thing it ever caught was somebody adding an emulator.
 check("the catalog starts as exactly the bundled entries",
-      len(emulator_catalog.BUNDLED), 11)
+      list(emulator_catalog.CATALOG), list(emulator_catalog.BUNDLED))
 
 # The clash rule. Without it a definition could shadow a bundled emulator, which
 # is a way to replace a recipe this project tested with one it did not.
-_before = len(emulator_catalog.CATALOG)
 imported.store_dir()
 _clash = imported.path_for("dolphin")
 with open(_clash, "w", encoding="utf-8") as _handle:

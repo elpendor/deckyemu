@@ -19,6 +19,7 @@ files in the inbox, and anything else is refused.
 import json
 import os
 import sys
+import zipfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -249,6 +250,68 @@ os.remove(_outside)
 # is the folder, not the file type. This is the case of a ROM thought better of.
 check("a ROM in the inbox can go too",
       _run(_plugin.discard_transferred_file("Some Game.iso")).get("removed"), True)
+
+
+section("a zip can be taken apart without leaving Game Mode")
+
+# The endpoint, not the extraction -- tests/test_unpack.py covers the rules. What
+# is checked here is that the name reaching a path goes through `inbox_path` like
+# the delete above it, and that the caller is handed a refreshed list. Removing
+# the endpoint's own guards leaves test_unpack.py passing, which is the reason
+# this is here rather than only there.
+_zip_name = "zz-Banjo-Kazooie (XBLA).zip"
+with zipfile.ZipFile(os.path.join(INBOX, _zip_name), "w") as _bundle:
+    _bundle.writestr("58410954/000D0000/DA78E477AA5E31A7D01AE8F84109FD4B",
+                     b"LIVE" + bytes(64))
+
+_unpacked = _run(_plugin.unpack_transferred_file(_zip_name))
+check("it unpacks", _unpacked.get("ok"), True)
+# Named after the zip: its own name is a hash, which is no use in this list and
+# no use to the artwork search either.
+check("flat, and named after the zip so the list has something to show",
+      _unpacked.get("written"), ["zz-Banjo-Kazooie (XBLA)"])
+check("and the refreshed list the caller is handed already holds it",
+      "zz-Banjo-Kazooie (XBLA)"
+      in [f["name"] for f in _unpacked.get("received") or []], True)
+# Consumed, like every other file this folder hands over: an imported definition
+# is deleted, a firmware file is moved where the emulator reads it, a ROM is
+# filed under its system. Leaving the zip made 47MB of duplicate and a second
+# unpack that refused because the name was taken.
+check("and the zip it came out of is gone",
+      bool(fileserver.inbox_path(_zip_name)), False)
+
+# Same guard as the delete, and it matters more here: this one *writes*, so a
+# name that escaped the folder would extract an archive from anywhere on the
+# device into the transfer folder.
+#
+# A real zip, outside the folder, holding a file with a name nothing else uses.
+# The obvious version of this test -- traversal names that point at nothing --
+# passes with the guard deleted, because a path that is not a zip is refused for
+# being not a zip. Only an archive that *would* have worked can tell the two
+# refusals apart.
+_outside_zip = os.path.join(os.path.dirname(INBOX), "elsewhere.zip")
+with zipfile.ZipFile(_outside_zip, "w") as _bundle:
+    _bundle.writestr("zz-should-never-appear.bin", b"no")
+
+for _escape in ("../elsewhere.zip", os.path.join(os.path.dirname(INBOX), "elsewhere.zip"),
+                "..\elsewhere.zip", "subdir/inner.zip", "", "..", "."):
+    _refused = _run(_plugin.unpack_transferred_file(_escape))
+    check("%r unpacks nothing" % (_escape,), _refused.get("ok"), False)
+check("and nothing from outside the folder was written into it",
+      os.path.exists(os.path.join(INBOX, "zz-should-never-appear.bin")), False)
+os.remove(_outside_zip)
+
+# Only .zip, and the refusal is by name before anything is opened -- nothing on
+# a stock SteamOS reads .7z or .rar, so the button is never offered for one and
+# the backend says the same thing rather than failing later.
+_write("zz-not-an-archive.7z", "whatever")
+_wrong = _run(_plugin.unpack_transferred_file("zz-not-an-archive.7z"))
+check("a .7z is refused with a reason", _wrong.get("ok"), False)
+check("that says what can be unpacked",
+      "Only .zip" in (_wrong.get("error") or ""), True)
+_run(_plugin.discard_transferred_file("zz-not-an-archive.7z"))
+
+_run(_plugin.discard_transferred_file("zz-Banjo-Kazooie (XBLA)"))
 
 
 # Put it back. `emulators.d` and the transfer folder are shared by the whole
