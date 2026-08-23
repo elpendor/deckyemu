@@ -16,23 +16,29 @@ The **Emulators** tab lists emulators for the systems RetroArch does not cover.
 Press install and the emulator is downloaded and set up: the system, the file
 types it accepts and its launch arguments are all filled in for you.
 
-| Emulator | System |
-| --- | --- |
-| Dolphin | GameCube, Wii |
-| PCSX2 | PlayStation 2 |
-| RPCS3 | PlayStation 3 |
-| shadPS4 | PlayStation 4 |
-| DuckStation | PlayStation 1 |
-| PPSSPP | PSP |
-| Vita3K | PS Vita |
-| Ryujinx | Switch |
-| Cemu | Wii U |
-| Azahar | 3DS |
-| xemu | Xbox |
+| Emulator | System | Installed from |
+| --- | --- | --- |
+| Dolphin | GameCube, Wii | Flathub — [`org.DolphinEmu.dolphin-emu`](https://flathub.org/apps/org.DolphinEmu.dolphin-emu) |
+| PCSX2 | PlayStation 2 | Flathub — [`net.pcsx2.PCSX2`](https://flathub.org/apps/net.pcsx2.PCSX2) |
+| RPCS3 | PlayStation 3 | GitHub — [`RPCS3/rpcs3-binaries-linux`](https://github.com/RPCS3/rpcs3-binaries-linux) |
+| shadPS4 | PlayStation 4 | Flathub — [`net.shadps4.shadPS4`](https://flathub.org/apps/net.shadps4.shadPS4) |
+| DuckStation | PlayStation 1 | Flathub — [`org.duckstation.DuckStation`](https://flathub.org/apps/org.duckstation.DuckStation) |
+| PPSSPP | PSP | Flathub — [`org.ppsspp.PPSSPP`](https://flathub.org/apps/org.ppsspp.PPSSPP) |
+| Vita3K | PS Vita | GitHub — [`Vita3K/Vita3K`](https://github.com/Vita3K/Vita3K) |
+| Ryujinx | Switch | Flathub — [`io.github.ryubing.Ryujinx`](https://flathub.org/apps/io.github.ryubing.Ryujinx) |
+| Cemu | Wii U | Flathub — [`info.cemu.Cemu`](https://flathub.org/apps/info.cemu.Cemu) |
+| Azahar | 3DS | GitHub — [`azahar-emu/azahar`](https://github.com/azahar-emu/azahar) |
+| xemu | Xbox | Flathub — [`app.xemu.xemu`](https://flathub.org/apps/app.xemu.xemu) |
+
+Nothing here is a mirror or a repack: the application id or the repository above
+is where the build comes from, and following one takes you to the publisher's
+own page. That is the whole of what this plugin adds — it downloads what those
+projects publish and fills in the system, the file types and the launch
+arguments.
 
 Most come from Flathub and install for your user, so no password is asked for.
 RPCS3, Azahar and Vita3K publish no Flatpak and are downloaded from their own
-releases into `~/deckyemu/emulators`. Each row says which it is, in brackets
+releases into `~/deckyemu/emulators`. The panel says which is which in brackets
 after the name, because the two behave differently when something goes wrong and
 only one of them has builds you can move between.
 

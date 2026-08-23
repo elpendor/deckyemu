@@ -106,6 +106,50 @@ check("so the doc does not send anyone grepping for it", "[retroarch]" in _text,
 check("the frontend prefix the doc names is real", "[deckyemu]" in _code, True)
 
 
+section("docs/emulators.md -- the table says where each build comes from")
+
+# The table restates the catalog, which is the only authority on what actually
+# installs. A doc that lists sources is the kind somebody checks *because* they
+# want to know what is about to be downloaded, so it going stale is worse than
+# it never having existed -- and adding an emulator is exactly the moment
+# somebody would forget it.
+sys.path.insert(0, os.path.join(REPO_ROOT, "py_modules"))
+
+import emulator_catalog  # noqa: E402
+
+with open(os.path.join(REPO_ROOT, "docs", "emulators.md"), encoding="utf-8") as _handle:
+    _emulators_doc = _handle.read()
+
+_ROW = re.compile(r"^\| (\S[^|]*?) \| [^|]+ \| (Flathub|GitHub) — \[`([^`]+)`\]", re.M)
+_listed = {name.strip(): (channel, ident)
+           for name, channel, ident in _ROW.findall(_emulators_doc)}
+
+check("the table has rows to check", len(_listed) > 5, True)
+
+
+def _source_of(entry):
+    """(channel, identity) as the table should show it."""
+    source = entry.get("source") or {}
+    if source.get("kind") == "flatpak":
+        return "Flathub", source.get("id", "")
+    return "GitHub", source.get("repo", "")
+
+
+_expected = {entry["name"]: _source_of(entry) for entry in emulator_catalog.BUNDLED}
+
+check("every emulator the plugin installs is in the table",
+      sorted(set(_expected) - set(_listed)), [])
+# The other direction matters as much: a row for something no longer shipped
+# tells a reader they can install it.
+check("and the table lists nothing the plugin does not install",
+      sorted(set(_listed) - set(_expected)), [])
+
+_wrong = {name: {"table": _listed[name], "catalog": _expected[name]}
+          for name in sorted(set(_listed) & set(_expected))
+          if _listed[name] != _expected[name]}
+check("and each row names the source the catalog actually uses", _wrong, {})
+
+
 if __name__ == "__main__":
     from harness import summary
 
