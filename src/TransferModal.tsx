@@ -1,4 +1,5 @@
 import {
+  ConfirmModal,
   DialogButton,
   Focusable,
   ModalRoot,
@@ -37,13 +38,13 @@ import { QrCode } from "./QrCode";
  * and the file looks like a ROM the picker cannot read.
  */
 const DEFINITION_SUFFIX = ".deckyemu.json";
-import { DANGER_CLASS, DANGER_CSS } from "./danger";
+import { DANGER_CLASS, DANGER_CSS, DANGER_TEXT } from "./danger";
 import { logError } from "./logError";
 import { installThroughEmulator } from "./firmwareInstall";
 import { requirementForFile, type RequirementMatch } from "./firmwareMatch";
 import { confirmDiscardTransfer } from "./discardTransfer";
 import { importDefinition } from "./importDefinition";
-import { closeOpenModals } from "./modalStack";
+import { closeOpenModals, openModal } from "./modalStack";
 
 /** How often to re-check while running, to pick up newly arrived files. */
 const POLL_MS = 3000;
@@ -440,6 +441,40 @@ export function TransferModal({
       setBusy(false);
     }
   }, [load]);
+
+  /**
+   * Ask before invalidating every saved link.
+   *
+   * It is the one control here that reaches devices which are not in the room.
+   * The link *is* the credential -- there is nothing per-device to revoke, so
+   * this is all or nothing -- and a phone that bookmarked it simply stops
+   * working, with nothing on this screen to say which phones those were.
+   *
+   * The tell that it wanted asking: the toast afterwards already explains what
+   * broke. If the consequence needs a sentence, it needed the sentence first.
+   *
+   * Recoverable, and the dialog says so: re-pairing is scanning the code again.
+   * That is why this warns rather than demanding the emphasis a deletion gets.
+   */
+  const confirmResetLink = useCallback(() => {
+    openModal(
+      <ConfirmModal
+        strTitle="Reset the transfer link?"
+        strOKButtonText="Reset link"
+        bDestructiveWarning
+        onOK={() => void resetLink()}
+        strDescription={
+          <div style={DANGER_TEXT}>
+            Every device that bookmarked this link stops being able to reach the
+            Deck, and there is no way to undo it or to reset only one of them.
+            Pairing again is scanning the code, the same as the first time.
+          </div>
+        }
+      />,
+    );
+    // `resetLink` is stable, and listing it here would rebuild this callback on
+    // every render that touches `load`.
+  }, [resetLink]);
 
   /**
    * Abandon a transfer.
@@ -857,17 +892,6 @@ export function TransferModal({
             leaves twice the width to the button everyone actually presses --
             rather than each taking a full row of its own. */}
         <Focusable style={{ display: "flex", gap: "8px" }}>
-          {remember && (
-            <div className={DANGER_CLASS} style={{ flex: 1, display: "flex" }}>
-              <DialogButton
-                onClick={() => void resetLink()}
-                disabled={busy}
-                style={{ flex: 1, minWidth: "auto" }}
-              >
-                Reset link
-              </DialogButton>
-            </div>
-          )}
           <DialogButton
             onClick={() => void close()}
             disabled={busy}
@@ -875,6 +899,22 @@ export function TransferModal({
           >
             {running && (status?.uploading ?? 0) === 0 ? "Done" : "Close"}
           </DialogButton>
+          {/* After the button everybody presses, not before it. Gamepad focus
+              enters a row from the left, so the first control is the one a
+              thumb lands on without aiming -- and this one revokes a credential
+              on devices that are not in the room. Every other row in the plugin
+              puts the destructive control last. */}
+          {remember && (
+            <div className={DANGER_CLASS} style={{ flex: 1, display: "flex" }}>
+              <DialogButton
+                onClick={confirmResetLink}
+                disabled={busy}
+                style={{ flex: 1, minWidth: "auto" }}
+              >
+                Reset link
+              </DialogButton>
+            </div>
+          )}
         </Focusable>
       </Focusable>
     </ModalRoot>
