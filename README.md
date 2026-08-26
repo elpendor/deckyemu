@@ -33,7 +33,7 @@ RetroArch is detected automatically.
 2. Find **Install from URL** and give it:
 
    ```
-   https://get.deckyemu.workers.dev
+   https://get.deckyemu.xyz
    ```
 
 3. Confirm Decky's prompt. DeckyEmu appears in the Quick Access panel.
