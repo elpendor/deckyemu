@@ -168,7 +168,8 @@ def save(emulator):
     # the emulator.
     for key in (
         "catalog_recipe", "catalog_args", "catalog_fullscreen_args",
-        "catalog_extensions", "command", "env", "installed_args", "splits_args",
+        "catalog_extensions", "command", "env", "installed_args", "layout",
+        "splits_args",
     ):
         value = emulator.get(key)
         if value is None and existing:
@@ -331,6 +332,27 @@ def flatpak_prefix(emulator, extra=()):
     return argv
 
 
+def env_prefix(emulator):
+    """`env NAME=VALUE ...` for an emulator that is not in a sandbox.
+
+    The same job `--env=` does in `flatpak_prefix`, for the other half of the
+    catalog. It was missing: `env` reached a flatpak and was silently dropped
+    for every AppImage, so an entry could declare one, pass validation, and
+    launch without it. Vita3K is the entry that found this.
+
+    `/usr/bin/env` rather than shell assignments because a launcher is written
+    as one `exec` line of quoted argv -- see `launchers.write_launcher` -- and
+    an assignment ahead of `exec` would have to be spliced in as raw text.
+    Empty when there is nothing to set, so the common launcher is unchanged.
+    """
+    settings = [
+        "%s=%s" % (name, value)
+        for name, value in sorted((emulator.get("env") or {}).items())
+        if name
+    ]
+    return ["env"] + settings if settings else []
+
+
 def gui_argv(emulator, args=(), allow=()):
     """Argv that opens an emulator's own interface, with no game.
 
@@ -365,7 +387,7 @@ def gui_argv(emulator, args=(), allow=()):
     extra.extend("--filesystem=%s:ro" % folder for folder in allow if folder)
     if emulator.get("kind") == "flatpak":
         return flatpak_prefix(emulator, extra) + list(args)
-    return [emulator.get("target", "")] + list(args)
+    return env_prefix(emulator) + [emulator.get("target", "")] + list(args)
 
 
 #: Where the space-free links below are kept. decky's runtime directory rather
@@ -502,4 +524,4 @@ def launch_argv(emulator, rom_path, fullscreen=True, title_id=""):
         extra.append(GAMESCOPE_SOCKET_ARG)
         return flatpak_prefix(emulator, extra) + tokens
 
-    return [emulator.get("target", "")] + tokens
+    return env_prefix(emulator) + [emulator.get("target", "")] + tokens

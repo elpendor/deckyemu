@@ -25,6 +25,8 @@ interface Prepared {
   launcher_path: string;
   collection_name: string;
   rom_path?: string;
+  /** A Steam Input layout this emulator needs -- Vita3K's gyro depends on it. */
+  layout?: string;
 }
 
 export interface AddGameArgs {
@@ -65,6 +67,7 @@ export async function addPreparedGame(args: AddGameArgs): Promise<AddGameResult>
     exe: prepared.exe,
     startDir: prepared.start_dir,
     launchOptions: prepared.launch_options,
+    layout: prepared.layout ?? "",
   });
 
   try {

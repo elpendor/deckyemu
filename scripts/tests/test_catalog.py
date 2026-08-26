@@ -28,6 +28,7 @@ from harness import check, section  # noqa: E402  -- installs the decky stub
 import emulator_catalog  # noqa: E402
 import emulators  # noqa: E402
 import platforms  # noqa: E402
+import steam_layouts  # noqa: E402
 from emulator_catalog import schema  # noqa: E402
 
 section("the emulator catalog -- every entry is well formed")
@@ -198,6 +199,90 @@ check("and the setting says what Dolphin's own default is, so a chosen value sur
 # this number -- so a change to the values that does not raise it reaches
 # nobody who already has the emulator, silently.
 check("the setup version rose with them", _dolphin["setup"]["version"] >= 4, True)
+
+
+section("Vita3K reads the Deck's own pad, which is where its gyro is")
+
+# Measured inside a running Gravity Rush, not read anywhere: Steam's virtual pad
+# reports no sensors, and it claims the physical pad's own `28de:1205`, so
+# hiding it by id is impossible and both would be visible at once -- which
+# Vita3K resolves by summing their axes. Both variables are load-bearing.
+_vita_entry = emulator_catalog.find("vita3k")
+_vita_env = _vita_entry.get("env") or {}
+check("the virtual pad is denied the real controller's identity",
+      _vita_env.get("SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD"), "0")
+check("and Steam's ignore list is replaced, which hands back the real one",
+      _vita_env.get("SDL_GAMECONTROLLER_IGNORE_DEVICES"), "0x28de/0x11ff")
+
+# An AppImage got no environment at all until this shipped, so the entry could
+# carry both and every launch still see neither.
+_vita_emu = emulator_catalog.to_emulator(_vita_entry, "/tmp/Vita3K.AppImage", {})
+_vita_argv = emulators.launch_argv(_vita_emu, "", True, "PCSA00011")
+check("it reaches the launch, ahead of the emulator",
+      (_vita_argv[0], sorted(a.split("=")[0] for a in _vita_argv[1:4])),
+      ("env", ["SDL_GAMECONTROLLERCONFIG",
+               "SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD",
+               "SDL_GAMECONTROLLER_IGNORE_DEVICES"]))
+# Pressing Steam is a GUIDE press, and Vita3K toggles pause on it -- so the
+# mapping it launches with must not name that button at all.
+check("and the mapping it launches with hides the guide button",
+      "guide:" in _vita_entry["env"].get("SDL_GAMECONTROLLERCONFIG", ""), False)
+check("while keeping the buttons a game needs",
+      all(part in _vita_entry["env"].get("SDL_GAMECONTROLLERCONFIG", "")
+          for part in ("a:b0", "start:b6", "leftx:a0", "righttrigger:a5")),
+      True)
+check("and the game still starts by title id behind it",
+      _vita_argv[-2:], ["-r", "PCSA00011"])
+# `env` is only copied onto an installed emulator when the recipe moves, so
+# shipping the variables without raising it reaches nobody who already has it.
+check("the recipe rose with them", _vita_entry.get("recipe", 1) >= 6, True)
+
+# Deliberately a fork: upstream builds since ~3830 have no working motion on a
+# Deck, because SDL's Steam Deck driver reports sensor timings in microseconds
+# through a parameter documented as nanoseconds and Vita3K divides by 1000 on
+# top. This is upstream 496939b6 plus the one commit that fixes it. Both the
+# install and the rollback path read `source` from the catalog live, so this
+# decides what every install gets -- it should not move back by accident.
+check("Vita3K installs from the fork carrying the motion fix",
+      _vita_entry["source"]["repo"], "elpendor/Vita3K")
+check("and still asks for the x86_64 AppImage",
+      _vita_entry["source"]["asset"], r"^Vita3K-x86_64\.AppImage$")
+# Nothing else here points anywhere but upstream, and a second one appearing
+# without a reason in its own comment is worth failing over.
+# The Deck powers its gyro down unless the running game's Steam layout binds it,
+# so the entry names the one stock template that does. Without this the emulator
+# reads a sensor that never moves and everything else here is wasted.
+check("Vita3K asks for a layout that binds gyro",
+      _vita_entry.get("layout"), steam_layouts.DERIVED_URL)
+check("and it survives onto the installed emulator",
+      _vita_emu.get("layout"), steam_layouts.DERIVED_URL)
+# Derived on the device from Valve's own file rather than shipped: the source is
+# theirs, and a copy taken today would rot against the next Steam update.
+_stock = """"controller_mappings"
+{
+	"controller_type"		"controller_neptune"
+	"localization" { "english" { "title" "Gamepad with Gyro"
+	"description" "Valve's words." } }
+	"group" { "id" "14" "mode" "gyro_to_mouse" }
+}"""
+_derived = steam_layouts.rewrite(_stock)
+check("the derived layout sends the gyro to a stick, not the mouse",
+      ('"gyro_to_joystick"' in _derived, "gyro_to_mouse" in _derived), (True, False))
+check("and says whose it is, so nobody wonders what put it in Steam's list",
+      "DeckyEmu" in _derived, True)
+# Steam changing its template out from under this is a thing to notice, not to
+# half-apply: a layout rewritten on a guess is worse than the stock one.
+check("a template it does not recognise is refused",
+      steam_layouts.rewrite('"controller_mappings" { "mode" "joystick_move" }'), "")
+# Every other entry leaves Steam's own choice alone.
+check("no other entry pins a layout",
+      [e["id"] for e in emulator_catalog.CATALOG if e.get("layout")],
+      ["vita3k"])
+
+check("and it is the only entry installed from a fork",
+      [e["id"] for e in emulator_catalog.CATALOG
+       if (e.get("source") or {}).get("repo", "").startswith("elpendor/")],
+      ["vita3k"])
 
 
 if __name__ == "__main__":

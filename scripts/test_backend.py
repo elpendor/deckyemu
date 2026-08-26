@@ -1402,6 +1402,23 @@ check("and every other way of starting it",
 check("an emulator with no environment gets no --env",
       any(a.startswith("--env") for a in emulators.launch_argv(fs, "/roms/game.nsp")),
       False)
+
+# Outside a sandbox the same setting has to be baked into the argv, because a
+# launcher is a script Steam runs with no caller to set it. This was dropped
+# entirely until Vita3K needed it: an AppImage entry could declare `env`, pass
+# validation, and launch without a word of it.
+_app_env = {"kind": "appimage", "target": "/home/deck/Vita3K.AppImage",
+            "args": "{rom}", "env": {"SDL_B": "2", "SDL_A": "1"}}
+check("environment reaches an AppImage launch, sorted and before the binary",
+      emulators.launch_argv(_app_env, "/roms/vita/eboot.bin", False),
+      ["env", "SDL_A=1", "SDL_B=2", "/home/deck/Vita3K.AppImage",
+       "/roms/vita/eboot.bin"])
+check("and its own interface, which is the other way a pad reaches it",
+      emulators.gui_argv(_app_env)[:3], ["env", "SDL_A=1", "SDL_B=2"])
+check("an AppImage with no environment is left exactly as it was",
+      emulators.launch_argv({"kind": "appimage", "target": "/x.AppImage",
+                             "args": "{rom}"}, "/roms/g.iso", False),
+      ["/x.AppImage", "/roms/g.iso"])
 # The catalog is where this is set, and the editor never sends it, so a save
 # from there has to carry it over exactly as `command` is.
 _saved_env, _ = emulators.save({
@@ -3863,6 +3880,65 @@ check("Vita3K passes a fullscreen flag",
       _catalog_check.find("vita3k")["fullscreen_args"], "--fullscreen")
 check("and starts installed titles by id",
       _catalog_check.find("vita3k")["installed_args"], "-r {title}")
+
+# The layout travels by the same rule the environment does -- only onto an
+# emulator whose recipe moved -- and it was added once without moving it, so the
+# catalog had it, no installed emulator did, and a freshly added game came up on
+# whatever Steam guessed with its gyro powered down.
+_vita_catalog = _catalog_check.find("vita3k")
+check("Vita3K names the layout its gyro depends on",
+      bool(_vita_catalog.get("layout")), True)
+check("and the recipe moved so it reaches an emulator already installed",
+      _vita_catalog.get("recipe", 1) >= 7, True)
+# And it is refreshed on every start rather than only when the recipe moves.
+# A plugin downgrade re-saves the record through a `save()` that has never heard
+# of the field and drops it, while `catalog_recipe` still says everything is
+# current -- which would stand the emulator down for good if the refresh were
+# gated on that number, as it was when this was first written.
+try:
+    emulators.save({"name": "Vita3K", "id": "vita3k", "kind": "flatpak",
+                    "target": "org.vita3k.Vita3K", "args": "{rom}",
+                    "extensions": "vpk",
+                    "catalog_recipe": _vita_catalog.get("recipe", 1)})
+    check("a record that lost its layout has none to start with",
+          emulators.find("vita3k").get("layout", ""), "")
+    run(plugin._upgrade_emulator_recipes())
+    check("and the startup upgrade puts it back without the recipe moving",
+          emulators.find("vita3k").get("layout", ""), _vita_catalog.get("layout"))
+finally:
+    emulators.remove("vita3k")
+
+# Games added before the emulator asked for a layout do not have one, and the
+# symptom is a gyro that never moves with nothing on screen to explain it. The
+# frontend repairs them at startup from this list rather than a release note
+# asking people to re-add their Vita games.
+_layout_lib = {
+    "1": {"app_id": 1, "core_id": "emu:vita3k", "title": "A Vita game"},
+    "2": {"app_id": 2, "core_id": "emu:ryujinx", "title": "A Switch game"},
+    "3": {"app_id": 0, "core_id": "emu:vita3k", "title": "Never added to Steam"},
+    "4": {"app_id": 4, "core_id": "libretro:snes9x", "title": "A core game"},
+}
+_saved_lib = store.get_library()
+_LAYOUT_URL = "template://deckyemu_controller_neptune_gamepad_gyro.vdf"
+try:
+    store.clear_library()
+    store.remember_games(_layout_lib)
+    emulators.save({"name": "Vita3K", "id": "vita3k", "kind": "flatpak",
+                    "target": "org.vita3k.Vita3K", "args": "{rom}",
+                    "extensions": "vpk", "layout": _LAYOUT_URL})
+    emulators.save({"name": "Ryujinx", "id": "ryujinx", "kind": "flatpak",
+                    "target": "io.github.ryubing.Ryujinx", "args": "{rom}",
+                    "extensions": "nsp"})
+    _needs = run(plugin.games_needing_layout())
+finally:
+    emulators.remove("vita3k")
+    emulators.remove("ryujinx")
+    store.clear_library()
+    store.remember_games(_saved_lib)
+check("only games whose emulator names a layout are offered for repair",
+      [row["app_id"] for row in _needs], [1])
+check("and each carries the layout to apply",
+      [row["layout"] for row in _needs], [_LAYOUT_URL])
 
 # ---- the installed Vita titles, which are the only way these games get in --
 # Vita3K decrypts content as it installs, so a game copied into ux0/app is

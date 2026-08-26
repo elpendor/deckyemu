@@ -90,6 +90,51 @@ describe("pinning one", () => {
     expect(setActive).not.toHaveBeenCalled();
   });
 
+  const GYRO = "template://controller_neptune_gamepad_mouse_gyro.vdf";
+
+  /*
+   * An emulator that names a layout is not repairing a broken one -- Vita3K's
+   * gyro is off unless the running game's layout binds it, and the layout Steam
+   * guesses plays the game perfectly well otherwise. So a working guess is
+   * replaced here, where the no-template case leaves it alone.
+   */
+  it("applies a layout the emulator asked for over a working guess", async () => {
+    const setActive = stubSteam([fromExe, guessed]);
+    expect(await pinGamepadLayout(1234, 4, GYRO)).toBe(true);
+    expect(setActive).toHaveBeenCalledWith(1234, 15, GYRO, false);
+  });
+
+  it("replaces the plugin's own gyro-less pin", async () => {
+    const ours = { Title: "Gamepad", URL: GAMEPAD_TEMPLATE, bUsesGamepad: true };
+    const setActive = stubSteam([fromExe, ours]);
+    expect(await pinGamepadLayout(1234, 4, GYRO)).toBe(true);
+    expect(setActive).toHaveBeenCalledWith(1234, 15, GYRO, false);
+  });
+
+  /*
+   * The repair path. A game that already exists has no name key on its way --
+   * the first reading is the answer -- and waiting for one to arrive timed out
+   * on every game, which is how three Vita games kept Steam's layout through a
+   * migration that reported nothing wrong.
+   */
+  it("pins a game that already exists without waiting for a key change", async () => {
+    const setActive = stubSteam([guessed, guessed]);
+    expect(await pinGamepadLayout(1234, 4, GYRO, true)).toBe(true);
+    expect(setActive).toHaveBeenCalledWith(1234, 15, GYRO, false);
+  });
+
+  it("and still leaves that game alone when the layout is somebody's own", async () => {
+    const setActive = stubSteam([chosen, chosen]);
+    expect(await pinGamepadLayout(1234, 4, GYRO, true)).toBe(false);
+    expect(setActive).not.toHaveBeenCalled();
+  });
+
+  it("still never overrides a layout somebody chose", async () => {
+    const setActive = stubSteam([fromExe, chosen]);
+    expect(await pinGamepadLayout(1234, 4, GYRO)).toBe(false);
+    expect(setActive).not.toHaveBeenCalled();
+  });
+
   it("does nothing when a layout was chosen for that name already", async () => {
     const setActive = stubSteam([fromExe, chosen]);
     expect(await pinGamepadLayout(1234, 4)).toBe(false);

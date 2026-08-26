@@ -36,6 +36,8 @@ export async function createOrReuseShortcut(args: {
   exe: string;
   startDir: string;
   launchOptions: string;
+  /** A Steam Input layout the emulator needs; "" leaves Steam's choice alone. */
+  layout?: string;
 }): Promise<{ appId: number; reused: boolean }> {
   let existing = 0;
   try {
@@ -61,7 +63,7 @@ export async function createOrReuseShortcut(args: {
     // moves the shortcut onto whatever layout that title already attracts --
     // the same guess a fresh shortcut gets, and worth the same repair. Not
     // awaited, for the reason `createShortcut` gives.
-    void pinGamepadLayout(existing);
+    void pinGamepadLayout(existing, 8, args.layout ?? "");
     return { appId: existing, reused: true };
   }
 

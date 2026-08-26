@@ -37,6 +37,7 @@ import emu_config
 import emu_install
 import emu_firmware
 import emulator_catalog
+import steam_layouts
 import emulators
 import installer
 import launchers
@@ -130,6 +131,31 @@ class Startup(plugin_base.PluginContext):
             "Existing library: staying on one shared collection until it is changed",
         )
 
+    async def _write_gyro_layout(self):
+        """Derive the Steam layout an emulator's motion support depends on.
+
+        Vita3K is the only entry that asks for one, and it asks because the Deck
+        powers its gyro down unless the running game's layout binds it. Steam's
+        own gyro template binds it to the mouse, which drifts a pointer Vita3K
+        reads as the Vita's touchscreen -- so the layout it points at is one
+        derived from Valve's, with the gyro sent to a stick instead.
+
+        Every startup rather than at install: Steam updates rewrite its
+        templates, and a derived one that stopped matching would quietly hold a
+        year-old copy of somebody else's tuning.
+        """
+        wanted = [
+            entry for entry in emulator_catalog.CATALOG
+            if str(entry.get("layout") or "").endswith(steam_layouts.DERIVED)
+        ]
+        if not wanted:
+            return
+        _path, error = await self._run(steam_layouts.ensure)
+        if error:
+            # Not fatal: without it a Vita game lands on whatever Steam chose,
+            # which is the situation this improves rather than depends on.
+            decky.logger.warning("Could not write the gyro layout: %s", error)
+
     async def _upgrade_emulator_recipes(self):
         """Carry a corrected launch recipe to an emulator already installed.
 
@@ -167,7 +193,8 @@ class Startup(plugin_base.PluginContext):
             fresh = emulator.get("catalog_recipe", 1) != recipe
             before = (emulator.get("args"), emulator.get("fullscreen_args"),
                       emulator.get("command"), dict(emulator.get("env") or {}),
-                      emulator.get("installed_args"), emulator.get("splits_args"),
+                      emulator.get("installed_args"), emulator.get("layout"),
+                      emulator.get("splits_args"),
                       list(emulator.get("extensions") or []),
                       list(emulator.get("catalog_extensions") or []),
                       emulator.get("catalog_recipe"))
@@ -222,6 +249,16 @@ class Startup(plugin_base.PluginContext):
                 emulator["installed_args"] = entry.get("installed_args", "")
                 emulator["splits_args"] = bool(entry.get("splits_args"))
 
+            # Refreshed every start, unlike the recipe fields above. It is not
+            # editable anywhere, so there is no user value to preserve -- and
+            # gating it on the recipe leaves it stranded in two real cases: the
+            # version that added it forgot to raise the number, and a plugin
+            # downgrade re-saves the record through a `save()` that has never
+            # heard of the field and drops it, with the recipe left saying
+            # everything is current. Both end as an emulator whose games get no
+            # layout and a gyro nobody can switch on.
+            emulator["layout"] = entry.get("layout", "")
+
             # Which files the picker offers this emulator for. Stored at install
             # time and never revisited, so narrowing a system's formats reached
             # nobody who already had the emulator: Vita3K stopped claiming .vpk
@@ -260,7 +297,8 @@ class Startup(plugin_base.PluginContext):
             # time is how a settings file gets a reputation for churn.
             after = (emulator.get("args"), emulator.get("fullscreen_args"),
                      emulator.get("command"), dict(emulator.get("env") or {}),
-                     emulator.get("installed_args"), emulator.get("splits_args"),
+                     emulator.get("installed_args"), emulator.get("layout"),
+                     emulator.get("splits_args"),
                      list(emulator.get("extensions") or []),
                      list(emulator.get("catalog_extensions") or []),
                      emulator.get("catalog_recipe"))

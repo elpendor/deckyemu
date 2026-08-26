@@ -14,6 +14,14 @@ export interface CreateShortcutArgs {
   exe: string;
   startDir: string;
   launchOptions: string;
+  /**
+   * A Steam Input layout this game's emulator needs, as a `template://` url.
+   *
+   * Empty for almost everything, which leaves Steam's own choice alone unless it
+   * guessed one that cannot play a game. Vita3K sets it because the Deck powers
+   * its gyro down unless the running game's layout binds it.
+   */
+  layout?: string;
 }
 
 /**
@@ -55,7 +63,7 @@ export async function createShortcut(args: CreateShortcutArgs): Promise<number> 
   // whether the layout needs repairing, and nothing about adding a game depends
   // on the answer -- making the caller hold for a couple of seconds would buy
   // only a return value nobody reads. See layout.ts for what it is repairing.
-  void pinGamepadLayout(appId);
+  void pinGamepadLayout(appId, 8, args.layout ?? "");
 
   return appId;
 }

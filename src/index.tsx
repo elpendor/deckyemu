@@ -34,6 +34,7 @@ import { UpdateDot } from "./UpdateDot";
 import { AddGamePanel } from "./AddGamePanel";
 import { editGameMenuItem } from "./EditGameMenuItem";
 import { refreshAddedGames, rememberAddedGames } from "./addedGames";
+import { repairGameLayouts } from "./repairLayouts";
 import { AddedGamesPanel } from "./AddedGamesPanel";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { closeModalsOnPanelOpen } from "./modalStack";
@@ -472,6 +473,18 @@ export default definePlugin(() => {
   // launcher script is what actually stops it; this is the panel collecting
   // that decision and asking. See launchGate.ts.
   const stopWatchingLaunches = watchLaunches();
+
+  /*
+   * Games added before their emulator asked for a layout do not have it, and
+   * for Vita3K that means a gyro the Deck never powers on. Repaired here rather
+   * than asked of the user, because the symptom is invisible: motion simply
+   * does nothing, in a game that never mentions motion, for a reason that lives
+   * in a Steam menu three levels away. See repairLayouts.ts -- it only replaces
+   * layouts Steam guessed or this plugin pinned, never one somebody chose.
+   */
+  void repairGameLayouts().catch((error: unknown) =>
+    console.error("[deckyemu] could not repair game layouts", error),
+  );
 
   /*
    * The backend checks on a timer and says so here. Registered at plugin scope

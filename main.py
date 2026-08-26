@@ -321,6 +321,7 @@ class Plugin(
             ("adopt the menu shortcut", self._adopt_menu_combo),
             ("keep an existing library's collection layout", self._pin_collection_layout),
             ("claim the collections already filed into", self._claim_filed_collections),
+            ("write the gyro layout template", self._write_gyro_layout),
             ("upgrade launchers", self._upgrade_launchers),
             ("upgrade emulator recipes", self._upgrade_emulator_recipes),
             ("upgrade emulator setups", self._upgrade_emulator_setups),
@@ -1389,6 +1390,14 @@ class Plugin(
             "warn_flatpak_sdcard": self._install is not None
             and self._install["kind"] == "flatpak"
             and rom_path.startswith("/run/media"),
+            # The Steam Input layout this game needs, when the emulator asks for
+            # a particular one. Vita3K is the case: the Deck powers its gyro down
+            # unless the *running game's* layout binds it, so a Vita game on any
+            # ordinary gamepad layout reads a sensor that never moves -- and the
+            # setting is one nobody would guess, in a Steam menu three levels
+            # from the game. Empty for every other emulator, which leaves Steam's
+            # choice alone. See `steam/layout.ts` for what is done with it.
+            "layout": (emulator or {}).get("layout", ""),
         }
 
     @classmethod

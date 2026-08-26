@@ -29,6 +29,7 @@ import plugin_base
 
 import launchers
 import romshelf
+import emulators
 import store
 
 
@@ -41,6 +42,36 @@ class Library(plugin_base.PluginContext):
         if entry:
             await self._run(launchers.remove_launcher, entry.get("launcher_path", ""))
         return entry
+    async def games_needing_layout(self):
+        """Games already added whose emulator depends on a Steam Input layout.
+
+        Adding a game pins the layout its emulator asks for, which does nothing
+        for the games added before the emulator asked. Vita3K is the case and the
+        symptom is silent: the Deck powers its gyro down unless the running
+        game's layout binds it, so motion in every Vita game added earlier stays
+        dead with nothing on screen to say why.
+
+        Answering here rather than having the frontend join two lists: the
+        library knows `core_id`, the emulator record knows the layout, and
+        neither is the frontend's to reason about.
+        """
+        library = await self._run(store.get_library)
+        emulators_by_id = {
+            emulator.get("id"): emulator
+            for emulator in await self._run(emulators.list_emulators)
+        }
+
+        wanted = []
+        for entry in library.values():
+            app_id = entry.get("app_id")
+            core_id = str(entry.get("core_id") or "")
+            if not app_id or not core_id.startswith("emu:"):
+                continue
+            layout = (emulators_by_id.get(core_id[4:]) or {}).get("layout") or ""
+            if layout:
+                wanted.append({"app_id": app_id, "layout": layout})
+        return wanted
+
     async def list_added(self):
         library = await self._run(store.get_library)
         return sorted(library.values(), key=lambda entry: entry.get("title", "").lower())

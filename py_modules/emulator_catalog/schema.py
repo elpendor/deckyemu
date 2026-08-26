@@ -56,6 +56,7 @@ OPTIONAL = {
     "command": "The binary to run inside the flatpak, when it is not the one "
                "the manifest names.",
     "env": "Environment variables the emulator needs, as a dict.",
+    "layout": "Steam Input layout template a game needs, as a `template://` url.",
     "setup": "Configuration to seed on install -- controller bindings, skipping "
              "a first-run wizard. See `emu_config` for the formats.",
     "firmware": "BIOS or firmware the emulator needs. A list of specs; see "

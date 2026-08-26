@@ -1,4 +1,5 @@
 import emu_config
+import steam_layouts
 
 _VITA3K_CONFIG = ".config/Vita3K/config.yml"
 
@@ -56,7 +57,32 @@ ENTRY = {
     "summary": "PlayStation Vita. Experimental.",
     "source": {
         "kind": "github",
-        "repo": "Vita3K/Vita3K",
+        # **Not upstream, and deliberately so.** Upstream builds since roughly
+        # 3830 have no working motion on a Deck, and the cause is two projects
+        # disagreeing about a unit: SDL's Steam Deck driver reports sensor
+        # timings in microseconds through a parameter SDL documents as
+        # nanoseconds, and `motion.cpp` converts ns -> us on top of that, so the
+        # elapsed time driving `UpdateOrientation`/`UpdateRotation` comes out
+        # 1000x too small and the integrated orientation never moves. SDL fixed
+        # its side in `e1af6236` (2025-11-12, shipped in release-3.4.x); Vita3K
+        # pins a 3.2.x commit from January that predates it.
+        #
+        # This repository is upstream `496939b6` (build 4074) plus one commit
+        # that takes the elapsed time from a monotonic clock instead, built by
+        # GitHub Actions from public source. Measured on the Deck: 3829 has
+        # working gyro, 3996/3998/4074 do not, this build does.
+        #
+        # **It is a pin, not a channel.** Upstream publishes a rolling
+        # `continuous` release and this one does not, so Vita3K stops following
+        # upstream while this is here -- which is the cost of the trade and the
+        # reason to go back the day the fix lands upstream.
+        #
+        # The commit is offered upstream as Vita3K/Vita3K#4100. **When that is
+        # merged, put `Vita3K/Vita3K` back here and drop the fork** -- and check
+        # the merged build first, since a maintainer may take the other route
+        # discussed there (bumping `external/sdl`), which fixes the same thing a
+        # different way.
+        "repo": "elpendor/Vita3K",
         # aarch64 builds are published beside the x86_64 one, and installing
         # the wrong architecture fails at exec time with nothing useful.
         "asset": r"^Vita3K-x86_64\.AppImage$",
@@ -85,6 +111,92 @@ ENTRY = {
     # the title id above is one answer, and `emulators.space_free` is the other,
     # for the package and firmware installs, which have no id to use instead.
     "splits_args": True,
+    # Gyro. The Vita had one and Gravity Rush is unplayable without it, and
+    # every part of this was measured on the Deck with the game running --
+    # nothing here is read off a wiki.
+    #
+    # Vita3K takes motion from SDL *gamepad* sensors only: `ctrl.cpp` calls
+    # `SDL_GamepadHasSensor` and `motion.cpp` handles
+    # `SDL_EVENT_GAMEPAD_SENSOR_UPDATE`. There is no DSU/cemuhook client, so
+    # SteamDeckGyroDSU -- the usual answer on this hardware -- cannot reach it.
+    # `disable-motion` is already false in the shipped config, so nothing in
+    # the setup block above is missing; what was missing is a pad with sensors.
+    #
+    # Steam hides the Deck's own controller (`28de:1205`) from a launched game
+    # behind `SDL_GAMECONTROLLER_IGNORE_DEVICES` and publishes its virtual pad
+    # instead, and that pad has no sensors: probed inside a running Gravity
+    # Rush, `gyro=False accel=False`. Overriding the list hands the real
+    # controller back, sensors included.
+    #
+    # The second variable is not optional. Steam's virtual pad reports the
+    # *physical* pad's `28de:1205` -- `SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD`
+    # is what makes SDL mirror the identity -- so no ignore list can separate
+    # them, and both would be visible at once. Outside PSTV mode `ctrl.cpp`
+    # merges every connected pad into port 1 with `axes[0] += ...`, so two pads
+    # means every stick reads double and half deflection is full deflection.
+    # With this at `0` exactly one pad is left, which is the real one.
+    #
+    # What this costs: Steam Input no longer shapes the pad for Vita games.
+    # Layouts, stick curves and the back buttons stop applying, and `GUIDE`
+    # reaches the game as the PS button. Trackpad-as-mouse is unaffected -- it
+    # is the X11 pointer, which no joystick hint touches -- so touch still
+    # works, and `touch.cpp` only reports a touch while a mouse button is held,
+    # so a drifting cursor cannot fire one.
+    #
+    # **The layout still has to bind gyro to something.** Steam leaves the IMU
+    # powered down when nothing in the running game's layout uses it, and the
+    # sensors then read exactly `(0,0,0)` -- not noise, nothing at all. That is
+    # not this file's to fix; the `layout` below is what switches it on.
+    "env": {
+        "SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD": "0",
+        "SDL_GAMECONTROLLER_IGNORE_DEVICES": "0x28de/0x11ff",
+        # The Deck's own mapping with `guide:` removed, and it is not cosmetic:
+        # `main_window.cpp` calls `on_ps_button()` -> `on_pause_triggered()` on
+        # `SDL_GAMEPAD_BUTTON_GUIDE`, which *toggles* pause. Steam normally eats
+        # the Steam button so no game sees it -- but reading the physical pad
+        # (above) means Vita3K gets it, so pressing Steam opened the menu and
+        # paused the emulator, and closing the menu left it paused because
+        # nothing sent a second press. A long press happened to send one, which
+        # is why it looked like an unreliable workaround rather than a toggle.
+        #
+        # Removing the binding is better than remapping it: SDL then reports no
+        # guide button at all, so nothing downstream can act on it. The GUID is
+        # the crc-free form, which is what SDL falls back to when the name-based
+        # checksum in the runtime GUID does not match -- verified on the device,
+        # with buttons and the gyro still present afterwards. The Vita's PS
+        # button goes with it, which no game needs and the Deck cannot send
+        # anyway.
+        "SDL_GAMECONTROLLERCONFIG": (
+            "03000000de2800000512000000036800,Steam Deck Controller,"
+            "a:b0,b:b1,back:b4,dpdown:h0.4,dpleft:h0.8,dpright:h0.2,dpup:h0.1,"
+            "leftshoulder:b9,leftstick:b7,lefttrigger:a4,leftx:a0,lefty:a1,"
+            "misc1:b11,paddle1:b12,paddle2:b13,paddle3:b14,paddle4:b15,"
+            "rightshoulder:b10,rightstick:b8,righttrigger:a5,rightx:a2,"
+            "righty:a3,start:b6,x:b2,y:b3,"
+        ),
+    },
+    # The other half, and the one that is not obvious: **Steam powers the Deck's
+    # IMU down unless the running game's layout binds gyro to something.** The
+    # sensors then read exactly `(0, 0, 0)` -- not noise, zeros -- while buttons
+    # and sticks work perfectly, so it presents as an emulator that ignores
+    # motion. Measured both ways on the device: with Gyro Behavior at `None` a
+    # probe inside the running game reads zeros; bind it to anything and the same
+    # probe reads gravity within the second.
+    #
+    # Derived from "Gamepad with Gyro", the one stock Deck template that binds
+    # gyro at all, with the binding moved from the mouse to a stick --
+    # `steam_layouts.py` does the rewriting, on the device, from the user's own
+    # Steam files. Stock would work just as well at switching the sensor on
+    # (`ALLOW_STEAM_VIRTUAL_GAMEPAD=0` above means Steam's gyro output reaches
+    # the emulator either way), but gyro-to-mouse drifts a pointer across the
+    # screen, and Vita3K reads that pointer as the Vita's touchscreen.
+    #
+    # Left to the user this is a setting nobody would guess, three levels into a
+    # Steam menu, that silently reverts when Steam Input is toggled -- which is
+    # exactly how it was lost after being set by hand. Pinned at add time
+    # instead, and only over a layout Steam guessed: an explicit choice is
+    # somebody's and is never touched. `steam/layout.ts`.
+    "layout": steam_layouts.DERIVED_URL,
     #   2  the fullscreen flag, which was missing entirely
     #   3  installed titles launch by id rather than by path
     #   4  splits_args, so an install already on the device stops handing this
@@ -93,7 +205,20 @@ ENTRY = {
     #   5  and the same for the file extensions: dropping .vpk from the catalog
     #      left every installed copy still claiming it, so the picker went on
     #      offering to run one
-    "recipe": 5,
+    #   6  the environment above, which is how the Deck's gyro reaches a Vita
+    #      game. `env` only travels to an installed emulator when this number
+    #      moves, and until this release it never travelled to an AppImage at
+    #      all -- `launch_argv` dropped it
+    #   7  the layout above, which travels by the same rule the environment
+    #      does: added without moving this number, it reached the catalog and
+    #      no installed emulator, so a freshly added game came up on whatever
+    #      Steam guessed and its gyro stayed powered down
+    #   8  and that layout moved from Steam's stock gyro template to one derived
+    #      from it, because the stock one aims the gyro at the mouse and the
+    #      pointer it drags around is the Vita's touchscreen
+    #   9  the controller mapping, without which pressing Steam paused the
+    #      emulator and closing the menu left it paused
+    "recipe": 9,
     "setup": _VITA3K_SETUP,
     # Booted on a Deck: firmware and font fetched and imported headlessly, a
     # .pkg installed with its zRIF, and the game started from its Steam

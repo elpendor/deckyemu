@@ -504,6 +504,22 @@ export const forgetCollections = callable<
 export const unregisterGame = callable<[appId: number], AddedGame | null>("unregister_game");
 export const listAdded = callable<[], AddedGame[]>("list_added");
 
+/** A game already added, and the Steam Input layout its emulator depends on. */
+export interface GameLayout {
+  app_id: number;
+  layout: string;
+}
+
+/**
+ * Games added before their emulator asked for a layout.
+ *
+ * Vita3K is why this exists: the Deck powers its gyro down unless the running
+ * game's layout binds it, so motion in every Vita game added earlier is dead
+ * until something re-pins them. Adding a game does it for new ones; this is the
+ * repair for the rest, and it runs at startup so nobody is asked to do it.
+ */
+export const gamesNeedingLayout = callable<[], GameLayout[]>("games_needing_layout");
+
 /**
  * Everything the backend forgot, so the caller can undo the Steam side.
  *

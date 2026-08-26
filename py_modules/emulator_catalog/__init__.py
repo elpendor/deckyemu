@@ -386,6 +386,9 @@ def to_emulator(entry, target, database_extensions):
         # for all but shadPS4 -- see `flatpak_prefix`.
         "command": entry.get("command", ""),
         "env": dict(entry.get("env") or {}),
+        # A Steam Input layout the emulator depends on, not a preference:
+        # Vita3K needs one that binds gyro or the Deck powers the sensor down.
+        "layout": entry.get("layout", ""),
         # How to start a title this emulator has already installed, when a file
         # path will not do it. Vita3K only.
         "installed_args": entry.get("installed_args", ""),

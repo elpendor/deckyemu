@@ -72,6 +72,28 @@ export function needsGamepadLayout(config: ControllerConfigInfo | null | undefin
 }
 
 /**
+ * Whether a layout the *emulator* asked for may replace what Steam chose.
+ *
+ * Looser than `needsGamepadLayout` on purpose. That one repairs a layout which
+ * cannot play a game at all; this one applies a layout a game needs for a
+ * reason invisible from the outside -- Vita3K's is that the Deck powers its gyro
+ * down unless the running game's layout binds it, so an ordinary, perfectly
+ * playable gamepad layout still means a sensor that never moves.
+ *
+ * The `default://` test is the same and carries the same promise: anything a
+ * person picked reads back as `template://` or `workshop://`, and is theirs.
+ */
+export function mayPinEmulatorLayout(config: ControllerConfigInfo | null | undefined): boolean {
+  if (!config || typeof config.URL !== "string") return false;
+  // Steam's own guess, or the layout *this plugin* pinned. The second is the
+  // one worth spelling out: `GAMEPAD_TEMPLATE` binds no gyro, and a game added
+  // before an emulator declared a layout is sitting on it -- treating our own
+  // pin as somebody's choice would leave motion broken on every game already
+  // added, with no way to notice short of playing one.
+  return config.URL.startsWith("default://") || config.URL === GAMEPAD_TEMPLATE;
+}
+
+/**
  * The Deck's built-in controller, or null when it is not there.
  *
  * Found by type rather than by index or position: the index is assigned by
@@ -125,22 +147,42 @@ async function selectedConfig(
  * the game still launches, its layout is just whatever Steam decided, which is
  * the situation this exists to improve rather than to depend on.
  */
-export async function pinGamepadLayout(appId: number, attempts = 8): Promise<boolean> {
+export async function pinGamepadLayout(
+  appId: number,
+  attempts = 8,
+  template = "",
+  settled = false,
+): Promise<boolean> {
   const controllerIndex = deckControllerIndex();
   if (controllerIndex === null) return false;
+
+  // An emulator that names a layout needs it applied over any layout Steam
+  // guessed, not only over one that cannot play a game.
+  const wanted = template || GAMEPAD_TEMPLATE;
+  const ready = template ? mayPinEmulatorLayout : needsGamepadLayout;
 
   const first = await selectedConfig(appId, controllerIndex);
   let current = first;
 
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
-    if (needsGamepadLayout(current)) break;
+  // `settled` is a game that already exists rather than one being added, so
+  // there is no name key on its way: the reading below is the answer. Waiting
+  // for it to *change* -- which is right for a new shortcut -- would time out
+  // on every game and repair none of them, which is exactly what it did.
+  for (let attempt = 0; !settled && attempt < attempts; attempt += 1) {
+    // A named template matches the executable-keyed reading too -- every fresh
+    // shortcut is on a `default://` key until Steam notices the name -- so it
+    // has to wait for that key to land rather than judge the first answer.
+    if (template ? attempt > 0 && current?.URL !== first?.URL : ready(current)) break;
     // The key has settled and is not the problem this repairs.
-    if (attempt > 0 && current?.URL !== first?.URL) return false;
+    if (!template && attempt > 0 && current?.URL !== first?.URL) return false;
     await sleep(250);
     current = await selectedConfig(appId, controllerIndex);
   }
 
-  if (!needsGamepadLayout(current)) return false;
+  // A name key that never landed is not one to write against: it collides with
+  // nothing, so the layout would be filed under a key no launch ever reads.
+  if (template && !settled && current?.URL === first?.URL) return false;
+  if (!ready(current)) return false;
 
   try {
     // Through the configurator store rather than `SteamClient.Input` directly:
@@ -149,7 +191,7 @@ export async function pinGamepadLayout(appId: number, attempts = 8): Promise<boo
     controllerConfiguratorStore()?.SetActiveConfigForApp?.(
       appId,
       controllerIndex,
-      GAMEPAD_TEMPLATE,
+      wanted,
       false,
     );
     console.log(
