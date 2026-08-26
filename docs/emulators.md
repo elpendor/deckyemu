@@ -102,75 +102,42 @@ Vita3K installs from a `.pkg` directly once it has the licence key.
 
 ## Motion controls in Vita games
 
-The Vita had a gyroscope and games like Gravity Rush expect it, and the Deck has
-one too. This plugin hands Vita3K the Deck's own controller so it can see that
-gyro, and it works.
+The Vita had a gyroscope and games like Gravity Rush expect it. The Deck has one
+too, and it works — there is nothing to set up.
 
-**Why the Vita3K it installs is not the stock one.** Motion is broken in current
-upstream builds: the emulator's bundled SDL reports the Deck's sensor timings in
-microseconds where nanoseconds are expected, so Vita3K's motion maths comes out a
-thousand times too small and games read a gyro that never turns. SDL fixed its
-side and the fix has not reached the release Vita3K bundles. So this plugin
-installs a build that is upstream plus the one commit that corrects it, published
-at [elpendor/Vita3K](https://github.com/elpendor/Vita3K/releases) and built by
-GitHub Actions from public source. It is a fixed version rather than a channel,
-so Vita3K stops following upstream's rolling builds until the fix lands there.
+Two things are done for you, because neither is guessable. **Vita3K is installed
+from [elpendor/Vita3K](https://github.com/elpendor/Vita3K/releases)**, which is
+the emulator's own code plus one commit: motion is broken in current upstream
+builds, where the bundled SDL reports the Deck's sensor timings in the wrong unit
+and the maths comes out a thousand times too small. That commit is with the
+emulator's authors as [Vita3K#4100](https://github.com/Vita3K/Vita3K/pull/4100),
+and when it is merged this plugin goes back to installing their builds.
 
-That commit is offered upstream as
-[Vita3K#4100](https://github.com/Vita3K/Vita3K/pull/4100). **When it is merged
-this plugin goes back to installing Vita3K's own builds** and the fork stops
-being used — the fork exists to keep motion working in the meantime, not to
-become a fixture.
+And **each Vita game is put on a controller layout called "Gamepad with Gyro
+(DeckyEmu)"**, because Steam switches the Deck's sensor off unless the running
+game's layout uses the gyro. It is Valve's own gyro layout with the gyro sent to
+a stick rather than the mouse, since Vita3K reads the mouse pointer as the Vita's
+touchscreen. Games added before this arrived get it on the next restart.
 
-**The setting, which is normally made for you.** Steam powers the Deck's gyro
-down unless the running game's controller layout uses it, so a Vita game on an
-ordinary layout reads a sensor that never moves. Adding a Vita game therefore
-puts it on **Gamepad with Gyro (DeckyEmu)**, which is there to switch the sensor
-on — what that layout does with the gyro never reaches the game, because the
-emulator reads the Deck's controller directly.
+**If you picked a layout for a game yourself, yours is kept** — so if motion does
+not work in one game, that is usually why. Open its **Controller Settings** and
+choose **Gamepad with Gyro (DeckyEmu)**. Steam files layouts under the game's
+name, so this follows a game you once configured even after removing and
+re-adding it.
 
-That layout is Valve's own "Gamepad with Gyro" with one thing changed: the gyro
-goes to the right stick instead of the mouse. Steam's version drags a mouse
-pointer around, and Vita3K treats the pointer as the Vita's touchscreen, so it
-would be both visible and in the way. It is written on your Deck from the copy
-Steam installed rather than shipped with the plugin, so a Steam update that
-retunes the layout is inherited rather than frozen.
-
-**If you have chosen a layout for that game yourself, yours is kept**, and then
-the gyro is yours to bind: **Controller Settings → Edit Layout → Gyro →
-Behavior**, anything other than **None**. Same if motion stops working after you
-change layouts — check that first, before suspecting the game.
-
-**One trap if you do it by hand.** Some behaviours are only active while you hold
-or touch something — *Gyro To Mouse* defaults to activating on right-stick touch
-— and the Deck's sensor is only powered while that activation is on, so motion in
-the game works only while your thumb is on the stick and looks broken the rest of
-the time. Either pick a behaviour that is always on, such as **Gyro To Joystick
-Camera**, or set that binding's activation to always. The layout this plugin
-applies has no such gate.
-
-Games added before this was in place are given the layout too, on the next
-restart — there is nothing to re-add and nothing to switch on.
-
-**Unless you had already picked a layout for that game.** A layout you chose is
-never replaced, so a Vita game you had set up yourself keeps what it has, and if
-what it has does not use the gyro then motion in that game will not work. The fix
-is one selection: open the game's **Controller Settings** and pick
-**Gamepad with Gyro (DeckyEmu)** from the layout list. Steam files layouts under
-the game's *name*, so this also applies to a game you once configured, removed,
-and added again.
+Binding the gyro yourself works too, with one catch: a behaviour that activates
+only while you hold or touch something — *Gyro To Mouse* defaults to right-stick
+touch — leaves the sensor powered only while you do, so motion works under your
+thumb and looks broken otherwise. Pick one that is always on, such as **Gyro To
+Joystick Camera**.
 
 **What changes for the buttons.** To reach the sensor, Vita3K reads the Deck's
-controller directly rather than through Steam Input, and that applies to every
-Vita game. A custom Steam layout stops shaping them: remapped buttons, stick
-curves and the **back buttons** do nothing. The **STEAM button** still opens the
-Steam menu and nothing else — the emulator is told the Deck has no such button,
-because Vita3K treats it as the Vita's PS button and pauses the game with it,
-which left the emulator paused after the menu closed. The sticks,
-triggers and face buttons work as they always did, and the right trackpad still
-drives the Vita's touchscreen. If you would rather have your layout back than
-have motion, there is nothing to switch off — tell us, and it can become a
-choice.
+controller directly instead of through Steam Input. Your Steam layout no longer
+shapes it: remapped buttons, stick curves and the **back buttons** do nothing.
+The **STEAM button** opens the Steam menu and nothing else — the emulator is told
+the Deck has no such button, because Vita3K would otherwise pause the game with
+it. Sticks, triggers and face buttons behave as always, and the right trackpad
+still drives the Vita's touchscreen.
 
 ## Xbox 360 files
 
