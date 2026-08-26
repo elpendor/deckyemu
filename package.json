@@ -1,6 +1,6 @@
 {
   "name": "deckyemu",
-  "version": "0.9.18",
+  "version": "0.9.19",
   "description": "Add emulated games to your Steam library with proper names and boxart",
   "type": "module",
   "scripts": {
