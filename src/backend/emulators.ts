@@ -83,6 +83,14 @@ export interface CustomEmulator {
    * a message. Empty for almost every emulator, almost always.
    */
   fix_notices?: FixNotice[];
+  /**
+   * Why this install should be updated once, or "".
+   *
+   * Not a fix and not a fault — the emulator works. It came from a place the
+   * catalog no longer names, and nothing moves it on its own, so it is said
+   * until somebody updates it.
+   */
+  source_notice?: string;
 }
 
 export interface SystemOption {

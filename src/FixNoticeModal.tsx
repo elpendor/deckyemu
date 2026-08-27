@@ -49,9 +49,12 @@ export function FixNoticeModal({ notices, closeModal }: Props) {
             {many ? `${notice.name}: ${notice.note}` : notice.note}
           </div>
         ))}
-        <div style={{ marginTop: "0.75rem", opacity: 0.8 }}>
-          You can change this under the emulator on the Emulators tab.
-        </div>
+        {/* Only where the sentence does not already say where to go. */}
+        {!notices.some((notice) => notice.state === "source_moved") && (
+          <div style={{ marginTop: "0.75rem", opacity: 0.8 }}>
+            You can change this on the Emulators tab.
+          </div>
+        )}
       </DialogBody>
       <DialogFooter>
         <DialogButtonPrimary onClick={() => closeModal?.()}>

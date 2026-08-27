@@ -96,11 +96,9 @@ def fix_notices(emulator, entry, options=None):
     the gap between what was asked for and what is happening.
     """
     off = _effective_off(emulator, options, entry)
-    unavailable = {}
     stock = emu_patch.stock_path((emulator.get("target") or "").strip(), entry)
-    for row in emu_patch.unapplied(entry):
-        if not (stock and emu_patch.target_for(stock, row["id"])):
-            unavailable[row["id"]] = row["error"]
+    unavailable = {row["id"]: row["error"]
+                   for row in emu_patch.unapplied(entry, stock)}
     return [
         {"id": row["id"], "name": row["name"], "state": row["state"],
          "note": row["note"]}
@@ -108,6 +106,20 @@ def fix_notices(emulator, entry, options=None):
             entry, off, unavailable, emu_install.installed_build(entry))
         if row["state"] and row["enabled"]
     ]
+
+
+def source_notice(emulator, entry):
+    """Why this install should be updated once, or "".
+
+    Not a workaround and not a fix: the emulator is fine, it just came from
+    somewhere the catalog has stopped naming. Nothing moves it on its own --
+    `source` is read live but an AppImage already on disk is never re-fetched,
+    and AppImage updates are not offered at all -- so without saying something
+    those installs stay where they are indefinitely.
+    """
+    if not emulator.get("stale_source"):
+        return ""
+    return str((entry.get("source_moved") or {}).get("note") or "")
 
 
 def list_emulators():
@@ -128,6 +140,10 @@ def list_emulators():
         if not entry:
             continue
         emulator["fix_notices"] = fix_notices(emulator, entry)
+        # Shown for as long as it is true, unlike the launch dialog, which is
+        # shown once. Somebody who dismissed the dialog and forgot still has
+        # somewhere to find out what it was about.
+        emulator["source_notice"] = source_notice(emulator, entry)
     return emulators
 
 
@@ -220,6 +236,13 @@ def save(emulator):
         # rest: the editor never sends it, so a save from there would drop
         # the choice and quietly switch motion back on.
         "workarounds_off",
+        # Whether this install came from a source the catalog no longer names,
+        # and whether we have said so yet. Two flags rather than one because
+        # they end at different moments: the first clears when the emulator is
+        # reinstalled, the second the first time anybody is told. Carried here
+        # or an ordinary save from the editor would re-arm a message that
+        # promises to appear once.
+        "stale_source", "source_notice_shown",
     ):
         value = emulator.get(key)
         if value is None and existing:
@@ -615,7 +638,20 @@ def launch_notices(emulator, options=None):
     entry = emulator_catalog.find(emulator.get("id") or "")
     if not entry:
         return []
-    return fix_notices(emulator, entry, options)
+
+    notices = fix_notices(emulator, entry, options)
+    # Once ever, not once per session: `told` in the frontend clears whenever
+    # the plugin reloads, and a message that promises to appear once and then
+    # returns after every update is worse than one that never promised.
+    # Answered here because only the record can remember across a reload.
+    if not emulator.get("source_notice_shown") and source_notice(emulator, entry):
+        notices.append({
+            "id": "source-moved",
+            "name": emulator.get("name") or entry.get("name", ""),
+            "state": "source_moved",
+            "note": source_notice(emulator, entry),
+        })
+    return notices
 
 
 def for_game(emulator, options=None):

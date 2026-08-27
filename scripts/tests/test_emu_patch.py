@@ -20,7 +20,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from harness import check, section, summary  # noqa: E402  -- installs the decky stub
+from harness import TMP, check, section, summary  # noqa: E402  -- decky stub
 
 import emu_patch  # noqa: E402
 import emulator_catalog  # noqa: E402
@@ -202,6 +202,37 @@ check("a patched build that does not exist resolves to nothing",
       emu_patch.target_for("/nowhere/Vita3K-x86_64.AppImage", "vita-motion"), "")
 check("and an id that could never be a filename is refused",
       emu_patch.target_for("/x/App", "../../etc"), "")
+
+# The file is what is asked, not the record. A record saying the patch applied
+# whose build has since gone was silent: the launcher falls back to the stock
+# one and nothing breaks, so the switch read "on" while nothing ran -- the exact
+# state this reporting exists to prevent. `refresh` can leave it behind by
+# itself, deleting the old build before making the new one and recording only at
+# the end.
+_DIR = os.path.join(TMP, "vanished")
+os.makedirs(_DIR, exist_ok=True)
+_STOCK = os.path.join(_DIR, "Vita3K-x86_64.AppImage")
+open(_STOCK, "wb").write(b"stock")
+_applied = {"vita-motion": {"file": "Vita3K-x86_64.AppImage.vita-motion", "error": ""}}
+
+emu_patch.read_record = lambda entry_id: _applied
+check("a patched build that has gone is reported",
+      [row["id"] for row in emu_patch.unapplied(_entry, _STOCK)], ["vita-motion"])
+open(emu_patch.patched_name(_STOCK, "vita-motion"), "wb").write(b"patched")
+check("and one that is there is not", emu_patch.unapplied(_entry, _STOCK), [])
+os.remove(emu_patch.patched_name(_STOCK, "vita-motion"))
+
+# An install that predates the patcher has nothing prepared yet, and saying it
+# is not running would be true for a moment and alarming for no reason.
+emu_patch.read_record = lambda entry_id: {}
+check("nothing is claimed before anything was attempted",
+      emu_patch.unapplied(_entry, _STOCK), [])
+
+emu_patch.read_record = lambda entry_id: {
+    "vita-motion": {"file": "", "error": "this build has changed"}}
+check("and a refusal still says why",
+      emu_patch.unapplied(_entry, _STOCK)[0]["error"], "this build has changed")
+
 
 check("Vita3K is the entry that carries a patch",
       [e["id"] for e in emulator_catalog.CATALOG if emu_patch.patch_specs(e)],

@@ -129,6 +129,14 @@ export function EmulatorsPanel({ onChanged }: Props) {
                       {notice.name}: {notice.note}
                     </div>
                   ))}
+                  {/* Stays until the emulator is updated, unlike the dialog at
+                      launch, which is said once. Somebody who dismissed that
+                      and forgot still has somewhere to find out what it was. */}
+                  {emulator.source_notice && (
+                    <div style={{ paddingTop: "4px", opacity: 0.9 }}>
+                      {emulator.source_notice}
+                    </div>
+                  )}
                 </>
               }
               childrenContainerWidth="min"
