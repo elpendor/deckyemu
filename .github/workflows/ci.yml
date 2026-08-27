@@ -252,6 +252,18 @@ jobs:
           mkdir -p bin
           gcc -shared -fPIC -O2 -Wall -Wextra -o bin/gyroshim.so shim/gyroshim.c -ldl
           test -s bin/gyroshim.so
+          # That it exists proves nothing. The shim works by *shadowing* three
+          # SDL entry points, so a misspelled one still compiles, still ships,
+          # still loads, and silently intercepts nothing -- shadPS4 then starts
+          # with motion switched on and its axes unrotated, which is tilt
+          # working, turning doing nothing, and no error anywhere. Assert the
+          # symbols it exists to export.
+          for symbol in SDL_WaitEvent SDL_PollEvent SDL_WaitEventTimeout; do
+            nm -D --defined-only bin/gyroshim.so | grep -qw "$symbol" || {
+              echo "the shim does not export $symbol -- it would load and do nothing"
+              exit 1
+            }
+          done
 
       - name: Assemble the plugin
         run: |
