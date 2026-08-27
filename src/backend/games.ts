@@ -222,6 +222,14 @@ export interface GameOptions {
   fullscreen?: boolean;
   /** Appended to the command line, parsed like a shell would. */
   extra_args?: string;
+  /**
+   * This game's answer to its emulator's Deck fixes, as `{id: on}`.
+   *
+   * An id absent from here follows the emulator's own setting rather than being
+   * off -- the cost of a fix lands per game, so a shortcut is allowed to differ,
+   * but one that silently stopped tracking the default would never be found.
+   */
+  workarounds?: Record<string, boolean>;
 }
 
 export interface AddedGame {

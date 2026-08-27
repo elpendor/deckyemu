@@ -1248,6 +1248,9 @@ class Plugin(
                 else bool(fullscreen)
             ),
             "extra_args": (options.get("extra_args") or "").strip(),
+            # Passed through rather than resolved here: `emulators.for_game`
+            # needs the emulator to resolve against, and this has only the game.
+            "workarounds": dict(options.get("workarounds") or {}),
         }
 
     @classmethod
@@ -1264,6 +1267,16 @@ class Plugin(
         extra_args = (options.get("extra_args") or "").strip()
         if extra_args:
             cleaned["extra_args"] = extra_args
+        # `{id: bool}`, and only the ids this game actually decides. An id left
+        # out follows the emulator's own setting, which is what "follow" means
+        # and why an empty dict is dropped rather than stored.
+        workarounds = {
+            str(key): bool(value)
+            for key, value in (options.get("workarounds") or {}).items()
+            if key
+        }
+        if workarounds:
+            cleaned["workarounds"] = workarounds
         return cleaned
 
     async def prepare_shortcut(
@@ -1349,7 +1362,10 @@ class Plugin(
                 core["path"],
                 rom_path,
                 settings.get("hide_osd", "startup"),
-                emulator,
+                # No overrides on a game that does not exist yet, so this simply
+                # follows the emulator -- but it goes through the same
+                # resolution so there is one answer to how a launcher is built.
+                emulators.for_game(emulator),
                 settings.get("emulator_fullscreen", True),
                 "",
                 self._menu_combo(settings),
@@ -1568,7 +1584,9 @@ class Plugin(
                 core["path"],
                 rom_path,
                 launch["hide_osd"],
-                emulator,
+                # Resolved for this game: a shortcut may run with motion on
+                # while the rest of that emulator's games do not.
+                emulators.for_game(emulator, cleaned_options),
                 launch["fullscreen"],
                 launch["extra_args"],
                 self._menu_combo(settings),

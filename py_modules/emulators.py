@@ -540,6 +540,45 @@ def tool_argv(emulator, args, allow=(), env=None):
 TITLE_PLACEHOLDER = "{title}"
 
 
+def for_game(emulator, options=None):
+    """The emulator as *one game* will run it, with that game's choices applied.
+
+    A workaround's cost lands per game -- reaching the Deck's sensors costs
+    Steam Input for everything that emulator runs, including the many games with
+    no motion at all -- so the emulator's setting is a default and a shortcut may
+    differ from it. `options["workarounds"]` is `{id: bool}`, and an id absent
+    from it follows the emulator rather than being off: a game that stopped
+    tracking the default without saying so is the kind of thing nobody finds
+    until it is confusing.
+
+    Returns the emulator unchanged when there is nothing to decide, which is
+    every emulator but the two with motion.
+    """
+    # A libretro core reaches the launcher writer as `None`, and a
+    # hand-registered emulator matches no catalog entry. Neither has anything to
+    # decide, and both used to arrive here only through paths that had already
+    # checked -- which is not a thing to rely on in a helper this widely called.
+    if not emulator:
+        return emulator
+    entry = emulator_catalog.find(emulator.get("id") or "")
+    if not entry or not emulator_catalog.workarounds_for(entry):
+        return emulator
+
+    off = set(emulator.get("workarounds_off") or ())
+    for identifier, enabled in ((options or {}).get("workarounds") or {}).items():
+        if enabled:
+            off.discard(identifier)
+        else:
+            off.add(identifier)
+
+    effective = emulator_catalog.resolve_workarounds(entry, off)
+    return dict(
+        emulator,
+        env=dict(effective.get("env") or {}),
+        layout=effective.get("layout", ""),
+    )
+
+
 def launch_argv(emulator, rom_path, fullscreen=True, title_id=""):
     """Argv that starts `rom_path` in this emulator.
 

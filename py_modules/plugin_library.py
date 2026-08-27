@@ -67,11 +67,16 @@ class Library(plugin_base.PluginContext):
             core_id = str(entry.get("core_id") or "")
             if not app_id or not core_id.startswith("emu:"):
                 continue
-            emulator = emulators_by_id.get(core_id[4:]) or {}
+            # Resolved for *this* game: a shortcut may have motion switched
+            # off while the emulator has it on, or the other way round, and the
+            # layout follows whichever this game ended up with.
+            emulator = emulators.for_game(
+                emulators_by_id.get(core_id[4:]) or {}, entry.get("options"))
             layout = emulator.get("layout") or ""
             if layout:
                 wanted.append({"app_id": app_id, "layout": layout})
-            elif emulator.get("workarounds_off"):
+            elif emulator.get("workarounds_off") or (entry.get("options") or {}).get(
+                    "workarounds"):
                 # The other direction, and the one that is not obvious. An
                 # emulator whose motion has been switched off wants its games
                 # *off* the gyro layout, not merely left alone: that layout
