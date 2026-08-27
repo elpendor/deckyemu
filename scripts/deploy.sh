@@ -52,9 +52,15 @@ build_shim() {
   fi
   mkdir -p bin
   ssh "${ssh_opts[@]}" "$remote"     'mkdir -p /tmp/deckyemu-shim && cat > /tmp/deckyemu-shim/gyroshim.c' < shim/gyroshim.c
-  ssh "${ssh_opts[@]}" "$remote"     'flatpak run --command=gcc --filesystem=/tmp org.freedesktop.Sdk -shared -fPIC -O2        -o /tmp/deckyemu-shim/gyroshim.so /tmp/deckyemu-shim/gyroshim.c -ldl      && cat /tmp/deckyemu-shim/gyroshim.so' > bin/gyroshim.so
+  ssh "${ssh_opts[@]}" "$remote"     'flatpak run --command=gcc --filesystem=/tmp org.freedesktop.Sdk -shared -fPIC -O2        -o /tmp/deckyemu-shim/gyroshim.so /tmp/deckyemu-shim/gyroshim.c -ldl      && for s in SDL_WaitEvent SDL_PollEvent SDL_WaitEventTimeout; do            nm -D --defined-only /tmp/deckyemu-shim/gyroshim.so | grep -qw "$s" || exit 1;          done       && cat /tmp/deckyemu-shim/gyroshim.so' > bin/gyroshim.so
+  # Verified on the Deck, above, before a single byte is sent back: the shim
+  # works by *shadowing* three SDL entry points, so a misspelled one still
+  # compiles and still loads and silently intercepts nothing -- shadPS4 then
+  # runs with motion switched on and its axes unrotated, which reads as broken
+  # motion rather than as a build fault. A failed check sends nothing, so the
+  # empty file below is the one failure path either way.
   if [[ ! -s bin/gyroshim.so ]]; then
-    echo "warning: building the motion shim failed; PS4 gyro will be off." >&2
+    echo "warning: building or checking the motion shim failed; PS4 gyro will be off." >&2
     rm -f bin/gyroshim.so
     return 1
   fi
