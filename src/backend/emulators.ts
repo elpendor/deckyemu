@@ -113,6 +113,29 @@ export const suggestLaunchOptions = callable<
   [target: string],
   { args: string; fullscreen_args: string }
 >("suggest_launch_options");
+/** One correction an emulator carries that the user is allowed to decline. */
+export interface Workaround {
+  id: string;
+  name: string;
+  /** The bug being compensated, in one sentence. */
+  because: string;
+  /** What switching it on gives up, in the user's terms. */
+  costs: string;
+  /** The issue or pull request that will make it unnecessary. */
+  upstream: string;
+  enabled: boolean;
+  default: boolean;
+}
+
+export const listWorkarounds = callable<
+  [emulatorId: string],
+  { ok: boolean; error?: string; workarounds?: Workaround[] }
+>("list_workarounds");
+export const setWorkaround = callable<
+  [emulatorId: string, workaroundId: string, enabled: boolean],
+  { ok: boolean; error?: string }
+>("set_workaround");
+
 export const removeEmulator = callable<
   [emulatorId: string],
   { ok: boolean; error?: string }

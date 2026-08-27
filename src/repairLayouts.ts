@@ -37,9 +37,16 @@ export async function repairGameLayouts(): Promise<number> {
 
   let repaired = 0;
   for (const game of games) {
-    if (!game?.app_id || !game.layout) continue;
+    if (!game?.app_id) continue;
     try {
-      if (await pinGamepadLayout(game.app_id, 8, game.layout, true)) repaired += 1;
+      // An empty layout is an instruction, not an absence: this emulator's
+      // motion has been switched off and its games have to come *off* our gyro
+      // layout, or its gyro-to-stick binding keeps drifting the camera through
+      // Steam's virtual pad. `restore` is what makes that replace our own pin.
+      const moved = game.layout
+        ? await pinGamepadLayout(game.app_id, 8, game.layout, true)
+        : await pinGamepadLayout(game.app_id, 8, "", true, true);
+      if (moved) repaired += 1;
     } catch (error) {
       logError(`could not set the layout for ${game.app_id}`, error);
     }

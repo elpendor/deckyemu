@@ -72,7 +72,7 @@ check("every module in the package is in the catalog",
       sorted(name[:-3] for name in os.listdir(os.path.dirname(emulator_catalog.__file__))
              if name.endswith(".py")
              and name not in ("__init__.py", "schema.py", "steam_pad.py",
-                              "imported.py")))
+                              "deck_gyro.py", "imported.py")))
 
 # Stated in the package docstring as the thing no entry may depend on: the
 # derived extension list can come back empty from a stale libretro index, so
@@ -208,7 +208,11 @@ section("Vita3K reads the Deck's own pad, which is where its gyro is")
 # hiding it by id is impossible and both would be visible at once -- which
 # Vita3K resolves by summing their axes. Both variables are load-bearing.
 _vita_entry = emulator_catalog.find("vita3k")
-_vita_env = _vita_entry.get("env") or {}
+# Motion is a workaround now, so the environment lives in its delta rather
+# than on the entry. Resolved with nothing disabled, which is what a fresh
+# install gets.
+_vita_on = emulator_catalog.resolve_workarounds(_vita_entry)
+_vita_env = _vita_on.get("env") or {}
 check("the virtual pad is denied the real controller's identity",
       _vita_env.get("SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD"), "0")
 check("and Steam's ignore list is replaced, which hands back the real one",
@@ -217,7 +221,11 @@ check("and Steam's ignore list is replaced, which hands back the real one",
 # An AppImage got no environment at all until this shipped, so the entry could
 # carry both and every launch still see neither.
 _vita_emu = emulator_catalog.to_emulator(_vita_entry, "/tmp/Vita3K.AppImage", {})
-_vita_argv = emulators.launch_argv(_vita_emu, "", True, "PCSA00011")
+# Motion is off on a fresh install -- it costs Steam Input for every Vita
+# game -- so the launch is checked against a record that has been switched on.
+_vita_emu_on = dict(_vita_emu, env=_vita_env,
+                    layout=_vita_on.get("layout", ""))
+_vita_argv = emulators.launch_argv(_vita_emu_on, "", True, "PCSA00011")
 check("it reaches the launch, ahead of the emulator",
       (_vita_argv[0], sorted(a.split("=")[0] for a in _vita_argv[1:4])),
       ("env", ["SDL_GAMECONTROLLERCONFIG",
@@ -226,9 +234,9 @@ check("it reaches the launch, ahead of the emulator",
 # Pressing Steam is a GUIDE press, and Vita3K toggles pause on it -- so the
 # mapping it launches with must not name that button at all.
 check("and the mapping it launches with hides the guide button",
-      "guide:" in _vita_entry["env"].get("SDL_GAMECONTROLLERCONFIG", ""), False)
+      "guide:" in _vita_env.get("SDL_GAMECONTROLLERCONFIG", ""), False)
 check("while keeping the buttons a game needs",
-      all(part in _vita_entry["env"].get("SDL_GAMECONTROLLERCONFIG", "")
+      all(part in _vita_env.get("SDL_GAMECONTROLLERCONFIG", "")
           for part in ("a:b0", "start:b6", "leftx:a0", "righttrigger:a5")),
       True)
 check("and the game still starts by title id behind it",
@@ -253,9 +261,9 @@ check("and still asks for the x86_64 AppImage",
 # so the entry names the one stock template that does. Without this the emulator
 # reads a sensor that never moves and everything else here is wasted.
 check("Vita3K asks for a layout that binds gyro",
-      _vita_entry.get("layout"), steam_layouts.DERIVED_URL)
+      _vita_on.get("layout"), steam_layouts.DERIVED_URL)
 check("and it survives onto the installed emulator",
-      _vita_emu.get("layout"), steam_layouts.DERIVED_URL)
+      _vita_emu_on.get("layout"), steam_layouts.DERIVED_URL)
 # Derived on the device from Valve's own file rather than shipped: the source is
 # theirs, and a copy taken today would rot against the next Steam update.
 _stock = """"controller_mappings"
@@ -275,14 +283,164 @@ check("and says whose it is, so nobody wonders what put it in Steam's list",
 check("a template it does not recognise is refused",
       steam_layouts.rewrite('"controller_mappings" { "mode" "joystick_move" }'), "")
 # Every other entry leaves Steam's own choice alone.
-check("no other entry pins a layout",
-      [e["id"] for e in emulator_catalog.CATALOG if e.get("layout")],
-      ["vita3k"])
+check("only the entries that read the Deck's sensors pin a layout",
+      [e["id"] for e in emulator_catalog.CATALOG
+       if emulator_catalog.resolve_workarounds(e).get("layout")],
+      ["shadps4", "vita3k"])
 
-check("and it is the only entry installed from a fork",
+check("and Vita3K is still the only entry installed from a fork",
       [e["id"] for e in emulator_catalog.CATALOG
        if (e.get("source") or {}).get("repo", "").startswith("elpendor/")],
       ["vita3k"])
+
+
+section("shadPS4 reads the same pad, and needs its axes rotated")
+
+# Measured on a Deck, not read anywhere: SDL calls a DualShock's face normal +Y
+# and the Deck's top-edge direction +Y, so yaw and roll land on each other and
+# only pitch survives. A real 90 degree yaw arrived as -89.1 on z[2] against
+# +23.5 on y[1]. `shim/gyroshim.c` rotates it back.
+_shad = emulator_catalog.find("shadps4")
+_shad_on = emulator_catalog.resolve_workarounds(_shad)
+_shad_env = _shad_on.get("env") or {}
+check("shadPS4 is handed the physical pad, which is the one with sensors",
+      (_shad_env.get("SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD"),
+       _shad_env.get("SDL_GAMECONTROLLER_IGNORE_DEVICES")),
+      ("0", "0x28de/0x11ff"))
+check("and asks for the layout that powers the sensor on",
+      _shad_on.get("layout"), steam_layouts.DERIVED_URL)
+# The shim is named by a token because the plugin's install directory is not
+# knowable when the entry is written.
+check("the axis shim is preloaded, by a path resolved at launch",
+      _shad_env.get("LD_PRELOAD"), "{plugin}/bin/gyroshim.so")
+# The variable that was already here and decides whether anything renders at
+# all. Folding motion in beside it is where it would get dropped.
+check("without losing the Vulkan driver pin",
+      "radeon_icd" in _shad_env.get("VK_DRIVER_FILES", ""), True)
+# `env` is copied onto an installed emulator only when the recipe moves.
+check("the recipe rose with them", _shad.get("recipe", 1) >= 3, True)
+# Shared with Vita3K rather than copied, so there is no second copy to drift.
+check("both entries launch with the same mapping",
+      _shad_env.get("SDL_GAMECONTROLLERCONFIG"),
+      _vita_env.get("SDL_GAMECONTROLLERCONFIG"))
+check("and neither names the guide button",
+      "guide:" in _shad_env.get("SDL_GAMECONTROLLERCONFIG", ""), False)
+# A fresh dict per entry. Sharing the object would have handed Vita3K shadPS4's
+# Vulkan pin and its preload, which a passing suite would hide.
+check("and shadPS4's own variables stayed out of Vita3K's",
+      sorted(k for k in ("VK_DRIVER_FILES", "LD_PRELOAD") if k in _vita_env),
+      [])
+
+# The invariant that matters more than either list, and the one a third emulator
+# will trip: motion is two halves and neither is worth anything alone. The
+# environment with no layout reads a sensor Steam never powers on -- which is
+# exactly how shadPS4 shipped once -- and the layout with no environment powers
+# on a sensor the emulator cannot see.
+check("no entry takes one half of motion without the other",
+      [e["id"] for e in emulator_catalog.CATALOG
+       for _on in [emulator_catalog.resolve_workarounds(e)]
+       if ((_on.get("env") or {}).get("SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD") == "0")
+       != bool(_on.get("layout"))],
+      [])
+
+# The invariant, rather than the list: motion is two halves and neither is worth
+# anything alone. The environment without a layout reads a sensor Steam never
+# powers on, and the layout without the environment powers on a sensor the
+# emulator cannot see, because Steam's virtual pad does not have one. shadPS4 was
+# briefly given both and reverted, because the axes it reads had to be rotated
+# first before either half was worth anything -- and this
+# is here so the next emulator cannot arrive with one of them.
+check("no entry takes one half of motion without the other",
+      [e["id"] for e in emulator_catalog.CATALOG
+       if ((e.get("env") or {}).get("SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD") == "0")
+       != bool(e.get("layout"))],
+      [])
+
+
+
+section("Workarounds -- corrections a user can decline, and only those")
+
+# The line this field draws is the whole point of it. Nearly every entry here
+# corrects the emulator it describes -- shadPS4 is told which binary to run and
+# which Vulkan driver to use -- and none of that belongs in `workarounds`: it is
+# permanent, and switching it off would only break the emulator.
+_with = [e for e in emulator_catalog.CATALOG if emulator_catalog.workarounds_for(e)]
+check("only the two motion corrections are workarounds",
+      sorted(e["id"] for e in _with), ["shadps4", "vita3k"])
+check("and each entry declares exactly one",
+      [len(emulator_catalog.workarounds_for(e)) for e in _with], [1, 1])
+
+# The rule that stops this becoming a dumping ground, and the one that keeps a
+# temporary fix from silently becoming permanent: no upstream reference, no
+# workaround. Nobody can tell when to delete one otherwise.
+for _entry in _with:
+    for _item in emulator_catalog.workarounds_for(_entry):
+        check("%s/%s names the fix that will retire it"
+              % (_entry["id"], _item["id"]),
+              _item.get("upstream", "").startswith("https://"), True)
+        check("  and says what turning it on costs",
+              bool(_item.get("costs")), True)
+        # `apply` may only reach keys a relaunch can undo. `source` decides what
+        # was installed, so a fork is not a workaround however temporary it is.
+        check("  and only changes things a toggle can undo",
+              sorted(set(_item.get("apply") or {})
+                     - set(emulator_catalog.schema.WORKAROUND_APPLIES)),
+              [])
+
+# Vita3K's fork is the case that proves it: temporary, tied to the same upstream
+# PR, and deliberately *not* a workaround, because turning it off would mean a
+# reinstall rather than a relaunch.
+check("the Vita3K fork stayed out of its workaround",
+      "source" in (emulator_catalog.workarounds_for(_vita_entry)[0].get("apply") or {}),
+      False)
+check("and is still what gets installed",
+      _vita_entry["source"]["repo"], "elpendor/Vita3K")
+
+# Switching one off has to take *everything* it brought with it, or the halves
+# come apart -- environment with no layout reads a sensor Steam never powers on.
+_off = emulator_catalog.resolve_workarounds(_shad, ["ps4-motion"])
+check("disabling a workaround removes its layout",
+      _off.get("layout", ""), "")
+check("and every variable it added",
+      [k for k in _off.get("env", {}) if k.startswith("SDL_") or k == "LD_PRELOAD"],
+      [])
+# The one that would be easy to get wrong: shadPS4 pins its Vulkan driver on the
+# entry, which is permanent and nothing to do with motion. A workaround that
+# replaced `env` wholesale would put every PS4 game back on the software
+# renderer the moment somebody turned the gyro off.
+check("but leaves what the entry itself set",
+      "radeon_icd" in _off.get("env", {}).get("VK_DRIVER_FILES", ""), True)
+
+# What the panel renders.
+_state = emulator_catalog.workaround_state(_shad, [])
+check("the panel is told the name, cost and where the real fix is",
+      (_state[0]["name"], bool(_state[0]["costs"]), _state[0]["enabled"],
+       _state[0]["upstream"].endswith("3871")),
+      ("Motion controls", True, True, True))
+check("and told when one is off",
+      emulator_catalog.workaround_state(_shad, ["ps4-motion"])[0]["enabled"], False)
+
+# A fresh install gets the defaults, which for both of these is "on".
+# Off unless asked for. The cost -- Steam Input for every game of that system
+# -- lands on people who never wanted motion, so it is not imposed by default.
+check("a fresh install starts with motion off",
+      emulator_catalog.to_emulator(_shad, "/x", {}).get("workarounds_off"),
+      ["ps4-motion"])
+check("and the same for Vita3K",
+      emulator_catalog.to_emulator(_vita_entry, "/x", {}).get("workarounds_off"),
+      ["vita-motion"])
+# Which means the default resolution has neither half of motion in it.
+_fresh = emulator_catalog.resolve_workarounds(
+    _shad, emulator_catalog.default_disabled(_shad))
+check("so a fresh shadPS4 has no layout and no motion variables",
+      (_fresh.get("layout", ""),
+       [k for k in _fresh.get("env", {}) if k.startswith("SDL_")]),
+      ("", []))
+
+# An entry with none of this is untouched, which is almost all of them.
+_plain = emulator_catalog.find("dolphin")
+check("an entry with no workarounds resolves to itself",
+      emulator_catalog.resolve_workarounds(_plain) is _plain, True)
 
 
 if __name__ == "__main__":

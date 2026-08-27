@@ -34,6 +34,33 @@ if [[ ! -f dist/index.js ]]; then
   exit 1
 fi
 
+# The shadPS4 motion shim, built on the Deck rather than here: it is a Linux
+# shared object and this script is usually run from Windows. The flatpak SDK is
+# the right toolchain anyway -- it targets the same glibc as the runtime shadPS4
+# loads it into, which a host compiler would not.
+#
+# Not fatal when it cannot be built. The catalog drops `LD_PRELOAD` when the
+# file is absent (`emulators.resolved_env`), so the cost is PS4 motion, not a
+# plugin that will not start.
+build_shim() {
+  local remote="$1" ssh_opts=("${@:2}")
+  if ! ssh "${ssh_opts[@]}" "$remote" 'flatpak info org.freedesktop.Sdk' >/dev/null 2>&1; then
+    echo "warning: org.freedesktop.Sdk is not installed on the Deck, so the" >&2
+    echo "         shadPS4 motion shim cannot be built. PS4 gyro will be off." >&2
+    echo "         Install it with: flatpak install -y flathub org.freedesktop.Sdk" >&2
+    return 1
+  fi
+  mkdir -p bin
+  ssh "${ssh_opts[@]}" "$remote"     'mkdir -p /tmp/deckyemu-shim && cat > /tmp/deckyemu-shim/gyroshim.c' < shim/gyroshim.c
+  ssh "${ssh_opts[@]}" "$remote"     'flatpak run --command=gcc --filesystem=/tmp org.freedesktop.Sdk -shared -fPIC -O2        -o /tmp/deckyemu-shim/gyroshim.so /tmp/deckyemu-shim/gyroshim.c -ldl      && cat /tmp/deckyemu-shim/gyroshim.so' > bin/gyroshim.so
+  if [[ ! -s bin/gyroshim.so ]]; then
+    echo "warning: building the motion shim failed; PS4 gyro will be off." >&2
+    rm -f bin/gyroshim.so
+    return 1
+  fi
+  echo "==> built bin/gyroshim.so on the Deck"
+}
+
 # Only what the plugin needs at runtime: no src/, no node_modules/, no .git.
 PAYLOAD=(main.py plugin.json package.json py_modules dist)
 for item in "${PAYLOAD[@]}"; do
@@ -45,6 +72,10 @@ done
 
 SSH_OPTS=(-p "$DECK_PORT")
 REMOTE="${DECK_USER}@${DECK_HOST}"
+
+if build_shim "$REMOTE" "${SSH_OPTS[@]}"; then
+  PAYLOAD+=(bin)
+fi
 STAGING="/tmp/${PLUGIN_DIR}-deploy.tar.gz"
 
 echo "==> deploying to ${REMOTE}:homebrew/plugins/${PLUGIN_DIR}"

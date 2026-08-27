@@ -69,3 +69,6 @@ cli/decky
 # A runtime cache that decky writes under its own data dir; a copy here is a
 # stale 260KB of somebody else metadata that nothing reads.
 installer/
+
+# Built by CI and by deploy.sh from shim/, the same way dist/ is built from src/.
+bin/

@@ -12,10 +12,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
   listSystems,
+  listWorkarounds,
   saveEmulator,
+  setWorkaround,
   suggestLaunchOptions,
   type CustomEmulator,
   type SystemOption,
+  type Workaround,
 } from "./backend";
 
 interface Props {
@@ -37,6 +40,86 @@ function Label({ children, hint }: { children: string; hint?: string }) {
     <div>
       <div style={{ fontSize: "14px", fontWeight: 500 }}>{children}</div>
       {hint && <div style={{ fontSize: "12px", opacity: 0.6 }}>{hint}</div>}
+    </div>
+  );
+}
+
+/**
+ * The corrections this emulator carries that a user is allowed to decline.
+ *
+ * Almost every emulator has none, and then this renders nothing at all. The bar
+ * for appearing here is deliberately high: a bug upstream has been told about,
+ * with a fix on the way, and a cost worth letting somebody refuse. Being told
+ * which binary to run is not one of those -- see `schema.WORKAROUND_FIELDS`.
+ *
+ * These save on the spot rather than with the rest of the form. Switching one
+ * rewrites every launcher for that emulator, which is not a thing to do halfway
+ * through editing a name, and a toggle that waited for Save would appear to take
+ * and then change nothing.
+ */
+function Workarounds({ emulatorId }: { emulatorId: string }) {
+  const [items, setItems] = useState<Workaround[] | null>(null);
+  const [busy, setBusy] = useState("");
+
+  useEffect(() => {
+    let live = true;
+    listWorkarounds(emulatorId)
+      .then((result) => {
+        if (live) setItems(result.ok ? (result.workarounds ?? []) : []);
+      })
+      .catch(() => {
+        if (live) setItems([]);
+      });
+    return () => {
+      live = false;
+    };
+  }, [emulatorId]);
+
+  const toggle = useCallback(
+    async (item: Workaround) => {
+      setBusy(item.id);
+      try {
+        const result = await setWorkaround(emulatorId, item.id, !item.enabled);
+        if (!result.ok) {
+          toaster.toast({ title: "DeckyEmu", body: result.error ?? "That did not work." });
+          return;
+        }
+        setItems((current) =>
+          (current ?? []).map((one) =>
+            one.id === item.id ? { ...one, enabled: !item.enabled } : one,
+          ),
+        );
+      } finally {
+        setBusy("");
+      }
+    },
+    [emulatorId],
+  );
+
+  if (!items || items.length === 0) return null;
+
+  return (
+    <div style={FIELD_GAP}>
+      <Label hint="Fixes for bugs in the emulator itself. Each one goes away once the emulator is fixed.">
+        Deck fixes
+      </Label>
+      {items.map((item) => (
+        <div key={item.id} style={{ ...FIELD_GAP, gap: "6px", paddingBottom: "6px" }}>
+          <DialogButton
+            disabled={busy === item.id}
+            onClick={() => toggle(item)}
+            style={{ width: "auto", minWidth: "180px" }}
+          >
+            {busy === item.id
+              ? "Working..."
+              : `${item.name}: ${item.enabled ? "on" : "off"}`}
+          </DialogButton>
+          <div style={{ fontSize: "12px", opacity: 0.6 }}>{item.because}</div>
+          {/* Shown whether the fix is on or off, because the cost is the whole
+              reason this is a choice rather than something we just do. */}
+          <div style={{ fontSize: "12px", opacity: 0.6 }}>Costs: {item.costs}</div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -277,6 +360,10 @@ export function EmulatorEditorModal({ emulator, onSaved, closeModal }: Props) {
             onChange={(event) => setFullscreenArgs(event.target.value)}
           />
         </div>
+
+        {/* Only for an emulator that exists: there is nothing to correct about
+            one that has not been registered yet. */}
+        {emulator?.id && <Workarounds emulatorId={emulator.id} />}
       </Focusable>
 
       {error && (

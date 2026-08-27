@@ -1403,6 +1403,52 @@ check("an emulator with no environment gets no --env",
       any(a.startswith("--env") for a in emulators.launch_argv(fs, "/roms/game.nsp")),
       False)
 
+# `{plugin}` in an env value, so a catalog entry can name a file the plugin
+# ships without knowing where Decky unpacked it. shadPS4's motion shim is the
+# only user: `LD_PRELOAD` has to be an absolute path and that path is not
+# knowable when the entry is written.
+_plugin_dir = os.path.join(TMP, "plugin-dir")
+os.makedirs(os.path.join(_plugin_dir, "bin"), exist_ok=True)
+# The value the token expands to, which is a plain string join and keeps the
+# forward slash the entry is written with. os.path.join would use a backslash
+# on the machine this suite usually runs on and match nothing.
+_shim = _plugin_dir + "/bin/gyroshim.so"
+_token_emu = dict(_cmd_emu, env={"LD_PRELOAD": "{plugin}/bin/gyroshim.so"})
+_real_plugin_dir = getattr(decky, "DECKY_PLUGIN_DIR", "")
+decky.DECKY_PLUGIN_DIR = _plugin_dir
+
+# Missing first, because that is the state a build without the shim is in and
+# the one that must not reach the dynamic linker. A path to nothing in
+# LD_PRELOAD costs a loader warning nobody reads and motion either way, so the
+# variable is dropped instead: the game still starts, without gyro.
+check("a file the plugin does not ship is dropped rather than passed on",
+      [a for a in emulators.launch_argv(_token_emu, "/roms/eboot.bin")
+       if "PRELOAD" in a or a.startswith("--filesystem=" + _plugin_dir)],
+      [])
+with open(_shim, "wb") as _handle:
+    _handle.write(b"ELF")
+check("and expanded to the real path once it is there",
+      [a for a in emulators.launch_argv(_token_emu, "/roms/eboot.bin")
+       if a.startswith("--env=LD_PRELOAD")],
+      ["--env=LD_PRELOAD=%s" % _shim])
+# A flatpak cannot read the plugin directory unless it is granted, so the
+# preload would resolve to a file the sandbox cannot open -- which fails the
+# same silent way as the path not existing.
+check("with the sandbox granted read access to it",
+      "--filesystem=%s:ro" % _plugin_dir in emulators.launch_argv(
+          _token_emu, "/roms/eboot.bin"),
+      True)
+check("and the grant reaches the other ways of starting it too",
+      ("--filesystem=%s:ro" % _plugin_dir in emulators.gui_argv(_token_emu),
+       "--filesystem=%s:ro" % _plugin_dir in emulators.tool_argv(_token_emu, ["-h"])),
+      (True, True))
+# An entry that names no such file must not be granted anything.
+check("an entry with no plugin-relative value gets no grant",
+      any(a.startswith("--filesystem=" + _plugin_dir)
+          for a in emulators.launch_argv(_env_emu, "/roms/eboot.bin")),
+      False)
+decky.DECKY_PLUGIN_DIR = _real_plugin_dir
+
 # Outside a sandbox the same setting has to be baked into the argv, because a
 # launcher is a script Steam runs with no caller to set it. This was dropped
 # entirely until Vita3K needed it: an AppImage entry could declare `env`, pass
@@ -3886,8 +3932,12 @@ check("and starts installed titles by id",
 # catalog had it, no installed emulator did, and a freshly added game came up on
 # whatever Steam guessed with its gyro powered down.
 _vita_catalog = _catalog_check.find("vita3k")
+# Through its motion workaround now, not the entry: the layout is half of a
+# correction the user can decline, so it lives in the delta with the environment
+# it is useless without.
+_vita_effective = _catalog_check.resolve_workarounds(_vita_catalog)
 check("Vita3K names the layout its gyro depends on",
-      bool(_vita_catalog.get("layout")), True)
+      bool(_vita_effective.get("layout")), True)
 check("and the recipe moved so it reaches an emulator already installed",
       _vita_catalog.get("recipe", 1) >= 7, True)
 # And it is refreshed on every start rather than only when the recipe moves.
@@ -3896,17 +3946,95 @@ check("and the recipe moved so it reaches an emulator already installed",
 # current -- which would stand the emulator down for good if the refresh were
 # gated on that number, as it was when this was first written.
 try:
+    # `workarounds_off` empty rather than absent: motion is switched *on* here,
+    # because what this is testing is the refresh putting the layout back, not
+    # the opt-in default taking it away.
     emulators.save({"name": "Vita3K", "id": "vita3k", "kind": "flatpak",
                     "target": "org.vita3k.Vita3K", "args": "{rom}",
-                    "extensions": "vpk",
+                    "extensions": "vpk", "workarounds_off": [],
                     "catalog_recipe": _vita_catalog.get("recipe", 1)})
     check("a record that lost its layout has none to start with",
           emulators.find("vita3k").get("layout", ""), "")
     run(plugin._upgrade_emulator_recipes())
     check("and the startup upgrade puts it back without the recipe moving",
-          emulators.find("vita3k").get("layout", ""), _vita_catalog.get("layout"))
+          emulators.find("vita3k").get("layout", ""), _vita_effective.get("layout"))
+
+    # And the migration that goes with motion becoming opt-in: a record written
+    # before any of this has no key at all, and must fall to the defaults rather
+    # than be read as "nothing is switched off".
+    #
+    # Removed first, because `save` deliberately carries `workarounds_off` over
+    # from an existing record -- an edit must not drop somebody's choice -- so
+    # saving without the key would inherit the one above instead of arriving
+    # without one, and the migration would never be exercised.
+    emulators.remove("vita3k")
+    emulators.save({"name": "Vita3K", "id": "vita3k", "kind": "flatpak",
+                    "target": "org.vita3k.Vita3K", "args": "{rom}",
+                    "extensions": "vpk"})
+    run(plugin._upgrade_emulator_recipes())
+    check("a record predating workarounds gets the defaults, not everything on",
+          emulators.find("vita3k").get("workarounds_off"), ["vita-motion"])
+    check("so it keeps Steam Input rather than silently losing it",
+          emulators.find("vita3k").get("layout", ""), "")
 finally:
     emulators.remove("vita3k")
+
+section("Switching a workaround off, end to end")
+
+# The toggle has to move both halves and the launchers with them. Motion is the
+# case: environment with no layout reads a sensor Steam never powers on, and a
+# launcher already written carries the old argv until it is rewritten, so a
+# setting that changed only the record would appear to take and do nothing.
+try:
+    emulators.save(_catalog_check.to_emulator(
+        _catalog_check.find("shadps4"), "net.shadps4.shadPS4", {}))
+    _before = emulators.find("shadps4")
+    check("a fresh shadPS4 has motion off, so nobody pays for it unasked",
+          (_before.get("workarounds_off"), bool(_before.get("layout"))),
+          (["ps4-motion"], False))
+    run(plugin.set_workaround("shadps4", "ps4-motion", True))
+    _before = emulators.find("shadps4")
+    check("and switching it on brings both halves",
+          (_before.get("workarounds_off"), bool(_before.get("layout"))),
+          ([], True))
+
+    _listed = run(plugin.list_workarounds("shadps4"))
+    check("the panel is offered exactly one thing to decide",
+          [w["name"] for w in _listed["workarounds"]], ["Motion controls"])
+
+    run(plugin.set_workaround("shadps4", "ps4-motion", False))
+    _after = emulators.find("shadps4")
+    check("switching it off records the choice",
+          _after.get("workarounds_off"), ["ps4-motion"])
+    check("and drops the layout, so Steam stops powering the sensor",
+          _after.get("layout", ""), "")
+    check("and every variable motion added",
+          sorted(k for k in _after.get("env", {})
+                 if k.startswith("SDL_") or k == "LD_PRELOAD"), [])
+    # The permanent half of the entry must survive. A workaround that replaced
+    # `env` wholesale would put every PS4 game back on the software renderer.
+    check("but keeps the Vulkan pin, which was never part of it",
+          "radeon_icd" in _after.get("env", {}).get("VK_DRIVER_FILES", ""), True)
+
+    run(plugin.set_workaround("shadps4", "ps4-motion", True))
+    _back = emulators.find("shadps4")
+    check("and switching it back on restores both halves",
+          (_back.get("workarounds_off"), bool(_back.get("layout")),
+           "LD_PRELOAD" in _back.get("env", {})),
+          ([], True, True))
+
+    check("an unknown setting is refused rather than silently stored",
+          run(plugin.set_workaround("shadps4", "not-a-thing", False))["ok"], False)
+    # An emulator that has none -- which is every other one -- offers an empty
+    # list rather than an error, so the panel simply shows nothing.
+    emulators.save(_catalog_check.to_emulator(
+        _catalog_check.find("ryujinx"), "io.github.ryubing.Ryujinx", {}))
+    check("and an emulator with no corrections offers none",
+          run(plugin.list_workarounds("ryujinx"))["workarounds"], [])
+finally:
+    emulators.remove("shadps4")
+    emulators.remove("ryujinx")
+
 
 # Games added before the emulator asked for a layout do not have one, and the
 # symptom is a gyro that never moves with nothing on screen to explain it. The

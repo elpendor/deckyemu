@@ -1,4 +1,6 @@
 import emu_config
+import steam_layouts
+from . import deck_gyro
 
 _SHADPS4_CONFIG = ".var/app/net.shadps4.shadPS4/data/shadPS4/config.json"
 
@@ -84,6 +86,51 @@ ENTRY = {
             "/usr/lib/x86_64-linux-gnu/GL/vulkan/icd.d/radeon_icd.x86_64.json",
         )),
     },
+    # Motion, and the only part of this entry a user can switch off.
+    #
+    # shadPS4 copies SDL's gamepad sensor axes into the emulated DualShock
+    # without converting them, and SDL's convention is not Sony's: it calls a
+    # DualShock's *face normal* +Y, and the Deck's *top-edge* direction +Y with
+    # the screen normal +Z. X is left-right on both, so pitch works while yaw
+    # and roll land on each other -- tilting the Deck moved the game, turning it
+    # did nothing. Measured on a Deck: a real 90 degree yaw arrives as -89.1 on
+    # z[2] against +23.5 on y[1]. Vita3K has converted correctly for years, in
+    # `motion.cpp`'s `from_gamepad` branch; shadPS4 never has.
+    #
+    # `shim/gyroshim.c` rotates it back from `LD_PRELOAD`, which is possible at
+    # all because shadPS4 links libSDL3 dynamically -- the flatpak stays stock
+    # and keeps updating, and nothing is forked, pinned or rebuilt. The preload
+    # is dropped when the file is missing (`emulators.resolved_env`), so a build
+    # without the shim loses motion rather than failing to launch.
+    #
+    # Switchable because it is not free: reading the Deck's own pad means Steam
+    # Input stops shaping it, for *every* PS4 game, including the many with no
+    # motion at all. That is the cost `costs` states, and the reason this is a
+    # workaround rather than part of the entry.
+    "workarounds": [{
+        "id": "ps4-motion",
+        "name": "Motion controls",
+        "because": "shadPS4 copies SDL's sensor axes into the emulated "
+                   "DualShock without converting them, so turning the Deck "
+                   "does nothing while tilting it works.",
+        "upstream": "https://github.com/shadps4-emu/shadPS4/issues/3871",
+        "costs": "Steam Input stops shaping the pad for every PS4 game -- "
+                 "remapped buttons, stick curves and the back buttons stop "
+                 "applying, including in games that have no motion at all.",
+        # Off unless asked for. Motion is worth having and it is not free:
+        # every PS4 game loses Steam Input for it, including the many with
+        # no motion at all, so nobody pays that without choosing to.
+        "default": False,
+        "apply": {
+            "env": deck_gyro.motion_env(LD_PRELOAD="{plugin}/bin/gyroshim.so"),
+            # Steam powers the Deck's IMU down unless the running game's layout
+            # binds gyro, and the sensors then read exactly `(0, 0, 0)`. Gyro to
+            # a stick rather than Steam's stock gyro-to-mouse, because
+            # `input_mouse.cpp` reads the pointer for `MouseMode::Touchpad`, so
+            # a drifting cursor is a DualSense touchpad being dragged.
+            "layout": steam_layouts.DERIVED_URL,
+        },
+    }],
     # `-g` rather than a bare path. shadPS4 accepts either, but the
     # fullscreen switch is prepended ahead of it, and a flag swallowing the
     # positional after it is a known way for an emulator to silently open its
@@ -95,7 +142,10 @@ ENTRY = {
     #   2  the Vulkan driver pinned, so it stops rendering on the CPU. An
     #      emulator registered before that has none of it stored, and the
     #      recipe is what carries the correction to it.
-    "recipe": 2,
+    #   3  motion: the SDL variables and the shim preload. `env` is taken from
+    #      the entry only when this number moves, so shipping them without
+    #      raising it would leave every existing install without gyro.
+    "recipe": 3,
     # Booted on a Deck. Two games played from their Steam shortcuts, at
     # full speed once VK_DRIVER_FILES stopped it rendering on the CPU.
     "verified": True,

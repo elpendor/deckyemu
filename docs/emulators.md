@@ -24,7 +24,7 @@ types it accepts and its launch arguments are all filled in for you.
 | shadPS4 | PlayStation 4 | Flathub — [`net.shadps4.shadPS4`](https://flathub.org/apps/net.shadps4.shadPS4) |
 | DuckStation | PlayStation 1 | Flathub — [`org.duckstation.DuckStation`](https://flathub.org/apps/org.duckstation.DuckStation) |
 | PPSSPP | PSP | Flathub — [`org.ppsspp.PPSSPP`](https://flathub.org/apps/org.ppsspp.PPSSPP) |
-| Vita3K | PS Vita | GitHub — [`elpendor/Vita3K`](https://github.com/elpendor/Vita3K), upstream plus a motion fix ([why](#motion-controls-in-vita-games)) |
+| Vita3K | PS Vita | GitHub — [`elpendor/Vita3K`](https://github.com/elpendor/Vita3K), upstream plus a motion fix ([why](#the-two-fixes-underneath)) |
 | Ryujinx | Switch | Flathub — [`io.github.ryubing.Ryujinx`](https://flathub.org/apps/io.github.ryubing.Ryujinx) |
 | Cemu | Wii U | Flathub — [`info.cemu.Cemu`](https://flathub.org/apps/info.cemu.Cemu) |
 | Azahar | 3DS | GitHub — [`azahar-emu/azahar`](https://github.com/azahar-emu/azahar) |
@@ -100,30 +100,42 @@ rather than another project's reading of the same file.
 The other two consoles need nothing extra. RPCS3 unpacks its own packages, and
 Vita3K installs from a `.pkg` directly once it has the licence key.
 
-## Motion controls in Vita games
+## Motion controls
 
-The Vita had a gyroscope and games like Gravity Rush expect it. The Deck has one
-too, and it works — there is nothing to set up.
+Two consoles here had a motion sensor and games that expect it: the **PS Vita**,
+where Gravity Rush is unplayable without one, and the **PS4**, whose DualShock
+has a gyroscope. The Deck has one too, and it can drive both — but it is **off
+until you ask for it**, because switching it on costs something for every game
+of that system.
 
-Two things are done for you, because neither is guessable. **Vita3K is installed
-from [elpendor/Vita3K](https://github.com/elpendor/Vita3K/releases)**, which is
-the emulator's own code plus one commit: motion is broken in current upstream
-builds, where the bundled SDL reports the Deck's sensor timings in the wrong unit
-and the maths comes out a thousand times too small. That commit is with the
-emulator's authors as [Vita3K#4100](https://github.com/Vita3K/Vita3K/pull/4100),
-and when it is merged this plugin goes back to installing their builds.
+**Turning it on.** Open the emulator on the **Emulators** tab and switch on
+**Motion controls** under *Deck fixes*. It applies to that emulator's games,
+and Vita3K and shadPS4 are set separately.
 
-And **each Vita game is put on a controller layout called "Gamepad with Gyro
-(DeckyEmu)"**, because Steam switches the Deck's sensor off unless the running
-game's layout uses the gyro. It is Valve's own gyro layout with the gyro sent to
-a stick rather than the mouse, since Vita3K reads the mouse pointer as the Vita's
-touchscreen. Games added before this arrived get it on the next restart.
+**What it costs, and why it is not simply on.** To reach the sensor the emulator
+has to read the Deck's controller directly instead of through Steam Input. Your
+Steam layout then stops shaping it: remapped buttons, stick curves and the
+**back buttons** do nothing. The **STEAM button** opens the Steam menu and
+nothing else. Sticks, triggers and face buttons behave as always, and the right
+trackpad still works as a pointer.
 
-**If you picked a layout for a game yourself, yours is kept** — so if motion does
-not work in one game, that is usually why. Open its **Controller Settings** and
-choose **Gamepad with Gyro (DeckyEmu)**. Steam files layouts under the game's
-name, so this follows a game you once configured even after removing and
-re-adding it.
+That applies to **every** game of that system, including the ones with no motion
+at all — it cannot be paid per game. So a PS4 library with one motion game
+would lose its back buttons everywhere to gain a gyro in one place, which is a
+choice worth making deliberately rather than one to inherit.
+
+**Games are put on a controller layout called "Gamepad with Gyro (DeckyEmu)"**
+while motion is on, because Steam switches the Deck's sensor off unless the
+running game's layout uses the gyro. It is Valve's own gyro layout with the gyro
+sent to a stick rather than the mouse, since both emulators read the mouse
+pointer as a touch surface. Switching motion off puts those games back on an
+ordinary gamepad layout — which matters, because a gyro layout left in place
+would send your tilting to the right stick and drift the camera.
+
+**If you picked a layout for a game yourself, yours is kept**, in both
+directions: it is never replaced when motion goes on, and never taken away when
+it goes off. So if motion does not work in one game, that is usually why — open
+its **Controller Settings** and choose **Gamepad with Gyro (DeckyEmu)**.
 
 Binding the gyro yourself works too, with one catch: a behaviour that activates
 only while you hold or touch something — *Gyro To Mouse* defaults to right-stick
@@ -131,13 +143,27 @@ touch — leaves the sensor powered only while you do, so motion works under you
 thumb and looks broken otherwise. Pick one that is always on, such as **Gyro To
 Joystick Camera**.
 
-**What changes for the buttons.** To reach the sensor, Vita3K reads the Deck's
-controller directly instead of through Steam Input. Your Steam layout no longer
-shapes it: remapped buttons, stick curves and the **back buttons** do nothing.
-The **STEAM button** opens the Steam menu and nothing else — the emulator is told
-the Deck has no such button, because Vita3K would otherwise pause the game with
-it. Sticks, triggers and face buttons behave as always, and the right trackpad
-still drives the Vita's touchscreen.
+### The two fixes underneath
+
+Neither console works on a Deck without a correction, and they are different
+ones.
+
+**Vita3K is installed from
+[elpendor/Vita3K](https://github.com/elpendor/Vita3K/releases)**, the emulator's
+own code plus one commit: motion is broken in current upstream builds, where the
+bundled SDL reports the Deck's sensor timings in the wrong unit and the maths
+comes out a thousand times too small. That commit is with the emulator's authors
+as [Vita3K#4100](https://github.com/Vita3K/Vita3K/pull/4100), and when it is
+merged this plugin goes back to installing their builds.
+
+**shadPS4 gets a small correction at launch instead.** It reads the Deck's
+sensor axes in the wrong order — SDL describes a gamepad's axes differently from
+a handheld's, and shadPS4 passes them straight through — so tilting the Deck
+worked while turning it did nothing. The plugin loads a tiny library alongside
+the emulator that rotates the axes back. shadPS4 itself is the ordinary Flathub
+build, untouched and still updating normally. Asked for upstream as
+[shadPS4#3871](https://github.com/shadps4-emu/shadPS4/issues/3871), and this goes
+away when it lands.
 
 ## Xbox 360 files
 

@@ -152,6 +152,25 @@ export async function pinGamepadLayout(
   attempts = 8,
   template = "",
   settled = false,
+  /**
+   * Put a game *back* on a plain gamepad layout, having had one of ours.
+   *
+   * Only reached by switching an emulator's motion off, and it is not the same
+   * as passing no template. That means "repair a layout which cannot play a
+   * gamepad game", judged by `needsGamepadLayout`, and a game sitting on our
+   * gyro layout does not qualify -- so nothing would happen and the gyro
+   * binding would stay.
+   *
+   * Leaving it there is worse than never having pinned it: the layout sends
+   * gyro to the right stick, and with motion off the emulator is back on
+   * Steam's virtual pad, which is exactly what receives that. Tilting the Deck
+   * would push the stick and the camera would drift with nothing to explain it.
+   *
+   * `mayPinEmulatorLayout` is what makes this safe to do: it accepts Steam's
+   * own guess and layouts this plugin pinned, and refuses anything a person
+   * chose.
+   */
+  restore = false,
 ): Promise<boolean> {
   const controllerIndex = deckControllerIndex();
   if (controllerIndex === null) return false;
@@ -159,7 +178,7 @@ export async function pinGamepadLayout(
   // An emulator that names a layout needs it applied over any layout Steam
   // guessed, not only over one that cannot play a game.
   const wanted = template || GAMEPAD_TEMPLATE;
-  const ready = template ? mayPinEmulatorLayout : needsGamepadLayout;
+  const ready = template || restore ? mayPinEmulatorLayout : needsGamepadLayout;
 
   const first = await selectedConfig(appId, controllerIndex);
   let current = first;
@@ -168,7 +187,7 @@ export async function pinGamepadLayout(
   // there is no name key on its way: the reading below is the answer. Waiting
   // for it to *change* -- which is right for a new shortcut -- would time out
   // on every game and repair none of them, which is exactly what it did.
-  for (let attempt = 0; !settled && attempt < attempts; attempt += 1) {
+  for (let attempt = 0; !settled && !restore && attempt < attempts; attempt += 1) {
     // A named template matches the executable-keyed reading too -- every fresh
     // shortcut is on a `default://` key until Steam notices the name -- so it
     // has to wait for that key to land rather than judge the first answer.
@@ -195,7 +214,9 @@ export async function pinGamepadLayout(
       false,
     );
     console.log(
-      `[deckyemu] replaced Steam's "${current?.Title}" default for ${appId} with a gamepad layout`,
+      restore
+        ? `[deckyemu] put ${appId} back on a gamepad layout, so its gyro stops moving the stick`
+        : `[deckyemu] replaced Steam's "${current?.Title}" default for ${appId} with a gamepad layout`,
     );
     return true;
   } catch (error) {
