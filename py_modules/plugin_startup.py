@@ -35,6 +35,7 @@ import plugin_base
 
 import emu_config
 import emu_install
+import emu_patch
 import emu_firmware
 import emulator_catalog
 import steam_layouts
@@ -382,6 +383,29 @@ class Startup(plugin_base.PluginContext):
                     "Could not update %s settings: %s", entry["id"], result.get("error")
                 )
 
+    async def _prepare_patched_builds(self):
+        """Make the patched build for an install that predates the patcher.
+
+        A patched build is normally derived as the emulator installs, and every
+        install from here on has one. An emulator installed before that has an
+        AppImage and no record beside it, and would otherwise sit there with a
+        switch it can never honour until somebody happened to reinstall.
+
+        Only where nothing has been attempted yet. A record already present is
+        an answer -- including "this build would not take it", which is a
+        finding to report rather than a question to ask again on every start.
+        """
+        for entry in emulator_catalog.CATALOG:
+            if not emu_patch.patch_specs(entry):
+                continue
+            if await self._run(emu_patch.read_record, entry["id"]):
+                continue
+            stock = await self._run(emu_install.installed_appimage, entry["id"])
+            if not stock:
+                continue
+            decky.logger.info("Preparing patched builds for %s", entry["id"])
+            await self._run(emu_patch.refresh, entry, stock)
+
     async def _recheck_emulator_setups(self):
         """The same sweep, for the moments between one startup and the next.
 
@@ -413,6 +437,10 @@ class Startup(plugin_base.PluginContext):
             await self._upgrade_emulator_setups()
         except Exception:
             decky.logger.exception("Could not re-check emulator settings")
+        try:
+            await self._prepare_patched_builds()
+        except Exception:
+            decky.logger.exception("Could not prepare patched builds")
 
     async def _claim_filed_collections(self):
         """Record the collections an existing library is already filed into.

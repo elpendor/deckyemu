@@ -109,13 +109,27 @@ function Workarounds({ emulatorId }: { emulatorId: string }) {
           style={{ display: "flex", gap: "8px", alignItems: "center" }}
         >
           <DialogButton
-            disabled={busy === item.id}
+            // Two reasons a switch stops being pressable, and they are not the
+            // same. A deprecated fix that is already off cannot be turned back
+            // on -- the emulator has fixed this itself and the thing to do is
+            // update it -- while one still on stays pressable so it can be
+            // turned off. A fix this build would not take cannot be turned on
+            // at all, in either direction: there is nothing to run.
+            disabled={
+              busy === item.id
+              || !!item.unavailable
+              || (!!item.deprecated && !item.enabled)
+            }
             onClick={() => toggle(item)}
             style={{ flexGrow: 1 }}
           >
             {busy === item.id
               ? "Working..."
-              : `${item.name}: ${item.enabled ? "on" : "off"}`}
+              : item.unavailable
+                ? `${item.name}: not available for this build`
+                : `${item.name}: ${item.enabled ? "on" : "off"}${
+                    item.deprecated ? " - no longer needed" : ""
+                  }`}
           </DialogButton>
           <WorkaroundInfo workaround={item} />
         </Focusable>

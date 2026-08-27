@@ -2,6 +2,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 
 const gamesNeedingLayout = vi.fn();
 const pinGamepadLayout = vi.fn();
+const unpinEmulatorLayout = vi.fn();
 
 vi.mock("./backend", () => ({ gamesNeedingLayout: () => gamesNeedingLayout() }));
 vi.mock("./steam", () => ({
@@ -12,6 +13,7 @@ vi.mock("./steam", () => ({
     settled?: boolean,
     restore?: boolean,
   ) => pinGamepadLayout(appId, attempts, layout, settled, restore),
+  unpinEmulatorLayout: (appId: number) => unpinEmulatorLayout(appId),
 }));
 vi.mock("./logError", () => ({ logError: () => undefined }));
 
@@ -23,6 +25,7 @@ describe("repairing layouts for games added earlier", () => {
   beforeEach(() => {
     gamesNeedingLayout.mockReset();
     pinGamepadLayout.mockReset();
+    unpinEmulatorLayout.mockReset();
     pinGamepadLayout.mockResolvedValue(true);
   });
 
@@ -39,13 +42,33 @@ describe("repairing layouts for games added earlier", () => {
       { app_id: 22, layout: GYRO },
     ]);
     pinGamepadLayout.mockResolvedValue(true);
+    unpinEmulatorLayout.mockResolvedValue(true);
 
     await repairGameLayouts();
 
-    // `restore` is the flag that lets it replace a pin of ours; without it the
-    // call is judged by `needsGamepadLayout` and does nothing at all here.
-    expect(pinGamepadLayout).toHaveBeenCalledWith(11, 8, "", true, true);
+    // Un-pinning asks what the game is *wearing* rather than why, which is
+    // what keeps it working after the workaround is deleted from the catalog.
+    expect(unpinEmulatorLayout).toHaveBeenCalledWith(11);
     expect(pinGamepadLayout).toHaveBeenCalledWith(22, 8, GYRO, true, undefined);
+  });
+
+  /**
+   * The gap this closed. Every game of a plugin-managed emulator is now
+   * reported, so a game still wearing a layout from a workaround that no longer
+   * exists is offered for un-pinning -- previously nothing described that layout
+   * any more, so nothing asked for it back and the game kept it forever.
+   */
+  it("offers games whose emulator no longer asks for any layout", async () => {
+    gamesNeedingLayout.mockResolvedValue([
+      { app_id: 11, layout: "" },
+      { app_id: 22, layout: "" },
+    ]);
+    unpinEmulatorLayout.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+
+    // Counted only where something actually moved: a game on a layout of its
+    // own is left alone and `unpinEmulatorLayout` says so.
+    expect(await repairGameLayouts()).toBe(1);
+    expect(pinGamepadLayout).not.toHaveBeenCalled();
   });
 
   it("gives each game the layout its emulator needs", async () => {

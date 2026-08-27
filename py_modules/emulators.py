@@ -21,6 +21,7 @@ import stat
 
 import decky
 
+import emu_patch
 import emulator_catalog
 import jsonstore
 
@@ -82,7 +83,40 @@ def slugify(name):
 
 
 def list_emulators():
-    return _read()
+    """Every registered emulator, each carrying anything to say about its fixes.
+
+    `fix_notices` is computed rather than stored, because it is the catalog's
+    opinion and what is on disk, both of which change without the record
+    changing. It carries only fixes still *switched on*: one that is off is
+    already in the state we would be asking for, and saying so would be noise.
+
+    It is here rather than left to whoever opens the editor because a message
+    nobody sees is not a message. The Emulators tab is where somebody would act
+    on either notice -- by updating the emulator -- so both have to be legible
+    from there without opening anything.
+    """
+    emulators = _read()
+    for emulator in emulators:
+        entry = emulator_catalog.find(emulator.get("id") or "")
+        if not entry:
+            continue
+        off = set(emulator.get("workarounds_off") or ())
+        notices = [
+            {"id": item.get("id", ""), "name": item.get("name", ""),
+             "kind": "retired", "message": str(item.get("deprecated") or "")}
+            for item in emulator_catalog.workarounds_for(entry)
+            if str(item.get("deprecated") or "").strip() and item.get("id") not in off
+        ]
+        stock = emu_patch.stock_path((emulator.get("target") or "").strip(), entry)
+        notices += [
+            {"id": row["id"], "name": row["name"], "kind": "unavailable",
+             "message": row["error"]}
+            for row in emu_patch.unapplied(entry)
+            if row["id"] not in off
+            and not (stock and emu_patch.target_for(stock, row["id"]))
+        ]
+        emulator["fix_notices"] = notices
+    return emulators
 
 
 def parse_extensions(text):
@@ -540,6 +574,73 @@ def tool_argv(emulator, args, allow=(), env=None):
 TITLE_PLACEHOLDER = "{title}"
 
 
+def _effective_off(emulator, options, entry):
+    """Which workarounds are switched off for one game: emulator, then its own.
+
+    Shared by `for_game` and `retired_fixes` so the launch notice can never
+    disagree with what the launch actually does -- a warning about a fix that is
+    not running is worse than none.
+    """
+    off = set(emulator.get("workarounds_off") or ())
+    for identifier, enabled in ((options or {}).get("workarounds") or {}).items():
+        # A game may switch a deprecated fix off but not on, the same as the
+        # emulator may -- otherwise a stale override would quietly keep opting
+        # one game into something everything else has moved past.
+        if enabled and emulator_catalog.may_enable(entry, identifier):
+            off.discard(identifier)
+        else:
+            off.add(identifier)
+    return off
+
+
+def launch_notices(emulator, options=None):
+    """What has to be said about this game's fixes as it starts.
+
+    Two things can be true of a fix that is switched on, and both are worth the
+    interruption because in both the user asked for something they are not
+    getting:
+
+    * **retired** -- the emulator has since fixed this itself, so the fix is
+      redundant and the thing to do is update.
+    * **unavailable** -- the fix edits the emulator's binary and this build
+      would not take the edit, so it is not running at all. Without saying so, a
+      switch that reads "on" and an emulator that behaves as though it were off
+      look identical, which is worse than never having shipped the fix.
+
+    A fix that is switched on and working says nothing. The moment is worth
+    spending only on the gap between what was asked for and what is happening.
+
+    Shares `_effective_off` with `for_game`, so a notice can never disagree with
+    what the launch actually does.
+    """
+    if not emulator:
+        return []
+    entry = emulator_catalog.find(emulator.get("id") or "")
+    if not entry:
+        return []
+
+    off = _effective_off(emulator, options, entry)
+    notices = [
+        {"name": item.get("name", ""), "kind": "retired",
+         "message": str(item.get("deprecated") or "")}
+        for item in emulator_catalog.workarounds_for(entry)
+        if str(item.get("deprecated") or "").strip() and item.get("id") not in off
+    ]
+
+    stock = emu_patch.stock_path((emulator.get("target") or "").strip(), entry)
+    for row in emu_patch.unapplied(entry):
+        if row["id"] in off:
+            continue
+        # Asked from the file, not the record, for the same reason `for_game`
+        # is: a build that was patched after the record was written is running
+        # patched, whatever the record remembers.
+        if stock and emu_patch.target_for(stock, row["id"]):
+            continue
+        notices.append({"name": row["name"], "kind": "unavailable",
+                        "message": row["error"]})
+    return notices
+
+
 def for_game(emulator, options=None):
     """The emulator as *one game* will run it, with that game's choices applied.
 
@@ -564,19 +665,42 @@ def for_game(emulator, options=None):
     if not entry or not emulator_catalog.workarounds_for(entry):
         return emulator
 
-    off = set(emulator.get("workarounds_off") or ())
-    for identifier, enabled in ((options or {}).get("workarounds") or {}).items():
-        if enabled:
-            off.discard(identifier)
-        else:
-            off.add(identifier)
-
+    off = _effective_off(emulator, options, entry)
     effective = emulator_catalog.resolve_workarounds(entry, off)
-    return dict(
+    resolved = dict(
         emulator,
         env=dict(effective.get("env") or {}),
         layout=effective.get("layout", ""),
     )
+    patched = _patched_target(emulator, entry, off)
+    if patched:
+        resolved["target"] = patched
+    return resolved
+
+
+def _patched_target(emulator, entry, off):
+    """The patched build this game should run, or "" for the stock one.
+
+    A workaround that edits the emulator's own binary is switched the same way
+    every other one is -- by choosing which file the launcher execs. Both builds
+    are on disk from install time, so this is a path lookup and not a thing that
+    can fail halfway.
+
+    The file is what is asked, not the record `emu_patch.refresh` wrote: the
+    record says what happened at install, and a launcher needs what is true now.
+    Absent means stock, which is also what a build the patch could not be
+    applied to gets -- the fix is lost, the emulator is not.
+    """
+    stock = emu_patch.stock_path((emulator.get("target") or "").strip(), entry)
+    if not stock:
+        return ""
+    for workaround_id, _ in emu_patch.patch_specs(entry):
+        if workaround_id in set(off or ()):
+            continue
+        found = emu_patch.target_for(stock, workaround_id)
+        if found:
+            return found
+    return ""
 
 
 def launch_argv(emulator, rom_path, fullscreen=True, title_id=""):

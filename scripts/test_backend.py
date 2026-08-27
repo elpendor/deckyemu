@@ -4009,10 +4009,44 @@ check("and the Vulkan pin is there either way",
           for o in ({}, {"workarounds": {"ps4-motion": False}})),
       True)
 # Everything else is untouched, which is every emulator but the two with motion.
+# A stale per-game override must not keep one game opted into a fix everything
+# else has moved past, so the same rule applies here as at the emulator level.
+_dep_emu = dict(_wa_emu, id="deprecated-example")
+check("a per-game override cannot switch on a fix the emulator has retired",
+      emulators.for_game(_dep_emu, {"workarounds": {"ps4-motion": True}}) is _dep_emu,
+      True)
+
 check("an emulator with no workarounds is returned exactly as it was",
       emulators.for_game(fs, {"workarounds": {"nope": True}}) is fs, True)
 check("and a core, which reaches the launcher writer as None, is not a crash",
       emulators.for_game(None, {}), None)
+
+
+section("A retired fix is visible without opening anything")
+
+# The message only matters if it is seen. It lives on the Emulators tab, next to
+# the emulator somebody would update, rather than inside the editor behind two
+# modals -- and it is computed from the catalog at listing time, because it is
+# the catalog's opinion and changes when the plugin updates, not when the record
+# does.
+try:
+    emulators.save(_catalog_check.to_emulator(
+        _catalog_check.find("shadps4"), "net.shadps4.shadPS4", {}))
+    _listed = {row["id"]: row for row in emulators.list_emulators()}
+    check("nothing is retired yet, so nothing is claimed",
+          _listed["shadps4"].get("fix_notices"), [])
+    # An emulator nobody registered from the catalog has no opinion to carry.
+    # Built from a valid record rather than by hand: `save` validates, and a
+    # rejected one leaves nothing to read, which is a confusing way to fail.
+    _mine = dict(_catalog_check.to_emulator(
+        _catalog_check.find("shadps4"), "net.shadps4.shadPS4", {}), id="mine-own")
+    emulators.save(_mine)
+    check("and a hand-registered emulator is left alone entirely",
+          "fix_notices" in {r["id"]: r for r in emulators.list_emulators()}["mine-own"],
+          False)
+finally:
+    emulators.remove("shadps4")
+    emulators.remove("mine-own")
 
 
 section("Switching a workaround off, end to end")
@@ -4076,6 +4110,11 @@ finally:
 # symptom is a gyro that never moves with nothing on screen to explain it. The
 # frontend repairs them at startup from this list rather than a release note
 # asking people to re-add their Vita games.
+# Every game of a plugin-managed emulator is reported, with the layout it should
+# be wearing -- and an empty string means "none of ours", not "nothing to do".
+# Narrowing it to emulators that currently declare a layout is what left games
+# wearing one from a workaround that had since been deleted: nothing described
+# that layout any more, so nothing asked for it back.
 _layout_lib = {
     "1": {"app_id": 1, "core_id": "emu:vita3k", "title": "A Vita game"},
     "2": {"app_id": 2, "core_id": "emu:ryujinx", "title": "A Switch game"},
@@ -4099,10 +4138,15 @@ finally:
     emulators.remove("ryujinx")
     store.clear_library()
     store.remember_games(_saved_lib)
-check("only games whose emulator names a layout are offered for repair",
-      [row["app_id"] for row in _needs], [1])
-check("and each carries the layout to apply",
-      [row["layout"] for row in _needs], [_LAYOUT_URL])
+# Every game of a plugin-managed emulator, not only those whose emulator asks
+# for a layout: a game may be *wearing* one of ours that nothing describes any
+# more, and it can only be taken back off if it is offered. Games 3 and 4 are
+# still absent -- one was never added to Steam, the other runs on a libretro
+# core this does not manage.
+check("every game of a managed emulator is offered",
+      [row["app_id"] for row in _needs], [1, 2])
+check("carrying the layout it should wear, empty meaning none of ours",
+      [row["layout"] for row in _needs], [_LAYOUT_URL, ""])
 
 # ---- the installed Vita titles, which are the only way these games get in --
 # Vita3K decrypts content as it installs, so a game copied into ux0/app is

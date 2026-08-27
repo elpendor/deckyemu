@@ -75,6 +75,14 @@ export interface CustomEmulator {
    * lets a registered row explain why it also appears in the catalog list.
    */
   from_catalog: boolean;
+  /**
+   * Anything worth saying about fixes that are still switched on.
+   *
+   * Shown on the Emulators tab rather than left in the editor: the thing to do
+   * about either kind is update the emulator, and a message nobody opens is not
+   * a message. Empty for almost every emulator, almost always.
+   */
+  fix_notices?: FixNotice[];
 }
 
 export interface SystemOption {
@@ -92,6 +100,23 @@ export interface SystemOption {
 export const listEmulators = callable<[], CustomEmulator[]>("list_emulators");
 export const listSystems = callable<[], SystemOption[]>("list_systems");
 /** Extensions arrive as free text from the editor and are parsed server-side. */
+/** A workaround this emulator still has on that its own release has retired. */
+/**
+ * Something to say about a fix the user asked for and is not fully getting.
+ *
+ * `retired` — the emulator has since fixed this itself, so the fix is redundant.
+ * `unavailable` — the fix edits the emulator's binary and this build would not
+ * take the edit, so it is not running at all. Both mean "update the emulator";
+ * neither is ever raised for a fix that is switched off or working.
+ */
+export interface FixNotice {
+  id: string;
+  name: string;
+  kind: "retired" | "unavailable";
+  /** Names the build that fixed it, or says why the edit did not apply. */
+  message: string;
+}
+
 export interface EmulatorInput {
   id?: string;
   name: string;
@@ -125,6 +150,28 @@ export interface Workaround {
   upstream: string;
   enabled: boolean;
   default: boolean;
+  /**
+   * Empty while it is still needed. Set once the emulator fixes this itself:
+   * the workaround keeps working, because the bug is still in whatever build
+   * has not been updated, but it can only be switched off from then on.
+   */
+  deprecated: string;
+  /**
+   * Empty when it can run. Set when this install could not take the fix — a
+   * patch whose build no longer matches what it describes.
+   *
+   * Distinct from `deprecated`, and nearly its opposite: that one means the fix
+   * is no longer needed, this one means it is needed and is not running. A row
+   * carrying it is shown without a switch, because offering to turn on
+   * something that cannot run is how a setting ends up lying.
+   */
+  unavailable: string;
+  /**
+   * Whether this fix edits the emulator's own files rather than only its
+   * launch. Derived from the catalog, so the panel explains it for every such
+   * fix without an author having to remember to write it down.
+   */
+  patches: boolean;
 }
 
 export const listWorkarounds = callable<
