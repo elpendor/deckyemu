@@ -190,11 +190,14 @@ the change has to be in the file.
 The emulator is still the authors' own build, downloaded from
 [Vita3K/Vita3K-builds](https://github.com/Vita3K/Vita3K-builds/releases) and
 updated like any other — that is their numbered build repository, so DeckyEmu
-can tell you which build you have and offer you an older one. The corrected copy is made when it installs and kept beside the original,
-and turning the switch off runs the original, unaltered. If a future build no
-longer matches what the correction describes, nothing is changed at all and the
-panel says so rather than leaving you with a switch that claims to be on. Asked
-for upstream as [Vita3K#4100](https://github.com/Vita3K/Vita3K/pull/4100).
+can tell you which build you have and offer you an older one.
+
+The corrected copy is made when it installs and kept beside the original, and
+turning the switch off runs the original, unaltered. If a future build no longer
+matches what the correction describes, nothing is changed at all — the emulator
+runs exactly as downloaded, and the panel says the fix is not running rather than
+letting the switch imply otherwise. Asked for upstream as
+[Vita3K#4100](https://github.com/Vita3K/Vita3K/pull/4100).
 
 **shadPS4 gets a small correction at launch instead.** It reads the Deck's
 sensor axes in the wrong order — SDL describes a gamepad's axes differently from
