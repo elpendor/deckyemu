@@ -1,0 +1,63 @@
+# Is every workaround still needed, and does every patch still fit?
+#
+# A workaround exists to be deleted, and the catalog names the upstream fix that
+# will retire it. This reads that fix's state, and — for a workaround that edits
+# the emulator's binary — downloads a real build and re-runs the patch
+# detection against it. That second half is the one a person cannot do by
+# reading, and it is why this exists as a job rather than a note.
+#
+# **Run by hand**, not on a schedule. These move on upstream's timescale, and a
+# weekly download of an emulator to be told nothing changed is not worth the
+# noise; `gh workflow run workarounds.yml` when you want to know, or run
+# `scripts/check_workarounds.py` locally, which is the same check.
+#
+# Deliberately does not edit the catalog. Naming the first build that carries a
+# fix is a judgement — name one too low and the panel tells people to switch off
+# a fix they still need — so this reports and a person decides.
+name: Workarounds
+
+on:
+  workflow_dispatch:
+    inputs:
+      entry:
+        description: "Emulator id to check, or blank for all (e.g. vita3k)"
+        required: false
+        default: ""
+      build:
+        description: "Release tag to check the patch against, or blank for the newest (e.g. 3829)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      # The patch check unpacks a real AppImage, so it needs the same tool the
+      # Deck uses. `unsquashfs` is not on the runner by default.
+      - name: Install squashfs-tools
+        run: sudo apt-get update && sudo apt-get install -y squashfs-tools
+
+      - name: Check
+        env:
+          # For the API rate limit. The script runs without one, and says so
+          # rather than reporting an all-clear it did not earn.
+          GITHUB_TOKEN: ${{ github.token }}
+          ENTRY: ${{ inputs.entry }}
+          BUILD: ${{ inputs.build }}
+        # Through the environment rather than spliced into the command: these
+        # are free-text inputs, and `${{ }}` in a shell line is substituted
+        # before the shell ever sees it.
+        run: |
+          args=""
+          [ -n "$ENTRY" ] && args="$ENTRY"
+          [ -n "$BUILD" ] && args="$args --build $BUILD"
+          python scripts/check_workarounds.py $args

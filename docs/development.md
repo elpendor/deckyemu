@@ -120,6 +120,38 @@ pnpm run check
 That is the whole gate: typecheck, lint, bundle, both test suites, mypy, and the
 release-build guard. CI runs the same things, so a green `check` is a green CI.
 
+One check is deliberately **not** in there, because it makes network calls and
+downloads a whole emulator:
+
+```sh
+python scripts/check_workarounds.py                     # everything
+python scripts/check_workarounds.py vita3k              # one entry
+python scripts/check_workarounds.py vita3k --build 3829 # against one build
+```
+
+It asks whether each workaround is still needed — reading the upstream issue it
+names, and re-running the patch detection against a real build. `--build` names
+a release tag instead of taking the newest, which answers "would the patch fit
+that one" without installing it.
+
+Run it when you want to know; there is no schedule. `.github/workflows/workarounds.yml`
+is the same check as a manual dispatch, with the same two arguments, for when you
+would rather not download an emulator over your own connection.
+
+Two things about reading its output. It needs `squashfs-tools` to unpack an
+AppImage. And it distinguishes **needs a decision** from **could not be
+checked** — an unauthenticated run hits GitHub's rate limit within a handful of
+calls, and that is not a finding about a workaround. Both fail the run, because
+a check that did not happen has no result:
+
+```sh
+GITHUB_TOKEN=$(gh auth token) python scripts/check_workarounds.py
+```
+
+It reports rather than editing the catalog: choosing the first build that
+carries a fix is a judgement call, and naming one too low tells people to switch
+off a fix they still need.
+
 The lint step is ESLint, and `react-hooks/exhaustive-deps` is why it is there: a
 wrong dependency array is a stale closure, which is found by holding a Deck
 rather than by reading a diff. `eslint.config.js` says which rules are off and
