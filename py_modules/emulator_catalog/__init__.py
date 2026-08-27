@@ -361,6 +361,11 @@ def platform_labels(entry):
     return platforms.short_name(platform), platform
 
 
+def _resolved_for_install(entry):
+    """The entry as a fresh install will run it -- defaults applied, nothing off."""
+    return resolve_workarounds(entry, default_disabled(entry))
+
+
 def to_emulator(entry, target, database_extensions):
     """Shape a catalog entry as the emulator dict `emulators.save` expects.
 
@@ -385,10 +390,13 @@ def to_emulator(entry, target, database_extensions):
         # manifest names, and anything its environment has to be told. Empty
         # for all but shadPS4 -- see `flatpak_prefix`.
         "command": entry.get("command", ""),
-        "env": dict(entry.get("env") or {}),
+        "env": dict(_resolved_for_install(entry).get("env") or {}),
         # A Steam Input layout the emulator depends on, not a preference:
         # Vita3K needs one that binds gyro or the Deck powers the sensor down.
-        "layout": entry.get("layout", ""),
+        "layout": _resolved_for_install(entry).get("layout", ""),
+        # Which corrections this install has switched off. Empty for almost
+        # every emulator; only the two with motion have any at all.
+        "workarounds_off": default_disabled(entry),
         # How to start a title this emulator has already installed, when a file
         # path will not do it. Vita3K only.
         "installed_args": entry.get("installed_args", ""),
@@ -406,6 +414,89 @@ def to_emulator(entry, target, database_extensions):
 # AppImages land in a folder per emulator so a reinstall can clear out the
 # previous build without a name-matching guess.
 _SAFE_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
+
+
+def workarounds_for(entry):
+    """An entry's workarounds, as a list. Empty for almost every entry.
+
+    Read through this rather than off the entry so callers do not have to think
+    about the key being absent, which it is for all but two of them.
+    """
+    return list(entry.get("workarounds") or ())
+
+
+def resolve_workarounds(entry, disabled=()):
+    """`entry` with its enabled workarounds merged in, and the disabled ones out.
+
+    A workaround is a delta the user can decline -- see `schema.WORKAROUND_FIELDS`
+    for what separates one from ordinary configuration. Merging happens here, in
+    one place, so everything downstream reads an entry that already says the
+    truth about how this emulator will launch and never has to ask which
+    corrections are on.
+
+    `env` merges key by key rather than wholesale: shadPS4's entry pins its
+    Vulkan driver, which is permanent and nothing to do with motion, and a
+    workaround replacing the whole dict would take it away the moment somebody
+    turned motion off -- putting every PS4 game back on the software renderer to
+    fix a gyro. Every other key is replaced outright.
+
+    A disabled workaround contributes nothing, which is the point: no variables,
+    no layout, and so no Steam layout pinned for its games either.
+    """
+    applicable = [
+        item for item in workarounds_for(entry)
+        if item.get("id") not in set(disabled or ())
+    ]
+    if not applicable:
+        # The overwhelmingly common path, and worth not copying an entry for.
+        return entry if not workarounds_for(entry) else dict(entry)
+
+    resolved = dict(entry)
+    for item in applicable:
+        for key, value in (item.get("apply") or {}).items():
+            if key == "env":
+                merged = dict(resolved.get("env") or {})
+                merged.update(value or {})
+                resolved["env"] = merged
+            else:
+                resolved[key] = value
+    return resolved
+
+
+def default_disabled(entry):
+    """Workaround ids that start switched off, for a fresh install.
+
+    Only the ones whose `default` says so. Everything else arrives on, because a
+    workaround exists to make the emulator behave and a user who never opens the
+    editor should get the working thing.
+    """
+    return [
+        item.get("id", "")
+        for item in workarounds_for(entry)
+        if not bool(item.get("default", True))
+    ]
+
+
+def workaround_state(entry, disabled=()):
+    """What the panel shows: each workaround, with whether it is on.
+
+    `upstream` rides along because the honest thing to tell somebody switching
+    one off is where the real fix is, and `costs` because a cost nobody sees is
+    not a choice.
+    """
+    off = set(disabled or ())
+    return [
+        {
+            "id": item.get("id", ""),
+            "name": item.get("name", ""),
+            "because": item.get("because", ""),
+            "costs": item.get("costs", ""),
+            "upstream": item.get("upstream", ""),
+            "enabled": item.get("id") not in off,
+            "default": bool(item.get("default", True)),
+        }
+        for item in workarounds_for(entry)
+    ]
 
 
 def is_safe_id(entry_id):

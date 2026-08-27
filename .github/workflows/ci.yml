@@ -241,10 +241,22 @@ jobs:
       # decky expects -- DECKY_PLUGIN_SETTINGS_DIR and friends derive from the
       # folder name, not from plugin.json, so unpacking under any other name
       # orphans existing settings.
+      # Built here rather than committed, for the reason `dist/` is not
+      # committed: it is output. Ubuntu 22.04 on purpose -- the shim has to load
+      # inside a flatpak runtime, and a binary built against a newer glibc than
+      # the runtime provides fails there with nothing but a loader warning.
+      # Everything it calls is ancient libc, so an old toolchain costs nothing.
+      - name: Build the shadPS4 motion shim
+        run: |
+          sudo apt-get install -y --no-install-recommends gcc >/dev/null
+          mkdir -p bin
+          gcc -shared -fPIC -O2 -Wall -Wextra -o bin/gyroshim.so shim/gyroshim.c -ldl
+          test -s bin/gyroshim.so
+
       - name: Assemble the plugin
         run: |
           mkdir -p artifact/deckyemu
-          cp -r main.py plugin.json package.json py_modules dist artifact/deckyemu/
+          cp -r main.py plugin.json package.json py_modules dist bin artifact/deckyemu/
           find artifact -name '__pycache__' -type d -prune -exec rm -rf {} +
           find artifact -name '*.pyc' -delete
           # The backend half of the stamp. It must agree with what was compiled

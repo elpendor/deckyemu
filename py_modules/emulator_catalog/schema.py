@@ -57,6 +57,11 @@ OPTIONAL = {
                "the manifest names.",
     "env": "Environment variables the emulator needs, as a dict.",
     "layout": "Steam Input layout template a game needs, as a `template://` url.",
+    "workarounds": "Temporary corrections for bugs in the emulator itself, as "
+                   "a list. Each is a delta over this entry that a user can "
+                   "switch off, and that exists only until a named upstream "
+                   "fix lands. Ordinary configuration does not belong here -- "
+                   "see WORKAROUND_FIELDS for what separates the two.",
     "setup": "Configuration to seed on install -- controller bindings, skipping "
              "a first-run wizard. See `emu_config` for the formats.",
     "firmware": "BIOS or firmware the emulator needs. A list of specs; see "
@@ -182,6 +187,132 @@ def _under(path, root):
     return parts[:len(base)] == base
 
 
+
+#: What one entry in `workarounds` carries.
+#:
+#: **The line this draws is the whole point of the field.** Nearly every catalog
+#: entry corrects the emulator it describes in some way -- shadPS4 is told which
+#: binary to run and which Vulkan driver to use, Vita3K is told its own AppImage
+#: word-splits arguments. None of that belongs here. Those are how you launch the
+#: thing correctly, they are permanent, and switching one off would only break
+#: the emulator.
+#:
+#: A workaround is narrower: it compensates a bug **upstream has been told
+#: about**, and it goes away when a **specific fix lands**. That gives two
+#: properties nothing else here has -- a removal condition that can be checked,
+#: and a cost worth letting somebody decline. Both are required, and `validate`
+#: enforces them: an entry with no `upstream` is configuration wearing a
+#: workaround's clothes, and one nobody can switch off is not a choice.
+WORKAROUND_FIELDS = {
+    "id": "Stable identifier, unique within the entry. Stored when a user turns "
+          "this off, so renaming one silently re-enables it.",
+    "name": "What the user sees, in their words rather than ours -- \"Motion "
+            "controls\", not the name of the mechanism.",
+    "because": "The bug being compensated, in one sentence.",
+    "upstream": "URL of the issue or pull request that will make this "
+                "unnecessary. Required: without it nobody can tell when to "
+                "delete the workaround, which is how they become permanent.",
+    "costs": "What switching it on gives up, in the user's terms. Shown beside "
+             "the toggle, because a cost nobody sees is not a choice.",
+    "default": "Whether it starts on. Optional, defaults to True.",
+    "apply": "The delta, written in ordinary catalog keys -- `env`, `layout` "
+             "and so on. Merged over the entry when enabled and absent when "
+             "not, so a workaround can correct anything the catalog can "
+             "already express.",
+}
+
+#: Required in every workaround. `default` is the only optional one.
+WORKAROUND_REQUIRED = ("id", "name", "because", "upstream", "costs", "apply")
+
+#: Keys a workaround's `apply` may set. Deliberately short: these are the two
+#: that can be turned on and off at launch. `source` is excluded because it
+#: decides what got *installed* -- toggling it would need a reinstall, not a
+#: relaunch, so a fork like Vita3K's is not a workaround in this sense however
+#: temporary it is.
+WORKAROUND_APPLIES = ("env", "layout")
+
+
+def _validate_workarounds(entry_id, workarounds):
+    """Problems with an entry's `workarounds`.
+
+    The two rules worth the code are `upstream` and `apply`. A workaround with
+    no upstream reference has no removal condition, so nobody can tell when it
+    stopped being needed and it quietly becomes permanent -- which is the exact
+    failure this field exists to prevent. And an `apply` reaching keys outside
+    `WORKAROUND_APPLIES` would be a workaround that cannot honestly be switched
+    off, because the key it sets decides what got installed rather than how it
+    launches.
+    """
+    problems = []
+    if workarounds is None:
+        return problems
+    if not isinstance(workarounds, list):
+        return ["%s: workarounds must be a list" % entry_id]
+
+    seen = set()
+    claimed = {}
+    for item in workarounds:
+        if not isinstance(item, dict):
+            problems.append("%s: each workaround must be a dict" % entry_id)
+            continue
+        where = "%s workaround %r" % (entry_id, item.get("id") or "<no id>")
+
+        for field in WORKAROUND_REQUIRED:
+            if not item.get(field):
+                problems.append("%s: missing %r -- %s"
+                                % (where, field, WORKAROUND_FIELDS[field]))
+
+        unknown = sorted(set(item) - set(WORKAROUND_FIELDS))
+        if unknown:
+            problems.append("%s: unknown field(s) %s -- known fields are: %s"
+                            % (where, ", ".join(repr(n) for n in unknown),
+                               ", ".join(sorted(WORKAROUND_FIELDS))))
+
+        identifier = item.get("id")
+        if identifier in seen:
+            problems.append("%s: duplicate id -- ids are what a user's choice "
+                            "is stored against" % where)
+        seen.add(identifier)
+
+        upstream = str(item.get("upstream") or "")
+        if upstream and not upstream.startswith(("http://", "https://")):
+            problems.append("%s: upstream must be a URL naming the issue or "
+                            "pull request that makes this unnecessary" % where)
+
+        apply = item.get("apply")
+        if apply is not None:
+            if not isinstance(apply, dict):
+                problems.append("%s: apply must be a dict of catalog keys" % where)
+            else:
+                outside = sorted(set(apply) - set(WORKAROUND_APPLIES))
+                if outside:
+                    problems.append(
+                        "%s: apply may only set %s, not %s -- anything else "
+                        "decides what was installed, which a toggle cannot undo"
+                        % (where, ", ".join(WORKAROUND_APPLIES),
+                           ", ".join(repr(n) for n in outside)))
+
+                # Two workarounds writing the same thing is a trap rather than a
+                # conflict to resolve: `resolve_workarounds` merges in order, so
+                # the later one wins silently, and switching *that* one off would
+                # change behaviour which looks like it belongs to the other. With
+                # one workaround per entry it cannot happen yet, which is exactly
+                # why it is worth catching before a second one exists.
+                for key, value in apply.items():
+                    names = [key] if key != "env" else [
+                        "env.%s" % name for name in sorted(value or {})
+                    ]
+                    for name in names:
+                        if name in claimed:
+                            problems.append(
+                                "%s: both this and %r set %s -- two workarounds "
+                                "writing one key means turning either off "
+                                "changes the other's behaviour"
+                                % (where, claimed[name], name))
+                        claimed[name] = item.get("id")
+    return problems
+
+
 def validate(entry, known_platforms=(), imported=False):
     """Problems with one entry, as a list of strings. Empty means it is fine.
 
@@ -287,6 +418,7 @@ def validate(entry, known_platforms=(), imported=False):
                         "not escape it" % destination)
 
     problems.extend(_validate_setup(entry_id, entry.get("setup")))
+    problems.extend(_validate_workarounds(entry_id, entry.get("workarounds")))
 
     for item in entry.get("firmware") or ():
         problems.extend(_validate_firmware(entry_id, item))

@@ -1304,6 +1304,64 @@ class Emulators(plugin_base.PluginContext):
         return {"ok": True, "emulator": saved, "notice": notice}
 
 
+    async def list_workarounds(self, emulator_id: str):
+        """The corrections this emulator carries, and whether each is on.
+
+        Almost every emulator has none -- see `schema.WORKAROUND_FIELDS` for
+        what makes one -- so this is empty for all but the two with motion, and
+        the panel shows nothing at all for the rest.
+        """
+        emulator = await self._run(emulators.find, emulator_id)
+        if not emulator:
+            return {"ok": False, "error": "That emulator is no longer registered."}
+        # A catalog install keeps the entry's own id, which is the only way
+        # back to it -- nothing stores the pairing. A hand-registered
+        # emulator matches nothing and has no corrections, which is an empty
+        # list rather than an error.
+        entry = emulator_catalog.find(emulator_id)
+        if not entry:
+            return {"ok": True, "workarounds": []}
+        return {
+            "ok": True,
+            "workarounds": emulator_catalog.workaround_state(
+                entry, emulator.get("workarounds_off") or ()),
+        }
+
+    async def set_workaround(self, emulator_id: str, workaround_id: str, enabled: bool):
+        """Switch one correction on or off, and rewrite what depends on it.
+
+        Both halves matter. The emulator record carries the choice, and every
+        launcher already written has the old environment baked into its argv --
+        so without the rebuild the setting would appear to take and change
+        nothing until each game was re-added.
+        """
+        emulator = await self._run(emulators.find, emulator_id)
+        if not emulator:
+            return {"ok": False, "error": "That emulator is no longer registered."}
+        entry = emulator_catalog.find(emulator_id)
+        if not entry:
+            return {"ok": False, "error": "That emulator has nothing to configure."}
+        if workaround_id not in {
+            item.get("id") for item in emulator_catalog.workarounds_for(entry)
+        }:
+            return {"ok": False, "error": "No such setting for this emulator."}
+
+        off = set(emulator.get("workarounds_off") or ())
+        off.discard(workaround_id) if enabled else off.add(workaround_id)
+        emulator["workarounds_off"] = sorted(off)
+
+        effective = emulator_catalog.resolve_workarounds(entry, emulator["workarounds_off"])
+        emulator["env"] = dict(effective.get("env") or {})
+        emulator["layout"] = effective.get("layout", "")
+
+        saved, error = await self._run(emulators.save, emulator)
+        if error:
+            return {"ok": False, "error": error}
+        await self._refresh_emulators()
+        # The launchers carry the old argv until they are written again.
+        await self.rebuild_launchers()
+        return {"ok": True, "emulator": saved}
+
     async def remove_emulator(self, emulator_id: str):
         removed = await self._run(emulators.remove, emulator_id)
         await self._refresh_emulators()

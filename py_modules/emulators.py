@@ -170,6 +170,10 @@ def save(emulator):
         "catalog_recipe", "catalog_args", "catalog_fullscreen_args",
         "catalog_extensions", "command", "env", "installed_args", "layout",
         "splits_args",
+        # Which corrections this install has switched off. Carried like the
+        # rest: the editor never sends it, so a save from there would drop
+        # the choice and quietly switch motion back on.
+        "workarounds_off",
     ):
         value = emulator.get(key)
         if value is None and existing:
@@ -307,6 +311,57 @@ def to_core_entry(emulator, system_name=""):
     }
 
 
+# `{plugin}` in an env value becomes the directory this plugin is installed in,
+# so a catalog entry can point at a file the plugin ships without knowing where
+# Decky put it. shadPS4's `LD_PRELOAD` is the only user: the shim in `shim/` has
+# to be named by absolute path, and that path is not knowable when the entry is
+# written.
+PLUGIN_PLACEHOLDER = "{plugin}"
+
+
+def _plugin_dir():
+    return getattr(decky, "DECKY_PLUGIN_DIR", "") or ""
+
+
+def resolved_env(emulator):
+    """An emulator's `env` with `{plugin}` expanded, dropping what is not there.
+
+    A value naming a file the plugin ships is dropped when that file is missing
+    rather than passed on. Without this a build made without the shim -- a
+    `deploy.sh` run against a Deck with no flatpak SDK, say -- would hand the
+    dynamic linker a path to nothing on every launch, and the only sign would be
+    a loader warning nobody reads. Dropping it degrades to "no motion", which is
+    the truth.
+    """
+    resolved = {}
+    for name, value in sorted((emulator.get("env") or {}).items()):
+        if not name:
+            continue
+        if PLUGIN_PLACEHOLDER in str(value):
+            expanded = str(value).replace(PLUGIN_PLACEHOLDER, _plugin_dir())
+            if not _plugin_dir() or not os.path.exists(expanded):
+                continue
+            value = expanded
+        resolved[name] = value
+    return resolved
+
+
+def plugin_grants(emulator):
+    """`--filesystem=` for a sandbox that has to read a file the plugin ships.
+
+    Read-only, and only when something actually points into the plugin
+    directory: a flatpak cannot see it otherwise, and `LD_PRELOAD` naming a file
+    the sandbox cannot open fails silently apart from a loader warning.
+    """
+    directory = _plugin_dir()
+    if not directory:
+        return []
+    for value in resolved_env(emulator).values():
+        if str(value).startswith(directory):
+            return ["--filesystem=%s:ro" % directory]
+    return []
+
+
 def flatpak_prefix(emulator, extra=()):
     """`flatpak run` plus whatever this emulator needs before its application id.
 
@@ -325,8 +380,9 @@ def flatpak_prefix(emulator, extra=()):
     command = (emulator.get("command") or "").strip()
     if command:
         argv.append("--command=%s" % command)
-    for name, value in sorted((emulator.get("env") or {}).items()):
+    for name, value in sorted(resolved_env(emulator).items()):
         argv.append("--env=%s=%s" % (name, value))
+    argv.extend(plugin_grants(emulator))
     argv.extend(extra)
     argv.append(emulator.get("target", ""))
     return argv
@@ -347,8 +403,7 @@ def env_prefix(emulator):
     """
     settings = [
         "%s=%s" % (name, value)
-        for name, value in sorted((emulator.get("env") or {}).items())
-        if name
+        for name, value in sorted(resolved_env(emulator).items())
     ]
     return ["env"] + settings if settings else []
 
@@ -477,6 +532,7 @@ def tool_argv(emulator, args, allow=(), env=None):
         # outside one reads it from the process env the caller sets, which is
         # why this returns nothing for an AppImage.
         grants += ["--env=%s=%s" % (name, value) for name, value in sorted((env or {}).items())]
+        grants += plugin_grants(emulator)
         return flatpak_prefix(emulator, grants) + args
     return [emulator.get("target", "")] + args
 

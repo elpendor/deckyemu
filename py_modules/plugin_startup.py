@@ -144,9 +144,17 @@ class Startup(plugin_base.PluginContext):
         templates, and a derived one that stopped matching would quietly hold a
         year-old copy of somebody else's tuning.
         """
+        # Asked for through a workaround rather than the entry, since both
+        # emulators that want it declare motion as one -- and derived even
+        # when a user has motion switched off, because the template is
+        # shared and turning it back on should not wait for a restart.
         wanted = [
             entry for entry in emulator_catalog.CATALOG
-            if str(entry.get("layout") or "").endswith(steam_layouts.DERIVED)
+            if any(
+                str((item.get("apply") or {}).get("layout") or "")
+                .endswith(steam_layouts.DERIVED)
+                for item in emulator_catalog.workarounds_for(entry)
+            ) or str(entry.get("layout") or "").endswith(steam_layouts.DERIVED)
         ]
         if not wanted:
             return
@@ -197,7 +205,8 @@ class Startup(plugin_base.PluginContext):
                       emulator.get("splits_args"),
                       list(emulator.get("extensions") or []),
                       list(emulator.get("catalog_extensions") or []),
-                      emulator.get("catalog_recipe"))
+                      emulator.get("catalog_recipe"),
+                      list(emulator.get("workarounds_off") or []))
 
             # Only for an entry that needs it. A libretro-backed emulator
             # derives its formats from this map; one with no databases derives
@@ -243,11 +252,35 @@ class Startup(plugin_base.PluginContext):
             # all -- shadPS4's launches the wrong binary without `command` and
             # renders on the CPU without `env` -- so a stale one is not a
             # cosmetic difference.
+            # What this install will actually run: the entry with the
+            # corrections the user has left on merged in, and the ones they
+            # turned off absent. Resolved once here so nothing downstream
+            # has to ask which are enabled.
+            # Absent is not the same as empty. A record written before this
+            # existed has no key at all, and reading that as "nothing is
+            # switched off" would hand it every correction including the ones
+            # that default to off -- turning motion on, and Steam Input off,
+            # for somebody who never asked. Absent means "apply the
+            # defaults", and the answer is then written down so it is a
+            # recorded choice rather than something re-derived every start.
+            if emulator.get("workarounds_off") is None:
+                emulator["workarounds_off"] = emulator_catalog.default_disabled(entry)
+            effective = emulator_catalog.resolve_workarounds(
+                entry, emulator["workarounds_off"])
+
             if fresh:
                 emulator["command"] = entry.get("command", "")
-                emulator["env"] = dict(entry.get("env") or {})
                 emulator["installed_args"] = entry.get("installed_args", "")
                 emulator["splits_args"] = bool(entry.get("splits_args"))
+
+            # Every start, unlike the recipe fields above, for the reason
+            # `layout` is: a workaround the user switched off has to stop
+            # applying now rather than at the next recipe bump, and there is
+            # no user-edited value here to preserve -- the editor never sends
+            # `env`.
+            if emulator.get("env") != dict(effective.get("env") or {}):
+                emulator["env"] = dict(effective.get("env") or {})
+                changed.append(emulator["id"])
 
             # Refreshed every start, unlike the recipe fields above. It is not
             # editable anywhere, so there is no user value to preserve -- and
@@ -257,7 +290,7 @@ class Startup(plugin_base.PluginContext):
             # heard of the field and drops it, with the recipe left saying
             # everything is current. Both end as an emulator whose games get no
             # layout and a gyro nobody can switch on.
-            emulator["layout"] = entry.get("layout", "")
+            emulator["layout"] = effective.get("layout", "")
 
             # Which files the picker offers this emulator for. Stored at install
             # time and never revisited, so narrowing a system's formats reached
@@ -301,7 +334,8 @@ class Startup(plugin_base.PluginContext):
                      emulator.get("splits_args"),
                      list(emulator.get("extensions") or []),
                      list(emulator.get("catalog_extensions") or []),
-                     emulator.get("catalog_recipe"))
+                     emulator.get("catalog_recipe"),
+                     list(emulator.get("workarounds_off") or []))
             if after != before:
                 await self._run(emulators.save, emulator)
 

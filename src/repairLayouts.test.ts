@@ -5,8 +5,13 @@ const pinGamepadLayout = vi.fn();
 
 vi.mock("./backend", () => ({ gamesNeedingLayout: () => gamesNeedingLayout() }));
 vi.mock("./steam", () => ({
-  pinGamepadLayout: (appId: number, attempts: number, layout: string) =>
-    pinGamepadLayout(appId, attempts, layout),
+  pinGamepadLayout: (
+    appId: number,
+    attempts: number,
+    layout: string,
+    settled?: boolean,
+    restore?: boolean,
+  ) => pinGamepadLayout(appId, attempts, layout, settled, restore),
 }));
 vi.mock("./logError", () => ({ logError: () => undefined }));
 
@@ -21,14 +26,36 @@ describe("repairing layouts for games added earlier", () => {
     pinGamepadLayout.mockResolvedValue(true);
   });
 
+  /**
+   * The other direction, and the one that bit: an emulator whose motion has
+   * been switched off wants its games taken *off* the gyro layout. Leaving it
+   * pinned is worse than never having pinned it -- the layout sends gyro to the
+   * right stick, and with motion off the emulator reads Steam's virtual pad,
+   * which is what receives it, so tilting the Deck drifts the camera.
+   */
+  it("takes games off the gyro layout when their emulator's motion is off", async () => {
+    gamesNeedingLayout.mockResolvedValue([
+      { app_id: 11, layout: "" },
+      { app_id: 22, layout: GYRO },
+    ]);
+    pinGamepadLayout.mockResolvedValue(true);
+
+    await repairGameLayouts();
+
+    // `restore` is the flag that lets it replace a pin of ours; without it the
+    // call is judged by `needsGamepadLayout` and does nothing at all here.
+    expect(pinGamepadLayout).toHaveBeenCalledWith(11, 8, "", true, true);
+    expect(pinGamepadLayout).toHaveBeenCalledWith(22, 8, GYRO, true, undefined);
+  });
+
   it("gives each game the layout its emulator needs", async () => {
     gamesNeedingLayout.mockResolvedValue([
       { app_id: 11, layout: GYRO },
       { app_id: 22, layout: GYRO },
     ]);
     expect(await repairGameLayouts()).toBe(2);
-    expect(pinGamepadLayout).toHaveBeenCalledWith(11, 8, GYRO);
-    expect(pinGamepadLayout).toHaveBeenCalledWith(22, 8, GYRO);
+    expect(pinGamepadLayout).toHaveBeenCalledWith(11, 8, GYRO, true, undefined);
+    expect(pinGamepadLayout).toHaveBeenCalledWith(22, 8, GYRO, true, undefined);
   });
 
   /*
@@ -45,11 +72,13 @@ describe("repairing layouts for games added earlier", () => {
     expect(await repairGameLayouts()).toBe(1);
   });
 
-  it("skips entries with nothing to apply", async () => {
-    gamesNeedingLayout.mockResolvedValue([
-      { app_id: 11, layout: "" },
-      { app_id: 0, layout: GYRO },
-    ]);
+  /*
+   * An empty layout used to mean "nothing to do" and now means "put this game
+   * back on a plain gamepad layout", so the only entry with nothing to apply is
+   * one that was never added to Steam.
+   */
+  it("skips entries that were never added to Steam", async () => {
+    gamesNeedingLayout.mockResolvedValue([{ app_id: 0, layout: GYRO }]);
     expect(await repairGameLayouts()).toBe(0);
     expect(pinGamepadLayout).not.toHaveBeenCalled();
   });

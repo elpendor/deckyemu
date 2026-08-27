@@ -67,9 +67,23 @@ class Library(plugin_base.PluginContext):
             core_id = str(entry.get("core_id") or "")
             if not app_id or not core_id.startswith("emu:"):
                 continue
-            layout = (emulators_by_id.get(core_id[4:]) or {}).get("layout") or ""
+            emulator = emulators_by_id.get(core_id[4:]) or {}
+            layout = emulator.get("layout") or ""
             if layout:
                 wanted.append({"app_id": app_id, "layout": layout})
+            elif emulator.get("workarounds_off"):
+                # The other direction, and the one that is not obvious. An
+                # emulator whose motion has been switched off wants its games
+                # *off* the gyro layout, not merely left alone: that layout
+                # sends gyro to the right stick, and with motion off the
+                # emulator is back on Steam's virtual pad, which is what
+                # receives it. Left pinned, tilting the Deck pushes the stick
+                # and the camera drifts -- worse than never having pinned it.
+                #
+                # An empty layout means "put it back on a plain gamepad one",
+                # and only over Steam's guess or a pin of ours; a layout
+                # somebody chose is theirs. See `pinGamepadLayout`'s `restore`.
+                wanted.append({"app_id": app_id, "layout": ""})
         return wanted
 
     async def list_added(self):
