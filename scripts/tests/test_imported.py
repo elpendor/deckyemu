@@ -150,6 +150,26 @@ check("nor fetch a helper binary",
       any("'helper'" in p for p in _problems(helper={"name": "x", "url": "http://x"})),
       True)
 
+# A patch rewrites bytes inside an executable the same entry chose to download,
+# and find/replace have no length limit -- the power `helper` is refused for,
+# reached by rewriting rather than fetching.
+_WORKAROUND = {"id": "w", "name": "W", "because": "b", "costs": "c",
+               "upstream": "https://example.invalid/1"}
+check("nor patch the emulator's own binary",
+      any("may not carry a patch" in p for p in _problems(
+          workarounds=[dict(_WORKAROUND, apply={"patch": {
+              "file": "usr/bin/x", "within": "f",
+              "find": "41030c24", "replace": "31c99090"}})])),
+      True)
+
+# The rest of a workaround is not withheld: `env` and `layout` are already
+# settable at the top level of an imported entry, so offering them inside a
+# workaround adds no reach -- it makes them switchable, which is the point.
+check("but it may still carry a switchable correction",
+      any("workaround" in p for p in _problems(
+          workarounds=[dict(_WORKAROUND, apply={"env": {"A": "1"}})])),
+      False)
+
 # Writes are confined to the entry's own root rather than merely to the home
 # directory, which is the difference between overwriting its own config and
 # overwriting .bashrc.
