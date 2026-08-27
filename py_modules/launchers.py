@@ -75,7 +75,14 @@ LAUNCH_GATE_DIR = os.path.join(decky.DECKY_PLUGIN_RUNTIME_DIR, "launch")
 #  10  and the same environment carries the joystick hint an emulator needs to
 #      read a pad at all when its window has no input focus. Same reason as 9:
 #      the argv is baked in when the launcher is written.
-FORMAT_VERSION = 10
+#  11  save RAM reaches disk every second rather than every ten. Steam's Stop
+#      is not a clean exit -- the signal goes to `flatpak run` and the process
+#      inside never sees it -- so whatever has not been flushed is lost, and a
+#      Deck produced a Pokemon save with 11 of the 14 sectors it needed. The
+#      setting rides in the override file, written when a launcher is, so like
+#      version 8 an existing library keeps losing saves until they are
+#      rewritten.
+FORMAT_VERSION = 11
 
 # One file per OSD mode rather than one shared file. Games can override the
 # global setting individually, and a single file would mean the last game
@@ -369,6 +376,23 @@ def write_override_config(hide_osd, menu_combo="off", cheevos_settings=None,
     # rewriting a config we were asked not to touch is worse -- and RetroArch
     # still has an explicit "Save Current Configuration" for anyone who wants it.
     settings.append(("config_save_on_exit", "false"))
+
+    # How long a save can be lost for. RetroArch holds the cartridge's save RAM
+    # in memory and writes it to disk on this interval, or on a clean exit --
+    # and a game launched from here gets no clean exit. There is no quit binding
+    # (see `_quit_bindings_that_collide`), so the only way out is Steam's Stop,
+    # which kills the process without RetroArch ever flushing.
+    #
+    # RetroArch's default is 10 seconds, and losing ten seconds means losing the
+    # save somebody just made. Measured on a Deck: Pokemon Sapphire wrote 11 of
+    # the 14 sectors a Gen-III save needs, and the game reported "the save file
+    # has been deleted" on the next launch -- an interval that caught the write
+    # half done. Waiting fifteen seconds before quitting kept it.
+    #
+    # One second rather than zero-and-flush-on-write: this is a whole-buffer
+    # write, at most 128KB, and only when the buffer is dirty, so a second costs
+    # nothing worth measuring on a device that is idle between saves anyway.
+    settings.append(("autosave_interval", "1"))
 
     path = OVERRIDE_CONFIGS.get(hide_osd, OVERRIDE_CONFIGS["keep"])
     os.makedirs(decky.DECKY_PLUGIN_RUNTIME_DIR, exist_ok=True)

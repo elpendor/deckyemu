@@ -1103,6 +1103,20 @@ check("an override file was written", bool(_override), True)
 check("saving on exit is disabled", 'config_save_on_exit = "false"' in _text, True)
 check("the combo is still written", 'input_menu_toggle_gamepad_combo = "4"' in _text, True)
 
+# How long a save can be lost for. RetroArch holds save RAM in memory and writes
+# it on this interval or on a clean exit -- and a game launched from here gets
+# no clean exit, because there is no quit binding and Steam's Stop kills the
+# process. At RetroArch's default of ten seconds a Deck produced a Pokemon
+# Sapphire save with 11 of the 14 sectors it needs, and the game reported it
+# deleted; waiting fifteen seconds before quitting kept it.
+check("save RAM reaches disk within a second",
+      'autosave_interval = "1"' in _text, True)
+check("and the plainest launch says so too",
+      'autosave_interval = "1"'
+      in open(_launchers.write_override_config("keep", "off"),
+              encoding="utf-8").read(),
+      True)
+
 # ... and the one thing there is always to say is where the pad profile is,
 # without which a Steam-launched game gets a controller RetroArch cannot bind.
 _plainest = _launchers.write_override_config("keep", "off")
