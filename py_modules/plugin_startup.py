@@ -207,7 +207,8 @@ class Startup(plugin_base.PluginContext):
                       list(emulator.get("extensions") or []),
                       list(emulator.get("catalog_extensions") or []),
                       emulator.get("catalog_recipe"),
-                      list(emulator.get("workarounds_off") or []))
+                      list(emulator.get("workarounds_off") or []),
+                      bool(emulator.get("stale_source")))
 
             # Only for an entry that needs it. A libretro-backed emulator
             # derives its formats from this map; one with no databases derives
@@ -264,8 +265,35 @@ class Startup(plugin_base.PluginContext):
             # for somebody who never asked. Absent means "apply the
             # defaults", and the answer is then written down so it is a
             # recorded choice rather than something re-derived every start.
+            # Which source this install came from is not recorded anywhere,
+            # and it does not need to be: the recipe already says. An install
+            # whose recorded recipe is below the one at which `source` changed
+            # was necessarily downloaded from the old place, with no network
+            # call and nothing to guess. Set before the recipe is written back
+            # below, which is the only moment the old number still exists.
+            moved = (entry.get("source_moved") or {}).get("recipe") or 0
+            if moved and emulator.get("catalog_recipe", 1) < moved:
+                if not emulator.get("stale_source"):
+                    emulator["stale_source"] = True
+                    changed.append(emulator["id"])
+
             if emulator.get("workarounds_off") is None:
-                emulator["workarounds_off"] = emulator_catalog.default_disabled(entry)
+                # Absent is not empty. A record written before this existed has
+                # no key at all, and reading that as "nothing is switched off"
+                # would hand it every correction including the ones that default
+                # to off -- turning motion on, and Steam Input off, for somebody
+                # who never asked.
+                #
+                # But it is not "apply the defaults" either, for the install
+                # that was *already running* one of these back when it was part
+                # of the entry rather than a switch. Defaulting that to off
+                # takes away a working gyro during a plugin update, says
+                # nothing, and leaves the user to find a setting they never knew
+                # existed. What they had is what they keep.
+                off = set(emulator_catalog.default_disabled(entry))
+                off.difference_update(
+                    emulator_catalog.already_applied(entry, emulator))
+                emulator["workarounds_off"] = sorted(off)
             effective = emulator_catalog.resolve_workarounds(
                 entry, emulator["workarounds_off"])
 
@@ -336,7 +364,8 @@ class Startup(plugin_base.PluginContext):
                      list(emulator.get("extensions") or []),
                      list(emulator.get("catalog_extensions") or []),
                      emulator.get("catalog_recipe"),
-                     list(emulator.get("workarounds_off") or []))
+                     list(emulator.get("workarounds_off") or []),
+                     bool(emulator.get("stale_source")))
             if after != before:
                 await self._run(emulators.save, emulator)
 

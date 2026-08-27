@@ -107,6 +107,25 @@ class Library(plugin_base.PluginContext):
                 emulators.launch_notices, emulator, entry.get("options")),
         }
 
+    async def source_notice_shown(self, emulator_id: str):
+        """Record that the one-time source message has been said.
+
+        Called by whatever showed it, rather than marked when the notice is
+        *fetched*: the same list is read to draw the Emulators tab, and
+        counting that as having told somebody would spend the one showing on a
+        panel they may have opened for something else.
+        """
+        emulator = await self._run(emulators.find, emulator_id)
+        if not emulator:
+            return {"ok": False, "error": "That emulator is no longer registered."}
+        if not emulator.get("source_notice_shown"):
+            emulator["source_notice_shown"] = True
+            saved, error = await self._run(emulators.save, emulator)
+            if error:
+                return {"ok": False, "error": error}
+            await self._refresh_emulators()
+        return {"ok": True}
+
     async def list_added(self):
         library = await self._run(store.get_library)
         return sorted(library.values(), key=lambda entry: entry.get("title", "").lower())

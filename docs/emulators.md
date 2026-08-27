@@ -176,6 +176,12 @@ touch — leaves the sensor powered only while you do, so motion works under you
 thumb and looks broken otherwise. Pick one that is always on, such as **Gyro To
 Joystick Camera**.
 
+**If Vita3K says its build came from a source no longer used**, update it once
+from the **Emulators** tab. An emulator already on your Deck is never
+re-downloaded on its own, so an older install stays where it is until you say.
+You are told once as a game starts, and the **Emulators** tab keeps saying it
+until you do.
+
 ### The two fixes underneath
 
 Neither console works on a Deck without a correction, and they are different

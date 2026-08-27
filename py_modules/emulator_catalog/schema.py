@@ -77,6 +77,14 @@ OPTIONAL = {
             "fault this exists for.",
     "note": "A caveat shown in the UI, e.g. that a system needs firmware "
             "the user must supply.",
+    "source_moved": "Set when `source` starts naming a different place, as "
+                    "{'recipe': <number>, 'note': <sentence>}. An install whose "
+                    "recorded recipe is below that number was downloaded from "
+                    "somewhere this entry no longer names, and nothing moves it "
+                    "on its own: `source` is read live, but the AppImage already "
+                    "on disk is not re-fetched, and AppImage updates are not "
+                    "offered. So the install is flagged, and the note is what "
+                    "the user is told once.",
     "recipe": "Version of the launch arguments. Bump it when correcting `args` "
               "or `fullscreen_args` so the fix reaches an emulator already "
               "installed; see `to_emulator`.",
@@ -235,6 +243,22 @@ WORKAROUND_FIELDS = {
              "already express. See WORKAROUND_APPLIES for the whole list and "
              "PATCH_FIELDS for the one that is not an ordinary key.",
 }
+
+def _validate_source_moved(entry_id, spec):
+    """Problems with `source_moved`."""
+    if spec is None:
+        return []
+    if not isinstance(spec, dict):
+        return ["%s: source_moved must be {'recipe': ..., 'note': ...}" % entry_id]
+    problems = []
+    if not isinstance(spec.get("recipe"), int) or spec.get("recipe", 0) < 1:
+        problems.append("%s: source_moved needs the recipe number at which the "
+                        "source changed" % entry_id)
+    if not str(spec.get("note") or "").strip():
+        problems.append("%s: source_moved needs a note -- it is the one thing "
+                        "the user is told, and it is told once" % entry_id)
+    return problems
+
 
 def build_number(text):
     """`text` as a comparable tuple of integers, or () when it is not one.
@@ -559,6 +583,7 @@ def validate(entry, known_platforms=(), imported=False):
 
     problems.extend(_validate_setup(entry_id, entry.get("setup")))
     problems.extend(_validate_workarounds(entry_id, entry.get("workarounds")))
+    problems.extend(_validate_source_moved(entry_id, entry.get("source_moved")))
 
     for item in entry.get("firmware") or ():
         problems.extend(_validate_firmware(entry_id, item))

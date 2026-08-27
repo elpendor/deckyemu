@@ -1,5 +1,10 @@
 import { addedGame } from "./addedGames";
-import { approveLaunch, launchBounced, launchNoticesForGame } from "./backend";
+import {
+  approveLaunch,
+  launchBounced,
+  launchNoticesForGame,
+  sourceNoticeShown,
+} from "./backend";
 import { showFixNotice } from "./FixNoticeModal";
 import { showLaunchConflict } from "./LaunchConflictModal";
 import { launchApp, onGameLaunch, runningGames, type RunningGame } from "./steam";
@@ -111,6 +116,13 @@ async function noticeFixes(appId: number, coreId: string): Promise<void> {
     if (notices.length === 0) return;
     told.add(coreId);
     showFixNotice(notices);
+    // Recorded only now, because the dialog is on screen. The same list is read
+    // to draw the Emulators tab, so marking it when the notice is *fetched*
+    // would spend the one showing on a panel opened for something else.
+    if (notices.some((notice) => notice.state === "source_moved")) {
+      void sourceNoticeShown(coreId.replace(/^emu:/, ""))
+        .catch((error) => logError("could not record the source notice", error));
+    }
   } catch (error) {
     logError("could not check this game's fixes", error);
   }

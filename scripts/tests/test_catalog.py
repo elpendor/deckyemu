@@ -522,6 +522,43 @@ check("and one that only changes how it launches does not",
       _shad_state["ps4-motion"]["patches"], False)
 
 
+section("An install from a source the catalog has stopped naming")
+
+# Nothing moves such an install on its own. `source` is read live, but the
+# AppImage already on disk is never re-fetched and AppImage updates are not
+# offered at all -- so without saying something, an emulator downloaded from
+# somewhere the catalog no longer names sits there indefinitely.
+#
+# Which install that is needs no record and no network call: the recipe already
+# says. Vita3K's source has moved twice -- upstream's rolling release, then a
+# fork, now upstream's numbered builds -- and every one of those installs is
+# below recipe 10.
+_moved = (_vita_entry.get("source_moved") or {})
+check("Vita3K says when its source moved", _moved.get("recipe"), 10)
+check("and the number is the recipe it moved at",
+      _moved["recipe"], _vita_entry["recipe"])
+check("and it carries the sentence the user is told",
+      bool(str(_moved.get("note") or "").strip()), True)
+
+# The note is the only thing anybody is told, and it is told once, so an empty
+# one is a flag with no way to act on it.
+check("a source_moved with no note is refused",
+      any("needs a note" in problem for problem in emulator_catalog.validate(
+          dict(_dep_entry, id="n", name="N",
+               source_moved={"recipe": 2, "note": "  "}))),
+      True)
+check("and one with no recipe is refused",
+      any("needs the recipe number" in problem for problem in emulator_catalog.validate(
+          dict(_dep_entry, id="n", name="N", source_moved={"note": "x"}))),
+      True)
+
+# Nothing else has moved, and a second one appearing without a reason in its own
+# comment is worth failing over.
+check("Vita3K is the only entry whose source has moved",
+      [e["id"] for e in emulator_catalog.CATALOG if e.get("source_moved")],
+      ["vita3k"])
+
+
 section("A patch is described strictly, because it edits somebody else's binary")
 
 

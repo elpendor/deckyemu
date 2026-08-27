@@ -221,7 +221,12 @@ export type PreparedShortcut =
 export interface LaunchNotice {
   id: string;
   name: string;
-  state: "retired" | "unavailable";
+  /**
+   * `source_moved` is not about a fix at all: the emulator was installed from
+   * somewhere the catalog has stopped naming, and only reinstalling moves it.
+   * Said once ever, which is why the backend records having said it.
+   */
+  state: "retired" | "unavailable" | "source_moved";
   /** The same sentence the Emulators tab and the row show. */
   note: string;
 }
@@ -230,6 +235,12 @@ export const launchNoticesForGame = callable<
   [appId: number],
   { notices: LaunchNotice[] }
 >("launch_notices_for_game");
+
+/** Record that the one-time source message has been said. */
+export const sourceNoticeShown = callable<
+  [emulatorId: string],
+  { ok: boolean; error?: string }
+>("source_notice_shown");
 
 
 export interface GameOptions {

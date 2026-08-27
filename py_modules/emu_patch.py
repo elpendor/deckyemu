@@ -461,12 +461,25 @@ def target_for(path, workaround_id):
     return candidate if os.path.isfile(candidate) else ""
 
 
-def unapplied(entry):
-    """[{id, name, error}] for workarounds this build could not take.
+def unapplied(entry, stock=""):
+    """[{id, name, error}] for patches that are not running on this install.
 
-    The honest half of a patch that fails safe. Without it, a fix that could not
-    be applied looks exactly like one that worked: the switch says on, the
-    emulator behaves as though it were off, and nothing anywhere says why.
+    The honest half of a patch that fails safe. Without it, a fix that is not
+    running looks exactly like one that worked: the switch says on, the emulator
+    behaves as though it were off, and nothing anywhere says why.
+
+    Two ways to get here, and the record alone only knows one of them. It may
+    say the patch was refused -- the expected case. Or it may say the patch
+    applied and the file it names may be **gone**, which `refresh` can leave
+    behind all by itself: it deletes the old build before making the new one and
+    records only at the end, so an interruption between those two lands exactly
+    here. The launcher falls back to the stock build and nothing breaks, which
+    is why this was silent.
+
+    So the file is what is asked, and the record is only consulted for *why*.
+    An id the record has never heard of is skipped: an install that predates the
+    patcher has nothing prepared yet, and "not running" would be true for a
+    moment and alarming for no reason.
     """
     entry_id = entry.get("id") or ""
     record = read_record(entry_id)
@@ -475,11 +488,12 @@ def unapplied(entry):
         workaround_id = item.get("id") or ""
         if not (item.get("apply") or {}).get("patch"):
             continue
-        state = record.get(workaround_id) or {}
-        if state and not state.get("file"):
-            rows.append({
-                "id": workaround_id,
-                "name": item.get("name") or workaround_id,
-                "error": state.get("error") or "",
-            })
+        state = record.get(workaround_id)
+        if state is None or (stock and target_for(stock, workaround_id)):
+            continue
+        rows.append({
+            "id": workaround_id,
+            "name": item.get("name") or workaround_id,
+            "error": state.get("error") or "The corrected build is not there.",
+        })
     return rows

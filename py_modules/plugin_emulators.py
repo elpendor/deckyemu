@@ -46,8 +46,7 @@ def _unavailable_fixes(entry, emulator):
     stock = emu_patch.stock_path((emulator.get("target") or "").strip(), entry)
     return {
         row["id"]: row["error"] or "This build would not take that fix."
-        for row in emu_patch.unapplied(entry)
-        if not (stock and emu_patch.target_for(stock, row["id"]))
+        for row in emu_patch.unapplied(entry, stock)
     }
 
 
@@ -997,6 +996,21 @@ class Emulators(plugin_base.PluginContext):
         """The registration itself. See `_register_installed_emulator`."""
         extensions = await self._run(installer.database_extensions)
         definition = await self._run(emulator_catalog.to_emulator, entry, target, extensions)
+        # This install came from wherever `source` names now, so whatever was
+        # said about the old one is finished. Both flags, because a user who
+        # never saw the message still gets a clean record out of updating.
+        definition["stale_source"] = False
+        definition["source_notice_shown"] = False
+
+        # An update is not a new install. `to_emulator` records the catalog's
+        # *defaults* for the corrections, which is right for a first install and
+        # wrong for every later one: it threw away whatever the user had chosen,
+        # so updating an emulator silently switched motion back off. `save`
+        # cannot rescue it either -- it carries a key only when the caller sends
+        # nothing, and this caller sends the defaults.
+        previous = await self._run(emulators.find, entry["id"])
+        if previous and previous.get("workarounds_off") is not None:
+            definition["workarounds_off"] = previous["workarounds_off"]
 
         if not definition["extensions"]:
             return (

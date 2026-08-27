@@ -257,6 +257,12 @@ jobs:
         run: |
           mkdir -p artifact/deckyemu
           cp -r main.py plugin.json package.json py_modules dist bin artifact/deckyemu/
+          # The compile is asserted above; this asserts it was *packaged*. A
+          # shim that does not ship is not a failure anybody sees: `resolved_env`
+          # drops an LD_PRELOAD whose file is missing, so shadPS4 starts with
+          # motion switched on and its axes unrotated -- tilting works, turning
+          # does nothing, and nothing anywhere says why.
+          test -s artifact/deckyemu/bin/gyroshim.so
           find artifact -name '__pycache__' -type d -prune -exec rm -rf {} +
           find artifact -name '*.pyc' -delete
           # The backend half of the stamp. It must agree with what was compiled

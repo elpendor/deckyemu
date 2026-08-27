@@ -464,6 +464,28 @@ def resolve_workarounds(entry, disabled=()):
     return resolved
 
 
+def already_applied(entry, emulator):
+    """Ids whose delta this record is already carrying.
+
+    For one question, asked once: a workaround that used to be part of the
+    entry itself, applied to everybody, has since become a switch that defaults
+    to off. Reading "no choice recorded" as "apply the defaults" is right for a
+    fresh install and wrong for that one -- it takes away something that was
+    working, silently, during a plugin update nobody connected to it.
+
+    Matched on the *keys* an `apply.env` sets rather than their values.
+    `{plugin}` expands to a real path before it reaches a record, so comparing
+    values would answer no for exactly the case this exists to catch.
+    """
+    env = dict(emulator.get("env") or {})
+    return [
+        item.get("id", "")
+        for item in workarounds_for(entry)
+        if ((item.get("apply") or {}).get("env")
+            and all(key in env for key in item["apply"]["env"]))
+    ]
+
+
 def default_disabled(entry):
     """Workaround ids that start switched off, for a fresh install.
 
@@ -485,9 +507,8 @@ def default_disabled(entry):
 #: the same fact four ways is four chances to say something subtly different
 #: from what the code actually did.
 NOTICE_TEXT = {
-    "retired": "The emulator has this fixed now. You can switch it off.",
-    "unavailable": "This build of the emulator would not take the fix, "
-                   "so it is not running.",
+    "retired": "The emulator has this fixed. You can switch it off.",
+    "unavailable": "This build would not take the fix, so it is not running.",
 }
 
 

@@ -221,6 +221,17 @@ ENTRY = {
     #      pointer it drags around is the Vita's touchscreen
     #   9  the controller mapping, without which pressing Steam paused the
     #      emulator and closing the menu left it paused
+    # Anything installed before recipe 10 was downloaded from somewhere this
+    # entry no longer names -- upstream's rolling `continuous` before that, and
+    # a fork of the emulator in between -- and nothing moves it on its own.
+    # `source` is read live, but an AppImage already on disk is never re-fetched
+    # and AppImage updates are not offered, so those installs would sit there
+    # indefinitely.
+    "source_moved": {
+        "recipe": 10,
+        "note": "Vita3K came from a build source no longer used. Update it "
+                "once from the Emulators tab. You will not see this again.",
+    },
     #  10  back to upstream's own builds. The motion fix moved out of `source`
     #      and into the workaround as four bytes, so this stops being a pin --
     #      but only a recipe bump reaches an install still sitting on the fork
