@@ -38,7 +38,7 @@ export function WorkaroundModal({
           </div>
         )}
         <div>
-          <div style={{ fontSize: "14px", fontWeight: 500 }}>What it works around</div>
+          <div style={{ fontSize: "14px", fontWeight: 500 }}>What it fixes</div>
           <div style={{ fontSize: "13px", opacity: 0.8 }}>{workaround.because}</div>
         </div>
         {/* Said for every fix of this kind, from the catalog, rather than left
@@ -66,12 +66,14 @@ export function WorkaroundModal({
             something to name. */}
         <div>
           <div style={{ fontSize: "14px", fontWeight: 500 }}>
-            {workaround.state === "retired" ? "What fixed it" : "Until it is fixed"}
+            {workaround.state === "retired"
+              ? "What replaced it"
+              : "Until the emulator fixes it"}
           </div>
           <div style={{ fontSize: "13px", opacity: 0.8 }}>
             {workaround.state === "retired"
               ? "Tracked at "
-              : "This goes away once the emulator itself is fixed. Being tracked at "}
+              : "This goes away once the emulator does it itself. Being tracked at "}
             {workaround.upstream.replace(/^https:\/\//, "")}.
           </div>
         </div>

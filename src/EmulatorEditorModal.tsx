@@ -103,7 +103,7 @@ function Workarounds({ emulatorId }: { emulatorId: string }) {
 
   return (
     <div style={FIELD_GAP}>
-      <Label>Workarounds</Label>
+      <Label>Fixes</Label>
       {items.map((item) => (
         <Focusable
           key={item.id}

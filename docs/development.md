@@ -129,7 +129,7 @@ python scripts/check_workarounds.py vita3k              # one entry
 python scripts/check_workarounds.py vita3k --build 3829 # against one build
 ```
 
-It asks whether each workaround is still needed — reading the upstream issue it
+It asks whether each fix is still needed — reading the upstream issue it
 names, and re-running the patch detection against a real build. `--build` names
 a release tag instead of taking the newest, which answers "would the patch fit
 that one" without installing it.
@@ -141,7 +141,7 @@ would rather not download an emulator over your own connection.
 Two things about reading its output. It needs `squashfs-tools` to unpack an
 AppImage. And it distinguishes **needs a decision** from **could not be
 checked** — an unauthenticated run hits GitHub's rate limit within a handful of
-calls, and that is not a finding about a workaround. Both fail the run, because
+calls, and that is not a finding about a fix. Both fail the run, because
 a check that did not happen has no result:
 
 ```sh

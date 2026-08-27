@@ -777,7 +777,7 @@ export function GameEditorModal({ game, onSaved, closeModal, onLeave }: Props) {
           />
           {fixes.length > 0 && (
             <div style={{ fontSize: "14px", fontWeight: 500, paddingTop: "6px" }}>
-              Workarounds
+              Fixes
             </div>
           )}
           {fixes.map((fix) => (

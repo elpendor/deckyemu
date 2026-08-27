@@ -106,7 +106,7 @@ import it and read what comes back.
 | `installed_args` | How to start a title the emulator has already installed, when a file path will not do it. `{title}` is the title id. |
 | `command`, `env` | The binary to run inside a flatpak when it is not the one the manifest names, and any environment it needs. |
 | `aliases` | Extra names to match when suggesting arguments for a hand-registered binary. |
-| `workarounds` | Corrections for bugs in the emulator itself, each one a switch. Unlike everything above, a workaround is *temporary*: it must name the upstream issue or pull request that will retire it, say what it costs in the user's terms, and it is off by default. Ordinary configuration that is simply how this emulator has to run is not a workaround — it belongs in `env`, `layout` or `setup`. The fields are in `py_modules/emulator_catalog/schema.py`; note that an imported definition may not use one that patches the emulator's files. |
+| `workarounds` | Corrections for bugs in the emulator itself, each one a switch. The panel calls them **fixes**; the key keeps its older name because it is written into records already on people's devices. Unlike everything above, one is *temporary*: it must name the upstream issue or pull request that will retire it, say what it costs in the user's terms, and it is off by default. Ordinary configuration that is simply how this emulator has to run does not belong here — it belongs in `env`, `layout` or `setup`. The fields are in `py_modules/emulator_catalog/schema.py`; note that an imported definition may not use one that patches the emulator's files. |
 
 ### `source`
 
@@ -185,7 +185,7 @@ What is refused is everything that is not "install the emulator you asked for":
   requires the power to delete directory trees.
 - **A second binary.** No `helper` — that is arbitrary code beside the emulator,
   which the definition did not describe.
-- **Editing the emulator.** A definition may carry *workarounds* — switchable
+- **Editing the emulator.** A definition may carry *fixes* — switchable
   corrections for bugs in the emulator, each naming the upstream fix that will
   retire it — but not one that patches the emulator's own files. That is the
   same power as `helper`, reached by rewriting a binary rather than fetching

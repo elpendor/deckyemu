@@ -109,7 +109,7 @@ until you ask for it**, because switching it on costs something for every game
 of that system.
 
 **Turning it on.** Open the emulator on the **Emulators** tab and switch on
-**Motion controls** under *Workarounds*. It applies to that emulator's games,
+**Motion controls** under *Fixes*. It applies to that emulator's games,
 and Vita3K and shadPS4 are set separately. **The switch always works**, both
 ways — nothing ever removes or greys out an option, whatever else is going on
 with the fix.
