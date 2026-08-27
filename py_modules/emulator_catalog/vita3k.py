@@ -147,9 +147,19 @@ ENTRY = {
                    "on it, and leaves the Deck's own motion sensor powered "
                    "down unless the game's layout uses gyro.",
         "upstream": "https://github.com/Vita3K/Vita3K/pull/4100",
+        # The second half of this is the cost nothing else states, and it is
+        # paid whether or not motion is switched on: the fix Vita3K needs is not
+        # in any upstream build, so the catalog installs a fork, and a fork does
+        # not follow upstream's rolling releases. Making the *build* switchable
+        # too would turn this toggle into a reinstall and thread workaround
+        # resolution through the install path -- for a fork whose whole purpose
+        # is to be deleted the day Vita3K#4100 lands. Said plainly instead.
         "costs": "Steam Input stops shaping the pad for every Vita game -- "
                  "remapped buttons, stick curves and the back buttons stop "
-                 "applying, including in games that have no motion at all.",
+                 "applying, including in games that have no motion at all. "
+                 "Whether it is on or off, Vita3K also stays on the build "
+                 "carrying this fix rather than following upstream's "
+                 "latest, until it is fixed upstream.",
         # Off unless asked for, like shadPS4's. Vita games want motion more
         # often than PS4 games do, but the cost is the same and is paid by
         # every Vita game either way.

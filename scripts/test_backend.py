@@ -3979,6 +3979,42 @@ try:
 finally:
     emulators.remove("vita3k")
 
+section("A shortcut may differ from its emulator")
+
+# The cost lands per game: reaching the sensor costs Steam Input for everything
+# that emulator runs, so somebody with twenty PS4 games and one that uses motion
+# should not have to choose between a gyro there and back buttons everywhere.
+_wa_emu = _catalog_check.to_emulator(
+    _catalog_check.find("shadps4"), "net.shadps4.shadPS4", {})
+check("a game with no opinion follows the emulator, which is off by default",
+      (emulators.for_game(_wa_emu).get("layout", ""),
+       "LD_PRELOAD" in emulators.for_game(_wa_emu).get("env", {})),
+      ("", False))
+_on = emulators.for_game(_wa_emu, {"workarounds": {"ps4-motion": True}})
+check("and one that asks for motion gets both halves of it",
+      (bool(_on.get("layout")), "LD_PRELOAD" in _on.get("env", {})), (True, True))
+# The other direction: emulator on, this one game off.
+_wa_on = dict(_wa_emu, workarounds_off=[])
+check("a game can also decline what its emulator switched on",
+      emulators.for_game(_wa_on, {"workarounds": {"ps4-motion": False}}).get("layout", ""),
+      "")
+# Absent means follow, not off -- a game that stopped tracking the emulator's
+# setting without saying so is what nobody would ever find.
+check("an id nobody decided still follows the emulator",
+      bool(emulators.for_game(_wa_on, {"workarounds": {}}).get("layout")), True)
+# Whatever the game decides, the permanent half of the entry survives.
+check("and the Vulkan pin is there either way",
+      all("radeon_icd" in emulators.for_game(_wa_on, o).get("env", {})
+          .get("VK_DRIVER_FILES", "")
+          for o in ({}, {"workarounds": {"ps4-motion": False}})),
+      True)
+# Everything else is untouched, which is every emulator but the two with motion.
+check("an emulator with no workarounds is returned exactly as it was",
+      emulators.for_game(fs, {"workarounds": {"nope": True}}) is fs, True)
+check("and a core, which reaches the launcher writer as None, is not a crash",
+      emulators.for_game(None, {}), None)
+
+
 section("Switching a workaround off, end to end")
 
 # The toggle has to move both halves and the launchers with them. Motion is the

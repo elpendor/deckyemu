@@ -484,7 +484,10 @@ class Audit(plugin_base.PluginContext):
                     core["path"],
                     rom,
                     launch["hide_osd"],
-                    emulator,
+                    # Per game, like the options beside it: a rebuild that used
+                    # the emulator's own setting would quietly overwrite every
+                    # shortcut that had chosen differently.
+                    emulators.for_game(emulator, entry.get("options")),
                     launch["fullscreen"],
                     launch["extra_args"],
                     self._menu_combo(settings),

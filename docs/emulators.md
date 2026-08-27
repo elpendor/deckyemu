@@ -109,8 +109,14 @@ until you ask for it**, because switching it on costs something for every game
 of that system.
 
 **Turning it on.** Open the emulator on the **Emulators** tab and switch on
-**Motion controls** under *Deck fixes*. It applies to that emulator's games,
+**Motion controls** under *Workarounds*. It applies to that emulator's games,
 and Vita3K and shadPS4 are set separately.
+
+**And per game, if one differs.** Edit any game and its emulator's workarounds appear
+there too, each set to *Follow the emulator* until you say otherwise. That is
+for the common shape of a PS4 library: one game that wants motion and twenty
+that would rather keep their back buttons. Set the emulator off and that one
+game on.
 
 **What it costs, and why it is not simply on.** To reach the sensor the emulator
 has to read the Deck's controller directly instead of through Steam Input. Your

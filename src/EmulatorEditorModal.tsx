@@ -8,6 +8,8 @@ import {
   type SingleDropdownOption,
 } from "@decky/ui";
 import { FileSelectionType, openFilePicker, toaster } from "@decky/api";
+
+import { WorkaroundInfo } from "./WorkaroundInfo";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
@@ -100,25 +102,23 @@ function Workarounds({ emulatorId }: { emulatorId: string }) {
 
   return (
     <div style={FIELD_GAP}>
-      <Label hint="Fixes for bugs in the emulator itself. Each one goes away once the emulator is fixed.">
-        Deck fixes
-      </Label>
+      <Label>Workarounds</Label>
       {items.map((item) => (
-        <div key={item.id} style={{ ...FIELD_GAP, gap: "6px", paddingBottom: "6px" }}>
+        <Focusable
+          key={item.id}
+          style={{ display: "flex", gap: "8px", alignItems: "center" }}
+        >
           <DialogButton
             disabled={busy === item.id}
             onClick={() => toggle(item)}
-            style={{ width: "auto", minWidth: "180px" }}
+            style={{ flexGrow: 1 }}
           >
             {busy === item.id
               ? "Working..."
               : `${item.name}: ${item.enabled ? "on" : "off"}`}
           </DialogButton>
-          <div style={{ fontSize: "12px", opacity: 0.6 }}>{item.because}</div>
-          {/* Shown whether the fix is on or off, because the cost is the whole
-              reason this is a choice rather than something we just do. */}
-          <div style={{ fontSize: "12px", opacity: 0.6 }}>Costs: {item.costs}</div>
-        </div>
+          <WorkaroundInfo workaround={item} />
+        </Focusable>
       ))}
     </div>
   );

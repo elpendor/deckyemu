@@ -12,12 +12,14 @@ import { FileSelectionType, openFilePicker, toaster } from "@decky/api";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
+  listWorkarounds,
   probeRom,
   resolveGame,
   updateGame,
   type AddedGame,
   type Core,
   type GameOptions,
+  type Workaround,
 } from "./backend";
 import {
   addAppsToCollection,
@@ -25,6 +27,7 @@ import {
   renameShortcut,
   repointShortcut,
 } from "./steam";
+import { WorkaroundInfo } from "./WorkaroundInfo";
 import { playGame } from "./playGame";
 import { unfileGames } from "./collections";
 import { ArtPickerModal } from "./ArtPickerModal";
@@ -84,6 +87,20 @@ const FULLSCREEN_OPTIONS: SingleDropdownOption[] = [
   { data: "", label: "Follow the global setting" },
   { data: "on", label: "Force fullscreen" },
   { data: "off", label: "Leave windowed" },
+];
+
+/**
+ * Three states rather than a switch, matching the fullscreen control above.
+ *
+ * "Follow" is the important one and the reason this is not a checkbox: a fix
+ * costs something for every game its emulator runs, so a shortcut may differ
+ * from the default -- but a game that quietly stopped tracking that default
+ * would be found by nobody.
+ */
+const WORKAROUND_OPTIONS: SingleDropdownOption[] = [
+  { data: "", label: "Follow the emulator" },
+  { data: "on", label: "On for this game" },
+  { data: "off", label: "Off for this game" },
 ];
 
 function basename(path: string): string {
@@ -146,6 +163,17 @@ export function GameEditorModal({ game, onSaved, closeModal, onLeave }: Props) {
     game.options?.fullscreen === undefined ? "" : game.options.fullscreen ? "on" : "off",
   );
   const [extraArgs, setExtraArgs] = useState(game.options?.extra_args ?? "");
+  // The emulator's fixes, and this game's answer to each. Empty for every
+  // emulator but the two with motion, and then nothing is rendered.
+  const [fixes, setFixes] = useState<Workaround[]>([]);
+  const [fixChoices, setFixChoices] = useState<Record<string, string>>(() =>
+    Object.fromEntries(
+      Object.entries(game.options?.workarounds ?? {}).map(([id, on]) => [
+        id,
+        on ? "on" : "off",
+      ]),
+    ),
+  );
   const [saving, setSaving] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [artApplied, setArtApplied] = useState(0);
@@ -218,6 +246,27 @@ export function GameEditorModal({ game, onSaved, closeModal, onLeave }: Props) {
       ),
     );
   }, [cores, coreId, game.core_id, game.system]);
+
+  // Keyed on the core, so switching a game to a different emulator in this same
+  // modal shows that emulator's fixes rather than the previous one's.
+  useEffect(() => {
+    const emulatorId = coreId.startsWith("emu:") ? coreId.slice(4) : "";
+    if (!emulatorId) {
+      setFixes([]);
+      return;
+    }
+    let live = true;
+    listWorkarounds(emulatorId)
+      .then((result) => {
+        if (live) setFixes(result.ok ? (result.workarounds ?? []) : []);
+      })
+      .catch(() => {
+        if (live) setFixes([]);
+      });
+    return () => {
+      live = false;
+    };
+  }, [coreId]);
 
   const isEmulator = isEmulatorId(coreId);
 
@@ -379,8 +428,16 @@ export function GameEditorModal({ game, onSaved, closeModal, onLeave }: Props) {
     if (osd) options.hide_osd = osd as GameOptions["hide_osd"];
     if (fullscreen) options.fullscreen = fullscreen === "on";
     if (extraArgs.trim()) options.extra_args = extraArgs.trim();
+    // Only the ones this game actually decides. "Follow the emulator" is the
+    // absence of an entry, not a third value to store.
+    const decided = Object.entries(fixChoices).filter(([, choice]) => choice);
+    if (decided.length > 0) {
+      options.workarounds = Object.fromEntries(
+        decided.map(([id, choice]) => [id, choice === "on"]),
+      );
+    }
     return options;
-  }, [osd, fullscreen, extraArgs]);
+  }, [osd, fullscreen, extraArgs, fixChoices]);
 
   /**
    * Write the changes, and report whether they landed.
@@ -665,6 +722,42 @@ export function GameEditorModal({ game, onSaved, closeModal, onLeave }: Props) {
             value={extraArgs}
             onChange={(event) => setExtraArgs(event.target.value)}
           />
+          {fixes.length > 0 && (
+            <div style={{ fontSize: "14px", fontWeight: 500, paddingTop: "6px" }}>
+              Workarounds
+            </div>
+          )}
+          {fixes.map((fix) => (
+            <Focusable
+              key={fix.id}
+              style={{ display: "flex", gap: "8px", alignItems: "center" }}
+            >
+              <div style={{ flexGrow: 1 }}>
+                <Dropdown
+                  rgOptions={WORKAROUND_OPTIONS.map((option) =>
+                    option.data === ""
+                      ? {
+                          ...option,
+                          // Which way "follow" currently goes, so the choice can
+                          // be made without opening the emulator's page beside it.
+                          label: `${fix.name}: follow the emulator (${
+                            fix.enabled ? "on" : "off"
+                          })`,
+                        }
+                      : { ...option, label: `${fix.name}: ${option.label}` },
+                  )}
+                  selectedOption={fixChoices[fix.id] ?? ""}
+                  onChange={(option) =>
+                    setFixChoices((current) => ({
+                      ...current,
+                      [fix.id]: String(option.data),
+                    }))
+                  }
+                />
+              </div>
+              <WorkaroundInfo workaround={fix} />
+            </Focusable>
+          ))}
           <div style={{ fontSize: "12px", opacity: 0.6 }}>
             Appended to the command line and split like a shell would. Some emulators expect
             the ROM last and will ignore anything after it.
