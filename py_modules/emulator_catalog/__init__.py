@@ -507,8 +507,9 @@ def default_disabled(entry):
 #: the same fact four ways is four chances to say something subtly different
 #: from what the code actually did.
 NOTICE_TEXT = {
-    "retired": "The emulator has this fixed. You can switch it off.",
-    "unavailable": "This build would not take the fix, so it is not running.",
+    "retired": "The emulator does this itself now. You can switch this off.",
+    "unavailable": "This build of the emulator would not take it, "
+                   "so it is not running.",
 }
 
 
