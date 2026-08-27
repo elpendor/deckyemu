@@ -734,7 +734,15 @@ export function GameEditorModal({ game, onSaved, closeModal, onLeave }: Props) {
             >
               <div style={{ flexGrow: 1 }}>
                 <Dropdown
-                  rgOptions={WORKAROUND_OPTIONS.map((option) =>
+                  rgOptions={WORKAROUND_OPTIONS.filter(
+                    // Off or follow only, in two cases: once the emulator has
+                    // fixed this itself, because nothing new should opt into
+                    // it; and when the installed build would not take the fix,
+                    // because "on" would be a choice with nothing behind it.
+                    (option) =>
+                      option.data !== "on"
+                      || (!fix.deprecated && !fix.unavailable),
+                  ).map((option) =>
                     option.data === ""
                       ? {
                           ...option,
@@ -742,7 +750,7 @@ export function GameEditorModal({ game, onSaved, closeModal, onLeave }: Props) {
                           // be made without opening the emulator's page beside it.
                           label: `${fix.name}: follow the emulator (${
                             fix.enabled ? "on" : "off"
-                          })`,
+                          })${fix.deprecated ? " - no longer needed" : ""}`,
                         }
                       : { ...option, label: `${fix.name}: ${option.label}` },
                   )}

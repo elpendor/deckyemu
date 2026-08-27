@@ -58,32 +58,15 @@ ENTRY = {
     "summary": "PlayStation Vita. Experimental.",
     "source": {
         "kind": "github",
-        # **Not upstream, and deliberately so.** Upstream builds since roughly
-        # 3830 have no working motion on a Deck, and the cause is two projects
-        # disagreeing about a unit: SDL's Steam Deck driver reports sensor
-        # timings in microseconds through a parameter SDL documents as
-        # nanoseconds, and `motion.cpp` converts ns -> us on top of that, so the
-        # elapsed time driving `UpdateOrientation`/`UpdateRotation` comes out
-        # 1000x too small and the integrated orientation never moves. SDL fixed
-        # its side in `e1af6236` (2025-11-12, shipped in release-3.4.x); Vita3K
-        # pins a 3.2.x commit from January that predates it.
+        # Upstream, and it follows upstream's rolling `continuous` release like
+        # every other AppImage here.
         #
-        # This repository is upstream `496939b6` (build 4074) plus one commit
-        # that takes the elapsed time from a monotonic clock instead, built by
-        # GitHub Actions from public source. Measured on the Deck: 3829 has
-        # working gyro, 3996/3998/4074 do not, this build does.
-        #
-        # **It is a pin, not a channel.** Upstream publishes a rolling
-        # `continuous` release and this one does not, so Vita3K stops following
-        # upstream while this is here -- which is the cost of the trade and the
-        # reason to go back the day the fix lands upstream.
-        #
-        # The commit is offered upstream as Vita3K/Vita3K#4100. **When that is
-        # merged, put `Vita3K/Vita3K` back here and drop the fork** -- and check
-        # the merged build first, since a maintainer may take the other route
-        # discussed there (bumping `external/sdl`), which fixes the same thing a
-        # different way.
-        "repo": "elpendor/Vita3K",
+        # This used to name a fork, because upstream builds since roughly 3830
+        # have no working motion on a Deck. That is now handled where it belongs
+        # -- as a workaround below, four bytes applied to upstream's own build --
+        # so the emulator is no longer pinned to a build somebody has to
+        # remember to rebuild.
+        "repo": "Vita3K/Vita3K",
         # aarch64 builds are published beside the x86_64 one, and installing
         # the wrong architecture fails at exec time with nothing useful.
         "asset": r"^Vita3K-x86_64\.AppImage$",
@@ -136,35 +119,60 @@ ENTRY = {
     # rotates SDL's gamepad frame into the console's in its `from_gamepad`
     # branch, which is the same rotation `shim/gyroshim.c` applies for PS4.
     #
-    # **The fork above is not part of this and does not switch off with it.** It
-    # decides what got installed, which a toggle cannot undo -- see
-    # `schema.WORKAROUND_APPLIES`. Turning motion off here leaves the fork in
-    # place and simply stops reading the Deck's own pad.
+    # What it does need is the third half, and the reason `apply.patch` exists.
+    # Reaching the Deck's sensors is not enough, because upstream cannot
+    # integrate what it reads: SDL's Steam Deck driver reports sensor timings in
+    # microseconds through a parameter SDL documents as nanoseconds, and
+    # `motion.cpp` converts ns -> us on top of that, so the elapsed time driving
+    # `UpdateOrientation`/`UpdateRotation` comes out 1000x too small and the
+    # orientation never moves. Measured on the Deck: 3829 works, 3996/3998/4074
+    # do not. SDL fixed its side in `e1af6236` (2025-11-12, in release-3.4.x);
+    # Vita3K bundles 3.2.30, and that branch never got the backport.
+    #
+    # shadPS4 takes its motion fix as an `LD_PRELOAD` because it links SDL
+    # dynamically. Vita3K compiles SDL in -- `ldd` names none -- so no shim,
+    # hint or variable can reach this, and the file is the only seam there is.
     "workarounds": [{
         "id": "vita-motion",
         "name": "Motion controls",
+        # Both halves, because both are true and the second is the one that
+        # explains why this fix has to touch the emulator's own files. Said in
+        # what it looks like rather than what it is: a user does not need the
+        # word microsecond to understand "reads it too slowly to notice".
         "because": "Steam hands a launched game a virtual pad with no sensors "
                    "on it, and leaves the Deck's own motion sensor powered "
-                   "down unless the game's layout uses gyro.",
+                   "down unless the game's layout uses gyro -- and Vita3K then "
+                   "reads that sensor a thousand times too slowly to see it "
+                   "move at all.",
         "upstream": "https://github.com/Vita3K/Vita3K/pull/4100",
-        # The second half of this is the cost nothing else states, and it is
-        # paid whether or not motion is switched on: the fix Vita3K needs is not
-        # in any upstream build, so the catalog installs a fork, and a fork does
-        # not follow upstream's rolling releases. Making the *build* switchable
-        # too would turn this toggle into a reinstall and thread workaround
-        # resolution through the install path -- for a fork whose whole purpose
-        # is to be deleted the day Vita3K#4100 lands. Said plainly instead.
         "costs": "Steam Input stops shaping the pad for every Vita game -- "
                  "remapped buttons, stick curves and the back buttons stop "
-                 "applying, including in games that have no motion at all. "
-                 "Whether it is on or off, Vita3K also stays on the build "
-                 "carrying this fix rather than following upstream's "
-                 "latest, until it is fixed upstream.",
+                 "applying, including in games that have no motion at all.",
         # Off unless asked for, like shadPS4's. Vita games want motion more
         # often than PS4 games do, but the cost is the same and is paid by
         # every Vita game either way.
         "default": False,
         "apply": {
+            # Four bytes, applied to upstream's own build at install and kept
+            # beside it, so switching this off runs exactly what upstream
+            # shipped. `motion.cpp` reads
+            #   sensor.sensor_timestamp > 0 ? to_microseconds(...) : steady_clock
+            # so a *zero* timestamp routes it onto the monotonic clock -- the
+            # same behaviour the fork's commit reached from the other side.
+            # `add (%r12),%ecx` becomes `xor %ecx,%ecx; nop; nop`, the next
+            # instruction stores the zero back, and both `SDL_SendJoystickSensor`
+            # calls in that function then pass 0.
+            #
+            # `within` is what makes it safe rather than lucky: those four bytes
+            # occur nine times in the 54MB binary and exactly once inside this
+            # function. Verified against two independent compiles, which placed
+            # the function 0x400 apart and were otherwise byte-identical.
+            "patch": {
+                "file": "usr/bin/Vita3K",
+                "within": "HIDAPI_DriverSteamDeck_UpdateDevice",
+                "find": "41030c24",
+                "replace": "31c99090",
+            },
             "env": deck_gyro.motion_env(),
             # The other half, and the one that is not obvious: Steam powers the
             # Deck's IMU down unless the running game's layout binds gyro to
@@ -204,7 +212,11 @@ ENTRY = {
     #      pointer it drags around is the Vita's touchscreen
     #   9  the controller mapping, without which pressing Steam paused the
     #      emulator and closing the menu left it paused
-    "recipe": 9,
+    #  10  back to upstream's own build. The motion fix moved out of `source`
+    #      and into the workaround as four bytes, so this stops being a pin and
+    #      follows `continuous` again -- but only a recipe bump reaches an
+    #      install that is still sitting on the fork
+    "recipe": 10,
     "setup": _VITA3K_SETUP,
     # Booted on a Deck: firmware and font fetched and imported headlessly, a
     # .pkg installed with its zRIF, and the game started from its Steam

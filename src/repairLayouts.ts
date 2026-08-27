@@ -1,5 +1,5 @@
 import { gamesNeedingLayout } from "./backend";
-import { pinGamepadLayout } from "./steam";
+import { pinGamepadLayout, unpinEmulatorLayout } from "./steam";
 import { logError } from "./logError";
 
 /** Between games, so a library of them cannot monopolise the frontend. */
@@ -39,13 +39,17 @@ export async function repairGameLayouts(): Promise<number> {
   for (const game of games) {
     if (!game?.app_id) continue;
     try {
-      // An empty layout is an instruction, not an absence: this emulator's
-      // motion has been switched off and its games have to come *off* our gyro
-      // layout, or its gyro-to-stick binding keeps drifting the camera through
-      // Steam's virtual pad. `restore` is what makes that replace our own pin.
+      // An empty layout is an instruction, not an absence: this game should
+      // not be wearing a layout of ours, so if it is, take it off. Left on, a
+      // gyro layout keeps sending tilt to the right stick through Steam's
+      // virtual pad and the camera drifts with nothing to explain it.
+      //
+      // `unpinEmulatorLayout` decides by looking at what the game is actually
+      // wearing rather than at why it was put there, which is what makes this
+      // survive the workaround being deleted from the catalog entirely.
       const moved = game.layout
         ? await pinGamepadLayout(game.app_id, 8, game.layout, true)
-        : await pinGamepadLayout(game.app_id, 8, "", true, true);
+        : await unpinEmulatorLayout(game.app_id);
       if (moved) repaired += 1;
     } catch (error) {
       logError(`could not set the layout for ${game.app_id}`, error);

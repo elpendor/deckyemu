@@ -1,8 +1,9 @@
 import { addedGame } from "./addedGames";
-import { approveLaunch, launchBounced } from "./backend";
+import { approveLaunch, launchBounced, launchNoticesForGame } from "./backend";
 import { showLaunchConflict } from "./LaunchConflictModal";
 import { launchApp, onGameLaunch, runningGames, type RunningGame } from "./steam";
 import { logError } from "./logError";
+import { toaster } from "@decky/api";
 
 /**
  * The panel half of the launch gate.
@@ -76,6 +77,54 @@ export function namedFromIds(others: string): RunningGame[] {
     .map((id) => ({ appId: Number(id), title: "another game", gameId: id }));
 }
 
+/**
+ * Emulators already told about, so a second launch does not say it again.
+ *
+ * Per session and per emulator, because the thing being asked for is one action
+ * -- update that emulator -- and repeating it every launch would turn a useful
+ * notice into something people learn to dismiss without reading.
+ */
+const told = new Set<string>();
+
+/**
+ * Say, as a game starts, that a fix it asked for is not doing what it says.
+ *
+ * Two cases, and they are the same message from the user's side -- what the
+ * switch claims is not what is happening, and the way out of both is to update
+ * the emulator. A fix that is switched on and working says nothing at all.
+ *
+ * This is the moment worth spending. The message exists to prompt one action,
+ * and whoever needs it is right here, looking at the screen, using the thing it
+ * is about -- where the same words in a settings page reach only people who were
+ * already going to open that page.
+ *
+ * Never blocks the launch and never fails it: the game is starting either way,
+ * and a notice that could stop it would be a worse bug than the one it mentions.
+ */
+async function noticeFixes(appId: number, coreId: string): Promise<void> {
+  if (told.has(coreId)) return;
+  try {
+    const result = await launchNoticesForGame(appId);
+    const notices = result?.notices ?? [];
+    if (notices.length === 0) return;
+    told.add(coreId);
+    for (const notice of notices) {
+      toaster.toast({
+        title: notice.kind === "retired"
+          ? `${notice.name} is no longer needed`
+          : `${notice.name} is not running`,
+        body: notice.kind === "retired"
+          ? notice.message
+          : "This build of the emulator would not take the fix. Updating it "
+            + "may bring one that does.",
+        duration: 10000,
+      });
+    }
+  } catch (error) {
+    logError("could not check this game's fixes", error);
+  }
+}
+
 /** Watch for a stopped launch and ask about it. Returns an unregister function. */
 export function watchLaunches(): () => void {
   return onGameLaunch((appId) => {
@@ -88,6 +137,11 @@ async function handleLaunch(appId: number): Promise<void> {
   // Not one of ours: the launcher is not ours to gate, so nothing was stopped
   // and there is nothing to say about it.
   if (!game) return;
+
+  // Ahead of the wait below, which can take four seconds: by then the game is
+  // on screen and a toast about it has missed its moment. Not awaited, so a slow
+  // backend cannot delay the gate this function exists for.
+  void noticeFixes(appId, game.core_id);
 
   // Read now, not after the wait. By then the launch has resolved and this list
   // has moved on.

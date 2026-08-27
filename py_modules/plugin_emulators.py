@@ -22,6 +22,7 @@ import plugin_base
 
 import emu_config
 import emu_install
+import emu_patch
 import emulator_catalog
 import emulators
 import fileserver
@@ -32,6 +33,22 @@ import procout
 import ps3_games
 import ra_detect
 import store
+
+
+def _unavailable_fixes(entry, emulator):
+    """{workaround id: why} for fixes this install could not take.
+
+    Asked of the files rather than only the record `emu_patch.refresh` wrote:
+    the record says what happened at install, and what the panel has to report
+    is what is true now. A patched build that exists is a fix that runs,
+    whatever the record remembers, and the reverse is the case worth catching.
+    """
+    stock = emu_patch.stock_path((emulator.get("target") or "").strip(), entry)
+    return {
+        row["id"]: row["error"] or "This build would not take that fix."
+        for row in emu_patch.unapplied(entry)
+        if not (stock and emu_patch.target_for(stock, row["id"]))
+    }
 
 
 def _discard(path):
@@ -1324,7 +1341,8 @@ class Emulators(plugin_base.PluginContext):
         return {
             "ok": True,
             "workarounds": emulator_catalog.workaround_state(
-                entry, emulator.get("workarounds_off") or ()),
+                entry, emulator.get("workarounds_off") or (),
+                await self._run(_unavailable_fixes, entry, emulator)),
         }
 
     async def set_workaround(self, emulator_id: str, workaround_id: str, enabled: bool):
@@ -1345,6 +1363,29 @@ class Emulators(plugin_base.PluginContext):
             item.get("id") for item in emulator_catalog.workarounds_for(entry)
         }:
             return {"ok": False, "error": "No such setting for this emulator."}
+
+        # Deprecated ones may be switched off but not on. Somebody who already
+        # has one keeps it -- the bug is still in an emulator that has not been
+        # updated -- but nobody new opts into something we are telling people to
+        # stop using.
+        if enabled and not emulator_catalog.may_enable(entry, workaround_id):
+            return {
+                "ok": False,
+                "error": "That fix is no longer needed. Update the emulator "
+                         "instead.",
+            }
+
+        # And one that could not be applied may not be switched on either. The
+        # switch would take, nothing would change, and the panel would then say
+        # a fix is running that is not -- which is the exact state the whole
+        # `unavailable` idea exists to prevent.
+        if enabled and (await self._run(_unavailable_fixes, entry, emulator)
+                        ).get(workaround_id):
+            return {
+                "ok": False,
+                "error": "This build of the emulator would not take that fix. "
+                         "Updating it may bring one that does.",
+            }
 
         off = set(emulator.get("workarounds_off") or ())
         off.discard(workaround_id) if enabled else off.add(workaround_id)

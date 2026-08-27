@@ -68,28 +68,44 @@ class Library(plugin_base.PluginContext):
             if not app_id or not core_id.startswith("emu:"):
                 continue
             # Resolved for *this* game: a shortcut may have motion switched
-            # off while the emulator has it on, or the other way round, and the
-            # layout follows whichever this game ended up with.
+            # off while the emulator has it on, or the other way round.
             emulator = emulators.for_game(
                 emulators_by_id.get(core_id[4:]) or {}, entry.get("options"))
-            layout = emulator.get("layout") or ""
-            if layout:
-                wanted.append({"app_id": app_id, "layout": layout})
-            elif emulator.get("workarounds_off") or (entry.get("options") or {}).get(
-                    "workarounds"):
-                # The other direction, and the one that is not obvious. An
-                # emulator whose motion has been switched off wants its games
-                # *off* the gyro layout, not merely left alone: that layout
-                # sends gyro to the right stick, and with motion off the
-                # emulator is back on Steam's virtual pad, which is what
-                # receives it. Left pinned, tilting the Deck pushes the stick
-                # and the camera drifts -- worse than never having pinned it.
-                #
-                # An empty layout means "put it back on a plain gamepad one",
-                # and only over Steam's guess or a pin of ours; a layout
-                # somebody chose is theirs. See `pinGamepadLayout`'s `restore`.
-                wanted.append({"app_id": app_id, "layout": ""})
+            # Every game of a plugin-managed emulator, with the layout it should
+            # be wearing -- and an empty string means "should be wearing none of
+            # ours", not "nothing to do".
+            #
+            # Deliberately not narrowed to emulators that currently declare a
+            # layout. That was the bug: when a workaround is deleted from the
+            # catalog, nothing is left describing the layout it pinned, so
+            # nothing asked for it to come off and every game kept it forever.
+            # The frontend decides by looking at what each game is actually
+            # wearing, which needs no catalog knowledge at all.
+            wanted.append({"app_id": app_id, "layout": emulator.get("layout") or ""})
         return wanted
+
+    async def launch_notices_for_game(self, app_id: int):
+        """Anything worth saying about the fixes this game is about to run with.
+
+        Asked as the game starts, which is the only moment the message reliably
+        reaches anybody: a line in a settings page is read by people who were
+        already going to open that page, and they are not the ones who need it.
+
+        Resolved through the same helper the launcher uses, so a notice cannot
+        claim a fix is running that is not -- a warning about something that
+        already stopped is worse than saying nothing.
+        """
+        library = await self._run(store.get_library)
+        entry = next(
+            (item for item in library.values() if item.get("app_id") == app_id), None)
+        core_id = str((entry or {}).get("core_id") or "")
+        if not entry or not core_id.startswith("emu:"):
+            return {"notices": []}
+        emulator = await self._run(emulators.find, core_id[4:])
+        return {
+            "notices": await self._run(
+                emulators.launch_notices, emulator, entry.get("options")),
+        }
 
     async def list_added(self):
         library = await self._run(store.get_library)

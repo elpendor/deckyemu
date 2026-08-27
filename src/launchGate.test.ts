@@ -20,6 +20,8 @@ const showLaunchConflict = vi.fn();
 const launchBounced = vi.fn();
 const approveLaunch = vi.fn();
 const addedGame = vi.fn();
+const launchNoticesForGame = vi.fn();
+const toast = vi.fn();
 
 vi.mock("./LaunchConflictModal", () => ({
   showLaunchConflict: (...args: unknown[]) => showLaunchConflict(...args),
@@ -27,13 +29,17 @@ vi.mock("./LaunchConflictModal", () => ({
 vi.mock("./backend", () => ({
   launchBounced: (...args: unknown[]) => launchBounced(...args),
   approveLaunch: (...args: unknown[]) => approveLaunch(...args),
+  launchNoticesForGame: (...args: unknown[]) => launchNoticesForGame(...args),
 }));
+// `@decky/api` cannot be imported here at all -- it pulls `@decky/manifest`,
+// which only exists once the plugin is built.
+vi.mock("@decky/api", () => ({ toaster: { toast: (...args: unknown[]) => toast(...args) } }));
 vi.mock("./addedGames", () => ({ addedGame: (...args: unknown[]) => addedGame(...args) }));
 vi.mock("./logError", () => ({ logError: vi.fn() }));
 
 const { watchLaunches, namedFromIds } = await import("./launchGate");
 
-const OURS = { app_id: 100, title: "Donkey Kong Country" };
+const OURS = { app_id: 100, title: "Donkey Kong Country", core_id: "emu:shadps4" };
 
 /** A Steam with `running` up, recording every launch it is asked for. */
 function installSteam(running: { appid: number; display_name: string }[] = []) {
@@ -63,12 +69,14 @@ const settle = async () => {
 };
 
 beforeEach(() => {
-  for (const spy of [showLaunchConflict, launchBounced, approveLaunch, addedGame]) {
+  for (const spy of [showLaunchConflict, launchBounced, approveLaunch, addedGame,
+                     launchNoticesForGame, toast]) {
     spy.mockReset();
   }
   addedGame.mockReturnValue(undefined);
   launchBounced.mockResolvedValue({ bounced: false, others: "" });
   approveLaunch.mockResolvedValue({ ok: true });
+  launchNoticesForGame.mockResolvedValue({ notices: [] });
 });
 
 afterEach(() => {
@@ -87,6 +95,91 @@ describe("watchLaunches", () => {
     await settle();
     expect(launchBounced).not.toHaveBeenCalled();
     expect(showLaunchConflict).not.toHaveBeenCalled();
+  });
+
+  /**
+   * The notice about a fix the emulator no longer needs.
+   *
+   * Said as the game starts because that is where it is read: the same words in
+   * a settings page reach only people who were already going to open it, and
+   * they are not the ones still running a retired fix.
+   */
+  it("says so when a game launches with a fix its emulator has retired", async () => {
+    installSteam();
+    addedGame.mockReturnValue({ ...OURS, core_id: "emu:retired" });
+    launchNoticesForGame.mockResolvedValue({
+      notices: [{
+        name: "Motion controls",
+        kind: "retired",
+        message: "Fixed in build 9. Update it.",
+      }],
+    });
+    watchLaunches();
+
+    fire!(1, "gid-100", "LaunchApp");
+    await settle();
+    expect(toast).toHaveBeenCalledTimes(1);
+    expect(toast.mock.calls[0][0]).toMatchObject({
+      title: "Motion controls is no longer needed",
+    });
+
+    // Once per emulator, not once per launch: it asks for a single action, and
+    // repeating it every time is how a notice becomes something people dismiss
+    // without reading.
+    fire!(1, "gid-100", "LaunchApp");
+    await settle();
+    expect(toast).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * The mirror case, and the one that is otherwise invisible: the switch says
+   * on, the emulator behaves as though it were off, and without this nothing
+   * anywhere says why.
+   */
+  it("says so when a fix could not be applied to the installed build", async () => {
+    installSteam();
+    addedGame.mockReturnValue({ ...OURS, core_id: "emu:unpatched" });
+    launchNoticesForGame.mockResolvedValue({
+      notices: [{
+        name: "Motion controls",
+        kind: "unavailable",
+        message: "expected one site inside HIDAPI_DriverSteamDeck_UpdateDevice",
+      }],
+    });
+    watchLaunches();
+
+    fire!(1, "gid-100", "LaunchApp");
+    await settle();
+    expect(toast.mock.calls[0][0]).toMatchObject({
+      title: "Motion controls is not running",
+    });
+    // The reason the patcher gave is a sentence about symbols and addresses.
+    // What reaches the screen is the action.
+    expect(String(toast.mock.calls[0][0].body)).not.toContain("HIDAPI");
+  });
+
+  it("says nothing when there is nothing to report", async () => {
+    installSteam();
+    addedGame.mockReturnValue({ ...OURS, core_id: "emu:quiet" });
+    watchLaunches();
+
+    fire!(1, "gid-100", "LaunchApp");
+    await settle();
+    expect(toast).not.toHaveBeenCalled();
+  });
+
+  // A launch is not ours to fail. The game is starting either way, and a notice
+  // that could stop it would be a worse bug than the one it mentions.
+  it("still gates the launch when the notice cannot be fetched", async () => {
+    installSteam();
+    addedGame.mockReturnValue({ ...OURS, core_id: "emu:broken" });
+    launchNoticesForGame.mockRejectedValue(new Error("backend is down"));
+    launchBounced.mockResolvedValue({ bounced: true, others: "77" });
+    watchLaunches();
+
+    fire!(1, "gid-100", "LaunchApp");
+    await settle();
+    expect(showLaunchConflict).toHaveBeenCalledTimes(1);
   });
 
   it("says nothing when our game launched normally", async () => {

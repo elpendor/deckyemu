@@ -1710,7 +1710,17 @@ class Plugin(
                     "label": entry.get("title", "?"),
                     "core_path": core["path"] if core else entry.get("core_path", ""),
                     "rom_path": entry.get("rom_path", ""),
-                    "emulator": self._emulator_for_core_id(core_id),
+                    # Resolved for this game, exactly as `prepare_shortcut` and
+                    # `update_game` do. This was the one launcher writer that
+                    # did not, and it is the one `set_workaround` calls -- so
+                    # toggling a workaround for an emulator rewrote every one of
+                    # its launchers from the emulator's own record and discarded
+                    # whatever each game had chosen. It also decides *which
+                    # binary* runs now, and the patched build is only ever named
+                    # per game, so without this a fix that edits the emulator
+                    # could be switched on and never reach a launcher.
+                    "emulator": emulators.for_game(
+                        self._emulator_for_core_id(core_id), entry.get("options")),
                     "hide_osd": launch["hide_osd"],
                     "fullscreen": launch["fullscreen"],
                     "extra_args": launch["extra_args"],

@@ -245,14 +245,13 @@ check("and the game still starts by title id behind it",
 # shipping the variables without raising it reaches nobody who already has it.
 check("the recipe rose with them", _vita_entry.get("recipe", 1) >= 6, True)
 
-# Deliberately a fork: upstream builds since ~3830 have no working motion on a
-# Deck, because SDL's Steam Deck driver reports sensor timings in microseconds
-# through a parameter documented as nanoseconds and Vita3K divides by 1000 on
-# top. This is upstream 496939b6 plus the one commit that fixes it. Both the
-# install and the rollback path read `source` from the catalog live, so this
-# decides what every install gets -- it should not move back by accident.
-check("Vita3K installs from the fork carrying the motion fix",
-      _vita_entry["source"]["repo"], "elpendor/Vita3K")
+# Upstream, and it has to stay upstream. This named a fork for as long as the
+# motion fix could only be had by building one; that fix is four bytes applied
+# to upstream's own build now, so a `source` pointing anywhere else would pin
+# every install to a build somebody has to remember to rebuild. Both the install
+# and the rollback path read `source` from the catalog live.
+check("Vita3K installs from upstream",
+      _vita_entry["source"]["repo"], "Vita3K/Vita3K")
 check("and still asks for the x86_64 AppImage",
       _vita_entry["source"]["asset"], r"^Vita3K-x86_64\.AppImage$")
 # Nothing else here points anywhere but upstream, and a second one appearing
@@ -288,10 +287,10 @@ check("only the entries that read the Deck's sensors pin a layout",
        if emulator_catalog.resolve_workarounds(e).get("layout")],
       ["shadps4", "vita3k"])
 
-check("and Vita3K is still the only entry installed from a fork",
+check("and nothing in the catalog installs from a fork",
       [e["id"] for e in emulator_catalog.CATALOG
        if (e.get("source") or {}).get("repo", "").startswith("elpendor/")],
-      ["vita3k"])
+      [])
 
 
 section("shadPS4 reads the same pad, and needs its axes rotated")
@@ -387,14 +386,14 @@ for _entry in _with:
                      - set(emulator_catalog.schema.WORKAROUND_APPLIES)),
               [])
 
-# Vita3K's fork is the case that proves it: temporary, tied to the same upstream
-# PR, and deliberately *not* a workaround, because turning it off would mean a
-# reinstall rather than a relaunch.
-check("the Vita3K fork stayed out of its workaround",
-      "source" in (emulator_catalog.workarounds_for(_vita_entry)[0].get("apply") or {}),
-      False)
-check("and is still what gets installed",
-      _vita_entry["source"]["repo"], "elpendor/Vita3K")
+# `source` is the line, and Vita3K is the case that proves it: which build was
+# downloaded is not something a toggle can undo, so it stays out of `apply`
+# however temporary the reason for it is.
+check("no workaround decides what was installed",
+      [e["id"] for e in emulator_catalog.CATALOG
+       for w in emulator_catalog.workarounds_for(e)
+       if "source" in (w.get("apply") or {})],
+      [])
 
 # Switching one off has to take *everything* it brought with it, or the halves
 # come apart -- environment with no layout reads a sensor Steam never powers on.
@@ -441,6 +440,133 @@ check("so a fresh shadPS4 has no layout and no motion variables",
 _plain = emulator_catalog.find("dolphin")
 check("an entry with no workarounds resolves to itself",
       emulator_catalog.resolve_workarounds(_plain) is _plain, True)
+
+
+section("Deprecating a workaround, rather than deleting it")
+
+# Deletion is the wrong move the day upstream merges: the bug is still in the
+# build somebody has not updated yet, so removing the workaround takes the fix
+# from exactly the people who still need it. Deprecation keeps it working and
+# stops offering it to anyone new.
+_dep_entry = {
+    "id": "example",
+    "workarounds": [
+        {"id": "live", "name": "Live", "because": "b", "costs": "c",
+         "upstream": "https://example.invalid/1", "apply": {"layout": "template://x"}},
+        {"id": "done", "name": "Done", "because": "b", "costs": "c",
+         "upstream": "https://example.invalid/2",
+         "deprecated": "Fixed in build 9. Update the emulator and switch this off.",
+         "apply": {"env": {"A": "1"}}},
+    ],
+}
+check("a live workaround may still be switched on",
+      emulator_catalog.may_enable(_dep_entry, "live"), True)
+check("a deprecated one may not",
+      emulator_catalog.may_enable(_dep_entry, "done"), False)
+check("and neither may one that does not exist",
+      emulator_catalog.may_enable(_dep_entry, "nope"), False)
+
+# It keeps working for whoever already has it -- that is the whole point.
+check("a deprecated workaround still applies while it is on",
+      emulator_catalog.resolve_workarounds(_dep_entry, []).get("env"), {"A": "1"})
+check("and can still be switched off",
+      emulator_catalog.resolve_workarounds(_dep_entry, ["done"]).get("env"), None)
+
+# The panel needs to say so, which means carrying the message rather than a flag.
+_dep_state = {w["id"]: w for w in emulator_catalog.workaround_state(_dep_entry, [])}
+check("the panel is given the message, not just a flag",
+      _dep_state["done"]["deprecated"].startswith("Fixed in build 9"), True)
+check("and nothing is claimed about a live one",
+      _dep_state["live"]["deprecated"], "")
+
+# A deprecation with nothing to act on is a scary label and no way out of it.
+check("an empty deprecation is refused",
+      any("deprecated must say" in problem for problem in emulator_catalog.validate(
+          dict(_dep_entry, id="empty", name="E", kind="flatpak", target="x",
+               workarounds=[dict(_dep_entry["workarounds"][1], deprecated="  ")]))),
+      True)
+
+# The panel also has to distinguish "no longer needed" from "needed and not
+# running", which are nearly opposites and would otherwise look the same.
+check("a fix this install could not take is reported separately",
+      emulator_catalog.workaround_state(
+          _dep_entry, [], {"live": "this build has changed"}
+      )[0]["unavailable"],
+      "this build has changed")
+check("and nothing is claimed when every fix applied",
+      [w["unavailable"] for w in emulator_catalog.workaround_state(_dep_entry, [])],
+      ["", ""])
+
+# The panel says "a corrected copy is made" for every fix that edits the
+# emulator's own files, derived from the catalog rather than left to whoever
+# writes the entry -- so it cannot be forgotten, and a fix that touches no file
+# never claims otherwise.
+_vita_state = {w["id"]: w for w in emulator_catalog.workaround_state(_vita_entry)}
+_shad_state = {w["id"]: w for w in emulator_catalog.workaround_state(_shad)}
+check("a fix that edits the emulator's files says so",
+      _vita_state["vita-motion"]["patches"], True)
+check("and one that only changes how it launches does not",
+      _shad_state["ps4-motion"]["patches"], False)
+
+
+section("A patch is described strictly, because it edits somebody else's binary")
+
+
+def _patch_problems(patch):
+    """Only what the validator says about `patch`.
+
+    The scaffold entry is deliberately not a complete emulator -- it exists to
+    carry one workaround -- so its other complaints are noise here.
+    """
+    entry = dict(_dep_entry, id="p", name="P",
+                 workarounds=[dict(_dep_entry["workarounds"][0], id="p",
+                                   apply={"patch": patch})])
+    return [problem for problem in emulator_catalog.validate(entry)
+            if "patch" in problem]
+
+
+_GOOD = {"file": "usr/bin/App", "within": "some_function",
+         "find": "41030c24", "replace": "31c99090"}
+check("a well-formed patch passes", _patch_problems(_GOOD), [])
+
+# The one that matters most. Those four bytes occur nine times in Vita3K's
+# binary; without a symbol to bound the search, a patch is applied to whichever
+# of them comes first.
+check("a patch with no symbol to search within is refused",
+      any("within" in p for p in _patch_problems(dict(_GOOD, within=""))), True)
+# Nothing may move: the file is full of addresses fixed at link time.
+check("and one that would change the file's length is refused",
+      any("must match" in p for p in _patch_problems(dict(_GOOD, replace="31c9"))),
+      True)
+check("and bytes that are not hex are refused",
+      any("hex" in p for p in _patch_problems(dict(_GOOD, find="not hex"))), True)
+check("and a patch that writes back what was already there is refused",
+      any("with themselves" in p
+          for p in _patch_problems(dict(_GOOD, replace=_GOOD["find"]))),
+      True)
+check("and one reaching outside the package is refused",
+      any("inside the package" in p
+          for p in _patch_problems(dict(_GOOD, file="../../etc/passwd"))),
+      True)
+check("and a misspelt field is refused rather than ignored",
+      any("unknown field" in p for p in _patch_problems(dict(_GOOD, symbol="x"))),
+      True)
+
+# `source` is still the line. Which build was downloaded is not something a
+# toggle can undo, and `patch` only earns its place because the stock build
+# stays on disk beside the patched one.
+check("apply still refuses anything that decides what was installed",
+      sorted(emulator_catalog.schema.WORKAROUND_APPLIES),
+      ["env", "layout", "patch"])
+
+
+# Nothing is deprecated yet, and a test that quietly stops checking anything is
+# worse than no test -- this fails the day one is, as a prompt to check the UI.
+check("no shipped workaround is deprecated yet",
+      [item["id"] for entry in emulator_catalog.CATALOG
+       for item in emulator_catalog.workarounds_for(entry)
+       if item.get("deprecated")],
+      [])
 
 
 if __name__ == "__main__":

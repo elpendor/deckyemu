@@ -147,6 +147,37 @@ async function selectedConfig(
  * the game still launches, its layout is just whatever Steam decided, which is
  * the situation this exists to improve rather than to depend on.
  */
+/**
+ * The layouts this plugin pins, by name.
+ *
+ * Named here so a game can be taken *off* one without anything having to still
+ * describe why it was put on. That is the case the recorded-state approach gets
+ * wrong: when a workaround is deleted from the catalog, nothing is left saying
+ * the layout was ever ours, and the games keep it forever.
+ */
+const OURS = "deckyemu_";
+
+/**
+ * Put a game back on a plain gamepad layout, but only if it is on one of ours.
+ *
+ * The narrow check is the point. `mayPinEmulatorLayout` also accepts Steam's own
+ * `default://` guess, so restoring through it unconditionally would convert
+ * every emulator game to `GAMEPAD_TEMPLATE` whether or not this plugin had ever
+ * touched it. This asks a smaller question -- "is this game wearing a layout we
+ * put on it?" -- which is answerable without knowing why we put it there, and so
+ * still works after the workaround that wanted it is gone.
+ */
+export async function unpinEmulatorLayout(appId: number): Promise<boolean> {
+  const controllerIndex = deckControllerIndex();
+  if (controllerIndex === null) return false;
+
+  const current = await selectedConfig(appId, controllerIndex);
+  const url = typeof current?.URL === "string" ? current.URL : "";
+  if (!url.includes(OURS)) return false;
+
+  return pinGamepadLayout(appId, 8, "", true, true);
+}
+
 export async function pinGamepadLayout(
   appId: number,
   attempts = 8,

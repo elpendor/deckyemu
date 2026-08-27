@@ -117,7 +117,24 @@ export function EmulatorsPanel({ onChanged }: Props) {
           <PanelSectionRow key={emulator.id}>
             <Field
               label={emulator.name}
-              description={registeredDescription(emulator)}
+              description={
+                <>
+                  {registeredDescription(emulator)}
+                  {/* Here rather than inside the editor, because the thing to do
+                      about either notice is update the emulator, and this is
+                      where somebody would do that. A message behind two modals
+                      is not a message. */}
+                  {(emulator.fix_notices ?? []).map((notice) => (
+                    <div key={notice.id} style={{ paddingTop: "4px", opacity: 0.9 }}>
+                      {notice.kind === "retired"
+                        ? `${notice.name}: no longer needed. ${notice.message}`
+                        : `${notice.name}: not running. This build of the `
+                          + `emulator would not take the fix, and updating it `
+                          + `may bring one that does.`}
+                    </div>
+                  ))}
+                </>
+              }
               childrenContainerWidth="min"
             >
               <div style={{ display: "flex", gap: "6px" }}>

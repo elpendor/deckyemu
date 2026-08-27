@@ -215,21 +215,114 @@ WORKAROUND_FIELDS = {
     "costs": "What switching it on gives up, in the user's terms. Shown beside "
              "the toggle, because a cost nobody sees is not a choice.",
     "default": "Whether it starts on. Optional, defaults to True.",
+    "deprecated": "Set once the emulator fixes this itself: a sentence naming "
+                  "the build that fixed it and telling the user to update and "
+                  "switch this off. **Deprecate rather than delete.** The bug "
+                  "is still in the build somebody has not updated yet, so "
+                  "removing the workaround the day upstream merges takes the "
+                  "fix from exactly the people who still need it. A deprecated "
+                  "workaround keeps working and stops being offered to anyone "
+                  "new; deletion comes later, when it is safe.",
     "apply": "The delta, written in ordinary catalog keys -- `env`, `layout` "
              "and so on. Merged over the entry when enabled and absent when "
              "not, so a workaround can correct anything the catalog can "
-             "already express.",
+             "already express. See WORKAROUND_APPLIES for the whole list and "
+             "PATCH_FIELDS for the one that is not an ordinary key.",
 }
+
+#: What `apply.patch` says, for a bug that is only reachable inside the
+#: emulator's own binary.
+#:
+#: Every emulator here is upstream's own build. Where a fix can be handed to one
+#: at launch it is -- shadPS4 takes its motion fix as an `LD_PRELOAD`, because it
+#: links SDL dynamically. Vita3K compiles SDL in, so there is no launch-time
+#: seam at all and the only reachable place is the file. Which of the two an
+#: emulator gets is decided by how it was built, not by us.
+#:
+#: See `emu_patch` for how this is applied and, more importantly, for when it
+#: refuses to be.
+PATCH_FIELDS = {
+    "file": "Path inside the package, e.g. 'usr/bin/Vita3K'. Relative, and "
+            "never reaching outside it.",
+    "within": "Symbol whose bounds the search is limited to. Required, and the "
+              "single most important field here: Vita3K's four bytes occur nine "
+              "times in its binary and once inside "
+              "`HIDAPI_DriverSteamDeck_UpdateDevice`, so a patch without a "
+              "symbol is a patch applied to a randomly chosen one of nine "
+              "addresses.",
+    "find": "Bytes to replace, as hex. Must occur exactly once inside `within`; "
+            "anything else and nothing is patched.",
+    "replace": "Bytes to write, as hex, the same length as `find`. Nothing is "
+               "inserted or removed, so every address in the binary stays "
+               "where it was.",
+}
+
+#: Required in a patch spec: all of them.
+PATCH_REQUIRED = tuple(PATCH_FIELDS)
 
 #: Required in every workaround. `default` is the only optional one.
 WORKAROUND_REQUIRED = ("id", "name", "because", "upstream", "costs", "apply")
 
-#: Keys a workaround's `apply` may set. Deliberately short: these are the two
-#: that can be turned on and off at launch. `source` is excluded because it
-#: decides what got *installed* -- toggling it would need a reinstall, not a
-#: relaunch, so a fork like Vita3K's is not a workaround in this sense however
-#: temporary it is.
-WORKAROUND_APPLIES = ("env", "layout")
+#: Keys a workaround's `apply` may set. Deliberately short: every one of these
+#: can be turned on and off between one launch and the next.
+#:
+#: `patch` earns its place by not breaking that rule. It edits bytes in the
+#: emulator's binary, which sounds like it decides what got installed -- but the
+#: patched build is written *beside* the stock one and the launcher points at
+#: whichever the user's choice names, so switching it off runs exactly what
+#: upstream shipped. See `emu_patch`.
+#:
+#: `source` is still excluded, and that is the line: it decides which build was
+#: downloaded, which no toggle can undo without a reinstall. A fork is not a
+#: workaround in this sense however temporary it is.
+WORKAROUND_APPLIES = ("env", "layout", "patch")
+
+
+def _validate_patch(where, spec):
+    """Problems with one `apply.patch`.
+
+    Stricter than the other keys, because this one is the only place the catalog
+    describes an edit to somebody else's binary. Everything checkable before the
+    file exists is checked here; the rest -- that the symbol is present, and that
+    the bytes occur exactly once inside it -- can only be checked against a real
+    build, and `emu_patch` refuses there.
+    """
+    if spec is None:
+        return []
+    if not isinstance(spec, dict):
+        return ["%s: apply.patch must be a dict -- %s"
+                % (where, ", ".join(sorted(PATCH_FIELDS)))]
+
+    problems = []
+    for field in PATCH_REQUIRED:
+        if not spec.get(field):
+            problems.append("%s: patch is missing %r -- %s"
+                            % (where, field, PATCH_FIELDS[field]))
+    unknown = sorted(set(spec) - set(PATCH_FIELDS))
+    if unknown:
+        problems.append("%s: patch has unknown field(s) %s -- known fields "
+                        "are: %s" % (where, ", ".join(repr(n) for n in unknown),
+                                     ", ".join(sorted(PATCH_FIELDS))))
+
+    member = str(spec.get("file") or "")
+    if member and (member.startswith("/") or ".." in member.split("/")):
+        problems.append("%s: patch file must be a path inside the package, "
+                        "not %r" % (where, member))
+
+    try:
+        find = bytes.fromhex(str(spec.get("find") or ""))
+        replace = bytes.fromhex(str(spec.get("replace") or ""))
+    except ValueError:
+        return problems + ["%s: patch find/replace must be hex" % where]
+    if find and replace and len(find) != len(replace):
+        # Same length or the file changes size, every later address moves, and
+        # a binary that no longer matches its own relocations is not a binary.
+        problems.append("%s: patch find is %d bytes and replace is %d -- they "
+                        "must match, because nothing may move"
+                        % (where, len(find), len(replace)))
+    if find and find == replace:
+        problems.append("%s: patch replaces bytes with themselves" % where)
+    return problems
 
 
 def _validate_workarounds(entry_id, workarounds):
@@ -274,6 +367,13 @@ def _validate_workarounds(entry_id, workarounds):
                             "is stored against" % where)
         seen.add(identifier)
 
+        # A deprecation has to say what fixed it and what to do about it, or
+        # it is a scary label with no way out of it.
+        deprecated = item.get("deprecated")
+        if deprecated is not None and not str(deprecated).strip():
+            problems.append("%s: deprecated must say which build fixed this and "
+                            "that the emulator should be updated" % where)
+
         upstream = str(item.get("upstream") or "")
         if upstream and not upstream.startswith(("http://", "https://")):
             problems.append("%s: upstream must be a URL naming the issue or "
@@ -291,6 +391,8 @@ def _validate_workarounds(entry_id, workarounds):
                         "decides what was installed, which a toggle cannot undo"
                         % (where, ", ".join(WORKAROUND_APPLIES),
                            ", ".join(repr(n) for n in outside)))
+
+                problems.extend(_validate_patch(where, apply.get("patch")))
 
                 # Two workarounds writing the same thing is a trap rather than a
                 # conflict to resolve: `resolve_workarounds` merges in order, so

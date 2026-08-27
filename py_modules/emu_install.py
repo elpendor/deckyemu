@@ -32,6 +32,7 @@ import subprocess
 
 import decky
 
+import emu_patch
 import emulator_catalog
 import net
 import sysenv
@@ -761,6 +762,16 @@ def install_appimage(entry, asset, on_progress=None):
     # from "not installed", and only a record can tell them apart.
     write_build_record(entry["id"], asset.get("tag", ""), asset["name"])
 
+    # Patched builds are derived from the build that was just installed, and the
+    # cleanup above has already taken the previous ones -- which is the point.
+    # A patched copy of yesterday's build left beside today's would be an
+    # emulator that silently stopped updating.
+    #
+    # Deliberately not part of the install's success: a build this patch does
+    # not fit still installs and still runs, and `emu_patch.unapplied` is how
+    # the panel says the fix could not be applied to it.
+    emu_patch.refresh(entry, path)
+
     decky.logger.info("Installed %s to %s", entry["id"], path)
     return path, ""
 
@@ -776,8 +787,15 @@ def _remove_others(directory, keep):
         # only widen the window where an interrupted install looks unknown.
         if name in (keep, BUILD_RECORD):
             continue
+        path = os.path.join(directory, name)
         try:
-            os.remove(os.path.join(directory, name))
+            # Patching unpacks a 186MB tree beside the build. It clears up after
+            # itself, but a kill in the middle leaves one behind, and a
+            # directory here is otherwise a warning on every install forever.
+            if os.path.isdir(path):
+                shutil.rmtree(path)
+            else:
+                os.remove(path)
         except OSError as error:
             decky.logger.warning("Could not remove old build %s: %s", name, error)
 

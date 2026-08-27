@@ -463,6 +463,20 @@ def resolve_workarounds(entry, disabled=()):
     return resolved
 
 
+def may_enable(entry, workaround_id):
+    """Whether this workaround may still be switched *on*.
+
+    Deprecated ones may only be switched off. They keep working for anybody who
+    already has them -- the bug is still in an emulator that has not been
+    updated -- but nobody new should be opting into something we are telling
+    people to stop using.
+    """
+    for item in workarounds_for(entry):
+        if item.get("id") == workaround_id:
+            return not str(item.get("deprecated") or "").strip()
+    return False
+
+
 def default_disabled(entry):
     """Workaround ids that start switched off, for a fresh install.
 
@@ -477,14 +491,22 @@ def default_disabled(entry):
     ]
 
 
-def workaround_state(entry, disabled=()):
+def workaround_state(entry, disabled=(), unavailable=None):
     """What the panel shows: each workaround, with whether it is on.
 
     `upstream` rides along because the honest thing to tell somebody switching
     one off is where the real fix is, and `costs` because a cost nobody sees is
     not a choice.
+
+    `unavailable` is `{id: reason}` for fixes this install could not take -- a
+    patch whose build no longer matches what the catalog describes. Passed in
+    rather than looked up, because it is a fact about a directory on disk and
+    this module only knows the catalog. A row that carries one is shown without
+    a switch: offering to turn on something that cannot run is how a setting
+    ends up lying.
     """
     off = set(disabled or ())
+    cannot = dict(unavailable or {})
     return [
         {
             "id": item.get("id", ""),
@@ -494,6 +516,20 @@ def workaround_state(entry, disabled=()):
             "upstream": item.get("upstream", ""),
             "enabled": item.get("id") not in off,
             "default": bool(item.get("default", True)),
+            # Empty for a live one. Set once the emulator fixes this itself, and
+            # then it keeps working -- the bug is still in whatever build has
+            # not been updated -- while telling the user to update and stop.
+            "deprecated": str(item.get("deprecated") or ""),
+            # Why this install cannot run it, or empty. Distinct from
+            # `deprecated`: that one means the fix is no longer needed, this one
+            # means it is needed and could not be applied.
+            "unavailable": str(cannot.get(item.get("id")) or ""),
+            # Whether this one edits the emulator's own files. Derived rather
+            # than written into `because` by hand, because it is the fact a
+            # user is most entitled to be told and the one an author is most
+            # likely to forget: the panel says it for every patch there will
+            # ever be, without anyone having to remember.
+            "patches": bool((item.get("apply") or {}).get("patch")),
         }
         for item in workarounds_for(entry)
     ]

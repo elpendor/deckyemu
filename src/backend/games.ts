@@ -217,6 +217,18 @@ export type PreparedShortcut =
  * alone still picks up a later change in Settings, while one that was overridden
  * deliberately keeps what it was given.
  */
+/** Something to say about a fix a game is about to launch with. */
+export interface LaunchNotice {
+  name: string;
+  kind: "retired" | "unavailable";
+  message: string;
+}
+
+export const launchNoticesForGame = callable<
+  [appId: number],
+  { notices: LaunchNotice[] }
+>("launch_notices_for_game");
+
 export interface GameOptions {
   hide_osd?: "keep" | "startup" | "all";
   fullscreen?: boolean;
