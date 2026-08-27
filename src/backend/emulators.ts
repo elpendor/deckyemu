@@ -112,9 +112,9 @@ export const listSystems = callable<[], SystemOption[]>("list_systems");
 export interface FixNotice {
   id: string;
   name: string;
-  kind: "retired" | "unavailable";
-  /** Names the build that fixed it, or says why the edit did not apply. */
-  message: string;
+  state: "retired" | "unavailable";
+  /** The same sentence the row and the dialog show. */
+  note: string;
 }
 
 export interface EmulatorInput {
@@ -151,21 +151,19 @@ export interface Workaround {
   enabled: boolean;
   default: boolean;
   /**
-   * Empty while it is still needed. Set once the emulator fixes this itself:
-   * the workaround keeps working, because the bug is still in whatever build
-   * has not been updated, but it can only be switched off from then on.
-   */
-  deprecated: string;
-  /**
-   * Empty when it can run. Set when this install could not take the fix — a
-   * patch whose build no longer matches what it describes.
+   * What is up with this fix, or "" when nothing is.
    *
-   * Distinct from `deprecated`, and nearly its opposite: that one means the fix
-   * is no longer needed, this one means it is needed and is not running. A row
-   * carrying it is shown without a switch, because offering to turn on
-   * something that cannot run is how a setting ends up lying.
+   * `retired` — the installed build of the emulator has the fix, so this is
+   * redundant. `unavailable` — this build would not take the fix, so it is
+   * switched on and doing nothing. Both are *observed*: retired is the build
+   * in front of us compared against the one that fixed it, never a claim
+   * shipped with the plugin.
+   *
+   * Neither ever changes what the switch will do. It always works, both ways.
    */
-  unavailable: string;
+  state: "" | "retired" | "unavailable";
+  /** The one sentence for `state`, worded once and shown everywhere. */
+  note: string;
   /**
    * Whether this fix edits the emulator's own files rather than only its
    * launch. Derived from the catalog, so the panel explains it for every such

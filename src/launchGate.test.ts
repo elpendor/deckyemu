@@ -21,19 +21,21 @@ const launchBounced = vi.fn();
 const approveLaunch = vi.fn();
 const addedGame = vi.fn();
 const launchNoticesForGame = vi.fn();
-const toast = vi.fn();
+const showFixNotice = vi.fn();
 
 vi.mock("./LaunchConflictModal", () => ({
   showLaunchConflict: (...args: unknown[]) => showLaunchConflict(...args),
+}));
+// Same boundary, same reason: this module renders, so it cannot be imported
+// here -- and the decision to open it is what is being tested, not the dialog.
+vi.mock("./FixNoticeModal", () => ({
+  showFixNotice: (...args: unknown[]) => showFixNotice(...args),
 }));
 vi.mock("./backend", () => ({
   launchBounced: (...args: unknown[]) => launchBounced(...args),
   approveLaunch: (...args: unknown[]) => approveLaunch(...args),
   launchNoticesForGame: (...args: unknown[]) => launchNoticesForGame(...args),
 }));
-// `@decky/api` cannot be imported here at all -- it pulls `@decky/manifest`,
-// which only exists once the plugin is built.
-vi.mock("@decky/api", () => ({ toaster: { toast: (...args: unknown[]) => toast(...args) } }));
 vi.mock("./addedGames", () => ({ addedGame: (...args: unknown[]) => addedGame(...args) }));
 vi.mock("./logError", () => ({ logError: vi.fn() }));
 
@@ -70,7 +72,7 @@ const settle = async () => {
 
 beforeEach(() => {
   for (const spy of [showLaunchConflict, launchBounced, approveLaunch, addedGame,
-                     launchNoticesForGame, toast]) {
+                     launchNoticesForGame, showFixNotice]) {
     spy.mockReset();
   }
   addedGame.mockReturnValue(undefined);
@@ -107,28 +109,28 @@ describe("watchLaunches", () => {
   it("says so when a game launches with a fix its emulator has retired", async () => {
     installSteam();
     addedGame.mockReturnValue({ ...OURS, core_id: "emu:retired" });
-    launchNoticesForGame.mockResolvedValue({
-      notices: [{
-        name: "Motion controls",
-        kind: "retired",
-        message: "Fixed in build 9. Update it.",
-      }],
-    });
+    const notice = {
+      id: "motion",
+      name: "Motion controls",
+      state: "retired",
+      note: "The emulator has this fixed now. You can switch it off.",
+    };
+    launchNoticesForGame.mockResolvedValue({ notices: [notice] });
     watchLaunches();
 
     fire!(1, "gid-100", "LaunchApp");
     await settle();
-    expect(toast).toHaveBeenCalledTimes(1);
-    expect(toast.mock.calls[0][0]).toMatchObject({
-      title: "Motion controls is no longer needed",
-    });
+    // The sentence comes from the backend and is passed through untouched --
+    // the row, the Emulators tab and this dialog all show that one string, so
+    // none of them can word the same fact differently.
+    expect(showFixNotice).toHaveBeenCalledWith([notice]);
 
-    // Once per emulator, not once per launch: it asks for a single action, and
-    // repeating it every time is how a notice becomes something people dismiss
-    // without reading.
+    // Once per emulator, not once per launch. A dialog every time is how a
+    // notice becomes something people dismiss without reading -- and this one
+    // stands in front of a game somebody just pressed play on.
     fire!(1, "gid-100", "LaunchApp");
     await settle();
-    expect(toast).toHaveBeenCalledTimes(1);
+    expect(showFixNotice).toHaveBeenCalledTimes(1);
   });
 
   /**
@@ -141,21 +143,21 @@ describe("watchLaunches", () => {
     addedGame.mockReturnValue({ ...OURS, core_id: "emu:unpatched" });
     launchNoticesForGame.mockResolvedValue({
       notices: [{
+        id: "vita-motion",
         name: "Motion controls",
-        kind: "unavailable",
-        message: "expected one site inside HIDAPI_DriverSteamDeck_UpdateDevice",
+        state: "unavailable",
+        note: "This build of the emulator would not take the fix, so it is not running.",
       }],
     });
     watchLaunches();
 
     fire!(1, "gid-100", "LaunchApp");
     await settle();
-    expect(toast.mock.calls[0][0]).toMatchObject({
-      title: "Motion controls is not running",
+    expect(showFixNotice).toHaveBeenCalledTimes(1);
+    expect(showFixNotice.mock.calls[0][0][0]).toMatchObject({
+      id: "vita-motion",
+      state: "unavailable",
     });
-    // The reason the patcher gave is a sentence about symbols and addresses.
-    // What reaches the screen is the action.
-    expect(String(toast.mock.calls[0][0].body)).not.toContain("HIDAPI");
   });
 
   it("says nothing when there is nothing to report", async () => {
@@ -165,7 +167,7 @@ describe("watchLaunches", () => {
 
     fire!(1, "gid-100", "LaunchApp");
     await settle();
-    expect(toast).not.toHaveBeenCalled();
+    expect(showFixNotice).not.toHaveBeenCalled();
   });
 
   // A launch is not ours to fail. The game is starting either way, and a notice

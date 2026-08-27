@@ -453,6 +453,32 @@ def flatpak_installed_commit(app_id):
     return _parse_commit(_flatpak_lines(["info", "--user", app_id]))
 
 
+def installed_build(entry):
+    """Which build of `entry` is installed, as something comparable, or "".
+
+    The one fact that lets a notice about an emulator be *observed* rather than
+    believed. A workaround names the build that fixed it; without knowing what
+    is actually on this Deck, saying "no longer needed" is a claim about
+    somebody's install made from a plugin release, and it is wrong for everyone
+    who updated the plugin and not the emulator.
+
+    Empty is a real answer and the important one: it means we cannot tell, and
+    nothing is then claimed. An install predating the build record has none, and
+    a rolling release with no version to compare is the same case.
+    """
+    source = (entry or {}).get("source") or {}
+    if source.get("kind") == "flatpak":
+        app_id = source.get("id") or ""
+        if not _valid_app_id(app_id):
+            return ""
+        for line in _flatpak_lines(["info", "--user", app_id]):
+            label, sep, value = line.partition(":")
+            if sep and label.strip().lower() == "version":
+                return _clean_value(value)
+        return ""
+    return str(read_build_record(entry.get("id") or "").get("tag") or "")
+
+
 def flatpak_history(app_id, limit=12):
     """Past builds available on the remote, newest first.
 
@@ -609,7 +635,7 @@ def valid_tag(tag):
     return bool(_TAG_RE.match(tag or ""))
 
 
-def resolve_release_list(repo, pattern, host="", limit=12):
+def resolve_release_list(repo, pattern, host="", limit=30):
     """Recent releases carrying an asset that matches, newest first.
 
     Returns (builds, error). Each build is {tag, name, url, size, published}.
@@ -626,6 +652,11 @@ def resolve_release_list(repo, pattern, host="", limit=12):
         return [], "Not a valid host name."
 
     api = SELF_HOSTED_RELEASES % (host, repo) if host else GITHUB_RELEASES % repo
+    if not host:
+        # GitHub returns 30 releases by default. That was every release anybody
+        # cared about while emulators tagged a handful a year -- Vita3K-builds
+        # publishes one per build, several a week, so 30 was about a fortnight.
+        api += "?per_page=100"
     label = "%s on %s" % (repo, host) if host else repo
     failure = {}
     payload = net.get_json(api, failure=failure)

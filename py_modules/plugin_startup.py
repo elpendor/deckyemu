@@ -395,6 +395,7 @@ class Startup(plugin_base.PluginContext):
         an answer -- including "this build would not take it", which is a
         finding to report rather than a question to ask again on every start.
         """
+        changed = False
         for entry in emulator_catalog.CATALOG:
             if not emu_patch.patch_specs(entry):
                 continue
@@ -405,6 +406,15 @@ class Startup(plugin_base.PluginContext):
                 continue
             decky.logger.info("Preparing patched builds for %s", entry["id"])
             await self._run(emu_patch.refresh, entry, stock)
+            changed = True
+
+        # Which binary a launcher execs is decided by whether the patched build
+        # exists, and this is the other place that changes it. `install_appimage`
+        # rebuilds for the same reason; without it here, an install that gains a
+        # patched build keeps launching the stock one, and one whose patch is
+        # refused keeps naming a file that was never made.
+        if changed:
+            await self.rebuild_launchers()
 
     async def _recheck_emulator_setups(self):
         """The same sweep, for the moments between one startup and the next.

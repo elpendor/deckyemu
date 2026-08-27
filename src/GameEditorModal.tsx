@@ -103,6 +103,59 @@ const WORKAROUND_OPTIONS: SingleDropdownOption[] = [
   { data: "off", label: "Off for this game" },
 ];
 
+/**
+ * One workaround, as a choice this game makes.
+ *
+ * Its own component so `rgOptions` can be memoised. Every other Dropdown in
+ * this modal is handed a module-level constant, and this was the only one
+ * building its array inline -- so it got a new one on every render, including
+ * the render caused by choosing from it. The Dropdown remounted underneath the
+ * selection, and the focus that went with it took the modal down too.
+ */
+function WorkaroundRow({
+  fix,
+  choice,
+  onChoose,
+}: {
+  fix: Workaround;
+  choice: string;
+  onChoose: (value: string) => void;
+}) {
+  const options = useMemo(
+    () =>
+      // All three, always. Whether a fix is retired or cannot run changes what
+      // is said about it, never which choices exist -- filtering one away made
+      // the same state offer different options depending on where the user
+      // happened to be standing when it changed.
+      WORKAROUND_OPTIONS.map((option) =>
+        option.data === ""
+          ? {
+              ...option,
+              // Which way "follow" currently goes, so the choice can be made
+              // without opening the emulator's page beside it.
+              label: `${fix.name}: follow the emulator (${
+                fix.enabled ? "on" : "off"
+              })`,
+            }
+          : { ...option, label: `${fix.name}: ${option.label}` },
+      ),
+    [fix.name, fix.enabled],
+  );
+
+  return (
+    <Focusable style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+      <div style={{ flexGrow: 1 }}>
+        <Dropdown
+          rgOptions={options}
+          selectedOption={choice}
+          onChange={(option) => onChoose(String(option.data))}
+        />
+      </div>
+      <WorkaroundInfo workaround={fix} />
+    </Focusable>
+  );
+}
+
 function basename(path: string): string {
   return path.slice(path.lastIndexOf("/") + 1) || path;
 }
@@ -728,43 +781,14 @@ export function GameEditorModal({ game, onSaved, closeModal, onLeave }: Props) {
             </div>
           )}
           {fixes.map((fix) => (
-            <Focusable
+            <WorkaroundRow
               key={fix.id}
-              style={{ display: "flex", gap: "8px", alignItems: "center" }}
-            >
-              <div style={{ flexGrow: 1 }}>
-                <Dropdown
-                  rgOptions={WORKAROUND_OPTIONS.filter(
-                    // Off or follow only, in two cases: once the emulator has
-                    // fixed this itself, because nothing new should opt into
-                    // it; and when the installed build would not take the fix,
-                    // because "on" would be a choice with nothing behind it.
-                    (option) =>
-                      option.data !== "on"
-                      || (!fix.deprecated && !fix.unavailable),
-                  ).map((option) =>
-                    option.data === ""
-                      ? {
-                          ...option,
-                          // Which way "follow" currently goes, so the choice can
-                          // be made without opening the emulator's page beside it.
-                          label: `${fix.name}: follow the emulator (${
-                            fix.enabled ? "on" : "off"
-                          })${fix.deprecated ? " - no longer needed" : ""}`,
-                        }
-                      : { ...option, label: `${fix.name}: ${option.label}` },
-                  )}
-                  selectedOption={fixChoices[fix.id] ?? ""}
-                  onChange={(option) =>
-                    setFixChoices((current) => ({
-                      ...current,
-                      [fix.id]: String(option.data),
-                    }))
-                  }
-                />
-              </div>
-              <WorkaroundInfo workaround={fix} />
-            </Focusable>
+              fix={fix}
+              choice={fixChoices[fix.id] ?? ""}
+              onChoose={(value) =>
+                setFixChoices((current) => ({ ...current, [fix.id]: value }))
+              }
+            />
           ))}
           <div style={{ fontSize: "12px", opacity: 0.6 }}>
             Appended to the command line and split like a shell would. Some emulators expect

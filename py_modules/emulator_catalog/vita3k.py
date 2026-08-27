@@ -58,15 +58,24 @@ ENTRY = {
     "summary": "PlayStation Vita. Experimental.",
     "source": {
         "kind": "github",
-        # Upstream, and it follows upstream's rolling `continuous` release like
-        # every other AppImage here.
+        # Upstream's own build repository, not `Vita3K/Vita3K`.
+        #
+        # Same project, same artifact -- release 4074 here is byte-identical to
+        # the `continuous` asset on the main repo, checked by sha256. What it
+        # adds is a *tag per build*: 4074, 4073, 4072, back past 3829. The main
+        # repo publishes one rolling `continuous` release, and a build with no
+        # number cannot be compared with anything.
+        #
+        # Three things follow. The build record stops saying `continuous` and
+        # starts saying which build. The build picker works, so a user can drop
+        # back to a known-good one -- 3829 has working motion with no fix at
+        # all. And `fixed_in` becomes checkable, which is the whole reason the
+        # panel can say a fix is no longer needed without guessing.
         #
         # This used to name a fork, because upstream builds since roughly 3830
-        # have no working motion on a Deck. That is now handled where it belongs
-        # -- as a workaround below, four bytes applied to upstream's own build --
-        # so the emulator is no longer pinned to a build somebody has to
-        # remember to rebuild.
-        "repo": "Vita3K/Vita3K",
+        # have no working motion on a Deck. That is handled below now, as four
+        # bytes applied to upstream's own build.
+        "repo": "Vita3K/Vita3K-builds",
         # aarch64 builds are published beside the x86_64 one, and installing
         # the wrong architecture fails at exec time with nothing useful.
         "asset": r"^Vita3K-x86_64\.AppImage$",
@@ -212,10 +221,9 @@ ENTRY = {
     #      pointer it drags around is the Vita's touchscreen
     #   9  the controller mapping, without which pressing Steam paused the
     #      emulator and closing the menu left it paused
-    #  10  back to upstream's own build. The motion fix moved out of `source`
-    #      and into the workaround as four bytes, so this stops being a pin and
-    #      follows `continuous` again -- but only a recipe bump reaches an
-    #      install that is still sitting on the fork
+    #  10  back to upstream's own builds. The motion fix moved out of `source`
+    #      and into the workaround as four bytes, so this stops being a pin --
+    #      but only a recipe bump reaches an install still sitting on the fork
     "recipe": 10,
     "setup": _VITA3K_SETUP,
     # Booted on a Deck: firmware and font fetched and imported headlessly, a

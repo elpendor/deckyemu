@@ -10,6 +10,7 @@ import {
 import { FileSelectionType, openFilePicker, toaster } from "@decky/api";
 
 import { WorkaroundInfo } from "./WorkaroundInfo";
+import { adoptedSystemId, initialSystemId, systemFields } from "./systemChoice";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
@@ -109,31 +110,32 @@ function Workarounds({ emulatorId }: { emulatorId: string }) {
           style={{ display: "flex", gap: "8px", alignItems: "center" }}
         >
           <DialogButton
-            // Two reasons a switch stops being pressable, and they are not the
-            // same. A deprecated fix that is already off cannot be turned back
-            // on -- the emulator has fixed this itself and the thing to do is
-            // update it -- while one still on stays pressable so it can be
-            // turned off. A fix this build would not take cannot be turned on
-            // at all, in either direction: there is nothing to run.
-            disabled={
-              busy === item.id
-              || !!item.unavailable
-              || (!!item.deprecated && !item.enabled)
-            }
+            // Always pressable, both ways. A fix being retired or unable to run
+            // changes what the row *says*, never what the switch will do --
+            // every rule that removed an option was one more thing to know
+            // before you could predict a control, and one of them stranded
+            // anyone who happened to be off when a fix stopped fitting.
+            disabled={busy === item.id}
             onClick={() => toggle(item)}
             style={{ flexGrow: 1 }}
           >
             {busy === item.id
               ? "Working..."
-              : item.unavailable
-                ? `${item.name}: not available for this build`
-                : `${item.name}: ${item.enabled ? "on" : "off"}${
-                    item.deprecated ? " - no longer needed" : ""
-                  }`}
+              : `${item.name}: ${item.enabled ? "on" : "off"}`}
           </DialogButton>
           <WorkaroundInfo workaround={item} />
         </Focusable>
       ))}
+      {/* Under the rows rather than inside them: a row is a name and a control,
+          and this is the same sentence the Emulators tab and the launch dialog
+          show, in the same words. */}
+      {items
+        .filter((item) => item.state && item.enabled)
+        .map((item) => (
+          <div key={`${item.id}-note`} style={{ fontSize: "13px", opacity: 0.8 }}>
+            {item.name}: {item.note}
+          </div>
+        ))}
     </div>
   );
 }
@@ -154,10 +156,9 @@ export function EmulatorEditorModal({ emulator, onSaved, closeModal }: Props) {
   const [args, setArgs] = useState(emulator?.args ?? "{rom}");
   const [extensions, setExtensions] = useState((emulator?.extensions ?? []).join(", "));
   // Systems with no libretro database are identified by a synthetic id, so the
-  // selection is tracked by id rather than by database name.
-  const [systemId, setSystemId] = useState(
-    emulator?.databases?.[0] || (emulator?.platform ? `~${emulator.platform}` : ""),
-  );
+  // selection is tracked by id rather than by database name. See
+  // `systemChoice.ts` for why an id can fail to name a row at all.
+  const [systemId, setSystemId] = useState(initialSystemId(emulator));
   const [fullscreenArgs, setFullscreenArgs] = useState(emulator?.fullscreen_args ?? "");
   const [systems, setSystems] = useState<SystemOption[] | null>(null);
   const [saving, setSaving] = useState(false);
@@ -188,6 +189,13 @@ export function EmulatorEditorModal({ emulator, onSaved, closeModal }: Props) {
   );
 
   const selectedSystem = (systems ?? []).find((entry) => entry.id === systemId);
+
+  // An id that names no row means the record is describing a system this list
+  // presents under a different id, not that it has none.
+  useEffect(() => {
+    const adopted = adoptedSystemId(systems, systemId, emulator);
+    if (adopted) setSystemId(adopted);
+  }, [systems, systemId, emulator]);
 
   /**
    * Fill in the launch recipe for a recognised emulator.
@@ -251,10 +259,7 @@ export function EmulatorEditorModal({ emulator, onSaved, closeModal }: Props) {
         args,
         extensions,
         fullscreen_args: fullscreenArgs,
-        databases: selectedSystem?.database ? [selectedSystem.database] : [],
-        // Only needed when libretro has no database to derive a label from.
-        platform: selectedSystem && !selectedSystem.libretro ? selectedSystem.short : "",
-        platform_full: selectedSystem && !selectedSystem.libretro ? selectedSystem.full : "",
+        ...systemFields(systemId, selectedSystem, emulator),
       });
       if (!result.ok) {
         setError(result.error ?? "Could not save that emulator.");
@@ -272,7 +277,6 @@ export function EmulatorEditorModal({ emulator, onSaved, closeModal }: Props) {
       setSaving(false);
     }
   }, [
-    emulator?.id,
     name,
     kind,
     target,
@@ -280,6 +284,8 @@ export function EmulatorEditorModal({ emulator, onSaved, closeModal }: Props) {
     extensions,
     fullscreenArgs,
     selectedSystem,
+    systemId,
+    emulator,
     onSaved,
     closeModal,
   ]);

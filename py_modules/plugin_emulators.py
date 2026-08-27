@@ -523,7 +523,14 @@ class Emulators(plugin_base.PluginContext):
                     {
                         "commit": release["tag"],
                         "date": release["published"],
-                        "subject": release["name"],
+                        # The tag, not the asset name. `subject` is the row's
+                        # human label -- a commit message for a flatpak build --
+                        # and every release here carries the same filename, so
+                        # naming the asset printed `Vita3K-x86_64.AppImage`
+                        # twelve times and never said which build any of them
+                        # was. Harmless while every Vita3K release was tagged
+                        # `continuous`; useless the moment they were numbered.
+                        "subject": release["tag"],
                         "size": release["size"],
                         "prerelease": release["prerelease"],
                         # False for every row when nothing was recorded, which is
@@ -968,6 +975,26 @@ class Emulators(plugin_base.PluginContext):
         any of them. Failing here means the emulator is on the device but
         invisible, so it is reported rather than swallowed.
         """
+        # On every exit, including the ones that report the install as only
+        # half-registered. Every launcher of this emulator names the binary to
+        # exec, and which binary that is can change on an install without the
+        # emulator's own path changing at all: a workaround that patches picks a
+        # build beside the stock one, and whether that build exists is decided
+        # by whether the release just downloaded still fits the patch.
+        #
+        # Without this, an update the patch no longer fits deletes the file
+        # every launcher names and every game of that emulator stops starting --
+        # the exact opposite of the guarantee, which is that a refused patch
+        # costs the fix and never the emulator. The files on disk have already
+        # changed by the time this runs, so rebuilding is right whether or not
+        # anything below succeeded.
+        try:
+            return await self._register_emulator_record(entry, target)
+        finally:
+            await self.rebuild_launchers()
+
+    async def _register_emulator_record(self, entry, target):
+        """The registration itself. See `_register_installed_emulator`."""
         extensions = await self._run(installer.database_extensions)
         definition = await self._run(emulator_catalog.to_emulator, entry, target, extensions)
 
@@ -1342,7 +1369,8 @@ class Emulators(plugin_base.PluginContext):
             "ok": True,
             "workarounds": emulator_catalog.workaround_state(
                 entry, emulator.get("workarounds_off") or (),
-                await self._run(_unavailable_fixes, entry, emulator)),
+                await self._run(_unavailable_fixes, entry, emulator),
+                await self._run(emu_install.installed_build, entry)),
         }
 
     async def set_workaround(self, emulator_id: str, workaround_id: str, enabled: bool):
@@ -1363,29 +1391,6 @@ class Emulators(plugin_base.PluginContext):
             item.get("id") for item in emulator_catalog.workarounds_for(entry)
         }:
             return {"ok": False, "error": "No such setting for this emulator."}
-
-        # Deprecated ones may be switched off but not on. Somebody who already
-        # has one keeps it -- the bug is still in an emulator that has not been
-        # updated -- but nobody new opts into something we are telling people to
-        # stop using.
-        if enabled and not emulator_catalog.may_enable(entry, workaround_id):
-            return {
-                "ok": False,
-                "error": "That fix is no longer needed. Update the emulator "
-                         "instead.",
-            }
-
-        # And one that could not be applied may not be switched on either. The
-        # switch would take, nothing would change, and the panel would then say
-        # a fix is running that is not -- which is the exact state the whole
-        # `unavailable` idea exists to prevent.
-        if enabled and (await self._run(_unavailable_fixes, entry, emulator)
-                        ).get(workaround_id):
-            return {
-                "ok": False,
-                "error": "This build of the emulator would not take that fix. "
-                         "Updating it may bring one that does.",
-            }
 
         off = set(emulator.get("workarounds_off") or ())
         off.discard(workaround_id) if enabled else off.add(workaround_id)

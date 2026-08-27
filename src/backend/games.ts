@@ -219,15 +219,18 @@ export type PreparedShortcut =
  */
 /** Something to say about a fix a game is about to launch with. */
 export interface LaunchNotice {
+  id: string;
   name: string;
-  kind: "retired" | "unavailable";
-  message: string;
+  state: "retired" | "unavailable";
+  /** The same sentence the Emulators tab and the row show. */
+  note: string;
 }
 
 export const launchNoticesForGame = callable<
   [appId: number],
   { notices: LaunchNotice[] }
 >("launch_notices_for_game");
+
 
 export interface GameOptions {
   hide_osd?: "keep" | "startup" | "all";
