@@ -7,6 +7,7 @@ Back to [the README](../README.md).
 
 **Contents** — [Installing an emulator](#installing-an-emulator) ·
 [Unpacking a PS4 package](#unpacking-a-ps4-package) ·
+[Fixes](#fixes) ·
 [Updating an emulator, or going back](#updating-an-emulator-or-going-back) ·
 [Adding your own emulator](#adding-your-own-emulator)
 
@@ -100,6 +101,40 @@ rather than another project's reading of the same file.
 The other two consoles need nothing extra. RPCS3 unpacks its own packages, and
 Vita3K installs from a `.pkg` directly once it has the licence key.
 
+## Fixes
+
+Some emulators have bugs this plugin can correct, and those corrections appear
+as **Fixes** when you edit an emulator on the **Emulators** tab. Motion
+controls, below, is the only one today.
+
+**A fix is temporary, by definition.** Every one names the upstream bug report
+that will make it unnecessary, and it exists to be deleted rather than kept.
+This is not where an emulator is configured: settings that are simply how an
+emulator has to run on a Deck are applied for you and never appear here.
+
+**They all start switched off**, because each one costs something. The ❓ beside
+a fix says what it fixes and what that costs, which is the whole basis for
+deciding. **The switch always works**, both ways, whatever else is going on.
+
+**Set per emulator, or per game.** The emulator's switch is the default for its
+games; edit any game and the same fixes appear there, set to *Follow the
+emulator* until you say otherwise.
+
+**A fix tells you when it is not doing its job**, and only then:
+
+- *"The emulator does this itself now. You can switch this off."* — said only
+  once the build you have actually contains the fix, never merely because
+  DeckyEmu was updated. If yours is older, nothing is said and the fix goes on
+  working.
+- *"This build of the emulator would not take it, so it is not running."* — for
+  a fix applied to the emulator's own files, when a build has changed too much
+  to accept one. Nothing is altered; the emulator runs exactly as downloaded.
+
+You do not have to go looking for either. Both appear under the emulator on the
+**Emulators** tab, and a game that starts with one shows a dialog as it
+launches — once per emulator, never while a fix is on and working. The dialog
+only tells you; the switch lives on the Emulators tab and nowhere else.
+
 ## Motion controls
 
 Two consoles here had a motion sensor and games that expect it: the **PS Vita**,
@@ -108,42 +143,13 @@ has a gyroscope. The Deck has one too, and it can drive both — but it is **off
 until you ask for it**, because switching it on costs something for every game
 of that system.
 
-**Turning it on.** Open the emulator on the **Emulators** tab and switch on
-**Motion controls** under *Fixes*. It applies to that emulator's games,
-and Vita3K and shadPS4 are set separately. **The switch always works**, both
-ways — nothing ever removes or greys out an option, whatever else is going on
-with the fix.
+**Turning it on.** Edit the emulator on the **Emulators** tab and switch on
+**Motion controls** under *Fixes* — see [Fixes](#fixes) above for how those
+work. Vita3K and shadPS4 are set separately.
 
-**The ❓ beside each one** says what it works around, what it costs, and which
-upstream fix will retire it. It is also where a fix says whether it is applied
-by changing the emulator's own files — Vita3K's is, shadPS4's is not — in which
-case a corrected copy is made when the emulator installs and the original is
-kept and used whenever the switch is off.
-
-**Two things a fix might say about itself**, and both only ever appear while it
-is switched on and something is actually wrong:
-
-- **"The emulator has this fixed now. You can switch it off."** — said only
-  once the build you have *actually contains the fix*, never merely because
-  DeckyEmu was updated. If your emulator is older, nothing is said and the fix
-  keeps working. If DeckyEmu cannot tell which build you have, nothing is said
-  either.
-- **"This build of the emulator would not take the fix, so it is not running."**
-  — for fixes applied to the emulator's own files, when a build has changed too
-  much to take one. Nothing is altered and the emulator runs exactly as
-  downloaded. Updating it may bring a build that fits.
-
-You do not have to go looking for either. They appear under the emulator on the
-**Emulators** tab, in the ❓, and a game that starts with one shows a dialog as
-it launches. The game starts either way; the dialog never holds it up, and it
-only tells you — the switch itself lives on the Emulators tab and nowhere else.
-Once per emulator, not every time.
-
-**And per game, if one differs.** Edit any game and its emulator's workarounds appear
-there too, each set to *Follow the emulator* until you say otherwise. That is
-for the common shape of a PS4 library: one game that wants motion and twenty
-that would rather keep their back buttons. Set the emulator off and that one
-game on.
+**Per game, if one differs.** That is the common shape of a PS4 library: one
+game that wants motion and twenty that would rather keep their back buttons.
+Set the emulator off and that one game on.
 
 **What it costs, and why it is not simply on.** To reach the sensor the emulator
 has to read the Deck's controller directly instead of through Steam Input. Your
