@@ -677,6 +677,21 @@ def _validate_imported(entry, entry_id):
                 % (where, path, "s" if len(roots) > 1 else "",
                    ", ".join(repr(root) for root in roots)))
 
+    # A patch rewrites bytes inside an executable the same entry chose to
+    # download, and `find`/`replace` have no length limit -- so it is the power
+    # `helper` is refused for, reached by rewriting rather than by fetching. A
+    # bundled entry earns it by being read here; a file from outside does not.
+    #
+    # Only `patch`. `env` and `layout` are already settable at the top level of
+    # an imported entry, so offering them inside a workaround adds no reach --
+    # it only makes them switchable, which is the point of a workaround.
+    for item in entry.get("workarounds") or ():
+        if isinstance(item, dict) and (item.get("apply") or {}).get("patch"):
+            bad("workaround %r may not carry a patch: it rewrites bytes inside "
+                "the emulator's own binary, which is arbitrary code the "
+                "definition did not describe"
+                % (item.get("id") or "<no id>"))
+
     for item in entry.get("firmware") or ():
         for field, why in FORBIDDEN_WHEN_IMPORTED.items():
             if item.get(field):
