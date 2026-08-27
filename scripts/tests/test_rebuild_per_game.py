@@ -26,6 +26,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from harness import TMP, check, section, summary  # noqa: E402
 
 import emu_patch  # noqa: E402
+import emulator_catalog  # noqa: E402
 import launchers  # noqa: E402
 import store  # noqa: E402
 
@@ -142,6 +143,34 @@ check("the launcher falls back to the stock build",
       (False, True))
 check("and the rest of the workaround still applies",
       "SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD" in _fallback, True)
+
+
+section("an install has to carry that to the launchers itself")
+
+# Which binary a launcher execs can change on an install with the emulator's own
+# path untouched: the patched build sits beside the stock one, and whether it
+# exists is decided by whether the new release still fits the patch.
+#
+# Nothing rebuilt launchers on an install, so an update the patch stopped
+# fitting deleted the file every launcher named and every game of that emulator
+# stopped starting -- the exact opposite of the guarantee, which is that a
+# refused patch costs the fix and never the emulator.
+_calls = []
+_real_rebuild = plugin.rebuild_launchers
+
+
+async def _counting_rebuild():
+    _calls.append(1)
+    return await _real_rebuild()
+
+
+plugin.rebuild_launchers = _counting_rebuild
+try:
+    run(plugin._register_installed_emulator(emulator_catalog.find("vita3k"), _STOCK))
+finally:
+    plugin.rebuild_launchers = _real_rebuild
+check("registering an installed build rebuilds the launchers", _calls, [1])
+
 
 if __name__ == "__main__":
     summary()

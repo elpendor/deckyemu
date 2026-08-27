@@ -1,9 +1,9 @@
 import { addedGame } from "./addedGames";
 import { approveLaunch, launchBounced, launchNoticesForGame } from "./backend";
+import { showFixNotice } from "./FixNoticeModal";
 import { showLaunchConflict } from "./LaunchConflictModal";
 import { launchApp, onGameLaunch, runningGames, type RunningGame } from "./steam";
 import { logError } from "./logError";
-import { toaster } from "@decky/api";
 
 /**
  * The panel half of the launch gate.
@@ -89,17 +89,19 @@ const told = new Set<string>();
 /**
  * Say, as a game starts, that a fix it asked for is not doing what it says.
  *
- * Two cases, and they are the same message from the user's side -- what the
- * switch claims is not what is happening, and the way out of both is to update
- * the emulator. A fix that is switched on and working says nothing at all.
+ * Two cases, and they are the same thing from the user's side -- what the switch
+ * claims is not what is happening. A fix that is switched on and working says
+ * nothing at all.
  *
- * This is the moment worth spending. The message exists to prompt one action,
- * and whoever needs it is right here, looking at the screen, using the thing it
- * is about -- where the same words in a settings page reach only people who were
- * already going to open that page.
+ * A dialog rather than a toast, which is what this was. Ten seconds at the exact
+ * moment a game takes over the screen is the least readable place to put a
+ * sentence, and this one is not decoration: it is the only thing standing
+ * between a switch that reads "on" and an emulator behaving as though it were
+ * off. It also carries the decision, which a toast cannot.
  *
- * Never blocks the launch and never fails it: the game is starting either way,
- * and a notice that could stop it would be a worse bug than the one it mentions.
+ * Still never blocks the launch and never fails it: the game is starting either
+ * way, the dialog is over it, and a notice that could stop a launch would be a
+ * worse bug than the one it describes.
  */
 async function noticeFixes(appId: number, coreId: string): Promise<void> {
   if (told.has(coreId)) return;
@@ -108,18 +110,7 @@ async function noticeFixes(appId: number, coreId: string): Promise<void> {
     const notices = result?.notices ?? [];
     if (notices.length === 0) return;
     told.add(coreId);
-    for (const notice of notices) {
-      toaster.toast({
-        title: notice.kind === "retired"
-          ? `${notice.name} is no longer needed`
-          : `${notice.name} is not running`,
-        body: notice.kind === "retired"
-          ? notice.message
-          : "This build of the emulator would not take the fix. Updating it "
-            + "may bring one that does.",
-        duration: 10000,
-      });
-    }
+    showFixNotice(notices);
   } catch (error) {
     logError("could not check this game's fixes", error);
   }

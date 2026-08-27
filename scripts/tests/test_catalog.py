@@ -245,13 +245,14 @@ check("and the game still starts by title id behind it",
 # shipping the variables without raising it reaches nobody who already has it.
 check("the recipe rose with them", _vita_entry.get("recipe", 1) >= 6, True)
 
-# Upstream, and it has to stay upstream. This named a fork for as long as the
-# motion fix could only be had by building one; that fix is four bytes applied
-# to upstream's own build now, so a `source` pointing anywhere else would pin
-# every install to a build somebody has to remember to rebuild. Both the install
-# and the rollback path read `source` from the catalog live.
-check("Vita3K installs from upstream",
-      _vita_entry["source"]["repo"], "Vita3K/Vita3K")
+# Upstream's *builds* repo, and both halves matter. It has to be upstream: this
+# named a fork for as long as the motion fix could only be had by building one,
+# and that fix is four bytes applied to upstream's own build now. And it has to
+# be the numbered one: `Vita3K/Vita3K` publishes a single rolling `continuous`
+# release, and a build with no number cannot be compared with `fixed_in`, cannot
+# be listed in the build picker, and cannot be recorded as anything useful.
+check("Vita3K installs from upstream's numbered builds",
+      _vita_entry["source"]["repo"], "Vita3K/Vita3K-builds")
 check("and still asks for the x86_64 AppImage",
       _vita_entry["source"]["asset"], r"^Vita3K-x86_64\.AppImage$")
 # Nothing else here points anywhere but upstream, and a second one appearing
@@ -442,60 +443,72 @@ check("an entry with no workarounds resolves to itself",
       emulator_catalog.resolve_workarounds(_plain) is _plain, True)
 
 
-section("Deprecating a workaround, rather than deleting it")
+section("Retiring a workaround, rather than deleting it")
 
 # Deletion is the wrong move the day upstream merges: the bug is still in the
 # build somebody has not updated yet, so removing the workaround takes the fix
-# from exactly the people who still need it. Deprecation keeps it working and
-# stops offering it to anyone new.
+# from exactly the people who still need it. `fixed_in` keeps it working and
+# says so only to the people it is true for.
 _dep_entry = {
     "id": "example",
     "workarounds": [
         {"id": "live", "name": "Live", "because": "b", "costs": "c",
          "upstream": "https://example.invalid/1", "apply": {"layout": "template://x"}},
         {"id": "done", "name": "Done", "because": "b", "costs": "c",
-         "upstream": "https://example.invalid/2",
-         "deprecated": "Fixed in build 9. Update the emulator and switch this off.",
+         "upstream": "https://example.invalid/2", "fixed_in": "9",
          "apply": {"env": {"A": "1"}}},
     ],
 }
-check("a live workaround may still be switched on",
-      emulator_catalog.may_enable(_dep_entry, "live"), True)
-check("a deprecated one may not",
-      emulator_catalog.may_enable(_dep_entry, "done"), False)
-check("and neither may one that does not exist",
-      emulator_catalog.may_enable(_dep_entry, "nope"), False)
+
+
+def _state(build="", unavailable=None):
+    return {w["id"]: w for w in emulator_catalog.workaround_state(
+        _dep_entry, [], unavailable, build)}
+
+
+# The defect this replaced a free-form string to fix. `fixed_in` ships with the
+# *plugin*, so announcing it on its own told somebody their emulator no longer
+# needed a fix nobody had looked at -- and acting on that broke the thing the
+# message was about.
+check("a build older than the fix is told nothing",
+      (_state("8")["done"]["state"], _state("8")["done"]["note"]), ("", ""))
+check("a build with the fix is told, once it is actually installed",
+      _state("9")["done"]["state"], "retired")
+check("and so is anything newer", _state("12")["done"]["state"], "retired")
+# The answer that matters most: not knowing is not the same as "no", but it
+# leads to the same silence, because a claim nobody can check is a guess.
+check("an unidentifiable build is told nothing",
+      [_state(b)["done"]["state"] for b in ("", "continuous", "nightly")],
+      ["", "", ""])
+check("and a workaround with no fixed_in is never retired",
+      _state("999")["live"]["state"], "")
 
 # It keeps working for whoever already has it -- that is the whole point.
-check("a deprecated workaround still applies while it is on",
+check("a retired workaround still applies while it is on",
       emulator_catalog.resolve_workarounds(_dep_entry, []).get("env"), {"A": "1"})
 check("and can still be switched off",
       emulator_catalog.resolve_workarounds(_dep_entry, ["done"]).get("env"), None)
 
-# The panel needs to say so, which means carrying the message rather than a flag.
-_dep_state = {w["id"]: w for w in emulator_catalog.workaround_state(_dep_entry, [])}
-check("the panel is given the message, not just a flag",
-      _dep_state["done"]["deprecated"].startswith("Fixed in build 9"), True)
-check("and nothing is claimed about a live one",
-      _dep_state["live"]["deprecated"], "")
-
-# A deprecation with nothing to act on is a scary label and no way out of it.
-check("an empty deprecation is refused",
-      any("deprecated must say" in problem for problem in emulator_catalog.validate(
+# A build nobody can compare against would put the panel back to announcing
+# things it cannot check.
+check("a fixed_in that is not a build is refused",
+      any("fixed_in must name" in problem for problem in emulator_catalog.validate(
           dict(_dep_entry, id="empty", name="E", kind="flatpak", target="x",
-               workarounds=[dict(_dep_entry["workarounds"][1], deprecated="  ")]))),
+               workarounds=[dict(_dep_entry["workarounds"][1], fixed_in="soon")]))),
       True)
 
-# The panel also has to distinguish "no longer needed" from "needed and not
-# running", which are nearly opposites and would otherwise look the same.
-check("a fix this install could not take is reported separately",
-      emulator_catalog.workaround_state(
-          _dep_entry, [], {"live": "this build has changed"}
-      )[0]["unavailable"],
-      "this build has changed")
+# The other state, and it is nearly the opposite: needed, and not running.
+check("a fix this install could not take says so",
+      (_state(unavailable={"live": "this build has changed"})["live"]["state"],
+       _state(unavailable={"live": "x"})["live"]["note"]),
+      ("unavailable", emulator_catalog.NOTICE_TEXT["unavailable"]))
 check("and nothing is claimed when every fix applied",
-      [w["unavailable"] for w in emulator_catalog.workaround_state(_dep_entry, [])],
+      [w["state"] for w in emulator_catalog.workaround_state(_dep_entry)],
       ["", ""])
+# Retired wins: a fix the emulator has already made is not interesting for
+# failing to apply, and one sentence is the whole point.
+check("retired outranks unavailable when both are true",
+      _state("9", {"done": "x"})["done"]["state"], "retired")
 
 # The panel says "a corrected copy is made" for every fix that edits the
 # emulator's own files, derived from the catalog rather than left to whoever

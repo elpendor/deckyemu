@@ -126,11 +126,7 @@ export function EmulatorsPanel({ onChanged }: Props) {
                       is not a message. */}
                   {(emulator.fix_notices ?? []).map((notice) => (
                     <div key={notice.id} style={{ paddingTop: "4px", opacity: 0.9 }}>
-                      {notice.kind === "retired"
-                        ? `${notice.name}: no longer needed. ${notice.message}`
-                        : `${notice.name}: not running. This build of the `
-                          + `emulator would not take the fix, and updating it `
-                          + `may bring one that does.`}
+                      {notice.name}: {notice.note}
                     </div>
                   ))}
                 </>

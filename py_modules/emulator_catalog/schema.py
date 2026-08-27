@@ -215,20 +215,57 @@ WORKAROUND_FIELDS = {
     "costs": "What switching it on gives up, in the user's terms. Shown beside "
              "the toggle, because a cost nobody sees is not a choice.",
     "default": "Whether it starts on. Optional, defaults to True.",
-    "deprecated": "Set once the emulator fixes this itself: a sentence naming "
-                  "the build that fixed it and telling the user to update and "
-                  "switch this off. **Deprecate rather than delete.** The bug "
-                  "is still in the build somebody has not updated yet, so "
-                  "removing the workaround the day upstream merges takes the "
-                  "fix from exactly the people who still need it. A deprecated "
-                  "workaround keeps working and stops being offered to anyone "
-                  "new; deletion comes later, when it is safe.",
+    "fixed_in": "The emulator build that made this unnecessary -- a version "
+                "string or a build number, whichever that emulator publishes. "
+                "Compared against the build actually installed, never announced "
+                "on its own. This used to be a free-form sentence, and it was "
+                "the one thing in the panel that was a *belief about upstream* "
+                "rather than an *observation of this Deck*: it shipped with the "
+                "plugin, so updating the plugin told somebody their emulator no "
+                "longer needed a fix nobody had looked at, and acting on that "
+                "broke the thing the message was about. "
+                "**Set it rather than deleting the workaround.** The bug is "
+                "still in the build somebody has not updated yet, so removing "
+                "it the day upstream merges takes the fix from exactly the "
+                "people who still need it. Deletion comes later, when it is "
+                "safe.",
     "apply": "The delta, written in ordinary catalog keys -- `env`, `layout` "
              "and so on. Merged over the entry when enabled and absent when "
              "not, so a workaround can correct anything the catalog can "
              "already express. See WORKAROUND_APPLIES for the whole list and "
              "PATCH_FIELDS for the one that is not an ordinary key.",
 }
+
+def build_number(text):
+    """`text` as a comparable tuple of integers, or () when it is not one.
+
+    Emulators number their builds differently and both shapes have to work:
+    Vita3K publishes `4074`, Flathub publishes `0.12.1`. Digits are what they
+    have in common, so digits are what is compared.
+
+    () is the answer that matters. A rolling tag like `continuous`, an install
+    made before the build was recorded, or a flatpak whose version could not be
+    read all land here -- and every caller reads that as "cannot tell", which is
+    the only honest thing to do with it. Guessing would put the panel back to
+    announcing things about builds nobody looked at.
+    """
+    parts = re.findall(r"\d+", str(text or ""))
+    return tuple(int(part) for part in parts) if parts else ()
+
+
+def build_at_least(installed, wanted):
+    """Whether `installed` is `wanted` or newer. False when either is unknown.
+
+    False rather than an exception or a guess: not knowing is not the same as
+    "no", but it leads to the same silence, and silence is what an unverifiable
+    claim deserves.
+    """
+    left, right = build_number(installed), build_number(wanted)
+    if not left or not right:
+        return False
+    width = max(len(left), len(right))
+    return left + (0,) * (width - len(left)) >= right + (0,) * (width - len(right))
+
 
 #: What `apply.patch` says, for a bug that is only reachable inside the
 #: emulator's own binary.
@@ -367,12 +404,13 @@ def _validate_workarounds(entry_id, workarounds):
                             "is stored against" % where)
         seen.add(identifier)
 
-        # A deprecation has to say what fixed it and what to do about it, or
-        # it is a scary label with no way out of it.
-        deprecated = item.get("deprecated")
-        if deprecated is not None and not str(deprecated).strip():
-            problems.append("%s: deprecated must say which build fixed this and "
-                            "that the emulator should be updated" % where)
+        # A build nobody can compare against is the same as no answer, and
+        # would put the panel back to announcing something it cannot check.
+        fixed_in = item.get("fixed_in")
+        if fixed_in is not None and not build_number(fixed_in):
+            problems.append("%s: fixed_in must name a build that can be "
+                            "compared -- a version or a build number, not %r"
+                            % (where, fixed_in))
 
         upstream = str(item.get("upstream") or "")
         if upstream and not upstream.startswith(("http://", "https://")):

@@ -24,7 +24,7 @@ types it accepts and its launch arguments are all filled in for you.
 | shadPS4 | PlayStation 4 | Flathub — [`net.shadps4.shadPS4`](https://flathub.org/apps/net.shadps4.shadPS4) |
 | DuckStation | PlayStation 1 | Flathub — [`org.duckstation.DuckStation`](https://flathub.org/apps/org.duckstation.DuckStation) |
 | PPSSPP | PSP | Flathub — [`org.ppsspp.PPSSPP`](https://flathub.org/apps/org.ppsspp.PPSSPP) |
-| Vita3K | PS Vita | GitHub — [`Vita3K/Vita3K`](https://github.com/Vita3K/Vita3K) |
+| Vita3K | PS Vita | GitHub — [`Vita3K/Vita3K-builds`](https://github.com/Vita3K/Vita3K-builds) |
 | Ryujinx | Switch | Flathub — [`io.github.ryubing.Ryujinx`](https://flathub.org/apps/io.github.ryubing.Ryujinx) |
 | Cemu | Wii U | Flathub — [`info.cemu.Cemu`](https://flathub.org/apps/info.cemu.Cemu) |
 | Azahar | 3DS | GitHub — [`azahar-emu/azahar`](https://github.com/azahar-emu/azahar) |
@@ -110,7 +110,9 @@ of that system.
 
 **Turning it on.** Open the emulator on the **Emulators** tab and switch on
 **Motion controls** under *Workarounds*. It applies to that emulator's games,
-and Vita3K and shadPS4 are set separately.
+and Vita3K and shadPS4 are set separately. **The switch always works**, both
+ways — nothing ever removes or greys out an option, whatever else is going on
+with the fix.
 
 **The ❓ beside each one** says what it works around, what it costs, and which
 upstream fix will retire it. It is also where a fix says whether it is applied
@@ -118,21 +120,24 @@ by changing the emulator's own files — Vita3K's is, shadPS4's is not — in wh
 case a corrected copy is made when the emulator installs and the original is
 kept and used whenever the switch is off.
 
-**If one says "no longer needed"**, the emulator has fixed the problem itself.
-Update the emulator, then switch the workaround off. It keeps working until you
-do — the old build still has the bug — but it cannot be switched back on once
-it says that, because the fix belongs in the emulator now.
+**Two things a fix might say about itself**, and both only ever appear while it
+is switched on and something is actually wrong:
 
-**If one says "not available for this build"**, the fix is still needed and is
-not running. Some fixes have to be applied to the emulator's own files, and a
-build that has changed too much will not take one — in which case nothing is
-changed at all and the emulator runs exactly as it was downloaded. Updating the
-emulator may bring a build that fits.
+- **"The emulator has this fixed now. You can switch it off."** — said only
+  once the build you have *actually contains the fix*, never merely because
+  DeckyEmu was updated. If your emulator is older, nothing is said and the fix
+  keeps working. If DeckyEmu cannot tell which build you have, nothing is said
+  either.
+- **"This build of the emulator would not take the fix, so it is not running."**
+  — for fixes applied to the emulator's own files, when a build has changed too
+  much to take one. Nothing is altered and the emulator runs exactly as
+  downloaded. Updating it may bring a build that fits.
 
 You do not have to go looking for either. They appear under the emulator on the
-**Emulators** tab, and a game that starts with one says so as it launches. Once
-per emulator, not every time — and never at all while a fix is switched on and
-working.
+**Emulators** tab, in the ❓, and a game that starts with one shows a dialog as
+it launches. The game starts either way; the dialog never holds it up, and it
+only tells you — the switch itself lives on the Emulators tab and nowhere else.
+Once per emulator, not every time.
 
 **And per game, if one differs.** Edit any game and its emulator's workarounds appear
 there too, each set to *Follow the emulator* until you say otherwise. That is
@@ -183,8 +188,9 @@ into itself, so unlike shadPS4 below there is nothing to correct from outside �
 the change has to be in the file.
 
 The emulator is still the authors' own build, downloaded from
-[Vita3K/Vita3K](https://github.com/Vita3K/Vita3K/releases) and updated like any
-other. The corrected copy is made when it installs and kept beside the original,
+[Vita3K/Vita3K-builds](https://github.com/Vita3K/Vita3K-builds/releases) and
+updated like any other — that is their numbered build repository, so DeckyEmu
+can tell you which build you have and offer you an older one. The corrected copy is made when it installs and kept beside the original,
 and turning the switch off runs the original, unaltered. If a future build no
 longer matches what the correction describes, nothing is changed at all and the
 panel says so rather than leaving you with a switch that claims to be on. Asked

@@ -117,6 +117,7 @@ from . import (
     xemu,
     xenia,
 )
+from . import schema
 from .schema import validate  # noqa: F401  -- re-exported for tests and callers
 
 # The order emulators were added, which is the order `CATALOG` holds them in.
@@ -463,20 +464,6 @@ def resolve_workarounds(entry, disabled=()):
     return resolved
 
 
-def may_enable(entry, workaround_id):
-    """Whether this workaround may still be switched *on*.
-
-    Deprecated ones may only be switched off. They keep working for anybody who
-    already has them -- the bug is still in an emulator that has not been
-    updated -- but nobody new should be opting into something we are telling
-    people to stop using.
-    """
-    for item in workarounds_for(entry):
-        if item.get("id") == workaround_id:
-            return not str(item.get("deprecated") or "").strip()
-    return False
-
-
 def default_disabled(entry):
     """Workaround ids that start switched off, for a fresh install.
 
@@ -491,48 +478,69 @@ def default_disabled(entry):
     ]
 
 
-def workaround_state(entry, disabled=(), unavailable=None):
+#: The one sentence each state is said in, wherever it is said.
+#:
+#: Generated rather than authored per entry, and used verbatim by the row, the
+#: Emulators tab, the launch dialog and the info modal. Four surfaces wording
+#: the same fact four ways is four chances to say something subtly different
+#: from what the code actually did.
+NOTICE_TEXT = {
+    "retired": "The emulator has this fixed now. You can switch it off.",
+    "unavailable": "This build of the emulator would not take the fix, "
+                   "so it is not running.",
+}
+
+
+def workaround_state(entry, disabled=(), unavailable=None, installed_build=""):
     """What the panel shows: each workaround, with whether it is on.
 
     `upstream` rides along because the honest thing to tell somebody switching
     one off is where the real fix is, and `costs` because a cost nobody sees is
     not a choice.
 
-    `unavailable` is `{id: reason}` for fixes this install could not take -- a
-    patch whose build no longer matches what the catalog describes. Passed in
-    rather than looked up, because it is a fact about a directory on disk and
-    this module only knows the catalog. A row that carries one is shown without
-    a switch: offering to turn on something that cannot run is how a setting
-    ends up lying.
+    `unavailable` is `{id: reason}` for fixes this install could not take, and
+    `installed_build` is what is actually on the machine. Both are passed in
+    rather than looked up: they are facts about a directory and a package, and
+    this module only knows the catalog.
+
+    **Every state here is observed, never believed.** `retired` is not a flag an
+    entry sets -- it is `fixed_in` compared against the build in front of us, so
+    a plugin update cannot tell somebody their emulator no longer needs a fix
+    nobody has looked at. When the build cannot be identified, nothing is
+    claimed.
     """
     off = set(disabled or ())
     cannot = dict(unavailable or {})
-    return [
-        {
-            "id": item.get("id", ""),
+    rows = []
+    for item in workarounds_for(entry):
+        identifier = item.get("id", "")
+        # Retired first: it is the more useful thing to know, and a fix the
+        # emulator has already made is not interesting for not applying.
+        if schema.build_at_least(installed_build, item.get("fixed_in")):
+            state = "retired"
+        elif cannot.get(identifier):
+            state = "unavailable"
+        else:
+            state = ""
+        rows.append({
+            "id": identifier,
             "name": item.get("name", ""),
             "because": item.get("because", ""),
             "costs": item.get("costs", ""),
             "upstream": item.get("upstream", ""),
-            "enabled": item.get("id") not in off,
+            "enabled": identifier not in off,
             "default": bool(item.get("default", True)),
-            # Empty for a live one. Set once the emulator fixes this itself, and
-            # then it keeps working -- the bug is still in whatever build has
-            # not been updated -- while telling the user to update and stop.
-            "deprecated": str(item.get("deprecated") or ""),
-            # Why this install cannot run it, or empty. Distinct from
-            # `deprecated`: that one means the fix is no longer needed, this one
-            # means it is needed and could not be applied.
-            "unavailable": str(cannot.get(item.get("id")) or ""),
             # Whether this one edits the emulator's own files. Derived rather
             # than written into `because` by hand, because it is the fact a
             # user is most entitled to be told and the one an author is most
-            # likely to forget: the panel says it for every patch there will
-            # ever be, without anyone having to remember.
+            # likely to forget.
             "patches": bool((item.get("apply") or {}).get("patch")),
-        }
-        for item in workarounds_for(entry)
-    ]
+            # One field to check and one sentence to show, rather than a
+            # separate string per state that each surface then rewords.
+            "state": state,
+            "note": NOTICE_TEXT.get(state, ""),
+        })
+    return rows
 
 
 def is_safe_id(entry_id):
