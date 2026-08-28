@@ -16,6 +16,7 @@ import { EmulatorsPanel } from "./EmulatorsPanel";
 import { LibraryPanel } from "./LibraryPanel";
 import { RetroArchPanel } from "./RetroArchPanel";
 import { UpdatePanel } from "./UpdatePanel";
+import { DiagnosticsPanel } from "./DiagnosticsPanel";
 import { callWithRetry } from "./timeout";
 import { IS_DEV_BUILD } from "./version";
 
@@ -131,6 +132,11 @@ export function ManagePage() {
       title: "Updates",
       route: tabRoute("updates"),
       content: <UpdatePanel />,
+    },
+    {
+      title: "Diagnostics",
+      route: tabRoute("diagnostics"),
+      content: <DiagnosticsPanel />,
     },
     // Development builds only, and absent rather than hidden: IS_DEV_BUILD is a
     // build-time constant, so a release bundle contains no Reset tab and no

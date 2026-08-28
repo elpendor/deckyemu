@@ -90,7 +90,7 @@ ssh deck@steamdeck.local 'grep -A 20 "() failed" "$(ls -t ~/homebrew/logs/deckye
 ```
 
 Frontend `console` calls are prefixed `[deckyemu]`, but nothing in Game Mode can
-see them — that is what the diagnostic report under *Updates → Report a problem*
+see them — that is what the diagnostic report under *Diagnostics → Report a problem*
 is for.
 
 ### Backend logic tests

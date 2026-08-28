@@ -41,9 +41,19 @@ Nothing is downloaded by any of this — the check reads the releases page and
 nothing more. **Check for updates** on that tab forces one past the cache
 whenever you want a definite answer.
 
+## Which build you are running
+
+The **Diagnostics** tab shows two versions, and they are not the same thing.
+*Plugin on disk* is what was installed; *Interface Steam loaded* is the half
+Steam is drawing. Steam keeps the interface it already evaluated, so after an
+update the two can disagree, and the tab says so and tells you to restart Steam.
+
+That is the first question whenever anything here misbehaves, which is why it
+sits beside the report rather than under Updates.
+
 ## Reporting a problem
 
-**Updates → Report a problem** gathers what a bug report needs and puts it where
+**Diagnostics → Report a problem** gathers what a bug report needs and puts it where
 you can read it: scan the QR code with a phone, or type the short address and the
 six digits on anything with a keyboard. Copy the text, paste it into the issue.
 

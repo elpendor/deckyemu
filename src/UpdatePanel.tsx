@@ -13,41 +13,23 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   checkForUpdate,
   getSettings,
-  pluginVersion,
   setSettings,
   stageUpdate,
-  type PluginVersion,
   type UpdateCheck,
 } from "./backend";
 import { OVER_THE_NETWORK, callWithRetry } from "./timeout";
+import { FRONTEND_VERSION } from "./version";
 import { canInstallUpdates, installUpdate } from "./updater";
+import { useBackendVersion } from "./useBackendVersion";
 import { noteCheck, setUpdateDotEnabled } from "./updateSignal";
-import { describe, FRONTEND_BUILD, FRONTEND_VERSION, isStale } from "./version";
-import { ReportModal } from "./ReportModal";
 import { logError } from "./logError";
-import { openModal } from "./modalStack";
 
 /**
  * Two halves side by side rather than stacked: they are one fact -- which build
  * is running -- and as full-width rows they pushed the actual controls off the
  * first screen.
  */
-const VERSIONS: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "1fr 1fr",
-  // 4px under the labels and no outer padding, which is the rhythm Steam's own
-  // rows use: a 19px label block with a 4px gap, then the value. An invented
-  // padding here made this row taller than every Field beside it.
-  gap: "4px 12px",
-  width: "100%",
-};
 
-const VERSION_LABEL: React.CSSProperties = {
-  fontSize: "0.75em",
-  textTransform: "uppercase",
-  letterSpacing: "0.5px",
-  opacity: 0.6,
-};
 
 const NOTES_HEADING: React.CSSProperties = {
   fontSize: "0.75em",
@@ -114,21 +96,15 @@ function Notes({ text, limit = 0 }: { text: string; limit?: number }) {
  */
 const NOTES_PREVIEW = 5;
 
-const VERSION_VALUE: React.CSSProperties = {
-  fontSize: "0.95em",
-  wordBreak: "break-word",
-};
 
 /**
  * Version and update checking.
  *
  * Its own tab rather than a corner of Settings: none of it is a setting.
  */
-/** How often the panel re-reads which build is on disk while it is open. */
-const VERSION_POLL_MS = 4000;
 
 export function UpdatePanel() {
-  const [backend, setBackend] = useState<PluginVersion | null>(null);
+  const backend = useBackendVersion();
   const [update, setUpdate] = useState<UpdateCheck | null>(null);
   const [checking, setChecking] = useState(false);
   const [installing, setInstalling] = useState(false);
@@ -148,11 +124,6 @@ export function UpdatePanel() {
   const [dot, setDot] = useState<boolean | undefined>(undefined);
 
   const load = useCallback(async () => {
-    try {
-      setBackend(await callWithRetry(pluginVersion));
-    } catch (error) {
-      logError("could not read version", error);
-    }
     try {
       setDot((await callWithRetry(getSettings)).show_update_dot !== false);
     } catch (error) {
@@ -243,30 +214,6 @@ export function UpdatePanel() {
     void check(false);
   }, [load, check]);
 
-  /**
-   * Keep asking which build is on disk, for as long as this panel is open.
-   *
-   * Decky owns installing an update and the plugin reload that follows, and
-   * tells this side nothing about either -- so the version on screen was
-   * whatever had been read at mount, under a line still offering the update you
-   * had just installed. Leaving the panel and coming back fixed it, which is
-   * the tell: a remount was the only thing that ever re-read.
-   *
-   * Waiting on the install itself was the obvious fix and the wrong one. It
-   * assumed the panel that *started* the install is the panel still on screen
-   * when it lands, and a plugin reload is precisely what breaks that -- the
-   * component polling is torn down, a new one mounts, reads a backend that has
-   * not swapped yet, and never asks again. Polling from the panel survives that,
-   * because whichever instance is alive is doing the asking.
-   *
-   * Cheap enough not to think about: one backend call answered in single-digit
-   * milliseconds, every few seconds, only while somebody is looking at the
-   * Updates panel.
-   */
-  useEffect(() => {
-    const timer = setInterval(() => { void load(); }, VERSION_POLL_MS);
-    return () => clearInterval(timer);
-  }, [load]);
 
   /**
    * When the build actually changes, the update check is stale too.
@@ -321,7 +268,6 @@ export function UpdatePanel() {
     }
   }, [update?.latest]);
 
-  const stale = backend ? isStale(backend.version, backend.build) : false;
 
   /** What the last check actually found, in one line. */
   function status(): string {
@@ -371,43 +317,6 @@ export function UpdatePanel() {
         of the same name under it reads as the heading having been printed
         twice. Any further group gets a real one -- see below. */}
     <PanelSection>
-      {/* Both always shown, not only when they disagree: which build is running is
-          the first question whenever something here misbehaves, and answering it
-          from the outside meant reading timestamps out of the CEF debugger.
-          The labels say which half each is -- "Installed" and "Interface" alone
-          did not, and the distinction only matters because they can differ. */}
-      <PanelSectionRow>
-        <div style={VERSIONS}>
-          <div style={VERSION_LABEL}>Plugin on disk</div>
-          <div style={VERSION_LABEL}>Interface Steam loaded</div>
-          <div style={VERSION_VALUE}>
-            {backend
-              ? describe(backend.version, backend.build) +
-                (backend.built_at ? ` — built ${backend.built_at.slice(0, 10)}` : "")
-              : "Loading..."}
-          </div>
-          <div style={VERSION_VALUE}>{describe(FRONTEND_VERSION, FRONTEND_BUILD)}</div>
-        </div>
-      </PanelSectionRow>
-
-      {/* The two halves load independently: decky restarts the backend on every
-          update while Steam keeps the bundle it already evaluated. The symptom is
-          that an update appears to have changed nothing. */}
-      {stale && backend && (
-        <PanelSectionRow>
-          <Field
-            label="Restart Steam to finish updating"
-            description={`The backend is ${describe(
-              backend.version,
-              backend.build,
-            )} but this interface is still ${describe(
-              FRONTEND_VERSION,
-              FRONTEND_BUILD,
-            )}. Steam keeps the interface it loaded until it restarts.`}
-          />
-        </PanelSectionRow>
-      )}
-
       {/* What the build you are running actually changed.
 
           Above the update check on purpose: it answers "what did I just get?",
@@ -488,17 +397,6 @@ export function UpdatePanel() {
         Launching, Naming, Install cores. "Reporting a problem" would fit that
         and then say the button's own words back at it, and this is already what
         the report calls itself on the page it is served on. */}
-    <PanelSection title="Diagnostics">
-      <PanelSectionRow>
-        <ButtonItem
-          layout="below"
-          onClick={() => openModal(<ReportModal />)}
-          description="Gathers what a bug report needs — this build, what is installed, and the end of the log — and puts it where a phone or PC can read it. Keys, tokens and your game names are removed from it."
-        >
-          Report a problem
-        </ButtonItem>
-      </PanelSectionRow>
-    </PanelSection>
     </>
   );
 }
