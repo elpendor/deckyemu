@@ -235,6 +235,11 @@ ENTRY = {
     # application id is the answer -- but an AppImage writes where it likes
     # and only the catalog can say where.
     "data": [".config/rpcs3"],
+    # The virtual PS3's user profiles -- savedata, trophies and exdata for each
+    # -- and the emulator's own save states beside them. Measured on a Deck:
+    # 28KB against 178MB of unpacked games and 189MB of firmware in the same
+    # tree, which is why this is named rather than left to back up all of it.
+    "saves": [".config/rpcs3/dev_hdd0/home", ".config/rpcs3/savestates"],
     "databases": [],
     "platform": "Sony - PlayStation 3",
     # --no-gui boots the game with no game list behind it and closes RPCS3

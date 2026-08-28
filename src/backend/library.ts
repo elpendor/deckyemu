@@ -220,6 +220,14 @@ export interface FileServerStatus {
   /** Uploads in flight. Stopping now would cut them off. */
   uploading: number;
   /**
+   * Downloads in flight — a report or a save backup being read off the Deck.
+   *
+   * The other direction of `uploading`, and it counts for the same reason: a
+   * 75MB backup over wifi takes real time, so closing a dialog must not stop the
+   * server on top of it.
+   */
+  downloading: number;
+  /**
    * Half-received files with nobody sending them at this instant.
    *
    * A transfer that lost its connection is waiting for the sender to reconnect
@@ -241,6 +249,32 @@ export interface FileServerStatus {
    * carries the token, so the same caution applies as to `url`.
    */
   report_url?: string;
+  /**
+   * Where a save backup is waiting to be read, or "" when none is. Same caution
+   * as `url` and `report_url`: it carries the token.
+   */
+  download_url?: string;
+  /** What that file is called. Carries the date the backup was taken. */
+  download_name?: string;
+  download_bytes?: number;
+}
+
+/** One emulator's saves, as a backup would carry them. */
+export interface SaveSource {
+  id: string;
+  name: string;
+  /**
+   * True when this emulator declares no save directory, so what would be backed
+   * up is everything it keeps — configuration and all.
+   *
+   * Worth showing rather than hiding: it is the difference between a few
+   * megabytes of memory cards and the emulator's whole directory, and it is why
+   * `bytes` on one row can dwarf every other.
+   */
+  whole: boolean;
+  paths: string[];
+  files: number;
+  bytes: number;
 }
 
 export const fileServerStatus = callable<[], FileServerStatus>("file_server_status");
@@ -274,6 +308,119 @@ export const endReport = callable<
   [],
   { ok: boolean } & Partial<FileServerStatus>
 >("end_report");
+/**
+ * What a save backup would carry, per emulator, measured on the device.
+ *
+ * Asked before anything is built: the sizes are the whole of the decision, since
+ * an emulator that declares its save directory contributes kilobytes and one
+ * that does not contributes everything it keeps.
+ */
+export const saveBackupSources = callable<
+  [],
+  { ok: boolean; sources: SaveSource[] }
+>("save_backup_sources");
+/**
+ * Build a backup of the listed emulators' saves and offer it for download.
+ *
+ * `ids` empty means every emulator with something to back up. Starts the
+ * transfer server if it is not running, exactly as the report does, and for the
+ * same reason.
+ */
+export const startSaveBackup = callable<
+  [ids: string[] | null],
+  { ok: boolean; error?: string; backup?: { files: number; bytes: number; emulators: string[] } } &
+    Partial<FileServerStatus>
+>("start_save_backup");
+/**
+ * Done with the backup: withdraw it, **delete it**, and stop the server if it
+ * was only there for that.
+ *
+ * The deletion is the point. A report is a log tail held in memory; this is a
+ * copy of the user's save files on disk, and leaving it behind is a copy nobody
+ * asked to keep.
+ */
+export const endSaveBackup = callable<
+  [],
+  { ok: boolean } & Partial<FileServerStatus>
+>("end_save_backup");
+
+/** One emulator's saves inside a backup, as this Deck would receive them. */
+export interface SaveBackupContents {
+  id: string;
+  /** The name the backup was taken under, so a row reads the same on either Deck. */
+  name: string;
+  /** False when this emulator is not on this Deck; its saves are left in the archive. */
+  installed: boolean;
+  files: number;
+  bytes: number;
+  /**
+   * How many of those files already exist here.
+   *
+   * The whole of the decision between putting back what is missing and
+   * replacing what is there, so it is counted rather than described.
+   */
+  present: number;
+}
+
+/** One backup file waiting in the transfer folder. */
+export interface SaveBackupFile {
+  name: string;
+  path: string;
+  bytes: number;
+  /** Unix seconds. Newest first, since restoring is usually about the last one. */
+  modified: number;
+}
+
+/**
+ * Backups waiting in the transfer folder, newest first.
+ *
+ * The Library tab finds the file rather than the user pointing at it in the ROM
+ * picker: a backup is not a game, and every row of the add flow is about
+ * something it is not.
+ */
+export const listSaveBackups = callable<
+  [],
+  /** `dir` is where a backup belongs, for pointing the transfer server at it. */
+  { ok: boolean; dir: string; backups: SaveBackupFile[] }
+>("list_save_backups");
+/**
+ * Delete one backup from the Deck without restoring it.
+ *
+ * Restoring already consumes the archive, so this is the other case: a backup
+ * finished with, sent by mistake, or simply the old one.
+ */
+export const discardSaveBackup = callable<
+  [path: string],
+  { ok: boolean; error?: string; removed?: boolean }
+>("discard_save_backup");
+export const describeSaveBackup = callable<
+  [path: string],
+  { ok: boolean; error?: string; sources?: SaveBackupContents[] }
+>("describe_save_backup");
+/**
+ * Put saves back from an archive in the transfer folder.
+ *
+ * `replace` overwrites saves already on this Deck and is the one destructive
+ * thing here — with it off, nothing already present is touched, which cannot
+ * lose a save played since the backup was taken.
+ *
+ * The archive is deleted once it has been read, the same way unpacking a zip
+ * consumes it. `removed` names the file when that happened.
+ */
+export const restoreSaveBackup = callable<
+  [path: string, ids: string[] | null, replace: boolean],
+  {
+    ok: boolean;
+    error?: string;
+    written?: number;
+    skipped?: number;
+    refused?: number;
+    emulators?: string[];
+    not_installed?: string[];
+    /** The archive, once it was deleted. Absent when it could not be. */
+    removed?: string;
+  }
+>("restore_save_backup");
 export const stopFileServer = callable<
   [],
   { ok: boolean } & Partial<FileServerStatus>

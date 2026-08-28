@@ -183,8 +183,21 @@ export async function selectRom(romPath: string): Promise<void> {
     updateDraft({
       probe: info,
       title: info.provisional_title,
-      showAllCores: info.matching_cores.length === 0,
+      // Not for a save backup: `showAllCores` opens the every-core dropdown,
+      // and there is no core that runs an archive of save files.
+      showAllCores: info.matching_cores.length === 0 && !info.save_backup,
     });
+
+    // A save backup stops here. Nothing below is about it -- the core lookup
+    // that follows would go on to suggest cores for whatever extension happened
+    // to be matched inside the archive, which for a backup holding RetroArch
+    // saves is `.rtc` and produces an offer to install a libretro core to open
+    // somebody's save file. Same early return, and the same reason, as
+    // `archived_content` below.
+    if (info.save_backup) {
+      updateDraft({ coreId: "", systemId: "" });
+      return;
+    }
 
     const directory = romPath.slice(0, Math.max(0, romPath.lastIndexOf("/")));
     if (directory) {

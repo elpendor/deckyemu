@@ -84,6 +84,10 @@ ENTRY = {
     # is 24KB of yaml under .config, while the games, firmware, fonts and
     # saves are 215MB under .local/share.
     "data": [".config/Vita3K", ".local/share/Vita3K"],
+    # `ux0/user` is the Vita's user partition -- save data and per-user settings
+    # for each profile. The installed titles it saves *for* sit next to it under
+    # `ux0/app`, which is the 215MB this stays out of.
+    "saves": [".local/share/Vita3K/Vita3K/ux0/user"],
     "databases": [],
     "platform": "Sony - PlayStation Vita",
     # The positional path is documented as "Path to the app with a .vpk/.zip

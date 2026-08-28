@@ -44,6 +44,7 @@ import { installThroughEmulator } from "./firmwareInstall";
 import { requirementForFile, type RequirementMatch } from "./firmwareMatch";
 import { confirmDiscardTransfer } from "./discardTransfer";
 import { importDefinition } from "./importDefinition";
+import { openRestoreSaves } from "./openRestore";
 import { closeOpenModals, openModal } from "./modalStack";
 
 /** How often to re-check while running, to pick up newly arrived files. */
@@ -64,8 +65,10 @@ interface Props {
    * What is being sent. "firmware" starts in the firmware folder instead of the
    * ROM folder, so BIOS files and keys do not land among the games -- the same
    * reason `fileserver.default_dir()` is not the ROM picker's default.
+   * "backup" is the same idea for a save backup, which has a folder of its own
+   * so it never appears in the ROM picker.
    */
-  purpose?: "roms" | "firmware";
+  purpose?: "roms" | "firmware" | "backup";
   /**
    * What the sender should be looking for, shown for as long as the dialog is
    * open. Matching is on the filename, so the names are the thing they need in
@@ -838,6 +841,25 @@ export function TransferModal({
                     // install it into from here, so it says where it went
                     // rather than offering an action that would be wrong.
                     <div style={MUTED}>In the firmware folder</div>
+                  ) : purpose === "backup" ? (
+                    // The action, not a sentence about where the file went --
+                    // the same shape Import and Install have above. A save
+                    // backup is not a game, so Add would make a Steam entry out
+                    // of somebody's save files; Restore is what it is for, and
+                    // it lands on the same screen the Library tab opens.
+                    <DialogButton
+                      onClick={() => {
+                        // The dialog goes first. Steam re-reveals each modal as
+                        // the one above it dismisses, so leaving this underneath
+                        // would put the transfer list back over the restore
+                        // screen afterwards -- see modalStack.
+                        closeModal?.();
+                        openRestoreSaves();
+                      }}
+                      style={{ minWidth: "auto", width: "auto", padding: "6px 16px" }}
+                    >
+                      Restore
+                    </DialogButton>
                   ) : (
                     <DialogButton
                       onClick={() => use(file.path, file.name)}
@@ -857,14 +879,16 @@ export function TransferModal({
                       Beside the action rather than instead of it: a file can be
                       both usable and unwanted, and until this existed the only
                       way out of the folder was to use it. */}
-                  <div className={DANGER_CLASS}>
-                    <DialogButton
-                      onClick={() => confirmDiscardTransfer(file, load)}
-                      style={{ minWidth: "auto", width: "auto", padding: "6px 12px" }}
-                    >
-                      <FaTrash />
-                    </DialogButton>
-                  </div>
+                  {purpose !== "backup" && (
+                    <div className={DANGER_CLASS}>
+                      <DialogButton
+                        onClick={() => confirmDiscardTransfer(file, load)}
+                        style={{ minWidth: "auto", width: "auto", padding: "6px 12px" }}
+                      >
+                        <FaTrash />
+                      </DialogButton>
+                    </div>
+                  )}
                 </Focusable>
               ))}
             </Focusable>

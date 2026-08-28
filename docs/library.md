@@ -8,6 +8,8 @@ Back to [the README](../README.md).
 **Contents** — [Starting a game](#starting-a-game) ·
 [Editing a game](#editing-a-game) ·
 [Collections](#collections) · [Orphaned entries](#orphaned-entries) ·
+[Backing up save data](#backing-up-save-data) ·
+[Restoring a backup](#restoring-a-backup) ·
 [Removing everything](#removing-everything)
 
 ## Starting a game
@@ -167,6 +169,71 @@ A previous install can be **discarded** as well as adopted. Games with no
 surviving shortcut are not offered for adoption at all, and discarding deletes
 only the old record — the launcher scripts stay, because they are why any
 still-working shortcut works.
+
+## Backing up save data
+
+**Back up save data**, on the Library tab, collects the saves of every emulator
+on this Deck into one file and offers it to a phone or PC on the same network —
+the same QR code and six-digit code that [send files the other
+way](transfers.md#sending-files-from-another-device). Nothing on the Deck is
+changed or removed by it.
+
+It is worth doing before anything on this page that deletes: removing a game,
+removing everything, and uninstalling an emulator with its data all take saves
+with them, and none of that can be undone.
+
+Each emulator is a row you can untick, with what it would contribute:
+
+| | |
+| --- | --- |
+| **Most emulators** | Only the save directories — RPCS3's saves are 28 KB beside 367 MB of games and firmware in the same folder, and the games are not in the backup |
+| **Some emulators** | Everything they keep, including configuration. The row says so, because it is the difference between a few megabytes and the emulator's whole directory |
+
+RetroArch is asked where its own saves are rather than assumed, so a Deck that
+also has EmuDeck — which points RetroArch at `~/Emulation/saves` — is backed up
+from the directory actually in use.
+
+**The file is deleted from the Deck when you press Done**, so download it first.
+It is a copy of your saves, and leaving one lying in the plugin's working
+directory is a copy nobody asked to keep. It also goes when the transfer server
+times out, as everything else there does.
+
+## Restoring a backup
+
+Press **Restore save data** under **Save data** on the Library tab, beside the
+button that made it. With no backup on the Deck yet, **Send a backup to this
+Deck** in that dialog opens the [same transfer
+flow](transfers.md#sending-files-from-another-device) used for everything else —
+you do not have to go and find it. It finds the file itself — you do not point at it, and it is recognised by what is
+inside it rather than by its name, so renaming it changes nothing. With more than
+one on the Deck, you pick which.
+
+**A backup does not land in the transfer folder.** It is recognised as it
+arrives and filed under `~/deckyemu/backups/` instead, so it never appears in the
+ROM picker as something to add to Steam. Everything else you send — ROMs, BIOS
+files, definitions — stays exactly where it lands.
+
+The choice that matters is one switch:
+
+| | |
+| --- | --- |
+| **Off** (default) | Writes only the saves that are **missing** here. Anything already on the Deck is left exactly as it is, so a game played since the backup cannot lose its progress |
+| **On** | The backup's copy wins and whatever is on the Deck now is gone. What you want after wiping a Deck, or when the saves here are the ones you are trying to get rid of |
+
+The screen says how many files are in the backup and how many of them are
+already on this Deck before you press anything, so which of the two you want is
+a decision rather than a guess. **There is no undo for replacing** — take a
+backup first if you are unsure.
+
+Saves for an emulator that is not installed here are named and left in the
+archive rather than written into a folder nothing reads. Install that emulator
+and restore again.
+
+**The backup is deleted from the Deck once it has been read**, the same way
+unpacking a zip consumes it — a restored 75 MB archive left lying there is one
+nothing in Game Mode could remove. The copy you sent it from is untouched, so
+restore again by sending it again. A restore that *fails* leaves the file, since
+then it is the way to try again.
 
 ## Removing everything
 

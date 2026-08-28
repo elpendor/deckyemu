@@ -779,6 +779,29 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
         emulatorStatus={emulatorStatus}
       />
 
+      {/* A save backup that arrived here, recognised by the manifest inside it.
+
+          Instead of everything below rather than beside it. A zip of save files
+          is not a ROM: no core can run it, unpacking it would scatter somebody's
+          saves flat across the transfer folder, and offering "Run with" over it
+          is the same confident wrong answer that got Amstrad CPC suggested for a
+          zipped Xbox 360 title. There is exactly one thing to do with this file,
+          so it is the only thing offered. */}
+      {probe?.save_backup && (
+        <PanelSectionRow>
+          <ButtonItem
+            layout="below"
+            onClick={() => openManagePage("library")}
+            description={`This is a DeckyEmu save backup holding ${probe.save_backup
+              .reduce((sum, entry) => sum + entry.files, 0)} file(s) for ${probe.save_backup
+              .map((entry) => entry.name)
+              .join(", ")}. It is not a game, so it is restored from the Library tab.`}
+          >
+            Restore it from the Library tab
+          </ButtonItem>
+        </PanelSectionRow>
+      )}
+
       {/* A zip that can come apart here, offered the same way a `.pkg` is: the
           button is in the panel you are already adding from, and pressing it
           leaves the panel pointing at what came out rather than sending you
@@ -790,7 +813,7 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
           holding an XBLA container or a .cue and its .bin files is not, and
           this is the only way forward. Only the person looking at it knows
           which, so nothing is decided for them. */}
-      {probe?.can_unpack && (
+      {probe?.can_unpack && !probe.save_backup && (
         <PanelSectionRow>
           <ButtonItem
             layout="below"
@@ -809,7 +832,7 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
         </PanelSectionRow>
       )}
 
-      {probe && !pendingPackage && probe.matching_cores.length > 0 && (
+      {probe && !pendingPackage && !probe.save_backup && probe.matching_cores.length > 0 && (
         <>
           <PanelSectionRow>
             <DropdownItem
@@ -888,7 +911,7 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
 
           `coreOptions.length` as well, since with nothing registered and no
           cores the list is empty and a disabled dropdown says even less. */}
-      {probe && !pendingPackage && probe.matching_cores.length === 0
+      {probe && !pendingPackage && !probe.save_backup && probe.matching_cores.length === 0
         && installable.length === 0 && coreOptions.length > 0 && (
         <PanelSectionRow>
           <DropdownItem

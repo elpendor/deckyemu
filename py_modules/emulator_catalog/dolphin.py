@@ -222,6 +222,16 @@ ENTRY = {
     "name": "Dolphin",
     "summary": "GameCube and Wii.",
     "source": {"kind": "flatpak", "id": "org.DolphinEmu.dolphin-emu"},
+    # No `saves` on purpose, and the measurement is here so nobody adds one for
+    # consistency. Dolphin writes its shader cache, game covers and uid caches
+    # into the flatpak's `cache` -- 1.8MB of it after one game -- which the
+    # backup already drops. What is left is 282KB, of which 265KB is the Wii
+    # NAND holding the save itself and 17KB is the SYSCONF backup beside it.
+    # Everything else (GC, StateSaves, GBA/Saves, Load, Dump) is an empty
+    # directory until used, and all of it is worth keeping when it is not. So
+    # the whole directory *is* the save data here, and naming four paths inside
+    # it would buy 17KB in exchange for four facts that rot when Dolphin
+    # reorganises. Verified against a real Mario Kart Wii save, 2026-08-28.
     "databases": ["Nintendo - GameCube", "Nintendo - Wii"],
     # -b exits when the game stops rather than dropping back to the game
     # list; -e picks the file. Fullscreen is a config setting, not a flag,

@@ -554,6 +554,54 @@ _BOOKMARK_HINT = """  <p class="keep" id="keep"></p>
 </script>"""
 
 
+def download_page(name, size, token, emulators):
+    """The page a save backup is collected from.
+
+    One link and the facts needed to trust it: what the file is called, how big
+    it is, and which emulators went into it. The reader is on their own laptop
+    and cannot see the Deck, so the page has to say what they are about to save
+    -- "download" alone leaves them guessing whether it worked.
+
+    The browser is left to do the downloading. An `<a download>` would rename the
+    file to whatever this page said rather than what the server sends, and on the
+    plain-HTTP LAN address some browsers ignore the attribute anyway; the
+    `Content-Disposition` header the server sets is the one thing both agree on.
+    """
+    listed = ", ".join(emulators) if emulators else "no emulators"
+    return """<!doctype html>
+<html><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="icon" href="%(icon)s">
+<title>Save backup</title>
+<style>%(style)s
+  body { min-height: 100vh; display: grid; place-items: center; }
+  main { max-width: 26rem; text-align: center; }
+  h1 { margin-bottom: 14px; }
+  .file { font-weight: 600; word-break: break-all; }
+  .from { opacity: 0.75; }
+  a.get { display: inline-block; text-decoration: none; font-weight: 600;
+          padding: 13px 22px; border-radius: 10px; color: var(--text);
+          background: var(--card); border: 1px solid var(--line); }
+  a.get:hover { border-color: var(--accent); background: var(--accent-soft); }
+</style>
+</head><body><main>
+<h1>Save backup</h1>
+<p class="file">%(name)s</p>
+<p class="from">%(size)s, from %(listed)s</p>
+<p><a class="get" href="/%(token)s/download">Download</a></p>
+<p class="from">Keep it somewhere that is not the Deck. Restoring it later is the
+whole reason it exists.</p>
+</main></body></html>""" % {
+        "name": html.escape(name),
+        "size": human_size(size),
+        "listed": html.escape(listed),
+        "token": token,
+        "style": _STYLE,
+        "icon": _FAVICON,
+    }
+
+
 def upload_page(directory, arrived, token, durable, report):
     """The upload page. Deliberately one self-contained file, no assets.
 

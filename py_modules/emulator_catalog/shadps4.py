@@ -53,6 +53,11 @@ ENTRY = {
     "name": "shadPS4",
     "summary": "PlayStation 4. Early, but it runs real games.",
     "source": {"kind": "flatpak", "id": "net.shadps4.shadPS4"},
+    # The PS4's user accounts, one directory each, holding that account's
+    # savedata and trophies. All four slots rather than the first: shadPS4
+    # creates 1000-1003 whether or not anything has used them, and a backup that
+    # took only the one somebody happened to play on would be silently partial.
+    "saves": [".var/app/net.shadps4.shadPS4/data/shadPS4/home"],
     "databases": [],
     "platform": "Sony - PlayStation 4",
     # The flatpak does not run shadPS4. Its manifest names

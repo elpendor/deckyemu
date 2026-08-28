@@ -198,6 +198,8 @@ py_modules/                 Backend logic. Plain Python, stdlib only -- it runs
   cheevos.py                RetroAchievements login, and the per-launch config
   store.py                  settings / library / emulators / collections records
   romshelf.py               File a ROM under roms/<system>, and delete it again
+  savedata.py               Where each emulator keeps its saves, and gathering
+                            them into one archive to take off the device
   net.py                    stdlib-only HTTP, with a system-CA fallback
   sysenv.py                 Strip Steam's runtime; user_home(); user_dir();
                             where flatpak keeps applications and whether one is

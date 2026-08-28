@@ -68,6 +68,13 @@ OPTIONAL = {
                 "FIRMWARE_REQUIRED below.",
     "data": "Paths this emulator owns, relative to home, for the reset tab to "
             "clear. The flatpak's own directory is already covered.",
+    "saves": "Where this emulator keeps save data, relative to home, for the "
+             "backup to carry off the device. Each path must sit inside one "
+             "of the directories the entry already owns -- the flatpak's own, "
+             "or one of `data`. Omit it and the whole of that directory is "
+             "backed up instead, which is right for an emulator that only "
+             "reads ROMs off the disk and wrong for one that installs games "
+             "into itself. See `savedata`.",
     "seed": "Files the package ships that the application cannot find, as "
             "{source under the flatpak's `files` directory: destination "
             "relative to home}. Copied after installing and again at startup, "
@@ -193,6 +200,25 @@ def _under(path, root):
         return False
     parts, base = path.split("/"), root.strip("/").split("/")
     return parts[:len(base)] == base
+
+
+def owned_roots(entry):
+    """The directories under home this entry owns, as home-relative paths.
+
+    A flatpak needs nothing declared: everything it can write is under its
+    application id. Anything else writes where it likes and the catalog has to
+    say so, which is what `data` is for.
+
+    Public because three places need the same answer and had begun to differ:
+    the reset tab clears these, the backup reads out of them, and validation
+    checks that a `saves` path stays inside one. Deriving it from the config
+    file's directory was tried in the reset and was quietly wrong -- see
+    `devreset` for what that cost.
+    """
+    source = entry.get("source") or {}
+    if source.get("kind") == "flatpak" and source.get("id"):
+        return [".var/app/%s" % source["id"]]
+    return [path for path in (entry.get("data") or ()) if isinstance(path, str)]
 
 
 
@@ -563,6 +589,22 @@ def validate(entry, known_platforms=(), imported=False):
         if path.startswith("/") or ".." in path.split("/"):
             bad("data path %r must be relative to home and must not escape it"
                 % path)
+
+    # A `saves` path is read on backup and *written* on restore, so "relative to
+    # home" is not enough of a fence -- home also holds Steam's data and the
+    # user's ssh keys. It has to be inside something the entry already owns,
+    # which for anything but a flatpak means declaring `data` first.
+    roots = owned_roots(entry)
+    for path in entry.get("saves") or ():
+        if _escapes(path):
+            bad("saves path %r must be relative to home and must not escape it"
+                % path)
+        elif not roots:
+            bad("saves path %r has nothing to sit inside: the entry is not a "
+                "flatpak and declares no 'data'" % path)
+        elif not any(_under(path, root) for root in roots):
+            bad("saves path %r is outside every directory this entry owns (%s)"
+                % (path, ", ".join(roots)))
 
     seed = entry.get("seed")
     if seed:

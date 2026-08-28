@@ -15,6 +15,8 @@ import { clearWarning, shouldConfirmClear } from "./clearWarning";
 import { DANGER_CLASS, DANGER_CSS } from "./danger";
 import { InstallProgress } from "./InstallProgress";
 import { OrphanModal } from "./OrphanModal";
+import { SaveBackupModal } from "./SaveBackupModal";
+import { RestoreSavesModal } from "./RestoreSavesModal";
 import { callWithRetry } from "./timeout";
 import { humanSize } from "./TransferModal";
 import { logError } from "./logError";
@@ -251,7 +253,36 @@ export function LibraryPanel({ onRefresh }: Props) {
             Check the library
           </ButtonItem>
         </PanelSectionRow>
+      </PanelSection>
 
+      {/* Its own group, because it is its own subject. These two are a pair --
+          one makes the file, the other reads it back -- and neither is about
+          the games in Steam, which is what the section above is. Between them
+          and the button that deletes everything, so somebody reading down the
+          tab meets the way to keep their saves before the way to lose them. */}
+      <PanelSection title="Save data">
+        <PanelSectionRow>
+          <ButtonItem
+            layout="below"
+            onClick={() => openModal(<SaveBackupModal />)}
+            description="Collects the save data of every emulator on this Deck into one file and offers it to a phone or PC on this network. Nothing here is changed or removed."
+          >
+            Back up save data
+          </ButtonItem>
+        </PanelSectionRow>
+
+        <PanelSectionRow>
+          <ButtonItem
+            layout="below"
+            onClick={() => openModal(<RestoreSavesModal />)}
+            description="Puts saves back from a backup you have sent to this Deck. Nothing already here is overwritten unless you ask for it."
+          >
+            Restore save data
+          </ButtonItem>
+        </PanelSectionRow>
+      </PanelSection>
+
+      <PanelSection title="Starting over">
         <PanelSectionRow>
           <div className={DANGER_CLASS}>
             {/* The bar goes where the description does, and the button stays

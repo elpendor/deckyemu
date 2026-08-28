@@ -1,5 +1,7 @@
 import { callable } from "@decky/api";
 
+import type { SaveBackupContents } from "./library";
+
 /**
  * Adding a game: probing a ROM, resolving its name and artwork, and the
  * shortcut that comes out.
@@ -54,6 +56,16 @@ export interface RomProbe {
    * that claim `.zip` for a file none of them can read.
    */
   archived_content: string;
+  /**
+   * What restoring this would put back, per emulator, or null when the file is
+   * not a DeckyEmu save backup.
+   *
+   * Recognised by the manifest inside it rather than by its name, since the name
+   * is the user's to change the moment it lands in a downloads folder. When set,
+   * the panel offers restoring **instead of** the core list: an archive of save
+   * files is not a ROM, and "Run with" over it is a confident wrong answer.
+   */
+  save_backup: SaveBackupContents[] | null;
   is_archive: boolean;
   provisional_title: string;
   matching_cores: Core[];

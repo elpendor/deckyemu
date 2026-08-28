@@ -88,6 +88,27 @@ _received: list = []
 # code for a camera and six digits for anything else. A second server for the
 # other direction would be a second thing to bind, expire and lock out.
 _report = ""
+# A file waiting to be read off the device, as {"path", "name"}, or empty.
+#
+# The report above is held in memory because it is a snapshot of a moment. This
+# is not: a save backup is somebody's actual data and can be tens of megabytes,
+# so what is held here is the path to an archive the plugin built and is
+# responsible for deleting afterwards. Same server, same token, same lockout, and
+# `_uploads` is off for it for the same reason it is off for a report.
+_download: dict = {}
+#: Called with the path of each completed upload; returns where the file ended
+#: up. Set by the plugin, because "which folder does this kind of file belong
+#: in" is policy and this module is sockets. None means leave everything alone.
+_on_arrival = None
+#: Downloads being streamed right now.
+#:
+#: The counterpart of `_in_flight`, and it exists for the same reason: something
+#: has to stop the server being shut down out from under a transfer that is still
+#: running. It was missing while only the report used this direction, because a
+#: report is one page load and is in the reader's browser before anything could
+#: interrupt it. A save backup is not -- 75MB over a phone's wifi takes real
+#: time, and closing the dialog cut it off.
+_downloading = 0
 # Whether this server accepts files, as opposed to only handing one out.
 #
 # It exists because "show somebody a report" must not also mean "let them write
@@ -383,6 +404,55 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(payload)
 
+    def _send_file(self, path, name):
+        """Stream a staged file as a download, or 404 if it has gone.
+
+        Sent in chunks rather than read whole: this is the same code path that
+        accepts multi-gigabyte ROMs, and a save backup holding an emulator's
+        whole directory has no small upper bound either.
+
+        A reader who closes the tab mid-download is ordinary, not an error --
+        the write raises and there is nothing to recover, so it is logged at
+        debug and the connection is dropped.
+        """
+        try:
+            size = os.path.getsize(path)
+            handle = open(path, "rb")
+        except OSError:
+            self._deny()
+            return
+        global _downloading
+        with _state_lock:
+            _downloading += 1
+        try:
+            self._stream(handle, size, name)
+        finally:
+            with _state_lock:
+                _downloading -= 1
+
+    def _stream(self, handle, size, name):
+        with handle:
+            self.send_response(200)
+            self.send_header("Content-Type", "application/zip")
+            self.send_header("Content-Length", str(size))
+            # `filename` so the browser saves it under the name the plugin
+            # chose, which carries the date -- a second backup must not
+            # silently replace the first in somebody's downloads folder.
+            self.send_header(
+                "Content-Disposition",
+                'attachment; filename="%s"' % safe_name(name).replace('"', ""),
+            )
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            try:
+                while True:
+                    chunk = handle.read(_CHUNK)
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
+            except OSError as error:
+                decky.logger.debug("Download stopped early: %s", error)
+
     def _check_pin(self, given):
         """Whether `given` is the current code, counting failures.
 
@@ -444,6 +514,20 @@ class _Handler(BaseHTTPRequestHandler):
         if not rest or rest == ["index.html"]:
             with _state_lock:
                 report_only = not _uploads and bool(_report)
+                offered = dict(_download) if not _uploads else {}
+            # Whoever came in by the six-digit code lands here, and on a server
+            # that exists only to hand a backup over, the backup is the page --
+            # the same rule the report follows below, for the same reason.
+            if offered:
+                self._send(
+                    200,
+                    fileserver_page.download_page(
+                        offered["name"], offered.get("bytes", 0), _token,
+                        offered.get("emulators") or [],
+                    ),
+                    "text/html; charset=utf-8",
+                )
+                return
             # Whoever came in by the six-digit code lands here. On a server that
             # exists only to hand out a report, an upload form is both wrong and
             # a lie -- the PUT behind it refuses -- so the report is the page.
@@ -498,6 +582,16 @@ class _Handler(BaseHTTPRequestHandler):
                 json.dumps({"received": _partial_size(partial), "cancelled": cancelled}),
                 "application/json",
             )
+        elif rest == ["download"]:
+            with _state_lock:
+                offered = dict(_download)
+            # Same rule as the report: 404 rather than an empty reply when
+            # nothing is waiting. The address is guessable to anyone holding the
+            # token, and "there is nothing here" is the honest answer.
+            if not offered:
+                self._deny()
+                return
+            self._send_file(offered["path"], offered["name"])
         elif rest == ["report"]:
             with _state_lock:
                 report = _report
@@ -709,6 +803,24 @@ class _Handler(BaseHTTPRequestHandler):
             self._reply(500, "Could not finish the file: %s" % error)
             return
 
+        # What the *plugin* wants done with a completed arrival, before anything
+        # is told the file is here. This module owns sockets, tokens and the
+        # lockout; where a particular kind of file belongs is policy and lives in
+        # `plugin_transfers` -- a save backup is moved out of the ROM inbox here,
+        # and everything else is left where it landed.
+        #
+        # Nothing it raises may cost the upload: the bytes are on disk and the
+        # sender is waiting for a 200, so a failed filing is a tidiness problem
+        # and the original path is still a real file.
+        with _state_lock:
+            arrived = _on_arrival
+        if arrived:
+            try:
+                destination = arrived(destination) or destination
+                name = os.path.basename(destination)
+            except Exception as error:  # noqa: BLE001 - see above
+                decky.logger.warning("Arrival handler failed for %s: %s", name, error)
+
         with _state_lock:
             # The whole file, not this request's share of it: a resumed upload
             # sends only the rest, and the list is about what the Deck now has.
@@ -906,6 +1018,33 @@ def _page():
     return fileserver_page.upload_page(directory, arrived, token, durable, report)
 
 
+def set_arrival_handler(handler):
+    """Say what to do with each completed upload. See `_on_arrival`."""
+    global _on_arrival
+    with _state_lock:
+        _on_arrival = handler
+
+
+def offer_download(path="", name="", size=0, emulators=()):
+    """Make a staged file downloadable at `/<token>/download`. No path withdraws it.
+
+    The file is not copied or held open -- what is kept is where it is, so
+    withdrawing costs nothing and the caller stays free to delete it. Deleting it
+    while it is still offered is safe too: the handler opens it per request and
+    answers 404 when it has gone, which is the same answer as never having
+    offered it.
+    """
+    global _download
+    with _state_lock:
+        _download = (
+            {"path": path, "name": name or os.path.basename(path),
+             "bytes": size, "emulators": list(emulators)}
+            if path
+            else {}
+        )
+    return bool(path)
+
+
 def offer_report(report):
     """Make a diagnostic report readable at `/<token>/report`. "" withdraws it.
 
@@ -962,6 +1101,18 @@ def status():
             "report_url": ("http://%s:%d/%s/report" % (_host_ip, _server.server_port, _token))
             if running and _host_ip and _report
             else "",
+            # And where a staged file is, on the same terms. The name comes back
+            # with it because the panel says what is being offered, and the
+            # backup's name carries the date it was taken.
+            "download_url": ("http://%s:%d/%s/download"
+                             % (_host_ip, _server.server_port, _token))
+            if running and _host_ip and _download
+            else "",
+            # Non-zero means stopping now would cut a download off, exactly as
+            # `uploading` does for the other direction.
+            "downloading": _downloading if running else 0,
+            "download_name": _download.get("name", "") if running else "",
+            "download_bytes": _download.get("bytes", 0) if running else 0,
             # Trailing slash so the address also works if typed by hand and any
             # relative link on the page resolves inside the token path.
             "url": ("http://%s:%d/%s/" % (_host_ip, _server.server_port, _token))
@@ -1155,18 +1306,20 @@ def stop_if_idle():
     with _state_lock:
         running = _server is not None
         arriving = len(_in_flight)
+        leaving = _downloading
     if not running:
         return status()
-    if arriving or paused:
+    if arriving or paused or leaving:
         decky.logger.info(
-            "Leaving the file server up: %d arriving, %d paused", arriving, paused
+            "Leaving the file server up: %d arriving, %d paused, %d downloading",
+            arriving, paused, leaving,
         )
         return status()
     return stop()
 
 
 def stop():
-    global _server, _thread, _token, _pin, _report
+    global _server, _thread, _token, _pin, _report, _download
     with _state_lock:
         server = _server
         _server = None
@@ -1178,6 +1331,10 @@ def stop():
         # tail of a log, so keeping it in memory past the moment somebody asked
         # for it is a copy of that sitting around for no reason.
         _report = ""
+        # The staged file is forgotten with it, for the same reason -- but only
+        # forgotten. Deleting it belongs to whoever built it, and the address it
+        # was offered at has just stopped existing anyway.
+        _download = {}
         # _in_flight is deliberately left alone. Clearing it here while a PUT was
         # still running would drop an entry its own handler is about to remove --
         # the counter version of this bug drove the count to -1, and since start()
@@ -1223,11 +1380,11 @@ def saving_into():
 
     `default_dir` is the ROM inbox and was read directly by everything below,
     which was right while every send went there. It stopped being right the day
-    a send could be pointed somewhere else: `FirmwarePanel` starts this server on
-    the firmware folder, so a BIOS arrived into a dialog whose list, delete and
-    unpack were all still looking at the ROM inbox -- the file vanished from the
-    list the instant it landed, which reads as a failed transfer, and the delete
-    button beside such a row could never have found it.
+    a send could be pointed somewhere else: a BIOS goes to the firmware folder
+    and a save backup to its own, and both then arrived into a dialog whose
+    list, delete and unpack were all still looking at the ROM inbox -- so a file
+    vanished from the list the instant it landed, which reads as a failed
+    transfer.
     """
     with _state_lock:
         running = _server is not None
@@ -1290,8 +1447,8 @@ def inbox_path(name):
         return ""
     # The folder the server is saving into, so the buttons beside a listed file
     # act on the file that was listed. Pointed at the default this refused every
-    # firmware arrival by name, which is a delete button doing nothing on a row
-    # that is plainly there.
+    # firmware and backup arrival by name, which is the delete button doing
+    # nothing on a row that is plainly there.
     path = os.path.join(saving_into(), name)
     if os.path.isfile(path):
         return path
@@ -1312,7 +1469,7 @@ def received_files():
 
     Kept as its own name rather than folded into `inbox_files` because the two
     answer different questions, and they no longer agree: this one follows the
-    server, so a send pointed at another folder lists what actually arrived,
-    while `inbox_files` stays on the ROM inbox for the callers that mean it.
+    server, so a firmware or backup send lists what actually arrived, while
+    `inbox_files` stays on the ROM inbox for the callers that mean that folder.
     """
     return inbox_files(directory=saving_into())

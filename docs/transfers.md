@@ -53,6 +53,16 @@ it, and stopping the server — so the panel says **Paused** rather than
 server running until it finishes or goes idle. Keep the page open; a tab that is
 closed cannot come back, and the browser will ask before letting you.
 
+### The same server runs backwards
+
+Two things travel the other way over it, and both are reached from the plugin
+rather than from the upload page: the [diagnostic
+report](updates.md#reporting-a-problem), and a [backup of your save
+data](library.md#backing-up-save-data). Each starts the server if it is not
+already running, and one started for either of them **accepts no files** — being
+shown a report or a backup should not also hand somebody a writable folder on
+your Deck, and they would have no way of telling they had been given one.
+
 ### Keeping the same address
 
 By default the port, token and code all rotate per session, so nothing outlives a

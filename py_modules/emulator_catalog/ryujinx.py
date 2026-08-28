@@ -142,6 +142,15 @@ ENTRY = {
     "name": "Ryujinx",
     "summary": "Nintendo Switch. The Ryubing continuation.",
     "source": {"kind": "flatpak", "id": "io.github.ryubing.Ryujinx"},
+    # The Switch's internal storage, split the way the console splits it: user
+    # saves and the index Ryujinx keeps beside them, then the system's own.
+    # `bis/user/Contents` is where installed titles and updates land and is
+    # deliberately not here.
+    "saves": [
+        ".var/app/io.github.ryubing.Ryujinx/config/Ryujinx/bis/user/save",
+        ".var/app/io.github.ryubing.Ryujinx/config/Ryujinx/bis/user/saveMeta",
+        ".var/app/io.github.ryubing.Ryujinx/config/Ryujinx/bis/system/save",
+    ],
     "databases": [],
     "platform": "Nintendo - Switch",
     "args": "{rom}",

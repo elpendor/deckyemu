@@ -69,6 +69,11 @@ ENTRY = {
     # One directory holds all of it -- config, saves, and the host cache. Xenia
     # has no second home under `.config`.
     "data": [_XENIA_STORAGE],
+    # Saves, and the DLC installed beside them -- Xenia files both under
+    # `content/<title id>/`. Named rather than left to the whole directory
+    # because the shader and host caches share it: 68KB against 7.8MB of cache
+    # on a Deck that has run two games, and that gap only widens.
+    "saves": [_XENIA_STORAGE + "/content"],
     "root": _XENIA_STORAGE,
     # libretro has no Xbox 360 core, so the platform label carries the system and
     # `MANUAL_EXTENSIONS` carries iso/xex. Both were already in the tree before

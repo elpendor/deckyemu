@@ -124,6 +124,27 @@ def _resolve_ra_path(value, config_dir):
     return value
 
 
+def save_dirs(config_dir):
+    """Where this RetroArch writes saves and states, as {label: absolute path}.
+
+    **Read out of `retroarch.cfg`, never assumed from the config directory.** On
+    the development Deck those keys point at `~/Emulation/saves/retroarch`, which
+    EmuDeck set, while `<config>/saves` still holds an older set of files. Both
+    exist; only one of them is where the next save lands. Anything that assumed
+    the default would have backed up the wrong directory and said it had worked.
+
+    Falls back to RetroArch's own defaults where a key is unset, which is what a
+    RetroArch nobody has reconfigured actually uses.
+    """
+    cfg = parse_cfg(os.path.join(config_dir, "retroarch.cfg"))
+    return {
+        "saves": _resolve_ra_path(cfg.get("savefile_directory", ""), config_dir)
+        or os.path.join(config_dir, "saves"),
+        "states": _resolve_ra_path(cfg.get("savestate_directory", ""), config_dir)
+        or os.path.join(config_dir, "states"),
+    }
+
+
 def _build_install(kind, config_dir, exe=None, extra_core_dirs=()):
     cfg = parse_cfg(os.path.join(config_dir, "retroarch.cfg"))
 

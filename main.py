@@ -38,6 +38,7 @@ import ra_cores
 import hardware
 import ra_detect
 import romshelf
+import savedata
 import sgdb
 import store
 import sysenv
@@ -281,6 +282,13 @@ class Plugin(
         # hardware explains itself before anyone reads a line of what went
         # wrong on it.
         hardware.log_once()
+
+        # What to do with a file the moment it finishes arriving. A save backup
+        # is moved out of the ROM inbox and everything else is left where it
+        # landed -- see `savedata.take_delivery`. Registered here rather than
+        # when the server starts, because the server also comes up on its own to
+        # hand a report out and the rule is the same either way.
+        fileserver.set_arrival_handler(savedata.take_delivery)
 
         # Before the startup steps rather than after them, and it does not wait:
         # the first check happens straight away and a failure climbs the retry
@@ -767,10 +775,28 @@ class Plugin(
             )
         )
 
+        # A save backup this plugin wrote, recognised by the manifest inside it
+        # rather than by its name -- the name is the user's to change the moment
+        # it lands in their downloads folder, and a zip called anything else is
+        # still one of ours if the manifest is there.
+        #
+        # Probed here so the panel can offer restoring *instead of* the core
+        # list: an archive of save files is not a ROM, and "Run with" over it is
+        # the same confident wrong answer that a zipped Xbox 360 title being
+        # offered Amstrad CPC was.
+        save_backup = None
+        if extension == "zip":
+            described = await self._run(savedata.describe, rom_path)
+            if described.get("ok") and described.get("sources"):
+                save_backup = described["sources"]
+
         result = {
             "extension": extension,
             "match_extension": match_extension,
             "is_archive": extension in ra_cores.ARCHIVE_EXTENSIONS,
+            # What restoring this would put back, per emulator, or None when the
+            # file is not one of ours.
+            "save_backup": save_backup,
             # Whether the Unpack row belongs in the panel. All three halves
             # matter: `.zip` because nothing on a stock SteamOS reads .7z or
             # .rar; *in the transfer folder* because that is the only directory
@@ -890,11 +916,16 @@ class Plugin(
                     "will boot to \"Please insert an Xbox disc\"."
                 )
         decky.logger.info(
-            "probe_rom -> ext=%s match_ext=%s matching=%s suggested=%s",
+            "probe_rom -> ext=%s match_ext=%s matching=%s suggested=%s backup=%s",
             extension,
             match_extension,
             [core["id"] for core in matching],
             result["suggested_core_id"],
+            # Whether this was recognised as a save backup, and for whom. A zip
+            # of saves matches on whatever extension happens to be inside it --
+            # `.rtc` for a RetroArch backup -- so without this the log of a
+            # backup being probed is indistinguishable from a ROM nothing runs.
+            [entry["id"] for entry in save_backup] if save_backup else None,
         )
         return result
 

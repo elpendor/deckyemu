@@ -32,6 +32,7 @@ import diagnostics
 import emu_install
 import emulator_catalog
 import fileserver
+import savedata
 import unpack
 import store
 
@@ -81,15 +82,203 @@ class Transfers(plugin_base.PluginContext):
             # for this does not accept files. Showing somebody a report should
             # not also hand them somewhere to write, and they could not tell
             # they had been given one.
-            started = await self._run(
-                fileserver.start, await self._run(fileserver.default_dir), 0, "", False
-            )
+            started = await self._serve(False)
             if started.get("error"):
                 return {"ok": False, "error": started["error"]}
 
         await self._run(fileserver.offer_report, report)
         decky.logger.info("Diagnostic report ready (%d characters)", len(report))
         return {"ok": True, **await self._run(fileserver.status)}
+
+    async def save_backup_sources(self):
+        """What a save backup would carry, per emulator, measured on the device.
+
+        Asked before anything is built, because the sizes are the whole of the
+        decision: an emulator that declares its save directory contributes
+        kilobytes, and one that does not contributes everything it keeps. The
+        panel shows both and lets the second be unticked.
+        """
+        return {"ok": True, "sources": await self._run(savedata.sources)}
+
+    async def start_save_backup(self, ids=None):
+        """Build a save backup and put it where another device can read it.
+
+        The same errand as `start_report` and deliberately the same shape: a
+        server that hands one thing out and accepts nothing, a QR code for a
+        camera and six digits for anything else. What differs is that this one
+        writes a real file, so it has a lifetime -- `end_save_backup` deletes it,
+        and so does the next backup, because two copies of somebody's saves in
+        decky's runtime directory is one more than anybody asked for.
+        """
+        await self._run(self._clear_backups)
+
+        destination = os.path.join(savedata.BACKUP_DIR, savedata.default_name())
+        built = await self._run(savedata.build, destination, ids)
+        if not built.get("ok"):
+            return built
+
+        serving = await self._run(fileserver.status)
+        if not serving.get("running"):
+            # Started to hand a backup out and nothing else. Same rule as the
+            # report: showing somebody a file must not also hand them somewhere
+            # to write, and they could not tell they had been given one.
+            started = await self._serve(False)
+            if started.get("error"):
+                await self._run(self._clear_backups)
+                return {"ok": False, "error": started["error"]}
+
+        await self._run(
+            fileserver.offer_download,
+            destination,
+            os.path.basename(destination),
+            built.get("bytes", 0),
+            built.get("emulators") or [],
+        )
+        decky.logger.info(
+            "Save backup ready: %s (%d bytes)", os.path.basename(destination),
+            built.get("bytes", 0),
+        )
+        return {"ok": True, "backup": built, **await self._run(fileserver.status)}
+
+    async def end_save_backup(self):
+        """Withdraw the backup, delete it, and stop the server if that was all it did.
+
+        The deletion is the part that matters. A report is a log tail held in
+        memory; this is a copy of somebody's save files sitting in decky's
+        runtime directory, and leaving it there means the next person to read
+        that directory finds it. Pressing Done means it is gone.
+
+        The server itself only stops when nothing is moving in either direction.
+        It may have been up for a transfer that is still running -- cutting off a
+        multi-gigabyte ROM because somebody closed an unrelated dialog is the
+        failure this guard exists for -- and it may be streaming this very backup
+        to the device that asked for it. That second half was missing: the report
+        this borrowed its shape from is one page load and is in the reader's
+        browser before anything can interrupt it, and 75MB over a phone's wifi is
+        not.
+        """
+        await self._run(fileserver.offer_download, "")
+        await self._run(self._clear_backups)
+        status = await self._run(fileserver.status)
+        if status.get("running") and not (
+            status.get("uploading") or status.get("paused") or status.get("downloading")
+        ):
+            return await self.stop_file_server()
+        return {"ok": True, **await self._run(fileserver.status)}
+
+    async def list_save_backups(self):
+        """Backups on this Deck, newest first.
+
+        Restoring starts from the Library tab beside taking a backup, rather
+        than from the ROM picker: the file is not a game, and every row of the
+        add flow -- the name, the artwork, the core -- is about something this
+        is not. So the tab finds the file instead of the user pointing at it.
+
+        Both folders are read. `savedata.take_delivery` moves an arriving backup
+        into its own, but one that could not be moved is still restorable, and an
+        install that predates that has its backups where they landed.
+        """
+        return {
+            "ok": True,
+            # Where a backup belongs, so the transfer dialog can be pointed at it
+            # and say so truthfully. It used to be started on the ROM inbox and
+            # told the user files would land there, while `take_delivery` moved
+            # them somewhere else the moment they arrived.
+            "dir": await self._run(savedata.arrivals_dir),
+            "backups": await self._run(
+                savedata.backups_in,
+                await self._run(savedata.arrivals_dir),
+                await self._run(fileserver.default_dir),
+            ),
+        }
+
+    async def discard_save_backup(self, path: str):
+        """Delete one backup from this Deck without restoring it.
+
+        Restoring already consumes the archive, so this is for the other case:
+        a backup somebody has finished with, or sent by mistake, or that is
+        simply the old one. Without it the only way to remove a 75MB file is to
+        restore from it, which is not a thing to have to do to tidy up.
+        """
+        backups = await self._run(
+            savedata.backups_in,
+            await self._run(savedata.arrivals_dir),
+            await self._run(fileserver.default_dir),
+        )
+        # Only something this plugin just listed. The path comes from the
+        # frontend, and a delete pointed at an arbitrary path is not what this
+        # is for -- the same rule `inbox_path` enforces for the folder next door.
+        if not any(entry["path"] == path for entry in backups):
+            return {"ok": False, "error": "That backup is not on this Deck."}
+        try:
+            await self._run(os.remove, path)
+        except OSError as error:
+            return {"ok": False, "error": "Could not delete it: %s" % error}
+        decky.logger.info("Discarded save backup %s", os.path.basename(path))
+        return {"ok": True, "removed": True}
+
+    async def describe_save_backup(self, path: str):
+        """What an archive holds and whether this Deck can take it.
+
+        Answers before anything is written, because the counts are the decision:
+        how many of these files are already here is what separates "put back what
+        is missing" from "replace what is there".
+        """
+        return await self._run(savedata.describe, path)
+
+    async def restore_save_backup(self, path: str, ids=None, replace: bool = False):
+        """Put saves back from an archive sent to this Deck, then delete it.
+
+        `replace` overwrites saves already here and is the one destructive thing
+        in it; off, nothing already present is touched.
+
+        **The archive goes once it has been read**, the same as
+        `unpack_transferred_file` deletes the zip it extracted, and for the rule
+        that file states: everything that uses a file takes it out of the folder.
+
+        This was written the other way first, on the reasoning that a partial
+        restore skips saves already here and the archive is therefore the only
+        copy of the versions it did not write. That reasoning is wrong: the
+        archive *arrived from another device*, so the copy it was sent from is
+        still there. What it produced was 75MB sitting on the Deck with nothing
+        in Game Mode able to remove it -- the same fault
+        `discard_transferred_file` exists to fix, one folder over.
+
+        Only after a restore that succeeded. A failure leaves the file, because
+        then it really is the way to try again.
+        """
+        result = await self._run(savedata.restore, path, ids, replace)
+        if not result.get("ok"):
+            return result
+        try:
+            await self._run(os.remove, path)
+            result["removed"] = os.path.basename(path)
+        except OSError as error:
+            # The saves are back, which is what was asked for. An archive that
+            # could not be deleted is untidy, not a failed restore.
+            decky.logger.warning("Restored from %s but could not remove it: %s", path, error)
+        return result
+
+    @staticmethod
+    def _clear_backups():
+        """Delete every archive left in the staging directory.
+
+        Everything in there is this plugin's own, named by `savedata`, and each
+        one is a full copy of the saves it was taken from. Cleared before
+        building and again when the dialog closes, so the only time one exists is
+        while somebody is looking at the address it is offered on.
+        """
+        try:
+            names = os.listdir(savedata.BACKUP_DIR)
+        except OSError:
+            return
+        for name in names:
+            path = os.path.join(savedata.BACKUP_DIR, name)
+            try:
+                if os.path.isfile(path):
+                    os.remove(path)
+            except OSError as error:
+                decky.logger.warning("Could not remove old backup %s: %s", path, error)
 
     async def end_report(self):
         """Withdraw the report, and stop the server if it was only serving that.
@@ -108,7 +297,9 @@ class Transfers(plugin_base.PluginContext):
         """
         await self._run(fileserver.offer_report, "")
         status = await self._run(fileserver.status)
-        if status.get("running") and not (status.get("uploading") or status.get("paused")):
+        if status.get("running") and not (
+            status.get("uploading") or status.get("paused") or status.get("downloading")
+        ):
             return await self.stop_file_server()
         return {"ok": True, **await self._run(fileserver.status)}
 
@@ -132,31 +323,41 @@ class Transfers(plugin_base.PluginContext):
                 found.append("%s (appimage)" % entry["id"])
         return found
 
-    async def start_file_server(self, target_dir: str = ""):
-        # Empty means the default folder. Lets a caller start receiving in one call
-        # without first asking where that is.
-        target_dir = (target_dir or "").strip() or await self._run(fileserver.default_dir)
+    async def _serve(self, uploads, target_dir=""):
+        """Start the file server the one way there is, and record what it bound.
 
+        **A remembered link is remembered whichever door asks for the server.**
+        Three callers start it -- a transfer, a diagnostic report, a save backup
+        -- and only the first honoured `transfer_remember`, so somebody who had
+        deliberately made their link durable and bookmarked it on a laptop got a
+        different address, a different token and a different six digits the
+        moment they asked for a report or a backup. The setting says "keep the
+        transfer address the same between sessions"; a session is a session.
+
+        Recording matters as much as reusing. The port and token written back are
+        whatever was *actually* bound and minted, never what was asked for: a
+        remembered port can be taken by something else and fallen back from, and
+        the first durable session started by a report would otherwise never be
+        saved -- so the next transfer would mint a different one and quietly
+        break the bookmark.
+
+        `uploads` stays the caller's business and is deliberately not folded in
+        here. It answers a different question -- whether this server is an inbox
+        or only hands something out -- and the report and the backup need it off
+        for a reason no remembered link changes.
+        """
         settings = await self._run(store.get_settings)
         remember = bool(settings.get("transfer_remember"))
         result = await self._run(
             fileserver.start,
-            target_dir,
+            target_dir or await self._run(fileserver.default_dir),
             int(settings.get("transfer_port") or 0) if remember else 0,
             (settings.get("transfer_token") or "") if remember else "",
+            uploads,
         )
         if result.get("error"):
-            return {"ok": False, "error": result["error"]}
-
-        # The server may already have been up to hand out a report, which does
-        # not accept files. This is a transfer, so it does now.
-        await self._run(fileserver.allow_uploads)
-
+            return result
         if remember:
-            # Whatever was actually bound and minted, not what was asked for: a
-            # remembered port can be taken by something else and fallen back from,
-            # and recording the request rather than the outcome would hand out a
-            # link to an address nothing is listening on.
             await self._run(
                 store.set_settings,
                 {
@@ -164,7 +365,18 @@ class Transfers(plugin_base.PluginContext):
                     "transfer_token": await self._run(fileserver.current_token),
                 },
             )
+        return result
 
+    async def start_file_server(self, target_dir: str = ""):
+        # Empty means the default folder. Lets a caller start receiving in one call
+        # without first asking where that is.
+        result = await self._serve(True, (target_dir or "").strip())
+        if result.get("error"):
+            return {"ok": False, "error": result["error"]}
+
+        # The server may already have been up to hand out a report, which does
+        # not accept files. This is a transfer, so it does now.
+        await self._run(fileserver.allow_uploads)
         return {"ok": True, **result}
 
     async def reset_transfer_link(self):
@@ -179,6 +391,18 @@ class Transfers(plugin_base.PluginContext):
             return {
                 "ok": False,
                 "error": "A transfer is still running. Wait for it to finish, or cancel it first.",
+            }
+        # And the same for the other direction, which this used not to consider.
+        # The restart below brings the server back up as an *inbox* -- which is
+        # right when it was one, and turns a server that existed only to hand a
+        # report or a backup out into somewhere the holder of the old QR code can
+        # write. Refusing while something is being offered keeps that from
+        # happening behind the user's back, and it is the same answer the line
+        # above gives for an upload: finish what you are doing first.
+        if status.get("downloading") or status.get("report_url") or status.get("download_url"):
+            return {
+                "ok": False,
+                "error": "Something is still being handed out. Close that dialog first.",
             }
 
         await self._run(store.set_settings, {"transfer_port": 0, "transfer_token": ""})
