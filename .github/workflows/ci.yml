@@ -29,6 +29,11 @@ on:
         type: choice
         default: patch
         options: [patch, minor, major, none]
+      summary:
+        description: "What matters in this release, in a sentence or two. Markdown; goes above the generated notes."
+        type: string
+        default: ""
+        required: false
   pull_request:
     branches: [main]
 
@@ -189,9 +194,34 @@ jobs:
       #
       # Resolved *after* the bump commit exists, so the range ends at what is
       # actually being released.
+      # The summary is typed at dispatch rather than kept anywhere, and lands
+      # above the generated sections -- which are unchanged by it.
+      #
+      # Prepended to the *file* rather than pasted onto the release afterwards,
+      # because this file feeds two things: the release body and the build stamp
+      # inside the zip. Editing the release later would show the summary on
+      # GitHub and not in the plugin's own Updates tab, which reads the stamp
+      # offline.
+      #
+      # Why a person writes it: `changelog.py` groups by prefix and deliberately
+      # does not rank, and the note there records why -- importance was measured
+      # to be underivable from the diff, in both directions. What is worth
+      # telling somebody is known when the commit is written and nowhere else.
       - name: Generate the changelog
+        env:
+          SUMMARY: ${{ inputs.summary }}
         run: |
-          python scripts/changelog.py > release-notes.md
+          python scripts/changelog.py > generated-notes.md
+          # Plain shell, and read from the environment rather than interpolated:
+          # the summary is arbitrary markdown somebody typed, so an apostrophe or
+          # a backtick in it must not be able to reach the shell as syntax.
+          # `printf '%s'` also leaves it exactly as written, newlines included.
+          {
+            if [ -n "$SUMMARY" ]; then
+              printf '%s\n\n' "$SUMMARY"
+            fi
+            cat generated-notes.md
+          } > release-notes.md
           echo "--- notes for v${{ steps.meta.outputs.version }} ---"
           cat release-notes.md
 
