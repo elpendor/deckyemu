@@ -6,7 +6,7 @@ import {
   ToggleField,
 } from "@decky/ui";
 
-import { clampNotes, countItems, parseNotes } from "./releaseNotes";
+import { clampNotes, countItems, parseNotes, type NoteItem } from "./releaseNotes";
 import { toaster } from "@decky/api";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -67,6 +67,19 @@ const NOTES_HEADING: React.CSSProperties = {
  * release was big enough to want checking. Folding keeps the button close and
  * keeps every entry reachable, which cutting with an ellipsis would not.
  */
+/**
+ * One line's runs, with `**this**` in bold.
+ *
+ * There is no markdown renderer here and adding one for a single mark would be a
+ * dependency for a panel that shows a paragraph or two. The splitting is in
+ * `releaseNotes` where it can be tested; this only turns the runs into elements.
+ */
+function spans(item: NoteItem) {
+  return item.spans.map((run, index) =>
+    run.bold ? <b key={index}>{run.text}</b> : <span key={index}>{run.text}</span>,
+  );
+}
+
 function Notes({ text, limit = 0 }: { text: string; limit?: number }) {
   const shown = clampNotes(parseNotes(text), limit);
   if (shown.length === 0) return null;
@@ -76,12 +89,19 @@ function Notes({ text, limit = 0 }: { text: string; limit?: number }) {
       {shown.map((section, index) => (
         <div key={index} style={{ marginBottom: "8px" }}>
           {section.heading && <div style={NOTES_HEADING}>{section.heading}</div>}
-          {section.items.map((item, itemIndex) => (
-            <div key={itemIndex} style={{ display: "flex", gap: "6px", marginBottom: "2px" }}>
-              <span style={{ opacity: 0.5 }}>&bull;</span>
-              <span style={{ flex: 1, minWidth: 0 }}>{item}</span>
-            </div>
-          ))}
+          {section.items.map((item, itemIndex) =>
+            // Prose gets no bullet. The summary a release opens with is
+            // paragraphs, and a marker in front of each made three sentences
+            // read as three changelog entries.
+            item.bullet ? (
+              <div key={itemIndex} style={{ display: "flex", gap: "6px", marginBottom: "2px" }}>
+                <span style={{ opacity: 0.5 }}>&bull;</span>
+                <span style={{ flex: 1, minWidth: 0 }}>{spans(item)}</span>
+              </div>
+            ) : (
+              <div key={itemIndex} style={{ marginBottom: "6px" }}>{spans(item)}</div>
+            ),
+          )}
         </div>
       ))}
     </div>

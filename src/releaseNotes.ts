@@ -6,11 +6,56 @@
  * and a line that is neither is still kept -- the notes are generated today, but
  * a hand-edited release body should show what it says rather than be silently
  * dropped.
+ *
+ * That last case stopped being hypothetical: a release body now opens with a
+ * written summary above the generated sections, and it is prose. Rendered as
+ * bullets it read as three changelog entries that happened to be sentences, and
+ * its `**emphasis**` came out as literal asterisks -- so a line's *kind* is
+ * carried through, and the emphasis is split out for the renderer rather than
+ * shown raw.
  */
+
+export interface NoteSpan {
+  text: string;
+  bold: boolean;
+}
+
+export interface NoteItem {
+  /** The line, split into runs so `**this**` can be rendered as bold. */
+  spans: NoteSpan[];
+  /** Whether it was written as a list entry. Prose gets no bullet. */
+  bullet: boolean;
+}
 
 export interface NoteSection {
   heading: string;
-  items: string[];
+  items: NoteItem[];
+}
+
+/**
+ * Split `**bold**` runs out of a line.
+ *
+ * Only double asterisks, and only in pairs. Markdown has a dozen other marks and
+ * a release body is written by one person for this one panel -- supporting the
+ * one that is actually used beats a half-renderer that gets italics subtly
+ * wrong. An unpaired `**` is left exactly as typed, because a stray asterisk in
+ * prose is more likely than an unclosed emphasis.
+ */
+export function inlineSpans(text: string): NoteSpan[] {
+  const spans: NoteSpan[] = [];
+  let rest = text;
+  for (;;) {
+    const open = rest.indexOf("**");
+    if (open < 0) break;
+    const close = rest.indexOf("**", open + 2);
+    if (close < 0) break;
+    if (open > 0) spans.push({ text: rest.slice(0, open), bold: false });
+    const inner = rest.slice(open + 2, close);
+    if (inner) spans.push({ text: inner, bold: true });
+    rest = rest.slice(close + 2);
+  }
+  if (rest) spans.push({ text: rest, bold: false });
+  return spans.length > 0 ? spans : [{ text, bold: false }];
 }
 
 export function parseNotes(text: string): NoteSection[] {
@@ -26,7 +71,10 @@ export function parseNotes(text: string): NoteSection[] {
     const entry = (bullet ? bullet[1] : line).trim();
     if (!entry) continue;
     if (sections.length === 0) sections.push({ heading: "", items: [] });
-    sections[sections.length - 1].items.push(entry);
+    sections[sections.length - 1].items.push({
+      spans: inlineSpans(entry),
+      bullet: Boolean(bullet),
+    });
   }
 
   return sections.filter((section) => section.items.length > 0);
