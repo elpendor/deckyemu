@@ -1774,11 +1774,22 @@ class Plugin(
         one piece of blocking filesystem work that was being done on the event
         loop, where every other file operation in this class goes through the
         executor.
+
+        **A missing ROM is not a reason to skip.** It was, and that meant the one
+        game in the library that could not start was the one game whose launcher
+        never received a fix -- measured on a Deck with a ROM renamed on purpose:
+        "Rebuilt 16 launcher(s), skipped 1", and the 1 was the broken one.
+
+        Nothing about a launcher needs the ROM to exist: it is a path baked into
+        a command line, and a file that is gone today may be an SD card that is
+        mounted tomorrow. The library check is what reports a missing ROM, and it
+        already does. What is still refused is a job with no path at all, or no
+        core, because there is no argv to write.
         """
         rebuilt = 0
         skipped = []
         for job in jobs:
-            if not job["core_path"] or not job["rom_path"] or not os.path.isfile(job["rom_path"]):
+            if not job["core_path"] or not job["rom_path"]:
                 skipped.append(job["label"])
                 continue
             # A libretro core is run *by* RetroArch, so with no install there is

@@ -5476,8 +5476,19 @@ store.remember_games(
 )
 os.remove(gone_rom)
 _rebuild = run(plugin.rebuild_launchers())
-check("a rebuild names the game whose ROM is gone", _rebuild["skipped"], ["Vanished"])
-check("and still rebuilds every other game", _rebuild["rebuilt"], 1)
+# It used to skip this one and name it, which read as careful and was the
+# opposite. The launcher is what *reports* a missing ROM now -- it runs, the
+# emulator says "could not read content file", and the panel offers that -- so
+# refusing to write it withheld the fix from the only game that needed it.
+# Measured on a Deck with a ROM renamed on purpose: "Rebuilt 16 launcher(s),
+# skipped 1", and the 1 was the broken one.
+check("a rebuild writes the launcher for a game whose ROM is gone",
+      _rebuild["skipped"], [])
+check("along with every other game", _rebuild["rebuilt"], 2)
+# The missing file is still reported, by the check whose job that is.
+_gone_report = run(plugin.audit_library())
+check("and the audit is what says the ROM is missing",
+      any(b["title"] == "Vanished" for b in _gone_report["broken"]), True)
 
 _audited = run(plugin.audit_library())
 check("the audit reports every registered game", len(_audited["registry"]), 2)
