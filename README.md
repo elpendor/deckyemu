@@ -1,21 +1,29 @@
 # DeckyEmu
 
-**Add emulated games to your Steam library as real entries — clean name, boxart,
-and a shelf of their own — without ever leaving Game Mode.**
+**A complete emulation setup for the Steam Deck:** install emulators, transfer
+ROMs, add games to Steam, back up saves — all with a controller.
 
 ![The Quick Access panel in Game Mode, showing a ROM identified as Tobu Tobu
 Girl with its boxart, one press from being added to
 Steam.](docs/images/adding-a-game.jpg)
 
-Pick a ROM, pick a core or emulator, and the game appears in Big Picture like
-anything else you own. Works with RetroArch's libretro cores and with standalone
-emulators — Dolphin, PCSX2, DuckStation, PPSSPP, RPCS3, shadPS4, Vita3K,
-Ryujinx, Cemu, Azahar and xemu — each installable in one press from the plugin,
-or registered by hand.
+**Install an emulator** in one press — RetroArch and its cores, or Dolphin,
+PCSX2, DuckStation, PPSSPP, RPCS3, shadPS4, Vita3K, Ryujinx, Cemu, Azahar,
+xemu, Xenia Canary and Supermodel — along with the BIOS and firmware each one needs.
+Bring your own instead, if you would rather.
 
-Everything happens with a controller, from the Quick Access panel. There is no
-step that needs Desktop Mode, a keyboard or a second device — including the
-first install.
+**Get your games onto the Deck** from a phone or a laptop over your own network.
+ROMs, disc sets, zipped archives and PlayStation 3, PS4 and Vita packages all
+arrive, unpack and are filed under their system.
+
+**Play them from Steam**, with a clean name, boxart and a shelf of their own —
+and back your save data up to another device, or put it back from one.
+
+Everything happens with a controller, from the Quick Access panel. The one
+exception is [Decky Loader](https://github.com/SteamDeckHomebrew/decky-loader)
+itself, which is installed from Desktop Mode: that is the only trip you make.
+DeckyEmu's own install happens in Game Mode, and nothing after it needs a
+keyboard, a desktop or a second device.
 
 DeckyEmu ships no games, no BIOS files and no encryption keys, and downloads
 none of them. It installs emulators from their own publishers and points them at
@@ -25,9 +33,11 @@ you add a PlayStation 4 `.pkg`.
 
 ## Quick start
 
-You need [Decky Loader](https://github.com/SteamDeckHomebrew/decky-loader).
-Nothing else: RetroArch and its cores install from the plugin, and an existing
-RetroArch is detected automatically.
+You need [Decky Loader](https://github.com/SteamDeckHomebrew/decky-loader),
+which is the one thing installed from Desktop Mode. Everything below happens in
+Game Mode with a controller, DeckyEmu's own install included — and nothing else
+is needed first: RetroArch and its cores install from the plugin, and an
+existing RetroArch is detected automatically.
 
 1. Open the **Decky** menu in the Quick Access panel and go to its settings.
 2. Find **Install from URL** and give it:
@@ -77,7 +87,7 @@ symptom-by-symptom list for when one of them misbehaves.
 | [RetroArch](docs/retroarch.md) | Installing it and its cores, fullscreen, on-screen chatter, the menu combo, achievements |
 | [Standalone emulators](docs/emulators.md) | The one-press catalog, moving between builds, registering your own |
 | [Artwork](docs/artwork.md) | Where cover art comes from, and getting a SteamGridDB key in without a keyboard |
-| [Your library](docs/library.md) | Editing a game, collections, and putting things back in order |
+| [Your library](docs/library.md) | Editing a game, collections, backing up and restoring save data, and putting things back in order |
 | [Updates and problems](docs/updates.md) | Keeping it current, and what to send when something breaks |
 | [Emulator definitions](docs/emulator-definitions.md) | The JSON format for setting up an emulator this plugin does not ship |
 | [Development](docs/development.md) | Building it, running it against a real Deck, and the layout of the tree |

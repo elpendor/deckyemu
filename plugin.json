@@ -10,7 +10,7 @@
       "library",
       "boxart"
     ],
-    "description": "Add emulated games to your Steam library with proper names and boxart. RetroArch cores plus your own standalone emulators.",
+    "description": "A complete emulation setup for the Steam Deck: install emulators, transfer ROMs, add games to Steam, back up saves - all with a controller.",
     "image": "https://opengraph.githubassets.com/1/elpendor/deckyemu"
   }
 }
