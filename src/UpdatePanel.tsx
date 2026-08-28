@@ -8,7 +8,7 @@ import {
 
 import { clampNotes, countItems, parseNotes } from "./releaseNotes";
 import { toaster } from "@decky/api";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   checkForUpdate,
@@ -124,11 +124,21 @@ const VERSION_VALUE: React.CSSProperties = {
  *
  * Its own tab rather than a corner of Settings: none of it is a setting.
  */
+/** How often the panel re-reads which build is on disk while it is open. */
+const VERSION_POLL_MS = 4000;
+
 export function UpdatePanel() {
   const [backend, setBackend] = useState<PluginVersion | null>(null);
   const [update, setUpdate] = useState<UpdateCheck | null>(null);
   const [checking, setChecking] = useState(false);
   const [installing, setInstalling] = useState(false);
+  // The wait after an install outlives the panel whenever decky tears the
+  // frontend down, which is half the time and not knowable in advance.
+  const live = useRef(true);
+  useEffect(() => () => { live.current = false; }, []);
+  // Which build the last read reported, so a change can be told from the first
+  // answer.
+  const lastBuild = useRef<string | null>(null);
   // Which changelogs the user has unfolded, by the version they belong to.
   // Keyed rather than a single flag: the notes for what you are running and
   // the notes for what is on offer are two separate readings.
@@ -234,6 +244,44 @@ export function UpdatePanel() {
   }, [load, check]);
 
   /**
+   * Keep asking which build is on disk, for as long as this panel is open.
+   *
+   * Decky owns installing an update and the plugin reload that follows, and
+   * tells this side nothing about either -- so the version on screen was
+   * whatever had been read at mount, under a line still offering the update you
+   * had just installed. Leaving the panel and coming back fixed it, which is
+   * the tell: a remount was the only thing that ever re-read.
+   *
+   * Waiting on the install itself was the obvious fix and the wrong one. It
+   * assumed the panel that *started* the install is the panel still on screen
+   * when it lands, and a plugin reload is precisely what breaks that -- the
+   * component polling is torn down, a new one mounts, reads a backend that has
+   * not swapped yet, and never asks again. Polling from the panel survives that,
+   * because whichever instance is alive is doing the asking.
+   *
+   * Cheap enough not to think about: one backend call answered in single-digit
+   * milliseconds, every few seconds, only while somebody is looking at the
+   * Updates panel.
+   */
+  useEffect(() => {
+    const timer = setInterval(() => { void load(); }, VERSION_POLL_MS);
+    return () => clearInterval(timer);
+  }, [load]);
+
+  /**
+   * When the build actually changes, the update check is stale too.
+   *
+   * Skipped on the first sighting: that is the mount read, not a change, and
+   * re-checking there would spend a network call on the answer we already have.
+   */
+  useEffect(() => {
+    if (!backend) return;
+    const seen = `${backend.version}@${backend.build}`;
+    if (lastBuild.current && lastBuild.current !== seen) void check(false);
+    lastBuild.current = seen;
+  }, [backend, check]);
+
+  /**
    * Hand the release to decky and let it take over.
    *
    * Staged locally first: decky downloads the URL itself and holds no
@@ -261,6 +309,7 @@ export function UpdatePanel() {
         title: `Installing ${release.version}`,
         body: "Decky will confirm and show progress.",
       });
+
     } catch (error) {
       logError("could not start the update", error);
       toaster.toast({
@@ -268,7 +317,7 @@ export function UpdatePanel() {
         body: error instanceof Error ? error.message : "Decky did not accept the request.",
       });
     } finally {
-      setInstalling(false);
+      if (live.current) setInstalling(false);
     }
   }, [update?.latest]);
 
