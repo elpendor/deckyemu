@@ -17,6 +17,13 @@ panel on the way so nothing is left over the top of it. It goes through Steam
 rather than running the emulator directly, so gamescope, Steam Input and the
 overlay all behave as they do when you launch from the library.
 
+### Its page in your library
+
+The ⓘ button beside play opens Steam's own page for that game — where the
+artwork, the play time and the per-game controller and performance settings
+live. The panel closes on the way, for the same reason play does: anything left
+standing comes back on top of the page you asked for.
+
 ### If another game is already running
 
 Steam normally warns you before starting a second game, but that warning never

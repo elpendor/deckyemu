@@ -6,12 +6,13 @@ import {
   Spinner,
 } from "@decky/ui";
 import { useCallback, useEffect, useState } from "react";
-import { FaPen, FaPlay, FaTrash } from "react-icons/fa";
+import { FaInfoCircle, FaPen, FaPlay, FaTrash } from "react-icons/fa";
 
 import { listAdded, type AddedGame } from "./backend";
 import { GameEditorModal } from "./GameEditorModal";
 import { playGame } from "./playGame";
 import { RemoveGameModal } from "./RemoveGameModal";
+import { viewGameDetails } from "./viewGameDetails";
 import { systemLabel } from "./systemLabel";
 import { callWithRetry } from "./timeout";
 import { openModal } from "./modalStack";
@@ -121,6 +122,17 @@ export function AddedGamesModal({ closeModal, onChanged }: Props) {
                     style={{ minWidth: "auto", width: "auto", padding: "6px 12px" }}
                   >
                     <FaPlay />
+                  </DialogButton>
+                  {/* Second, after play: it is the other thing you might
+                      want a game *for* rather than a thing you do *to* it, and
+                      the two edit buttons below are. Same discipline as play --
+                      the modal is dismissed before the navigation, or Steam
+                      re-reveals it over the page it just went to. */}
+                  <DialogButton
+                    onClick={() => viewGameDetails(game.app_id, closeModal)}
+                    style={{ minWidth: "auto", width: "auto", padding: "6px 12px" }}
+                  >
+                    <FaInfoCircle />
                   </DialogButton>
                   <DialogButton
                     // Stacked on this one: Steam nests modals, so closing the
