@@ -63,8 +63,17 @@ def _runs(*words):
 check("and nothing the ROM path carried does either", _runs("rm", "-rf", "~"), False)
 check("the one rm in it is the gate's own, taking its token",
       _runs("rm", "-f"), True)
-check("the script still runs exactly one command", _words.count("exec"), 1)
-check("which is the emulator", _words[_words.index("exec") + 1], "/usr/bin/retroarch")
+# Two `exec`s now, and only one of them runs anything: `exec >>log 2>&1` with no
+# command is a redirection of this shell's own descriptors, which is the whole
+# reason the launch log costs nothing -- the process tree Steam sees is
+# unchanged. The check that matters is unchanged with it: exactly one `exec`
+# takes a command, and that command is the emulator.
+_execs = [at for at, word in enumerate(_words) if word == "exec"]
+_commands = [_words[at + 1] for at in _execs if not _words[at + 1].startswith(">")]
+check("the script still runs exactly one command", len(_commands), 1)
+check("which is the emulator", _commands[0], "/usr/bin/retroarch")
+check("and the other exec only redirects, so nothing else is run",
+      len(_execs), 2)
 check("with the whole ROM path as one argument, newlines and all",
       _words[-1], _rom)
 check("and the core it was asked for", _words[-2:], [_core, _rom][-2:])

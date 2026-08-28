@@ -23,6 +23,32 @@ import sysenv
 
 LAUNCHER_DIR = os.path.join(decky.DECKY_PLUGIN_RUNTIME_DIR, "launchers")
 
+#: What the emulator said on its last run, one file per game.
+#:
+#: **This exists because the plugin took the emulator's own error channel away.**
+#: `hide_osd` defaults to "all" so a game launched from Steam looks like a game
+#: from Steam, and `store.py` records the cost in the same breath: RetroArch's
+#: error text goes with the chatter, so a core that cannot find its BIOS fails
+#: quietly. The stated replacement is the firmware check, which runs when a game
+#: is *added* and answers nothing afterwards -- a BIOS moved, a card unmounted,
+#: an emulator build that regressed, all present as a black screen and silence.
+#:
+#: One run, not a history: the file is truncated as the launcher starts, so what
+#: is here is always the launch somebody is asking about. See `LAUNCH_LOG_CAP`
+#: for what stops a long session filling the disk with it.
+LAUNCH_LOG_DIR = os.path.join(decky.DECKY_PLUGIN_RUNTIME_DIR, "launch-logs")
+
+#: How much of one is worth keeping, swept at startup.
+#:
+#: The redirect is unbounded while a game runs -- capping it in shell needs a
+#: pipe, and a pipe whose reader exits sends the emulator SIGPIPE, which is a
+#: real crash traded for a diagnostic. So the size is dealt with afterwards
+#: instead: a log over this is truncated to its tail at startup, and the reader
+#: only ever asks for the last few thousand characters anyway. A verbose
+#: emulator can still write more than this during one session; it is one file
+#: per game and the next launch truncates it.
+LAUNCH_LOG_CAP = 2 * 1024 * 1024
+
 #: Where the launch gate leaves its notes. Two kinds of one-line file, both
 #: named after the Steam app id: `bounced-<id>`, written by a launcher that
 #: refused to start and listing what was already running, and `approved-<id>`,
@@ -82,7 +108,30 @@ LAUNCH_GATE_DIR = os.path.join(decky.DECKY_PLUGIN_RUNTIME_DIR, "launch")
 #      setting rides in the override file, written when a launcher is, so like
 #      version 8 an existing library keeps losing saves until they are
 #      rewritten.
-FORMAT_VERSION = 11
+#  12  the launcher keeps what the emulator says. Nothing did, so a game that
+#      started and died left no trace at all -- and `hide_osd` had already
+#      taken away the on-screen text that would have explained it. Baked into
+#      the script, so like every version above it reaches nothing already on
+#      disk until the launchers are rewritten.
+#  13  RetroArch is launched with `--verbose`, which is the only thing that
+#      makes it say why a game did not start -- without it a missing ROM
+#      produced an empty log and version 12 collected nothing. **The argv is
+#      built in `ra_detect`, not here**, and that is exactly why this bump was
+#      missed the first time: the version governs everything baked into the
+#      script, wherever the code that bakes it lives. Anything that changes what
+#      the launcher runs needs a number here, or it reaches only games added
+#      afterwards -- which on a device that already has a library is nothing.
+#  14  and again, because 13 could not reach the game it was for. `rebuild`
+#      skipped any game whose ROM was missing, so the broken game kept its old
+#      launcher while the *number* was recorded as done -- and this number is
+#      the only thing that decides whether launchers are rewritten, so nothing
+#      would ever have retried. The skip is gone (see `_write_launchers`); this
+#      bump is what carries the fix to a device that already recorded 13.
+#
+#      Worth keeping in mind whenever a rebuild is fixed: the version says an
+#      upgrade *ran*, not that it reached every game, so a bug in the rebuild
+#      itself always costs two numbers.
+FORMAT_VERSION = 14
 
 # One file per OSD mode rather than one shared file. Games can override the
 # global setting individually, and a single file would mean the last game
@@ -440,6 +489,102 @@ def _flat(text):
 DIGEST_LENGTH = 8
 
 
+def launch_log_path(launcher):
+    """Where this launcher's last run is kept.
+
+    Named from the launcher rather than from the appid, because the launcher is
+    what the script knows about itself -- the appid is read out of `/proc` by the
+    gate and is empty whenever that read fails, which is not a thing to hang a
+    filename on.
+    """
+    stem = os.path.splitext(os.path.basename(launcher))[0]
+    return os.path.join(LAUNCH_LOG_DIR, "%s.log" % stem)
+
+
+def log_capture(launcher):
+    """The shell that keeps what the emulator says, or "" if it cannot.
+
+    **Redirects the shell's own descriptors and then execs into them**, rather
+    than running the emulator as a child and reading its pipes. The process tree
+    is unchanged -- Steam's reaper still sees what it saw before, and Stop still
+    signals what it signalled -- which is the whole reason this is three lines of
+    redirection instead of a wrapper.
+
+    **Fails open, every branch.** A log that cannot be truncated, a directory
+    that cannot be made, a full disk: each leaves the redirect undone and the
+    game launches exactly as it did before. This runs in front of every game in
+    the library, and a game that will not start is a far worse failure than a
+    diagnostic that was not collected -- the same rule the launch gate above
+    follows for the same reason.
+    """
+    log = launch_log_path(launcher)
+    # Joined with a plain newline, never `os.linesep`: this is a shell script for
+    # the Deck, and CRLF in it is `#!/bin/sh\r`, which fails to execute at all.
+    return "\n".join([
+        "# What the emulator says, for the panel to show when a game dies on",
+        "# startup. Truncated here, so this is always the last run.",
+        "_dke_log=%s" % shlex.quote(log),
+        "mkdir -p %s 2>/dev/null" % shlex.quote(LAUNCH_LOG_DIR),
+        'if : > "$_dke_log" 2>/dev/null; then exec >>"$_dke_log" 2>&1; fi',
+        "",
+    ])
+
+
+def read_launch_log(launcher, limit=8000):
+    """The tail of what this launcher's game last said, or "".
+
+    The tail rather than the whole file: what explains a failure is the last
+    thing said before it, and a verbose emulator's first eight thousand
+    characters are its own startup banner.
+    """
+    path = launch_log_path(launcher)
+    try:
+        size = os.path.getsize(path)
+        with open(path, "r", encoding="utf-8", errors="replace") as handle:
+            if size > limit:
+                handle.seek(size - limit)
+            tail = handle.read()
+    except OSError:
+        return ""
+
+    # The seek lands mid-line, which is noise at the top of a report -- so the
+    # first partial line goes, *if there is a line to lose*. Dropping it
+    # unconditionally with `readline()` returned nothing at all for a log with
+    # no newline in its tail, which is not exotic: an emulator that redraws a
+    # progress line with carriage returns writes exactly that, and so does one
+    # that dies before finishing its first line.
+    if size > limit and "\n" in tail:
+        tail = tail.split("\n", 1)[1]
+    return tail.strip()
+
+
+def sweep_launch_logs():
+    """Trim anything that grew past `LAUNCH_LOG_CAP`. Returns how many were cut.
+
+    At startup rather than as they are written: capping the redirect itself needs
+    a pipe, and a pipe whose reader goes away sends the emulator SIGPIPE.
+    """
+    cut = 0
+    try:
+        names = os.listdir(LAUNCH_LOG_DIR)
+    except OSError:
+        return 0
+    for name in names:
+        path = os.path.join(LAUNCH_LOG_DIR, name)
+        try:
+            if not os.path.isfile(path) or os.path.getsize(path) <= LAUNCH_LOG_CAP:
+                continue
+            tail = read_launch_log(os.path.splitext(name)[0], LAUNCH_LOG_CAP // 2)
+            with open(path, "w", encoding="utf-8", newline="\n") as handle:
+                handle.write(tail)
+            cut += 1
+        except OSError as error:
+            decky.logger.warning("Could not trim %s: %s", path, error)
+    if cut:
+        decky.logger.info("Trimmed %d oversized launch log(s)", cut)
+    return cut
+
+
 def launcher_path(title, rom_path):
     os.makedirs(LAUNCHER_DIR, exist_ok=True)
     return os.path.join(
@@ -643,6 +788,7 @@ def write_launcher(
             sysenv.SHELL_PREAMBLE,
             "",
             launch_gate(),
+            log_capture(path),
             "exec %s" % " ".join(shlex.quote(arg) for arg in argv),
             "",
         ]

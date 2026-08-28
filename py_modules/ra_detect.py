@@ -299,6 +299,24 @@ def launch_argv(install, core_path, rom_path, appendconfig=""):
 
     if appendconfig:
         argv.append("--appendconfig=%s" % appendconfig)
+    # **The only lever that makes RetroArch say why a game did not start.**
+    #
+    # Measured on a Deck against a ROM renamed out from under a game: launched
+    # as the plugin launches it, RetroArch printed *nothing at all* -- one line
+    # about a flatpak sandbox path and no mention of the missing file. With
+    # `--verbose` it printed exactly the sentence somebody needs:
+    #
+    #   [ERROR] [Content] Could not read content file: "....sfc".
+    #
+    # `log_verbosity` in the appended config does not do it. Tried at three
+    # `frontend_log_level` values, all of which produced zero lines: the config
+    # key governs RetroArch's own log file, and the flag is what opens stderr.
+    #
+    # It costs almost nothing and nothing on screen. That whole failing run was
+    # 1,923 bytes, and `hide_osd` is about on-screen notifications, which this
+    # does not touch -- what it feeds is `launchers.LAUNCH_LOG_DIR`, which
+    # exists because `hide_osd` took the visible channel away.
+    argv.append("--verbose")
     argv.extend(["-L", core_path, rom_path])
     return argv
 

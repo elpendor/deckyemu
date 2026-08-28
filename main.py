@@ -335,6 +335,11 @@ class Plugin(
             ("upgrade emulator setups", self._upgrade_emulator_setups),
             ("re-file split firmware records", self._resplit_firmware_records),
             ("forget settings that no longer exist", self._forget_removed_settings),
+            # Every start rather than on a version change: what it trims is
+            # written by playing, not by upgrading. See `LAUNCH_LOG_CAP` for why
+            # the capping happens here instead of in the launcher.
+            ("trim oversized launch logs",
+             lambda: self._run(launchers.sweep_launch_logs)),
         ):
             try:
                 await step()
@@ -1778,13 +1783,14 @@ class Plugin(
         **A missing ROM is not a reason to skip.** It was, and that meant the one
         game in the library that could not start was the one game whose launcher
         never received a fix -- measured on a Deck with a ROM renamed on purpose:
-        "Rebuilt 16 launcher(s), skipped 1", and the 1 was the broken one.
+        "Rebuilt 16 launcher(s), skipped 1", and the 1 was the broken one. The
+        launcher is what *reports* the missing file now, so refusing to write it
+        is refusing to write the thing that explains the failure.
 
         Nothing about a launcher needs the ROM to exist: it is a path baked into
         a command line, and a file that is gone today may be an SD card that is
-        mounted tomorrow. The library check is what reports a missing ROM, and it
-        already does. What is still refused is a job with no path at all, or no
-        core, because there is no argv to write.
+        mounted tomorrow. What is still refused is a job with no path at all, or
+        no core, because there is no argv to write.
         """
         rebuilt = 0
         skipped = []

@@ -59,7 +59,16 @@ six digits on anything with a keyboard. Copy the text, paste it into the issue.
 
 It carries the plugin version and build, what RetroArch is and how it was
 installed, which emulators are registered, how many games are in the library and
-under which systems, your settings, and the last 200 lines of the log.
+under which systems, your settings, the last 200 lines of the log, and **what
+the emulator said the last time you launched a game**.
+
+That last one is why a game that starts and dies is no longer a dead end.
+Launching from here suppresses the emulator's on-screen messages so a game looks
+like a game rather than a frontend — which also took away the line that would
+have told you a BIOS had moved or a ROM was gone. Each launch now keeps what the
+emulator wrote, one file per game, overwritten every time it starts, and the most
+recent one travels with this report. Nothing interrupts you: there is no
+notification and no badge, it is simply there when you go looking.
 
 Your SteamGridDB key, your RetroAchievements token, the transfer token, your
 RetroAchievements username and the names and paths of your games are struck out

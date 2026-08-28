@@ -14,6 +14,7 @@ the log by some other route, which is why they are struck out of the whole
 report by value rather than merely omitted from the settings section.
 """
 
+import io
 import os
 import sys
 
@@ -298,6 +299,49 @@ check("and says there was no log",
 # a Deck can have none -- so it reports as such rather than as an error.
 check("RetroArch being absent is reported plainly",
       "not found" in diagnostics.build({}, None, [], {}), True)
+
+
+section("what the emulator said on the last launch travels with the report")
+
+# The only place this ends up. It was briefly a toast and then a row in the
+# Quick Access panel, and both were the wrong shape: the moment it fires is the
+# moment somebody is watching their game vanish. Nothing interrupts now -- it
+# rides along with the report they send when they are actually asking.
+import launchers  # noqa: E402
+
+#: Written out rather than inlined: a bare escape in a generated edit gets
+#: eaten before the file is written, which is a syntax error nowhere near
+#: where it reads wrong.
+NL = chr(10)
+
+os.makedirs(launchers.LAUNCH_LOG_DIR, exist_ok=True)
+check("with no game ever launched it says so, rather than showing an empty box",
+      "No game has been launched" in diagnostics.build({}, None, [], {}), True)
+
+_LAUNCH = os.path.join(launchers.LAUNCH_LOG_DIR, "some-game-abc123.log")
+with io.open(_LAUNCH, "w", encoding="utf-8", newline=NL) as _handle:
+    _handle.write('[ERROR] [Content] Could not read content file: "/roms/snes/A Game.sfc".')
+_report = diagnostics.build({}, None, [], {})
+check("the reason a game did not start is in the report",
+      "Could not read content file" in _report, True)
+
+# An emulator that started cleanly may simply have had nothing to say, and a
+# launcher written before format 12 captures nothing at all. Both are ordinary,
+# and an empty section reads as a fault.
+with io.open(_LAUNCH, "w", encoding="utf-8", newline=NL) as _handle:
+    _handle.write("")
+check("a launch that said nothing says that",
+      "the emulator said nothing" in diagnostics.build({}, None, [], {}), True)
+
+# The path in that error names a game, and the report goes into a public issue.
+store.set_settings({"cheevos_username": "someone"})
+with io.open(_LAUNCH, "w", encoding="utf-8", newline=NL) as _handle:
+    _handle.write('[ERROR] Could not read: "/roms/snes/Secret Game.sfc".')
+_struck = diagnostics.build(
+    {}, None, [], {1: {"title": "Secret Game", "rom_path": "/roms/snes/Secret Game.sfc"}})
+check("and the game it names is struck out of it like every other title",
+      "Secret Game" in _struck, False)
+os.remove(_LAUNCH)
 
 
 if __name__ == "__main__":

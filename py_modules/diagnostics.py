@@ -33,6 +33,7 @@ too, in their plain and percent-encoded forms.
 
 import glob
 import json
+import time
 import os
 import re
 import urllib.parse
@@ -41,6 +42,7 @@ import decky
 
 import releases
 import hardware
+import launchers
 import store
 import sysenv
 
@@ -242,6 +244,58 @@ def _os_release():
     return " ".join("%s=%s" % (key, found[key]) for key in wanted if key in found)
 
 
+#: How much of the most recent launch to carry, and how many runs to consider.
+#:
+#: One game, not all of them: the report is already long, and the question it is
+#: attached to is "the last thing I tried did not work". A shorter tail than the
+#: plugin log's because an emulator repeats itself and the useful line is at the
+#: end.
+LAUNCH_TAIL = 3000
+
+
+def _last_launch():
+    """What the most recently launched game's emulator said, or a line saying none.
+
+    **The only place this ends up.** It was briefly a toast and then a row in the
+    Quick Access panel, and both were the wrong shape: the moment it fires is the
+    moment somebody is watching their game vanish, and a notification there is
+    one more thing to dismiss. Nothing interrupts now -- the launcher writes what
+    the emulator said, and it travels with the report somebody sends when they
+    are actually asking about it.
+
+    Struck like everything else here: the ROM path is in that error text, and
+    `build` strikes paths and titles by value before any of this is shown.
+    """
+    try:
+        names = os.listdir(launchers.LAUNCH_LOG_DIR)
+    except OSError:
+        return "No game has been launched since this was installed."
+
+    newest = ""
+    newest_at = 0.0
+    for name in names:
+        path = os.path.join(launchers.LAUNCH_LOG_DIR, name)
+        try:
+            at = os.path.getmtime(path)
+        except OSError:
+            continue
+        if at > newest_at:
+            newest, newest_at = path, at
+
+    if not newest:
+        return "No game has been launched since this was installed."
+
+    said = launchers.read_launch_log(os.path.splitext(os.path.basename(newest))[0],
+                                     LAUNCH_TAIL)
+    when = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(newest_at))
+    if not said:
+        # An ordinary answer, and worth saying rather than leaving blank: a
+        # launcher written before format 12 captures nothing, and an emulator
+        # that started cleanly may simply have had nothing to report.
+        return "%s -- the emulator said nothing." % when
+    return "%s\n\n%s" % (when, said)
+
+
 def _section(title, body):
     return "## %s\n%s\n" % (title, body if body else "(nothing)")
 
@@ -393,6 +447,7 @@ def build(version, install, emulators_registered, library, catalog_installed=(),
             ),
         ),
         _section("Log (last %d lines)" % LOG_LINES, _log_tail()),
+        _section("Last launch", _last_launch()),
     ]
 
     # Every word of every *name*, for the pass above -- not of every path.
