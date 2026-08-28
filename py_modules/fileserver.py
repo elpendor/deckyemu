@@ -1218,7 +1218,24 @@ def current_token():
 INBOX_LISTED = 100
 
 
-def inbox_files(suffix=""):
+def saving_into():
+    """The folder arrivals are landing in: the running server's, or the default.
+
+    `default_dir` is the ROM inbox and was read directly by everything below,
+    which was right while every send went there. It stopped being right the day
+    a send could be pointed somewhere else: `FirmwarePanel` starts this server on
+    the firmware folder, so a BIOS arrived into a dialog whose list, delete and
+    unpack were all still looking at the ROM inbox -- the file vanished from the
+    list the instant it landed, which reads as a failed transfer, and the delete
+    button beside such a row could never have found it.
+    """
+    with _state_lock:
+        running = _server is not None
+        target = _target_dir
+    return target if running and target else default_dir(create=False)
+
+
+def inbox_files(suffix="", directory=""):
     """What is sitting in the transfer folder now, newest first.
 
     Read off the disk rather than from a list of what this process happened to
@@ -1232,7 +1249,7 @@ def inbox_files(suffix=""):
     whatever is named -- so which file that is must not be the frontend's
     decision. It names one of these.
     """
-    directory = default_dir(create=False)
+    directory = directory or default_dir(create=False)
     try:
         names = sorted(os.listdir(directory))
     except OSError:
@@ -1258,7 +1275,7 @@ def inbox_files(suffix=""):
 
 
 def inbox_path(name):
-    """The full path of `name` inside the transfer folder, or "".
+    """The full path of `name` in the folder arrivals land in, or "".
 
     A name that is not already its own basename is refused outright rather than
     reduced to one. `safe_name` would turn `subdir/thing.json` into
@@ -1271,9 +1288,17 @@ def inbox_path(name):
     name = (name or "").strip()
     if not name or name != safe_name(name):
         return ""
-    directory = default_dir(create=False)
-    path = os.path.join(directory, name)
-    return path if os.path.isfile(path) else ""
+    # The folder the server is saving into, so the buttons beside a listed file
+    # act on the file that was listed. Pointed at the default this refused every
+    # firmware arrival by name, which is a delete button doing nothing on a row
+    # that is plainly there.
+    path = os.path.join(saving_into(), name)
+    if os.path.isfile(path):
+        return path
+    # And the ROM inbox regardless, for a file listed by an earlier session or
+    # reached from a panel rather than from the running dialog.
+    fallback = os.path.join(default_dir(create=False), name)
+    return fallback if os.path.isfile(fallback) else ""
 
 
 def received_files():
@@ -1286,7 +1311,8 @@ def received_files():
     ROM sent yesterday could not be added, and nothing could delete it either.
 
     Kept as its own name rather than folded into `inbox_files` because the two
-    answer different questions and only happen to agree today: this one is what
-    the dialog shows, and if that ever needs filtering it belongs here.
+    answer different questions, and they no longer agree: this one follows the
+    server, so a send pointed at another folder lists what actually arrived,
+    while `inbox_files` stays on the ROM inbox for the callers that mean it.
     """
-    return inbox_files()
+    return inbox_files(directory=saving_into())
