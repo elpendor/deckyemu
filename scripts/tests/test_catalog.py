@@ -619,6 +619,74 @@ check("no shipped workaround is deprecated yet",
       [])
 
 
+section("what an emulator can open is not what its system uses")
+
+# The derivation is about a *system*: `extensions_for` merges what every
+# libretro core declaring that system supports. A standalone emulator therefore
+# inherits anything any of those cores can read, which is right for almost
+# everything and wrong wherever the two genuinely differ.
+#
+# **PCSX2 is the case that found this.** `pcsx2_libretro` declares `m3u`; the
+# flatpak PCSX2 cannot open one -- its own file-type filter is `*.bin *.iso
+# *.cue *.mdf *.chd *.cso *.zso *.gz *.dump` and `m3u` is nowhere in the binary.
+# The multi-disc switch was offered for a two-disc PS2 game, the playlist was
+# written, and the launcher handed PCSX2 a file it cannot read: one library
+# entry that starts nothing.
+
+_DB = {
+    "Sony - PlayStation 2": ["iso", "chd", "cso", "cue", "bin", "m3u"],
+    "Nintendo - GameCube": ["iso", "gcm", "rvz", "m3u"],
+    "Sony - PlayStation": ["cue", "chd", "bin", "m3u"],
+}
+
+check("PCSX2 does not claim a playlist",
+      "m3u" in emulator_catalog.extensions_for(emulator_catalog.find("pcsx2"), _DB),
+      False)
+# And the subtraction is surgical: everything else the core offered is still
+# there, or the emulator would stop matching the files it does run.
+check("but keeps everything else the system uses",
+      emulator_catalog.extensions_for(emulator_catalog.find("pcsx2"), _DB),
+      ["bin", "chd", "cso", "cue", "gz", "iso", "mdf", "zso"])
+
+# The two that genuinely do read one, so a fix for PCSX2 cannot quietly take
+# multi-disc away from the systems it works on.
+for _id in ("dolphin", "duckstation"):
+    check("%s still claims a playlist" % _id,
+          "m3u" in emulator_catalog.extensions_for(emulator_catalog.find(_id), _DB),
+          True)
+
+# Subtracted after both sources, so a manual entry cannot put back what the
+# emulator has said it cannot open.
+check("a manual extension does not survive cannot_open",
+      "m3u" in emulator_catalog.extensions_for(
+          dict(emulator_catalog.find("pcsx2"), databases=["Nintendo - GameCube"]), _DB),
+      False)
+
+# Nothing else uses it yet. This fails the day something does, as a prompt to
+# check that the reason is written down beside it rather than inferred later.
+check("PCSX2 is the only entry that has to correct the derivation",
+      [entry["id"] for entry in emulator_catalog.CATALOG if entry.get("cannot_open")],
+      ["pcsx2"])
+
+# **`changes_disc` is a claim that the other discs are reachable once the first
+# is running**, and the cost of a wrong yes is a library entry that can only ever
+# play disc one. Two mechanisms count and both were read off the installed
+# binary: PCSX2 has `Change Disc` in its own menu, and Xenia implements
+# `XamLoaderLaunchTitleOnDvd`, so a game split across its discs asks the console
+# for the next one and Xenia serves it from the folder.
+check("only the entries whose disc changing has been seen claim it",
+      sorted(entry["id"] for entry in emulator_catalog.CATALOG
+             if entry.get("changes_disc")),
+      ["pcsx2", "xenia"])
+# It only means anything where a playlist is impossible: an entry that can be
+# handed one has no use for it, and setting both would be two answers to the
+# same question.
+check("and nothing claims both a playlist and a disc menu",
+      [entry["id"] for entry in emulator_catalog.CATALOG
+       if entry.get("changes_disc") and "m3u" in emulator_catalog.extensions_for(entry, _DB)],
+      [])
+
+
 if __name__ == "__main__":
     from harness import summary
 

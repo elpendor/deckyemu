@@ -162,16 +162,9 @@ what starts it.
 **One game at a time.** You see the core, the name and the cover before anything
 reaches your library. There is no bulk import.
 
-**If you have added that game before, the panel says so** before you press
-anything — either *this file is already in your library*, when the same file is
-already a game, or *you may already have this game*, when a game runs a file
-with the same name from somewhere else. The second is what sending the same ROM
-twice looks like: the first copy was filed into your library folder, so the new
-one arrives in the transfer folder under the same name.
-
-It is a remark, not a refusal. Adding the same ROM twice is a perfectly
-reasonable thing to want — the same disc under two different cores, say — so the
-button changes to **Add a second time** and does exactly that.
+**A multi-disc game becomes one entry.** Pick any disc and the panel offers to
+add the whole set as one game, so disc two is a menu away rather than a second
+shortcut. See [Multi-disc games](#multi-disc-games).
 
 ### PlayStation and Vita packages
 
@@ -202,9 +195,76 @@ and where it comes from.
 | Reach RetroArch's menu with a controller | **Settings → RetroArch → Launching** |
 | Update the plugin | **Settings → Updates** |
 | Find entries that drifted out of sync | **Settings → Library** |
+| Change disc in a multi-disc game | **Select + Start** in game, if it has not switched by itself |
 
 Editing a game keeps its Steam entry, so playtime and its place in a collection
 survive the change.
+
+### Multi-disc games
+
+Pick any disc of a set and the panel offers to **add all of them as one game**.
+One entry in your library, every disc filed into one folder, and the switch is
+on by default — turn it off to add the single disc instead.
+
+**What runs the game decides the rest:**
+
+| Runs it | Shortcut starts | Changing disc |
+| --- | --- | --- |
+| A libretro core that reads playlists | the playlist | By itself. Otherwise **Select + Start** → **Disc Control** |
+| DuckStation | the playlist | By itself. Otherwise **Select + Start** → **Change Disc** |
+| Dolphin | the playlist | By itself, and only that — its own *Change Disc* opens a file browser no controller can drive |
+| PCSX2 | the **first disc** | **Select + Start** → **Change Disc**, which finds disc 2 beside disc 1 |
+| Xenia | the **first disc** | By itself — a split game asks for its next disc and gets it from the folder |
+
+Every row is one library entry with its discs kept together. The last two cannot
+read a playlist, so their shortcut starts a disc — and having the rest in one
+folder is exactly what lets them reach the others.
+
+**Xbox 360 works like PlayStation 2**, by a different route: a game split across
+its discs asks the console for the next one and Xenia serves it from the folder,
+so there is nothing to press. Not every Xbox 360 set is split that way — on some,
+disc 1 is the whole game and disc 2 holds extra content that is fairly its own
+entry. Turn the switch off for those.
+
+PlayStation 3 never had a multi-disc game to begin with.
+
+**Select + Start is the same combo everywhere it works**, including
+[RetroArch's own menu](retroarch.md#getting-into-retroarchs-menu). DuckStation
+and PCSX2 share the menu it opens, so it looks and behaves the same in both.
+
+**Naming.** The discs are recognised by their filenames, because the disc number
+is not inside the file — every emulation tool works this way.
+
+| Recognised | Not recognised |
+| --- | --- |
+| `Game (Disc 1).cue` | `Game Disc 1.cue` — the marker must be bracketed |
+| `Game (Disc 1 of 2).chd` | `Game d1.cue` |
+| `Game [Disk 1].cue` | `Game - Disc 1.cue` |
+| `Game (CD 1).bin` | |
+| `Game (Disc 1) (Rev 1).cue` | |
+
+Anything else is simply not spotted, and **Pick another disc** under the switch
+lets you choose the rest by hand. They have to be in the same folder, because a
+playlist can only name files beside it.
+
+Everything except the disc number has to match exactly, so `Game` and `Game 2`
+are never merged, and a set with a disc missing is not offered at all — half a
+game is worse than none.
+
+**The switch appears whatever runs the game** — see the table above for what
+changes. What is read from the core's own information, rather than a list kept
+here, is whether it can be handed a playlist.
+
+**Three layouts the panel will tell you about:**
+
+| What you picked | What it says |
+| --- | --- |
+| A disc when the others are in folders of their own — how a Redump download arrives | Send every disc's files across together; they arrive in one folder, which is all it takes |
+| A `.bin` whose `.cue` never arrived | Send the `.cue` too — without it the audio track is invisible and the game may not start |
+| One `.bin` track of a disc | Pick the `.cue` that names it; the tracks are not discs, even though they are usually numbered like them |
+
+Removing a multi-disc game takes the playlist, every disc and every track with
+it, the same as any other game.
 
 ## When something does not work
 

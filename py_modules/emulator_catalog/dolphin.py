@@ -169,7 +169,8 @@ _DOLPHIN_SETUP = {
     #      written its own bindings and every key was skipped one at a time;
     #      and the analytics prompt answered
     #   4  Dolphin's own on-screen messages off
-    "version": 4,
+    #   5  two-disc games change disc by themselves
+    "version": 5,
     "files": {
         # `False` is Dolphin's own default, so it is stated as replaceable.
         # Anything else there was chosen by somebody and is left alone.
@@ -198,6 +199,21 @@ _DOLPHIN_SETUP = {
             # UsePanicHandlers. True is Dolphin's default, so anything else in
             # there was chosen by somebody and is left alone.
             "Interface": {"OnScreenDisplayMessages": {"value": "False", "default": "True"}},
+            # A two-disc GameCube game is one library entry -- the plugin writes
+            # an `.m3u` and the launcher passes it on the command line -- and
+            # this is what makes the second disc reachable without a keyboard.
+            #
+            # Dolphin's own description of the setting names the three ways it
+            # can work, and the third is exactly what happens here: "by
+            # launching an M3U file with File > Open or the command line
+            # interface". Its menu is no more reachable in Game Mode than
+            # DuckStation's was, so an automatic switch is not a convenience
+            # here, it is the only route.
+            #
+            # `[Core]`, read off the installed binary rather than assumed: the
+            # config table stores each key beside its section, and this one sits
+            # between `Core`/`EnableWiiLink` and `Core`/`CustomRTCValue`.
+            "Core": {"AutoDiscChange": {"value": "True", "default": "False"}},
         },
         "%s/GCPadNew.ini" % _DOLPHIN_CONFIG: {"GCPad1": _DOLPHIN_PAD},
         "%s/WiimoteNew.ini" % _DOLPHIN_CONFIG: {"Wiimote1": _DOLPHIN_WIIMOTE},

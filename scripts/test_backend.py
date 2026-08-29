@@ -3589,6 +3589,113 @@ check("unregistering an unknown game is not an error", run(plugin.unregister_gam
 run(plugin.forget_games([700]))
 os.remove(unknown_rom)
 
+section("a multi-disc game, from the picked disc to the launcher")
+
+# The chain the panel walks, in order, through the real endpoints: probe a disc,
+# write the playlist, build the shortcut. Filing and deleting are the other half
+# and live in tests/test_disc_filing.py, which needs no plugin.
+#
+# What this pins down is the division that makes the feature work at all.
+# Everything up to the playlist is worked out from a *disc*, because that is the
+# file carrying the evidence -- `.m3u` is claimed by one system in the whole
+# catalog, so probing the playlist instead would offer a Saturn set no cores at
+# all. The playlist is written last, at the moment Add is pressed.
+# Borrowed and put back. State here is built up across the whole file and the
+# sections below depend on what is in `_cores` -- leaving SwanStation in it made
+# "the core count is what was scanned" and a rename two hundred lines later fail,
+# which is the trap this file's own header describes.
+_cores_before_discs = plugin._cores
+plugin._cores = [SWANSTATION_CORE]
+
+_ps1 = os.path.join(TMP, "multidisc")
+os.makedirs(_ps1, exist_ok=True)
+for _disc_no in (1, 2, 3):
+    open(os.path.join(_ps1, "Zed (USA) (Disc %d).chd" % _disc_no), "w").close()
+_first = os.path.join(_ps1, "Zed (USA) (Disc 1).chd")
+
+_probe = run(plugin.probe_rom(_first))
+check("the probe finds every disc, in order", _probe["disc_set"],
+      ["Zed (USA) (Disc %d).chd" % n for n in (1, 2, 3)])
+check("and names the playlist before writing one", _probe["disc_playlist"],
+      "Zed (USA).m3u")
+# Matched on the disc's extension, which is the whole reason the playlist is
+# written later than this.
+check("cores are offered for the disc, not for a playlist",
+      [core["id"] for core in _probe["matching_cores"]], ["swanstation"])
+check("the title loses the disc marker with the region",
+      _probe["provisional_title"], "Zed")
+check("and nothing has been written yet", os.path.isdir(_ps1) and sorted(
+      name for name in os.listdir(_ps1) if name.endswith(".m3u")), [])
+
+# A disc picked by hand, for a set the naming rules cannot reach. The folder is
+# the only one a playlist can name, so anything else is refused with a reason.
+open(os.path.join(TMP, "Zed (USA) (Disc 4).chd"), "w").close()
+_elsewhere = run(plugin.disc_candidate(os.path.join(TMP, "Zed (USA) (Disc 4).chd"), _ps1))
+check("a disc in another folder cannot join the set", _elsewhere["ok"], False)
+check("and the reason says what to do", "same folder" in _elsewhere["error"], True)
+_here = run(plugin.disc_candidate(os.path.join(_ps1, "Zed (USA) (Disc 2).chd"), _ps1))
+check("one beside the others can", (_here["ok"], _here["name"]),
+      (True, "Zed (USA) (Disc 2).chd"))
+
+_made = run(plugin.make_disc_playlist(_first, _probe["disc_set"]))
+check("the playlist is written", _made["ok"], True)
+check("beside the discs", os.path.dirname(_made["path"]), _ps1)
+with io.open(_made["path"], "r", encoding="utf-8") as _handle:
+    check("naming them in order, one per line",
+          _handle.read().splitlines(), _probe["disc_set"])
+
+# Writing the same set again is what adding the same game twice does, and it has
+# nothing to do rather than something to refuse.
+check("the same set again is a success",
+      run(plugin.make_disc_playlist(_first, _probe["disc_set"]))["path"], _made["path"])
+
+_disc_shortcut = run(plugin.prepare_shortcut("Zed", "swanstation", _made["path"]))
+check("the shortcut is built from the playlist", _disc_shortcut["ok"], True)
+with io.open(_disc_shortcut["exe"], "r", encoding="utf-8") as _handle:
+    _launcher_text = _handle.read()
+# The one that would be silently wrong: a launcher pointing at disc 1 gives a
+# game that starts, plays, and has no second disc.
+check("and the launcher runs the playlist, not the disc that was picked",
+      "Zed (USA).m3u" in _launcher_text, True)
+check("with no disc named on the command line",
+      "(Disc 1).chd" in _launcher_text.rsplit("\n", 2)[-2], False)
+
+# **The set that cannot be handed to its emulator.** PCSX2 changes disc from its
+# own menu and has no idea what an `.m3u` is, so the two halves of a multi-disc
+# game pull apart: it still has to be one entry whose discs travel together, and
+# the shortcut still has to start something PCSX2 can open. `launch_name` is the
+# seam -- `rom_path` stays the playlist, which is what filing follows and what
+# deleting the game takes away, while the launcher runs a disc.
+_made2 = run(plugin.make_disc_playlist(_first, _probe["disc_set"]))
+_swap = run(plugin.prepare_shortcut(
+    "Zed", "swanstation", _made2["path"], "", "", "Zed (USA) (Disc 1).chd"))
+check("the shortcut is still built", _swap["ok"], True)
+with io.open(_swap["exe"], "r", encoding="utf-8") as _handle:
+    _swap_text = _handle.read()
+check("and runs the disc rather than the playlist",
+      "Zed (USA) (Disc 1).chd" in _swap_text.rsplit("\n", 2)[-2], True)
+check("with the playlist nowhere on the command line",
+      "Zed (USA).m3u" in _swap_text.rsplit("\n", 2)[-2], False)
+
+# A name that is not there must not produce a launcher pointing at nothing: a
+# game that closes instantly with no explanation is worse than one that opens
+# and complains.
+_missing = run(plugin.prepare_shortcut(
+    "Zed", "swanstation", _made2["path"], "", "", "Zed (USA) (Disc 9).chd"))
+with io.open(_missing["exe"], "r", encoding="utf-8") as _handle:
+    check("a disc that is not there falls back to the playlist",
+          "Zed (USA).m3u" in _handle.read(), True)
+
+# And a path where a name belongs is reduced to its basename, so nothing can
+# point the launcher out of the folder the game was filed into.
+_escaped = run(plugin.prepare_shortcut(
+    "Zed", "swanstation", _made2["path"], "", "", "../../etc/passwd"))
+with io.open(_escaped["exe"], "r", encoding="utf-8") as _handle:
+    check("and a path cannot escape the folder",
+          "passwd" in _handle.read(), False)
+
+plugin._cores = _cores_before_discs
+
 section("PlayStation 3 -- a package in, a game in the library")
 # The route nothing else here uses. Every other system has a ROM: one file, in
 # the ROM folder, that a picker can show you. A PS3 game bought from the store

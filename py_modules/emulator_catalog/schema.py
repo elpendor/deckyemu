@@ -56,6 +56,19 @@ OPTIONAL = {
     "command": "The binary to run inside the flatpak, when it is not the one "
                "the manifest names.",
     "env": "Environment variables the emulator needs, as a dict.",
+    "changes_disc": "True when the other discs are reachable once the first is "
+                    "running -- from the emulator's own menu, as PCSX2 does, or "
+                    "because the game asks for them, as a split Xbox 360 game "
+                    "does. Only consulted for an emulator that cannot read a "
+                    "playlist, and it decides whether a set may be offered as "
+                    "one entry -- see `discSet.ts`. Omit unless it has been "
+                    "seen working: the cost of a wrong yes is one library entry "
+                    "that can only ever play disc one.",
+    "cannot_open": "Extensions to subtract from the derived list, as a tuple. "
+                   "The derivation is about a *system* -- it is built from what "
+                   "libretro cores declare -- so an emulator inherits anything "
+                   "any core for its system reads. This is how an entry says "
+                   "the two differ. See `extensions_for`.",
     "layout": "Steam Input layout template a game needs, as a `template://` url.",
     "workarounds": "Temporary corrections for bugs in the emulator itself, as "
                    "a list. Each is a delta over this entry that a user can "

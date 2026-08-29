@@ -33,6 +33,15 @@ export interface Core {
    * given game; "unknown" means its .info file does not say, which is not a no.
    */
   cheevos: "yes" | "no" | "unknown";
+  /**
+   * Whether this emulator can change disc from its own menu.
+   *
+   * Only consulted for something that cannot be handed a playlist, and it
+   * decides whether a multi-disc set may be one entry at all. PCSX2 reaches
+   * them from *Change Disc* in the menu Select + Start opens; Xenia's own games
+   * ask the console for the next disc and get it from the folder.
+   */
+  changes_disc?: boolean;
   /** Set for registered standalone emulators, which are shaped like cores. */
   source?: "emulator";
 }
@@ -80,6 +89,37 @@ export interface RomProbe {
    * want, so this changes what the panel says and not what it allows.
    */
   already_added: { app_id: string; name: string; same_file: boolean } | null;
+  /**
+   * The discs of the set this file belongs to, in order, or `[]`.
+   *
+   * Filenames, not paths — every disc is in the folder the picked file is in,
+   * which is what a playlist can name. Empty for the ordinary single-file game.
+   *
+   * Detection is by filename and nothing else: the disc number is not inside
+   * the file, and every tool that does this keys off the name. A set named in a
+   * way the rules do not reach is missed rather than guessed at, and the panel
+   * lets the discs be picked by hand instead.
+   */
+  disc_set: string[];
+  /** What the playlist would be called, so the panel can name it before it exists. */
+  disc_playlist: string;
+  /**
+   * Set when each disc sits in a folder of its own — how a Redump download
+   * arrives, and a layout no playlist can name, since a playlist reaches only
+   * the files beside it. Said rather than worked around: following one out of
+   * its own directory is what filing deliberately refuses to do.
+   */
+  disc_folder_warning: string;
+  /**
+   * Set when the file is one track of a disc with no `.cue` beside it.
+   *
+   * A CD with audio is ripped as several `.bin` files and one `.cue` saying
+   * where each track starts. The `.bin` files are raw sectors and carry none of
+   * that, so a rip whose sheet never arrived cannot be assembled — and nothing
+   * about the file says so, which is why this is said here. Empty for a
+   * single-track dump, which works and must stay silent.
+   */
+  track_warning: string;
   is_archive: boolean;
   provisional_title: string;
   matching_cores: Core[];
@@ -384,6 +424,30 @@ export function realCores(cores: Core[]): Core[] {
 }
 
 export const probeRom = callable<[romPath: string], RomProbe>("probe_rom");
+
+/**
+ * Whether a hand-picked file can join a set being built.
+ *
+ * Refuses a disc in another folder — a playlist names files beside itself — so
+ * the panel can say why rather than writing something that will not load.
+ */
+export const discCandidate = callable<
+  [romPath: string, folder: string],
+  { ok: boolean; name: string; error: string }
+>("disc_candidate");
+
+/**
+ * Write the `.m3u` for a set and return the path to add in the disc's place.
+ *
+ * Called when Add is pressed, never at pick time: backing out of the flow has
+ * to leave the folder as it was, and everything before this point is worked out
+ * from a disc, which is the file carrying the evidence. `.m3u` is claimed by
+ * one system in the whole catalog, so a playlist would match almost no cores.
+ */
+export const makeDiscPlaylist = callable<
+  [romPath: string, discs: string[]],
+  { ok: boolean; path: string; error: string }
+>("make_disc_playlist");
 /**
  * `title` overrides the name taken from the filename, for files that are not
  * named after the game. Every PS3 game installed from a package boots
@@ -460,8 +524,15 @@ export const applyArtCandidate = callable<
  * — Vita3K, whose launcher takes `-r PCSA00011`. Ignored by every other, and
  * empty for every game picked as a file.
  */
+/**
+ * `launchName` separates what the game *is* from what gets run: a bare filename
+ * in the same folder, used only for a multi-disc set whose emulator cannot read
+ * a playlist. `romPath` stays the playlist — that is what is filed, recorded and
+ * deleted — while the shortcut starts the disc named here.
+ */
 export const prepareShortcut = callable<
-  [title: string, coreId: string, romPath: string, system: string, titleId?: string],
+  [title: string, coreId: string, romPath: string, system: string, titleId?: string,
+   launchName?: string],
   PreparedShortcut
 >("prepare_shortcut");
 /**

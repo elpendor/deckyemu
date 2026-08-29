@@ -38,6 +38,8 @@ import {
   type PluginSettings,
   type ResolvedGame,
   type RetroArchStatus,
+  discCandidate,
+  makeDiscPlaylist,
 } from "./backend";
 import { addPreparedGame } from "./addGame";
 import {
@@ -65,6 +67,7 @@ import {
   missingEmulator,
   pendingPackage as pendingPackageOf,
 } from "./packageState";
+import { coreById, discRow, readsPlaylist, withDisc } from "./discSet";
 import { PackagedGameEntries, PendingPackageRows } from "./PackageRows";
 import { ArtPickerModal } from "./ArtPickerModal";
 import { openManagePage } from "./manageRoute";
@@ -186,6 +189,7 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
     installable,
     installableId,
     keyChoice,
+    discs,
     looking,
     adding,
     installingCore,
@@ -571,6 +575,61 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
     );
   }, [romPath, coreId]);
 
+  /*
+   * Add a disc to the set by hand, for the naming the rules cannot reach.
+   *
+   * `Final Fantasy VII - Disc 2` and `FF7 d1.cue` are both real and neither
+   * matches a bracketed marker, and the alternative for them is writing an
+   * `.m3u` with a keyboard -- which means Desktop Mode, which is the thing this
+   * plugin exists to avoid. So the picker is the fallback, and it is the same
+   * picker the ROM was chosen with.
+   *
+   * The backend decides whether the file may join: a playlist names files
+   * beside itself, so a disc in another folder cannot be in one, and saying why
+   * beats writing something that will not load.
+   */
+  const pickDisc = useCallback(async () => {
+    const folder = romPath.slice(0, Math.max(0, romPath.lastIndexOf("/")));
+    if (!folder) return;
+    let picked: { path: string; realpath: string } | undefined;
+    try {
+      // Opens in the folder the discs are in, which is the only folder a disc
+      // can come from -- so the one useful starting point is also the only one.
+      picked = await openFilePicker(
+        FileSelectionType.FILE, folder, true, true,
+        undefined, undefined, false, true,
+      );
+    } catch (pickError) {
+      const message = String(pickError ?? "");
+      if (!message.toLowerCase().includes("cancel")) {
+        logError("disc picker failed", pickError);
+        updateDraft({ error: "Could not open the file browser." });
+      }
+      return;
+    }
+    const path = picked?.realpath || picked?.path || "";
+    if (!path) return;
+
+    try {
+      const answer = await discCandidate(path, folder);
+      if (!answer.ok) {
+        updateDraft({ error: answer.error });
+        return;
+      }
+      const next = withDisc(
+        discs, romPath.slice(romPath.lastIndexOf("/") + 1), answer.name,
+      );
+      // Null means it changed nothing -- the same disc picked twice. Silent on
+      // purpose: the list already shows it, so there is nothing to report.
+      if (next) {
+        updateDraft({ discs: next, error: "" });
+      }
+    } catch (discError) {
+      logError("could not check a disc", discError);
+      updateDraft({ error: "Could not check that file." });
+    }
+  }, [romPath, discs]);
+
   const addToSteam = useCallback(async () => {
     if (!romPath || !coreId) return;
     updateDraft({ adding: true, error: "" });
@@ -584,7 +643,38 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
       // answer is still the fallback, for the core that covers one system and
       // is never asked.
       const system = systemId || resolved?.system || "";
-      const prepared = await prepareShortcut(title, coreId, romPath, system, titleId);
+
+      // The playlist is written here and nowhere earlier. Everything above --
+      // the core list, the system, the title, the artwork -- was worked out
+      // from a *disc*, which is the file carrying that evidence; and backing
+      // out of the flow before this point has to leave the folder exactly as it
+      // was found. So the last thing before the shortcut is built is turning
+      // the set into one file, and from here on it is an ordinary add.
+      let addPath = romPath;
+      // What the shortcut starts, when that is not what the game *is*. Empty
+      // for everything else, which is nearly everything.
+      let launchName = "";
+      if (discs.length >= 2) {
+        const playlist = await makeDiscPlaylist(romPath, discs);
+        if (!playlist.ok) {
+          updateDraft({ error: playlist.error, adding: false });
+          return;
+        }
+        addPath = playlist.path;
+        // The playlist is written either way, because it is what holds the set
+        // together on disk: filing follows it, deleting the game follows it,
+        // and it costs a few bytes. What changes is whether it is also the
+        // thing that runs. PCSX2 cannot read one, so its shortcut starts the
+        // first disc and its own menu does the swapping — with every disc in
+        // the one folder, which is where that menu looks.
+        if (!readsPlaylist(coreById(probe, coreId))) {
+          launchName = discs[0];
+        }
+      }
+
+      const prepared = await prepareShortcut(
+        title, coreId, addPath, system, titleId, launchName,
+      );
       if (!prepared.ok) {
         updateDraft({ error: prepared.error, adding: false });
         return;
@@ -594,7 +684,11 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
       // back on failure. See addGame.ts; the Vita list runs the same steps.
       const added = await addPreparedGame({
         prepared,
-        romPath,
+        // The playlist when there is one, so the launcher and the registry both
+        // point at the set rather than at whichever disc was picked. `romshelf`
+        // moves and deletes an `.m3u` with everything it names, so filing and
+        // removal need nothing further.
+        romPath: addPath,
         coreId,
         system,
         art: resolved?.art,
@@ -631,7 +725,7 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
           addError instanceof Error ? addError.message : "Failed to add the game to Steam.",
       });
     }
-  }, [romPath, titleId, coreId, systemId, title, resolved, onGameAdded]);
+  }, [romPath, titleId, coreId, systemId, title, resolved, discs, probe, onGameAdded]);
 
   /**
    * Start receiving, then show the QR code in a modal.
@@ -669,6 +763,11 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
   // it would go in under. Derived rather than held: see packageState.ts, which
   // is where these live so vitest can reach the licence decision -- there is no
   // DOM here, so anything only reachable by rendering the panel is untested.
+  // What the disc row says, decided in discSet.ts so the one judgement that
+  // matters -- whether the chosen core can load a playlist at all -- is
+  // reachable by a test. There is no DOM in the test run.
+  const discInfo = discRow(probe, discs, coreById(probe, coreId));
+
   const pendingPackage = pendingPackageOf(probe);
   const licence = licenceChoice(pendingPackage, keyChoice);
   // Null once the emulator is here, which is what takes the offer off screen
@@ -755,6 +854,26 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
                 : `${probe.already_added.name || "A game"} runs a file with this name from somewhere else, so this may be the same game sent twice. Adding it makes a second entry.`
             }
           />
+        </PanelSectionRow>
+      )}
+
+      {/* Above the disc row and the core rows, because it is about whether the
+          right file was picked at all -- and the answer is that a different one
+          should be. A warning, not a refusal: the plugin cannot know whether
+          this particular game uses its audio track, and a single-track rip of a
+          game that does not is playable. */}
+      {probe?.track_warning && (
+        <PanelSectionRow>
+          <Field label="This needs its .cue file" description={probe.track_warning} />
+        </PanelSectionRow>
+      )}
+
+      {/* Beside the other two, and for the same reason: the discs are there,
+          the panel can see them, and without this it would show nothing at all
+          — which reads as not having noticed them. */}
+      {probe?.disc_folder_warning && (
+        <PanelSectionRow>
+          <Field label="The discs are in separate folders" description={probe.disc_folder_warning} />
         </PanelSectionRow>
       )}
 
@@ -916,6 +1035,43 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
               disabled={adding}
             />
           </PanelSectionRow>
+        </>
+      )}
+
+      {/* Under the core row, because whether this can be offered at all depends
+          on the core: a playlist is content, and a core either declares `m3u`
+          in its own info file or cannot be handed one. Above the name and the
+          artwork, because it changes what is being added rather than what it is
+          called. */}
+      {discInfo.show && (
+        <>
+          <PanelSectionRow>
+            <ToggleField
+              label={discInfo.label}
+              description={discInfo.description}
+              checked={discInfo.on}
+              disabled={adding || discInfo.disabled}
+              onChange={(value) =>
+                // Off empties the list rather than keeping it aside. Fewer than
+                // two discs is what "no playlist" means, so there is one piece
+                // of state instead of a list and a flag that can disagree.
+                updateDraft({ discs: value ? (probe?.disc_set ?? []) : [] })
+              }
+            />
+          </PanelSectionRow>
+
+          {/* The way through for a set the naming rules cannot see. Offered
+              whenever the row is up and the core can read a playlist, including
+              when a set *was* detected -- a three-disc game whose third disc is
+              named differently is exactly the case that would otherwise be
+              silently added as two. */}
+          {!discInfo.disabled && (
+            <PanelSectionRow>
+              <ButtonItem layout="below" onClick={() => void pickDisc()} disabled={adding}>
+                Pick another disc
+              </ButtonItem>
+            </PanelSectionRow>
+          )}
         </>
       )}
 

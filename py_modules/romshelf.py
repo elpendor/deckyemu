@@ -94,6 +94,88 @@ def _referenced(path):
     return [os.path.basename(name) for name in names if name and not name.startswith("/")]
 
 
+#: The sheets that describe *one disc* by naming its tracks. A `.m3u` is not
+#: among them: it names discs, and a `.cue` it lists is still a whole disc.
+_SHEETS = (".cue", ".gdi")
+
+
+#: `(Track 1)`, `[Track 02]`, `Game - Track 3`, or a bare `Track 01`. Every
+#: ripper that splits a CD into its tracks writes one of these, and no game is
+#: called any of them.
+_TRACK_RE = re.compile(r"(?:[\(\[]\s*track\s*\d{1,2}\s*[\)\]]"
+                       r"|(?:^|[\s_-])track\s*\d{1,2})$", re.IGNORECASE)
+
+#: The extensions that hold raw sectors and say nothing about themselves. A
+#: `.chd` or a `.iso` carries its own structure; these do not, which is the
+#: whole reason a `.cue` exists.
+_RAW_TRACKS = (".bin", ".img")
+
+
+def track_without_a_sheet(path):
+    """Whether this file is one track of a disc that nothing describes.
+
+    A CD with audio is ripped as several `.bin` files and **one `.cue` saying
+    where each track starts and what mode it is in**. The `.bin` files carry
+    none of that -- they are raw sectors -- so a rip that arrives without its
+    sheet is a game that cannot be assembled, and nothing about the file says
+    so. Breath of Fire III turned up as a 442MB data track and a 37MB audio
+    track with no `.cue` anywhere, and the panel offered cores for it as
+    happily as for a cartridge.
+
+    Two conditions, and both are needed. The name has to say `Track`, which is
+    unambiguous -- no game is called that, and it is what every ripper writes.
+    And no sheet in the folder may name the file: with one there, this is an
+    ordinary track of a disc that can be played, which is the usual case and
+    must stay silent.
+
+    A bare `Game (Disc 1).bin` with no sheet is deliberately *not* caught. That
+    is a single-track dump, it works, and warning about it would be wrong.
+    """
+    stem, extension = os.path.splitext(os.path.basename(path or ""))
+    if extension.lower() not in _RAW_TRACKS:
+        return False
+    if not _TRACK_RE.search(stem):
+        return False
+    return not part_of_a_disc(path)
+
+
+def part_of_a_disc(path):
+    """Whether a sheet beside this file names it -- so it is a track, not a disc.
+
+    A CD game with audio tracks is one `.cue` and a dozen `.bin` files, and the
+    `.bin` files carry the disc marker too: `Game (Disc 2) (Track 01).bin`. Read
+    as a name alone that is disc 2 of something, which is how a playlist came to
+    be offered over *track 1 of each disc* -- two files that are not discs and
+    are not a game.
+
+    The `.cue` is the thing that settles it, and it is already parsed here. A
+    file some sheet in this folder names is part of the disc that sheet
+    describes, whatever its own name looks like.
+
+    False when the folder cannot be read: this guards an offer, and failing to
+    read a directory is not evidence that the file is a disc.
+    """
+    folder = os.path.dirname(path)
+    name = os.path.basename(path)
+    if not name:
+        return False
+    try:
+        siblings = os.listdir(folder)
+    except OSError:
+        return False
+
+    lowered = name.lower()
+    for sibling in siblings:
+        if os.path.splitext(sibling)[1].lower() not in _SHEETS:
+            continue
+        named = _referenced(os.path.join(folder, sibling))
+        if not named:
+            continue
+        if any(entry.lower() == lowered for entry in named):
+            return True
+    return False
+
+
 #: Extensions that hold a game rather than being part of one. A file with the
 #: same stem and one of these is the container the ROM arrived in, not a track
 #: or a disc that has to travel with it.

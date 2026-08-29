@@ -172,6 +172,10 @@ export async function selectRom(romPath: string): Promise<void> {
     titleId: "",
     resolved: null,
     installable: [],
+    // Cleared here and seeded below from this file's own folder. A set carried
+    // over from the last ROM would name discs that are not beside this one, and
+    // the playlist would be written listing files that are not there.
+    discs: [],
     unpacking: false,
     unpackPercent: 0,
     unpackStatus: "",
@@ -183,6 +187,12 @@ export async function selectRom(romPath: string): Promise<void> {
     updateDraft({
       probe: info,
       title: info.provisional_title,
+      // On by default when a set was found. The detection is strict enough that
+      // a false one is very unlikely, one entry is what somebody picking disc 1
+      // of 3 wants, and the row says what it found and can be turned off in one
+      // press. Defaulting it off would mean the common case is the one that
+      // needs an extra step.
+      discs: info.disc_set ?? [],
       // Not for a save backup: `showAllCores` opens the every-core dropdown,
       // and there is no core that runs an archive of save files.
       showAllCores: info.matching_cores.length === 0 && !info.save_backup,

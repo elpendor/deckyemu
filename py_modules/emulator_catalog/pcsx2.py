@@ -43,7 +43,8 @@ _PCSX2_SETUP = {
     #   1  Pad1 bound to the Deck
     #   2  the setup wizard answered, and PCSX2's keyboard defaults recognised
     #      as replaceable after its first run overwrote the pad
-    "version": 2,
+    #   3  the pause menu on Select+Start, so a disc can be changed
+    "version": 3,
     "files": {
         ".var/app/net.pcsx2.PCSX2/config/PCSX2/inis/PCSX2.ini": {
             # PCSX2 runs a setup wizard until this says otherwise, and a wizard
@@ -55,6 +56,29 @@ _PCSX2_SETUP = {
             # `false` is stated as replaceable rather than assuming the default:
             # PCSX2 decides it per platform at runtime.
             "InputSources": {"SDL": {"value": "true", "default": "false"}},
+            # **The only way to change disc on a two-disc PS2 game.** PCSX2
+            # cannot be handed an `.m3u` -- its own file-type filter lists
+            # every format it takes and a playlist is not among them -- so
+            # unlike PlayStation and GameCube, a set here is one Steam entry per
+            # disc and the swap happens inside the emulator. `Change Disc` and
+            # `Swap Disc` are both in its pause menu; what was missing was any
+            # way to open that menu, which shipped as `Keyboard/Escape` with no
+            # keyboard in Game Mode to press it.
+            #
+            # Select + Start, because that is already this plugin's combo --
+            # RetroArch's `menu_combo` defaults to it in `store.py` and
+            # DuckStation was given the same. Three emulators, one gesture.
+            #
+            # The `&` chord is PCSX2's own syntax, not an inference from
+            # DuckStation: this file already contains
+            # `GSDumpMultiFrame = Keyboard/Control & Keyboard/Shift &
+            # Keyboard/F8`, written by PCSX2 itself.
+            "Hotkeys": {
+                "OpenPauseMenu": {
+                    "value": "SDL-0/Back & SDL-0/Start",
+                    "default": "Keyboard/Escape",
+                },
+            },
             "Pad1": _PCSX2_PAD,
         },
     },
@@ -68,6 +92,30 @@ ENTRY = {
     "name": "PCSX2",
     "summary": "PlayStation 2.",
     "source": {"kind": "flatpak", "id": "net.pcsx2.PCSX2"},
+    # **Not a playlist.** The extension list is derived from what libretro cores
+    # declare for this system, and `pcsx2_libretro` reads `m3u` -- but that is a
+    # different program. This PCSX2's own file-type filter is the whole answer
+    # and a playlist is not in it: `*.bin *.iso *.cue *.mdf *.chd *.cso *.zso
+    # *.gz *.dump`, read off the installed binary. `m3u` does not appear
+    # anywhere in it.
+    #
+    # Without this the multi-disc switch was offered for a two-disc PS2 game,
+    # wrote the playlist, and handed PCSX2 a file it cannot open -- one library
+    # entry that starts nothing. A two-disc PS2 game is one entry per disc and
+    # the swap happens in PCSX2's own menu, which is what the Select+Start
+    # binding above is for.
+    "cannot_open": ("m3u",),
+    # **But it can still swap them.** `Change Disc` and `Swap Disc` are both in
+    # PCSX2's own pause menu, read off the installed binary, and that menu is
+    # the one Select+Start opens above -- so a two-disc PS2 game is worth
+    # offering as one entry with its discs filed together, even though the
+    # shortcut has to start a disc rather than a playlist.
+    #
+    # Not a property of "cannot read a playlist": Xenia cannot either, and has
+    # no disc changing at all -- only the XEX header flags that say a game is
+    # multi-disc, one of them marked TODO. Offering a 360 set as one entry would
+    # be one library entry that can only ever play disc one.
+    "changes_disc": True,
     "databases": ["Sony - PlayStation 2"],
     # -nogui hides the main window, which otherwise appears for a second
     # before the game does, and PCSX2's own help says it implies batch mode

@@ -101,6 +101,31 @@ rather than another project's reading of the same file.
 The other two consoles need nothing extra. RPCS3 unpacks its own packages, and
 Vita3K installs from a `.pkg` directly once it has the licence key.
 
+## Getting to the emulator's own menu
+
+**DuckStation and PCSX2.** Both ship every hotkey bound to a key, and both put
+**Change Disc** in a menu a controller can drive once it is open. Dolphin, the
+other emulator here with multi-disc games, has no menu worth reaching this way:
+its *Change Disc* opens a file browser rather than listing a playlist's discs,
+so it is set to change disc by itself instead.
+
+**Select + Start**, the same combo RetroArch uses — see
+[getting into RetroArch's menu](retroarch.md#getting-into-retroarchs-menu). It opens DuckStation's pause
+menu, where save states, settings, quitting and **Change Disc** live.
+
+It is written for you when DuckStation is set up. Every hotkey DuckStation ships
+is bound to a key — `Escape` for the pause menu — and on a Deck in Game Mode
+there is no keyboard to press, so without this its menu cannot be reached at
+all.
+
+**A multi-disc game usually changes disc by itself.** DuckStation is set to
+switch to the next disc when the game stops the CD-ROM motor, which is what a
+game does when it asks you to insert the next one. Upstream is clear that this
+does not work for every game, so the combo above is the way through when it does
+not fire. See
+[multi-disc games](getting-started.md#multi-disc-games) for how a set becomes
+one entry in the first place.
+
 ## Fixes
 
 Some emulators have bugs this plugin can correct, and those corrections appear

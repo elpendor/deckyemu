@@ -61,6 +61,21 @@ ENTRY = {
     # A native AppImage, which every Steam Deck guide still says does not exist;
     # they have you install the Windows build and add Proton on top. It does now,
     # at 17MB, and it is the same channel Azahar and Vita3K already use.
+    # **A split game reaches its own next disc.** Xenia implements
+    # `XamLoaderLaunchTitleOnDvd`, read off the installed binary, so a game split
+    # across its discs asks the console for the next title when one ends and
+    # Xenia serves it -- no playlist and no menu needed, only the other discs in
+    # the same folder, which is where `romshelf` puts them.
+    #
+    # So a set is worth offering as one entry. The alternative is four library
+    # entries under one name of which three start nothing, which is the thing
+    # this feature exists to remove.
+    #
+    # Not every 360 set is split that way: on some, disc one is the whole game
+    # and the rest hold extra content that is fairly its own entry -- and nothing
+    # in a filename tells the two shapes apart. That is what the switch is for:
+    # on by default, one press to turn off.
+    "changes_disc": True,
     "source": {
         "kind": "github",
         "repo": "xenia-canary/xenia-canary",

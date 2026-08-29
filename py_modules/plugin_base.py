@@ -170,9 +170,13 @@ class PluginContext:
     # --- endpoints one part calls on another ------------------------------
     def prepare_shortcut(
         self, title: str, core_id: str, rom_path: str, system: str = "",
-        title_id: str = "",
+        title_id: str = "", launch_name: str = "",
     ) -> Awaitable[dict]:
-        """Write a launcher and return the fields Steam needs."""
+        """Write a launcher and return the fields Steam needs.
+
+        `launch_name` is a bare filename beside the game, run in its place. Only
+        a multi-disc set whose emulator cannot read a playlist uses it.
+        """
         raise NotImplementedError
 
     def rebuild_launchers(self) -> Awaitable[dict]:

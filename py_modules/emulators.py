@@ -375,6 +375,10 @@ def to_core_entry(emulator, system_name=""):
         # better.
         "platform_full": emulator.get("platform_full", ""),
         "extensions": emulator.get("extensions") or [],
+        # Whether this emulator can change disc from its own menu. Only matters
+        # for one that cannot be handed a playlist, and it decides whether a
+        # multi-disc set may be one entry at all.
+        "changes_disc": bool(emulator.get("changes_disc")),
         "has_info": True,
         "source": "emulator",
     }

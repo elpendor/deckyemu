@@ -22,6 +22,7 @@ import model3_games
 import net
 import platforms
 import ps4_games
+import discset
 import plugin_accounts
 import plugin_audit
 import plugin_collections
@@ -700,6 +701,62 @@ class Plugin(
         self._emulators = await self._run(emulators.list_emulators)
         return self._emulators
 
+    async def disc_candidate(self, rom_path: str, folder: str):
+        """Whether `rom_path` may be added to a set being built by hand.
+
+        For the case the naming rules cannot reach: `FF7 d1.cue` and
+        `FF7 d2.cue` are a set and nothing about their names says so, so the
+        panel lets the user pick the other discs itself. What it may not do is
+        pick something that will not work, and there are exactly two ways it
+        would not: a disc in a different folder, since a playlist names files
+        beside itself, and a disc of a different format, since a core is chosen
+        for one extension.
+
+        Returns {ok, name, error}. `name` is what to put in the playlist.
+        """
+        name = os.path.basename(rom_path)
+        if not name or not await self._run(os.path.isfile, rom_path):
+            return {"ok": False, "name": "", "error": "That file is not there."}
+        if os.path.dirname(os.path.realpath(rom_path)) != os.path.realpath(folder):
+            return {
+                "ok": False, "name": "",
+                "error": "A disc has to be in the same folder as the others. "
+                         "Move it there first.",
+            }
+        # The same rule detection uses, and it matters more here: the picker
+        # shows every file in the folder, so the twelve `.bin` tracks of a CD
+        # game are all one press away and every one of them looks like a disc.
+        if await self._run(romshelf.part_of_a_disc, rom_path):
+            return {
+                "ok": False, "name": "",
+                "error": "%s is one track of a disc, not a disc. Pick the .cue "
+                         "that names it instead." % name,
+            }
+        return {"ok": True, "name": name, "error": ""}
+
+    async def make_disc_playlist(self, rom_path: str, discs: list):
+        """Write the `.m3u` for a set and return the path to add instead.
+
+        Called at the moment the user presses Add, never at pick time. Two
+        reasons, and the second is the one that shaped the feature: backing out
+        of the add flow must leave the folder as it was, and everything before
+        this point -- the core list, the suggested system, the title, the
+        artwork search -- is computed from a *disc*, which is the file that
+        carries the evidence. A playlist carries none: `.m3u` is claimed by one
+        system in the whole catalog.
+
+        The file is written beside the discs and named after them, so it is a
+        plain playlist that works with or without this plugin. `romshelf` moves
+        and deletes the whole group already.
+        """
+        folder = os.path.dirname(rom_path)
+        path, error = await self._run(discset.write_playlist, folder, list(discs or []))
+        if error:
+            decky.logger.warning("Could not write a playlist in %s: %s", folder, error)
+            return {"ok": False, "path": "", "error": error}
+        decky.logger.info("Wrote %s naming %d disc(s)", path, len(discs))
+        return {"ok": True, "path": path, "error": ""}
+
     async def probe_rom(self, rom_path: str):
         """Suggested cores for a ROM, most relevant first, plus a default name."""
         decky.logger.info("probe_rom: %s", rom_path)
@@ -809,6 +866,33 @@ class Plugin(
             store.already_added, await self._run(store.get_library), rom_path
         )
 
+        # The other discs of this game, when the file picked is one of a set.
+        # Detected here and written nowhere: the playlist is created when the
+        # user presses Add, so backing out of the flow leaves the folder exactly
+        # as it was, and probing still happens on the disc -- which is what
+        # keeps core matching correct. `.m3u` is claimed by one system in the
+        # catalog, so matching cores against the playlist would offer a Saturn
+        # set nothing at all.
+        discs = await self._run(discset.find_set, rom_path)
+
+        # One track of a disc whose `.cue` never arrived. Worth saying because
+        # nothing else will: the panel offers cores for a `.bin` exactly as it
+        # does for a cartridge, and the game that comes out is missing its audio
+        # track at best. See `romshelf.track_without_a_sheet`.
+        lone_track = await self._run(romshelf.track_without_a_sheet, rom_path)
+
+        # And the layout a Redump download arrives in: one folder per disc. The
+        # plugin cannot make a playlist out of that -- see
+        # `discset.discs_in_sibling_folders` -- so what it can do is say what it
+        # is looking at, rather than showing nothing and reading as a failure to
+        # notice the other three discs sitting right there.
+        #
+        # Only asked when no set was found, which is always: the two are
+        # mutually exclusive by construction.
+        in_folders = [] if discs else await self._run(
+            discset.discs_in_sibling_folders, rom_path
+        )
+
         result = {
             "extension": extension,
             "match_extension": match_extension,
@@ -817,6 +901,39 @@ class Plugin(
             # `store.already_added` for why a name match and a path match are
             # different answers.
             "already_added": already_added,
+            # The discs of the set this file belongs to, in order, or []. Names
+            # rather than paths -- they are all in the folder the picked file is
+            # in. Empty for the ordinary single-file game, which is almost
+            # every game.
+            "disc_set": discs,
+            # Set when this is one track of a disc and no sheet in the folder
+            # describes it. A sentence rather than a flag, for the same reason
+            # `disc_warning` is one: what to do about it is the useful half.
+            "track_warning": (
+                "This is one track of a disc, and there is no .cue file beside "
+                "it saying where the tracks are. Send the .cue as well and pick "
+                "that instead — without it the audio track is invisible and the "
+                "game may not start."
+                if lone_track else ""
+            ),
+            # What the playlist would be called. Shown before it is written, so
+            # the panel can name the file it is about to create rather than
+            # describing one.
+            # Set when the discs are each in a folder of their own, which is
+            # how a Redump download arrives and is a layout no playlist can
+            # name. A sentence, like the other two warnings, because what to do
+            # about it is the useful half.
+            "disc_folder_warning": (
+                "The other %d discs are each in a folder of their own, and a "
+                "playlist can only name files beside it. Send every disc's "
+                "files to the Deck together — they arrive in one folder — or "
+                "move them beside each other, and they can be added as one "
+                "game." % (len(in_folders) - 1)
+                if in_folders else ""
+            ),
+            "disc_playlist": (
+                await self._run(discset.playlist_name, discs) if discs else ""
+            ),
             # What restoring this would put back, per emulator, or None when the
             # file is not one of ours.
             "save_backup": save_backup,
@@ -1335,7 +1452,7 @@ class Plugin(
 
     async def prepare_shortcut(
         self, title: str, core_id: str, rom_path: str, system: str = "",
-        title_id: str = "",
+        title_id: str = "", launch_name: str = "",
     ):
         """Write the launcher script and return the fields Steam needs.
 
@@ -1343,6 +1460,20 @@ class Plugin(
         covering more than one: it decides the collection the frontend files the
         game into, which is otherwise the core's first database and put every
         Wii game under GameCube.
+
+        **`launch_name` separates what the game *is* from what gets run**, and
+        exists for one case: a multi-disc set whose emulator cannot read a
+        playlist. PCSX2 is the example -- it changes disc from its own menu and
+        has no idea what an `.m3u` is -- and the two halves pull in opposite
+        directions. The set still has to travel as one thing, so `rom_path` is
+        the playlist: that is what filing follows, what the library records, and
+        what deleting the game takes away. But handing PCSX2 the playlist gives
+        a shortcut that starts nothing, so the launcher runs a disc instead.
+
+        A bare filename, resolved against the folder the game is filed into --
+        never a path. It is read after filing for the same reason the launcher
+        is written after it: the discs move, and a path worked out beforehand is
+        a path to where they used to be.
         """
         decky.logger.info("prepare_shortcut: title=%r core=%s rom=%s", title, core_id, rom_path)
         # The last plugin code that runs before a game exists to be launched, so
@@ -1408,13 +1539,29 @@ class Plugin(
             await self._run(romshelf.library_dir),
         )
 
+        # After filing, so this names a disc where it is now rather than where
+        # it was sent from. Falls back to the playlist when the name is not
+        # there, which is the safe direction: a launcher pointing at a file that
+        # exists and cannot be read is a plain failure, while one pointing at
+        # nothing at all is a game that closes instantly with no explanation.
+        launch_path = rom_path
+        if launch_name:
+            candidate = os.path.join(os.path.dirname(rom_path), os.path.basename(launch_name))
+            if await self._run(os.path.isfile, candidate):
+                launch_path = candidate
+            else:
+                decky.logger.warning(
+                    "prepare_shortcut: %s is not beside %s; launching the playlist",
+                    launch_name, rom_path,
+                )
+
         try:
             script = await self._run(
                 launchers.write_launcher,
                 self._install,
                 clean_title,
                 core["path"],
-                rom_path,
+                launch_path,
                 settings.get("hide_osd", "startup"),
                 # No overrides on a game that does not exist yet, so this simply
                 # follows the emulator -- but it goes through the same

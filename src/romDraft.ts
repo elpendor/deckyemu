@@ -59,6 +59,20 @@ export interface RomDraft {
    * ROM falls back rather than reaching the backend.
    */
   keyChoice: string;
+  /**
+   * The discs that will go into a playlist, in order, or `[]` for one file.
+   *
+   * Filenames, all in the picked ROM's folder. Seeded from the set the probe
+   * detected and editable from there — turning it off empties it, and picking a
+   * disc by hand appends. Fewer than two means no playlist, so "off" and "one
+   * disc" are the same state and there is no separate flag to keep in step.
+   *
+   * In the draft rather than component state for the reason `installableId` is,
+   * and it is the same mechanism: adding a disc by hand opens the file picker,
+   * which unmounts the panel. Held in `useState` the whole set would be lost on
+   * the way back, every time, which is exactly the case this is for.
+   */
+  discs: string[];
   looking: boolean;
   adding: boolean;
   installingCore: string;
@@ -112,6 +126,7 @@ export const EMPTY_DRAFT: RomDraft = {
   installable: [],
   installableId: "",
   keyChoice: "",
+  discs: [],
   looking: false,
   adding: false,
   installingCore: "",

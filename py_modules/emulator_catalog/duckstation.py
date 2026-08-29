@@ -46,7 +46,8 @@ _DUCKSTATION_SETUP = {
     "label": "controller bindings",
     #   1  Pad1 bound to the Deck, the setup wizard answered
     #   2  the update check switched off
-    "version": 2,
+    #   3  the pause menu on Select+Start, and automatic disc changing
+    "version": 3,
     "files": {
         "%s/settings.ini" % _DUCKSTATION_CONFIG: {
             # DuckStation checks GitHub for a release on every start and puts the
@@ -65,6 +66,46 @@ _DUCKSTATION_SETUP = {
             # Already DuckStation's own default, unlike PCSX2's -- stated anyway
             # so the bindings below cannot end up addressing nothing.
             "InputSources": {"SDL": {"value": "true", "default": "true"}},
+            # **Changing disc without a keyboard.** A multi-disc game is one
+            # Steam entry now -- the plugin writes the `.m3u` -- and DuckStation
+            # ships every hotkey bound to a key: `OpenPauseMenu = Keyboard/
+            # Escape`, and `ChangeDisc` bound to nothing at all. On a Deck in
+            # Game Mode that is a four-disc game with no way to reach disc two.
+            #
+            # The setting does most of it. DuckStation switches to the next disc
+            # by itself when the game stops the CD-ROM motor, which is exactly
+            # what a game does when it asks for the next disc -- upstream says
+            # "does not work for all games", so it is the first answer and not
+            # the only one.
+            "CDROM": {"AutoDiscChange": {"value": "true", "default": "false"}},
+            # And a way in for the games where it does not fire.
+            #
+            # **Select + Start, because that is already this plugin's combo.**
+            # `store.py` defaults RetroArch's `menu_combo` to `start_select`, so
+            # it is the gesture a user of this plugin has learned for "get me
+            # out of the game and into the emulator" -- and a second emulator
+            # answering the same question with a different chord is exactly the
+            # per-entry divergence this plugin does not allow: one workflow
+            # everywhere beats a better idea in one place.
+            #
+            # The pause menu rather than `ChangeDisc` directly, for the same
+            # reason: in RetroArch the combo opens the *menu*, and disc control
+            # is one row inside it. Binding a single action here would make the
+            # same gesture mean something narrower in one emulator than the
+            # other. Changing disc is a row in this menu too, alongside save
+            # states and quitting.
+            #
+            # It replaces `Keyboard/Escape`, which is DuckStation's own default
+            # and is stated as replaceable so a user who has bound something
+            # else keeps it. Nothing is lost in Game Mode, where there is no
+            # keyboard to press Escape on -- which is the whole reason this
+            # line exists.
+            "Hotkeys": {
+                "OpenPauseMenu": {
+                    "value": "SDL-0/Back & SDL-0/Start",
+                    "default": "Keyboard/Escape",
+                },
+            },
             "Pad1": _DUCKSTATION_PAD,
         },
     },

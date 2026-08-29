@@ -19,6 +19,11 @@ panel on the way so nothing is left over the top of it. It goes through Steam
 rather than running the emulator directly, so gamescope, Steam Input and the
 overlay all behave as they do when you launch from the library.
 
+**A multi-disc game is one entry**, and most of them change disc by themselves.
+When one does not, **Select + Start** opens the emulator's menu, where
+**Change Disc** lists them — see
+[multi-disc games](getting-started.md#multi-disc-games).
+
 ### Its page in your library
 
 The ⓘ button beside play opens Steam's own page for that game — where the

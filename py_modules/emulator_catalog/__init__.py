@@ -221,7 +221,18 @@ def reload_imported():
 # each says so in `note`. What is listed is what the ROM picker can be pointed at
 # and have something happen.
 MANUAL_EXTENSIONS = {
-    "Nintendo - GameCube": ["iso", "gcm", "gcz", "rvz", "ciso", "dol", "elf"],
+    # `m3u` because GameCube is the one system here besides PlayStation with
+    # real two-disc games -- Resident Evil, The Twin Snakes, Baten Kaitos,
+    # Tales of Symphonia -- and Dolphin reads a playlist. Its own help says so
+    # and names this exact route: automatic disc changing works "by launching
+    # an M3U file with File > Open or the command line interface", which is how
+    # every launcher this plugin writes starts a game. Without it the multi-disc
+    # switch never appears for a GameCube set and the game arrives as two
+    # library entries with the same name.
+    #
+    # Not on Wii, which shipped no two-disc retail game: a dual-layer disc is
+    # one disc.
+    "Nintendo - GameCube": ["iso", "gcm", "gcz", "rvz", "ciso", "dol", "elf", "m3u"],
     "Nintendo - Wii": ["iso", "wbfs", "rvz", "wad", "gcz", "ciso"],
     "Nintendo - Wii U": ["wud", "wux", "wua", "wuhb", "rpx", "elf", "iso"],
     "Nintendo - Switch": ["nsp", "xci", "nsz", "xcz"],
@@ -334,6 +345,15 @@ def extensions_for(entry, database_extensions):
     Returns a sorted list, which may be empty when the map could not be read and
     the system has no manual entry -- the caller must treat that as a failure
     rather than registering an emulator that matches nothing.
+
+    **`cannot_open` is how an entry corrects the derivation, and it exists
+    because the derivation is about a *system* rather than about this program.**
+    The map is built from what libretro cores declare, so a standalone emulator
+    inherits everything any core for its system can read -- and where the two
+    differ, the entry is what knows. PCSX2 is the case: `pcsx2_libretro`
+    declares `m3u`, the flatpak PCSX2 cannot open one at all, and the multi-disc
+    switch appeared for a two-disc PS2 game and wrote a playlist the emulator
+    then could not read. Subtracted last, so it wins over both sources.
     """
     found = set()
     for key in _system_keys(entry):
@@ -343,6 +363,9 @@ def extensions_for(entry, database_extensions):
             if extension
         )
         found.update(MANUAL_EXTENSIONS.get(key, ()))
+    found.difference_update(
+        extension.lower() for extension in (entry.get("cannot_open") or ())
+    )
     return sorted(found)
 
 
@@ -405,6 +428,9 @@ def to_emulator(entry, target, database_extensions):
         # paths have to reach it without spaces. Vita3K only.
         "splits_args": bool(entry.get("splits_args")),
         "extensions": extensions_for(entry, database_extensions),
+        # Only meaningful for an entry that cannot be handed a playlist, and
+        # only ever True where the menu has been seen. See `pcsx2.py`.
+        "changes_disc": bool(entry.get("changes_disc")),
         "databases": list(entry.get("databases") or []),
         "platform": short,
         "platform_full": full,
@@ -590,6 +616,9 @@ def listing(database_extensions, installed_ids=()):
                 "system": full or system_label(entry),
                 "short": short or platforms.short_name(system_label(entry)),
                 "extensions": extensions_for(entry, database_extensions),
+        # Only meaningful for an entry that cannot be handed a playlist, and
+        # only ever True where the menu has been seen. See `pcsx2.py`.
+        "changes_disc": bool(entry.get("changes_disc")),
                 "verified": bool(entry.get("verified")),
                 # Provenance, so the panel can say which recipes this project
                 # stands behind. An imported entry is never "verified" -- nobody
