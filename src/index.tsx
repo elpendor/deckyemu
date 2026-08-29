@@ -216,16 +216,22 @@ function Content() {
    * hatch theoretical.
    */
   const updateRow = badge && (
-    <>
-      <PanelSectionRow>
-        <Field label={badge.label} description={badge.description} />
-      </PanelSectionRow>
-      <PanelSectionRow>
-        <ButtonItem layout="below" onClick={() => openManagePage("updates")}>
-          See what's new
-        </ButtonItem>
-      </PanelSectionRow>
-    </>
+    <PanelSectionRow>
+      {/* One row, not a Field and a button in two. Steam rules between rows, so
+          the version and the button that acts on it were separated by a line
+          that reads as "these are two different things" -- and the button under
+          it then looks like it belongs to whatever comes next. `ButtonItem`
+          carries the label and description itself, which is what the rest of
+          the plugin already does. */}
+      <ButtonItem
+        layout="below"
+        label={badge.label}
+        description={badge.description}
+        onClick={() => openManagePage("updates")}
+      >
+        See what's new
+      </ButtonItem>
+    </PanelSectionRow>
   );
 
   const openManage = useCallback(() => openManagePage(), []);
@@ -277,11 +283,13 @@ function Content() {
           <Field description={gate.body} />
         </PanelSectionRow>
         <PanelSectionRow>
-          <Field description={gate.caveat} />
-        </PanelSectionRow>
-        <PanelSectionRow>
+          {/* The caveat rides on the button rather than in a row above it: it
+              is the condition of pressing it, and a rule between the two makes
+              it read as a separate remark. `gate.body` keeps its own row --
+              that one is about the device, not about this button. */}
           <ButtonItem
             layout="below"
+            description={gate.caveat}
             onClick={() => {
               // Awaited before re-reading, or the status call races the write
               // and the panel re-renders still blocked -- which reads as the
@@ -331,28 +339,25 @@ function Content() {
             does nothing, and the screen that fixes it is one nobody opens
             without already suspecting trouble. */}
         {nudge && (
-          <>
-            <PanelSectionRow>
-              <Field label={nudge.label} description={nudge.description} />
-            </PanelSectionRow>
-            <PanelSectionRow>
-              <ButtonItem
-                layout="below"
-                onClick={() =>
-                  openModal(
-                    <OrphanModal
-                      onChanged={() => {
-                        loadGames();
-                        void loadHealth();
-                      }}
-                    />,
-                  )
-                }
-              >
-                Check the library
-              </ButtonItem>
-            </PanelSectionRow>
-          </>
+          <PanelSectionRow>
+            <ButtonItem
+              layout="below"
+              label={nudge.label}
+              description={nudge.description}
+              onClick={() =>
+                openModal(
+                  <OrphanModal
+                    onChanged={() => {
+                      loadGames();
+                      void loadHealth();
+                    }}
+                  />,
+                )
+              }
+            >
+              Check the library
+            </ButtonItem>
+          </PanelSectionRow>
         )}
 
         {/* Kept as a full-width button only while there is nothing to play with.
@@ -365,27 +370,43 @@ function Content() {
             found the plugin should not have to notice a 30px icon to get
             started. */}
         {!canAddGames && (
-          <>
-            <PanelSectionRow>
-              <Field description="Set up RetroArch and a core, or add a standalone emulator, to start adding games." />
-            </PanelSectionRow>
-            <PanelSectionRow>
-              <ButtonItem layout="below" onClick={openManage}>
-                Set up emulators
-              </ButtonItem>
-            </PanelSectionRow>
-          </>
+          <PanelSectionRow>
+            <ButtonItem
+              layout="below"
+              description="Set up RetroArch and a core, or add a standalone emulator, to start adding games."
+              onClick={openManage}
+            >
+              Set up emulators
+            </ButtonItem>
+          </PanelSectionRow>
         )}
 
-        {/* Last on the section, because it is the least urgent thing on it: a
-            newer version is worth knowing about and is never the reason the
-            panel was opened. Above the add flow it would put a version number
-            between somebody and the button they came for. */}
+        {/* Last of the notices, because it is the least urgent of them: a newer
+            version is worth knowing about and is never the reason the panel was
+            opened. Above the status line or the library nudge it would put a
+            version number in front of something that actually needs attention.
+
+            Still above the row below it, though. Everything to here is the
+            panel telling you something; what follows is the first thing you
+            press on purpose, and mixing a notice in after it reads as an
+            afterthought. */}
         {updateRow}
+
+        {/* Above the add flow, because the add flow is the tallest thing in the
+            panel -- a ROM row, a core picker and a system picker -- and this
+            was below all of it. On a Deck that put the library, and the count
+            of what is in it, off the bottom of the screen: the one row here
+            worth reading without opening anything was the one row you had to
+            scroll to find.
+
+            In this section rather than one of its own, so it is spaced like the
+            rows around it. It renders nothing until a game has been added, so
+            the first-run panel is unchanged and adding a game stays the top
+            control until there is something to go back to. */}
+        <AddedGamesPanel games={games} onChanged={loadGames} />
       </PanelSection>
 
       {canAddGames && <AddGamePanel status={status} onGameAdded={loadGames} />}
-      <AddedGamesPanel games={games} onChanged={loadGames} />
     </>
   );
 }
