@@ -13,6 +13,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from harness import TMP, check, section, summary  # noqa: E402
 
+import diagnostics  # noqa: E402
 import launchers  # noqa: E402
 
 section("the launcher keeps its game's last run")
@@ -75,6 +76,42 @@ check("to something under the cap", os.path.getsize(_big) < launchers.LAUNCH_LOG
 check("but not to nothing", os.path.getsize(_big) > 0, True)
 check("and a second sweep finds nothing left to do", launchers.sweep_launch_logs(), 0)
 os.remove(_big)
+
+section("removing a game keeps what its emulator said")
+
+# **The case this exists for is removing a game *because it did not work*.**
+# That is the likeliest reason anybody removes one, and it is exactly the moment
+# the log explaining why becomes the only evidence left -- the launcher is gone,
+# the registry entry is gone, and the ROM may be gone too.
+#
+# This was briefly the other way round, on the argument that a log whose
+# launcher is gone can never be matched to a game again and is therefore litter.
+# True, and beside the point: what it costs to keep is a few kilobytes in a file
+# that truncates itself every run, and what it costs to delete is the answer to
+# the question the user is about to ask.
+
+os.makedirs(launchers.LAUNCHER_DIR, exist_ok=True)
+os.makedirs(launchers.LAUNCH_LOG_DIR, exist_ok=True)
+_script = os.path.join(launchers.LAUNCHER_DIR, "gone-game-abcd1234.sh")
+with io.open(_script, "w", encoding="utf-8", newline="\n") as _handle:
+    _handle.write("#!/bin/sh\n")
+_its_log = launchers.launch_log_path(_script)
+with io.open(_its_log, "w", encoding="utf-8", newline="\n") as _handle:
+    _handle.write("could not read content file\n")
+
+check("the launcher goes", launchers.remove_launcher(_script), True)
+check("and the log stays", os.path.exists(_its_log), True)
+check("with what the emulator said still in it",
+      "could not read content file" in launchers.read_launch_log(_script), True)
+
+# The report reads the newest log whatever became of its game, and says which
+# state it is in -- so a reader is not sent hunting for a library entry that is
+# not there any more. Checked here because the note is derived from the launcher
+# being absent, which is the thing this section just arranged.
+check("the report says the game is gone",
+      "since been removed" in diagnostics._last_launch(), True)
+
+os.remove(_its_log)
 
 if __name__ == "__main__":
     summary()

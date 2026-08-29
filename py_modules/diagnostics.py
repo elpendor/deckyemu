@@ -288,6 +288,14 @@ def _last_launch():
     said = launchers.read_launch_log(os.path.splitext(os.path.basename(newest))[0],
                                      LAUNCH_TAIL)
     when = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(newest_at))
+    # Whether the game this came from is still installed, said rather than left
+    # to be inferred. The commonest reason a log outlives its launcher is that
+    # the game did not work and was removed -- which makes this the report's
+    # most useful section, not a stale one, and the note is what stops a reader
+    # hunting for a library entry that is not there any more.
+    stem = os.path.splitext(os.path.basename(newest))[0]
+    if not os.path.isfile(os.path.join(launchers.LAUNCHER_DIR, "%s.sh" % stem)):
+        when += " -- this game has since been removed"
     if not said:
         # An ordinary answer, and worth saying rather than leaving blank: a
         # launcher written before format 12 captures nothing, and an emulator

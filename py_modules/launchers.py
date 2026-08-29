@@ -889,6 +889,18 @@ def remove_launcher(path):
     if not normalized.startswith(os.path.normpath(LAUNCHER_DIR) + os.sep):
         decky.logger.warning("Refusing to delete outside launcher dir: %s", path)
         return False
+    # **The launch log is deliberately left behind.**
+    #
+    # It was briefly deleted here, on the grounds that a log whose launcher is
+    # gone can never be matched to a game again and is therefore litter. That
+    # argument is true and beside the point: *removing a game because it did not
+    # work* is the likeliest reason anybody removes one, and it is exactly the
+    # moment the log explaining why becomes the only evidence left. Deleting it
+    # there threw the answer away at the moment it was wanted.
+    #
+    # What it costs to keep is a few kilobytes per game ever removed, in a
+    # truncated file. `_last_launch` says when the game a log belongs to is no
+    # longer installed, which is the useful half of what the deletion was for.
     try:
         os.remove(normalized)
         return True
