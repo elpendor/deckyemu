@@ -795,10 +795,28 @@ class Plugin(
             if described.get("ok") and described.get("sources"):
                 save_backup = described["sources"]
 
+        # Whether this file is already a game in the library, asked here rather
+        # than left to be discovered afterwards. The cleanup screen has
+        # classified duplicates for a long time, but only once two of them
+        # exist -- and by then the fix is removing a shortcut instead of not
+        # making one. Everything needed to say it is in front of us at the one
+        # moment it is still cheap.
+        #
+        # Reported, never enforced. Adding the same ROM twice is a reasonable
+        # thing to want -- the same disc under two cores, or one entry per
+        # region -- so this changes what the panel says and not what it allows.
+        already_added = await self._run(
+            store.already_added, await self._run(store.get_library), rom_path
+        )
+
         result = {
             "extension": extension,
             "match_extension": match_extension,
             "is_archive": extension in ra_cores.ARCHIVE_EXTENSIONS,
+            # The game already added for this file, or None. See
+            # `store.already_added` for why a name match and a path match are
+            # different answers.
+            "already_added": already_added,
             # What restoring this would put back, per emulator, or None when the
             # file is not one of ours.
             "save_backup": save_backup,

@@ -736,6 +736,28 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
         </PanelSectionRow>
       )}
 
+      {/* Above the other warnings, because it is the one that can make the rest
+          of the panel pointless: everything below is about getting this game
+          set up correctly, and it may already be set up. Said at the point it
+          is still cheap to act on -- the cleanup screen finds duplicates too,
+          but only once two of them exist. */}
+      {probe?.already_added && (
+        <PanelSectionRow>
+          <Field
+            label={
+              probe.already_added.same_file
+                ? "This file is already in your library"
+                : "You may already have this game"
+            }
+            description={
+              probe.already_added.same_file
+                ? `${probe.already_added.name || "A game"} already runs this exact file. Adding it again gives you a second entry for it, which is fine if that is what you want — a different core, say.`
+                : `${probe.already_added.name || "A game"} runs a file with this name from somewhere else, so this may be the same game sent twice. Adding it makes a second entry.`
+            }
+          />
+        </PanelSectionRow>
+      )}
+
       {/* A warning rather than a refusal: the file is odd, not forbidden, and
           somebody who knows better should still be able to add it. */}
       {probe?.disc_warning && (
@@ -1126,7 +1148,13 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
               ? "Adding..."
               : probe?.disc_warning
                 ? "Add anyway"
-                : "Add to Steam"}
+                : probe?.already_added
+                  // Not "Add anyway", which is the wording for a file that will
+                  // not work. This one will work perfectly; there is simply
+                  // going to be two of it, and the button should say that
+                  // rather than imply a risk.
+                  ? "Add a second time"
+                  : "Add to Steam"}
           </ButtonItem>
         </PanelSectionRow>
       )}

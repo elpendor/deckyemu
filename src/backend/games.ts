@@ -66,6 +66,20 @@ export interface RomProbe {
    * files is not a ROM, and "Run with" over it is a confident wrong answer.
    */
   save_backup: SaveBackupContents[] | null;
+  /**
+   * The game already added for this file, or null.
+   *
+   * `same_file` separates the two claims. True means a registered game runs
+   * this exact path — certain. False means one runs a file with the same name
+   * somewhere else, which is what sending the same ROM twice looks like: the
+   * add flow files a ROM into the library folder, so the copy left in the
+   * transfer folder has the same name and a different path. Likely, not
+   * certain — two systems both have a `Frogger.zip`.
+   *
+   * Said, never enforced. Adding the same ROM twice is a reasonable thing to
+   * want, so this changes what the panel says and not what it allows.
+   */
+  already_added: { app_id: string; name: string; same_file: boolean } | null;
   is_archive: boolean;
   provisional_title: string;
   matching_cores: Core[];

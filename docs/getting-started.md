@@ -162,6 +162,17 @@ what starts it.
 **One game at a time.** You see the core, the name and the cover before anything
 reaches your library. There is no bulk import.
 
+**If you have added that game before, the panel says so** before you press
+anything — either *this file is already in your library*, when the same file is
+already a game, or *you may already have this game*, when a game runs a file
+with the same name from somewhere else. The second is what sending the same ROM
+twice looks like: the first copy was filed into your library folder, so the new
+one arrives in the transfer folder under the same name.
+
+It is a remark, not a refusal. Adding the same ROM twice is a perfectly
+reasonable thing to want — the same disc under two different cores, say — so the
+button changes to **Add a second time** and does exactly that.
+
 ### PlayStation and Vita packages
 
 A `.pkg` is not a game yet. Pick one and the panel offers to unpack it first,

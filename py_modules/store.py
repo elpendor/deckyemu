@@ -315,6 +315,55 @@ def get_library():
     return data if isinstance(data, dict) else {}
 
 
+def already_added(library, rom_path):
+    """The game already added for this file, or None. Never raises.
+
+    Two kinds of match, and they are not the same claim:
+
+    `same_file` -- the registered game runs *this path*. Certain.
+
+    Otherwise -- a registered game runs a file with the same name somewhere
+    else. Which is what sending the same ROM twice looks like: the add flow
+    files a ROM into the library folder after adding it, so the copy sitting in
+    the transfer folder afterwards has a different path and the same name.
+    Likely, not certain -- two systems' `Frogger.zip` are different games -- so
+    the panel says which of the two it found rather than merging them.
+
+    An exact path match wins over a name match however far down the list it is,
+    so the whole library is read before answering.
+    """
+    if not rom_path:
+        return None
+    try:
+        target = os.path.realpath(rom_path)
+    except (OSError, ValueError):
+        target = rom_path
+    name = os.path.basename(rom_path).lower()
+
+    by_name = None
+    for app_id, entry in (library or {}).items():
+        known = (entry or {}).get("rom_path") or ""
+        if not known:
+            continue
+        try:
+            same = os.path.realpath(known) == target
+        except (OSError, ValueError):
+            same = known == target
+        if same:
+            return {
+                "app_id": str(app_id),
+                "name": (entry or {}).get("name") or "",
+                "same_file": True,
+            }
+        if by_name is None and os.path.basename(known).lower() == name:
+            by_name = {
+                "app_id": str(app_id),
+                "name": (entry or {}).get("name") or "",
+                "same_file": False,
+            }
+    return by_name
+
+
 def remember_game(app_id, entry):
     with _lock:
         library = _read_json(LIBRARY_PATH, {})
