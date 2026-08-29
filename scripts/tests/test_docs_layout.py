@@ -66,10 +66,26 @@ def _exists(path):
 _missing = sorted({path for path in _paths if not _exists(path)})
 check("every path in the layout exists", _missing, [])
 
+_listing = _block.group(1) if _block else ""
+
+# **The other direction, which nothing checked.** The block opens "Every backend
+# module is listed", and only the forward check existed -- every path named must
+# exist -- so a module could be added and never mentioned without failing
+# anything. Nine had accumulated by the time somebody read the page: discset,
+# emu_patch, hardware, jsonstore, model3_games, procout, steam_layouts, unpack
+# and xbox360_content.
+#
+# An unlisted module is a quieter failure than a wrong path but the same kind of
+# lie, and it is the one a promise like that invites: the sentence is what makes
+# a reader stop looking.
+_backend = sorted(name for name in os.listdir(os.path.join(REPO_ROOT, "py_modules"))
+                  if name.endswith(".py"))
+_unlisted = [name for name in _backend if name not in _listing]
+check("every backend module is listed, as the block claims", _unlisted, [])
+
 # The specific regression, named so a future edit that reintroduces it fails on
 # the reason rather than on a generic list. Scoped to the block: the prose around
 # it names both old paths on purpose, to say what went wrong and why it mattered.
-_listing = _block.group(1) if _block else ""
 check("steam.ts is not listed as a file", "steam.ts" not in _listing, True)
 check("nor is backend.ts", "backend.ts" not in _listing, True)
 

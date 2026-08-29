@@ -1,7 +1,7 @@
 # Your library
 
-Editing a game after it is added, how games are grouped in Big Picture, and
-putting things back in order.
+Starting and editing a game, how games are grouped in Big Picture, backing up
+and restoring save data, and putting things back in order.
 
 Back to [the README](../README.md).
 
@@ -25,6 +25,9 @@ When one does not, **Select + Start** opens the emulator's menu, where
 [multi-disc games](getting-started.md#multi-disc-games).
 
 ### Its page in your library
+
+![A game added from a ROM, open on its own page in the Steam library, with hero
+artwork, a logo and a Play button.](images/its-page-in-steam.jpg)
 
 The ⓘ button beside play opens Steam's own page for that game — where the
 artwork, the play time and the per-game controller and performance settings
@@ -58,6 +61,9 @@ the library is it deciding not to continue.
 If anything about that check goes wrong, the game launches normally. It is built
 to fail in that direction: a missing warning is a far smaller problem than a
 game that will not start.
+
+![The Added games list, grouped by system, with play, details, edit and remove
+buttons on each row.](images/added-games.jpg)
 
 ## Editing a game
 

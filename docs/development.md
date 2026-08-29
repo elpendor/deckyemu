@@ -188,6 +188,7 @@ py_modules/                 Backend logic. Plain Python, stdlib only -- it runs
                             on decky's frozen interpreter and cannot grow deps.
   ra_detect.py              Find RetroArch (flatpak/native/AppImage), build argv
   ra_cores.py               Scan cores, parse .info, match extensions, peek in zips
+  unpack.py                 Extract a zip that arrived in the transfer folder
   libretro_meta.py          Name cleanup and libretro thumbnail resolution
   sgdb.py                   SteamGridDB search, scoring, era filtering, key discovery
   platforms.py              libretro database -> short name and folder name;
@@ -198,9 +199,14 @@ py_modules/                 Backend logic. Plain Python, stdlib only -- it runs
   cheevos.py                RetroAchievements login, and the per-launch config
   store.py                  settings / library / emulators / collections records
   romshelf.py               File a ROM under roms/<system>, and delete it again
+  discset.py                Recognise a multi-disc game from the discs beside it,
+                            and write the .m3u that makes it one game
   savedata.py               Where each emulator keeps its saves, and gathering
                             them into one archive to take off the device
   net.py                    stdlib-only HTTP, with a system-CA fallback
+  jsonstore.py              Read and write the plugin's own JSON, atomically
+  procout.py                Read what a subprocess says while it is still saying it
+  hardware.py               Which machine this is, and whether we claim to work on it
   sysenv.py                 Strip Steam's runtime; user_home(); user_dir();
                             where flatpak keeps applications and whether one is
                             deployed there or merely left behind
@@ -224,6 +230,10 @@ py_modules/                 Backend logic. Plain Python, stdlib only -- it runs
                             config, and the rule for when that is allowed
   emu_firmware.py           Match a BIOS or key file by name and put it where the
                             emulator reads it
+  emu_patch.py              Correct a bug inside an emulator's own binary, when
+                            nothing else reaches it
+  steam_layouts.py          The Steam Input layout an emulator needs, derived
+                            from one Steam ships
 
   sfo.py                    PARAM.SFO, the container PS3, PS4 and Vita share
   ps3_games.py              RPCS3: .pkg headers, unpacked games, .rap licences
@@ -231,6 +241,9 @@ py_modules/                 Backend logic. Plain Python, stdlib only -- it runs
   vita_games.py             Vita3K: PKG type 2, installed titles, zRIF keys
   vita_release.py           Recognise a NoNpDrm .zip by the param.sfo inside it
   xbox_disc.py              Read XDVDFS enough to say whether a disc can boot
+  xbox360_content.py        Name an Xbox 360 file by its header, when it has no
+                            name to go on
+  model3_games.py           Name an arcade ROM set, for the files named by code
 
   plugin_base.py            What every mixin may assume about the composed
                             Plugin -- declarations only, no implementations.
@@ -264,14 +277,13 @@ src/                        Frontend (React + TypeScript, bundled by rollup).
                             contained otherwise: it unmounts to whatever
                             boundary Steam happens to have, which is an empty
                             Game Mode screen.
-  backend/                  Every callable() binding and its types, in seven
-                            files by subject, named after the backend module
+  backend/                  Every callable() binding and its types, split by
+                            subject and named after the backend module
                             each one talks to. index.ts re-exports, so importers
                             still write `from "./backend"` and a declaration can
                             move between them without touching a caller.
   steam/                    All undocumented SteamClient / appStore /
-                            collectionStore / Steam Input use, in five files by
-                            subject.
+                            collectionStore / Steam Input use, split by subject.
                             Kept free of backend imports so the Node tests can
                             load it -- anything needing both halves lives one
                             level up (addGame.ts, collections.ts,

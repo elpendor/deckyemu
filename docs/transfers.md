@@ -6,9 +6,13 @@ where each one ends up.
 Back to [the README](../README.md).
 
 **Contents** — [Sending files from another device](#sending-files-from-another-device) ·
+[Unpacking a zip](#unpacking-a-zip) ·
 [Where a ROM ends up](#where-a-rom-ends-up)
 
 ## Sending files from another device
+
+![The transfer dialog: a QR code, a short address and a six-digit code, with a
+received file listed below it.](images/sending-a-game.jpg)
 
 Getting a ROM onto a Deck otherwise means Desktop Mode or a shell. **Send files
 from another device** in the Quick Access panel starts a small HTTP server on the

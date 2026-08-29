@@ -1,17 +1,41 @@
 # Installing DeckyEmu
 
-The one-time install, the Desktop Mode fallback, and what the plugin puts on
-your Deck.
+Installing it with a controller, the Desktop Mode fallback for a Deck that
+cannot reach GitHub, and what the plugin puts on your Deck.
 
 Back to [the README](../README.md).
 
-**Contents** — [Manual install](#manual-install) ·
+**Contents** — [Installing](#installing) · [Manual install](#manual-install) ·
 [Where things live](#where-things-live) · [Uninstalling](#uninstalling)
+
+## Installing
+
+**In Game Mode, with a controller.** You need
+[Decky Loader](https://github.com/SteamDeckHomebrew/decky-loader), which is the
+one thing installed from Desktop Mode — and the only trip you make. Everything
+below happens on the couch.
+
+1. Open the **Decky** menu in the Quick Access panel and go to its settings.
+2. Find **Install from URL** and give it:
+
+   ```
+   https://get.deckyemu.xyz
+   ```
+
+3. Confirm Decky's prompt. DeckyEmu appears in the Quick Access panel.
+
+That address is short because it is typed on an on-screen keyboard; it redirects
+to the latest release. To paste one you can verify instead — reasonable, for a
+URL that installs software — use
+`https://github.com/elpendor/deckyemu/releases/latest/download/deckyemu.zip`.
+
+Updating later never needs any of this: **Settings → Updates** does it from the
+panel.
 
 ## Manual install
 
-The route above is the one to use; this is here for a Deck that cannot reach
-GitHub, or a build you made yourself. It needs Desktop Mode once. Download
+**Only for a Deck that cannot reach GitHub, or a build you made yourself.**
+Everyone else wants the route above. This one needs Desktop Mode. Download
 `deckyemu.zip` from the
 [releases page](https://github.com/elpendor/deckyemu/releases) and unpack it into
 `~/homebrew/plugins`, so that `~/homebrew/plugins/deckyemu/main.py` exists — the

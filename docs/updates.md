@@ -5,6 +5,7 @@ Keeping the plugin current, and what to send when something goes wrong.
 Back to [the README](../README.md).
 
 **Contents** — [Updates and what changed](#updates-and-what-changed) ·
+[Which build you are running](#which-build-you-are-running) ·
 [Reporting a problem](#reporting-a-problem)
 
 ## Updates and what changed

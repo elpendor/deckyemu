@@ -1,7 +1,7 @@
 # RetroArch
 
-Installing RetroArch and its cores, and the launch behaviour this plugin sets
-for games that run on one.
+Installing RetroArch and its cores, the launch behaviour this plugin sets, the
+menu combo, and achievements.
 
 Back to [the README](../README.md).
 

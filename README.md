@@ -12,12 +12,24 @@ PCSX2, DuckStation, PPSSPP, RPCS3, shadPS4, Vita3K, Ryujinx, Cemu, Azahar,
 xemu, Xenia Canary and Supermodel — along with the BIOS and firmware each one needs.
 Bring your own instead, if you would rather.
 
+![The Emulators tab in the settings page, listing Azahar, Cemu, Dolphin and
+DuckStation with the system and file types each one
+handles.](docs/images/installing-an-emulator.jpg)
+
 **Get your games onto the Deck** from a phone or a laptop over your own network.
 ROMs, disc sets, zipped archives and PlayStation 3, PS4 and Vita packages all
 arrive, unpack and are filed under their system.
 
+![The transfer dialog in Game Mode: a QR code beside a short address and a
+six-digit code, with a received Game Boy ROM listed underneath and an Add button
+next to it.](docs/images/sending-a-game.jpg)
+
 **Play them from Steam**, with a clean name, boxart and a shelf of their own —
 and back your save data up to another device, or put it back from one.
+
+![Steam's home screen. A game added from a ROM sits first under Recent Games
+with its own wide artwork, beside games bought from
+Steam.](docs/images/a-game-in-steam.jpg)
 
 Everything happens with a controller, from the Quick Access panel. The one
 exception is [Decky Loader](https://github.com/SteamDeckHomebrew/decky-loader)
@@ -82,7 +94,7 @@ symptom-by-symptom list for when one of them misbehaves.
 | | |
 | --- | --- |
 | [Getting started](docs/getting-started.md) | The walkthrough: install to first game, then everyday tasks and what to do when one misbehaves |
-| [Installing](docs/installing.md) | The manual install, and what the plugin puts on your Deck |
+| [Installing](docs/installing.md) | Installing and uninstalling, the Desktop Mode fallback, and what the plugin puts on your Deck |
 | [Getting files onto the Deck](docs/transfers.md) | Sending ROMs, BIOS files and keys from another device, and where each ends up |
 | [RetroArch](docs/retroarch.md) | Installing it and its cores, fullscreen, on-screen chatter, the menu combo, achievements |
 | [Standalone emulators](docs/emulators.md) | The one-press catalog, moving between builds, registering your own |

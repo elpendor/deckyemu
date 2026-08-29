@@ -7,11 +7,17 @@ Back to [the README](../README.md).
 
 **Contents** — [Installing an emulator](#installing-an-emulator) ·
 [Unpacking a PS4 package](#unpacking-a-ps4-package) ·
-[Fixes](#fixes) ·
+[Getting to the emulator's own menu](#getting-to-the-emulators-own-menu) ·
+[Fixes](#fixes) · [Motion controls](#motion-controls) ·
+[Xbox 360 files](#xbox-360-files) · [Arcade ROM sets](#arcade-rom-sets) ·
+[Removing an emulator](#removing-an-emulator) ·
 [Updating an emulator, or going back](#updating-an-emulator-or-going-back) ·
 [Adding your own emulator](#adding-your-own-emulator)
 
 ## Installing an emulator
+
+![The Emulators tab, listing ready-made emulators with the system and file types
+each one handles.](images/installing-an-emulator.jpg)
 
 The **Emulators** tab lists emulators for the systems RetroArch does not cover.
 Press install and the emulator is downloaded and set up: the system, the file

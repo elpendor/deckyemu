@@ -229,8 +229,7 @@ entry. Turn the switch off for those.
 PlayStation 3 never had a multi-disc game to begin with.
 
 **Select + Start is the same combo everywhere it works**, including
-[RetroArch's own menu](retroarch.md#getting-into-retroarchs-menu). DuckStation
-and PCSX2 share the menu it opens, so it looks and behaves the same in both.
+[RetroArch's own menu](retroarch.md#getting-into-retroarchs-menu).
 
 **Naming.** The discs are recognised by their filenames, because the disc number
 is not inside the file — every emulation tool works this way.
@@ -243,17 +242,10 @@ is not inside the file — every emulation tool works this way.
 | `Game (CD 1).bin` | |
 | `Game (Disc 1) (Rev 1).cue` | |
 
-Anything else is simply not spotted, and **Pick another disc** under the switch
-lets you choose the rest by hand. They have to be in the same folder, because a
-playlist can only name files beside it.
-
-Everything except the disc number has to match exactly, so `Game` and `Game 2`
-are never merged, and a set with a disc missing is not offered at all — half a
-game is worse than none.
-
-**The switch appears whatever runs the game** — see the table above for what
-changes. What is read from the core's own information, rather than a list kept
-here, is whether it can be handed a playlist.
+Anything else is not spotted, and **Pick another disc** under the switch lets
+you choose the rest by hand — they must be in the same folder. Everything except
+the disc number has to match exactly, so `Game` and `Game 2` are never merged,
+and a set missing a disc is not offered at all.
 
 **Three layouts the panel will tell you about:**
 
@@ -262,9 +254,6 @@ here, is whether it can be handed a playlist.
 | A disc when the others are in folders of their own — how a Redump download arrives | Send every disc's files across together; they arrive in one folder, which is all it takes |
 | A `.bin` whose `.cue` never arrived | Send the `.cue` too — without it the audio track is invisible and the game may not start |
 | One `.bin` track of a disc | Pick the `.cue` that names it; the tracks are not discs, even though they are usually numbered like them |
-
-Removing a multi-disc game takes the playlist, every disc and every track with
-it, the same as any other game.
 
 ## When something does not work
 
