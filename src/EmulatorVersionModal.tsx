@@ -225,7 +225,9 @@ export function EmulatorVersionModal({ closeModal, emulator, onChanged }: Props)
    *
    * Falls back to the prop only until the list arrives.
    */
-  const onNewest = builds?.length ? Boolean(builds[0].current) : !emulator.update_available;
+  const onNewest = builds?.length
+    ? Boolean(builds[0].current)
+    : emulator.update_state === "current";
 
   return (
     <ModalRoot closeModal={closeModal}>

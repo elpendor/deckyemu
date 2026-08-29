@@ -413,14 +413,17 @@ class Emulators(plugin_base.PluginContext):
         many emulators there are -- `remote-info` costs about two seconds a call,
         so per emulator would be fourteen seconds to draw a tab.
 
-        Only flatpak entries answer for now. An AppImage can be updated by
-        downloading again, but knowing whether it is worth downloading needs a
-        release tag recorded at install time, and installs made before that
-        existed have none -- so reporting one as "up to date" would be a guess.
-        Absent from this list means "not offered", which is the honest state.
+        AppImage entries answer from the last update check rather than from the
+        network, which is why they cost nothing here. `update_state` carries the
+        difference: `unknown` until somebody presses the button, and after that
+        whatever the check found. Absent from this list still means "not
+        installed", which is a third thing again.
         """
         pending = await self._run(emu_install.flatpak_updates)
         held = await self._run(emu_install.flatpak_held)
+        # Read once for the whole list rather than per row: it is one small file
+        # and the loop below runs over the entire catalog.
+        checked = await self._run(emu_install.read_latest_tags)
 
         rows = []
         # RetroArch first, and included even though it is not in the catalog: it
@@ -433,13 +436,15 @@ class Emulators(plugin_base.PluginContext):
 
             if source.get("kind") == "github":
                 # Whether a newer release exists is a network call per emulator,
-                # and this runs when a tab opens. So the row says which build is
-                # installed and the dialog finds out what else there is -- the
-                # same division the flatpak side uses for its build list.
+                # and this runs when a tab opens -- so this reads the *last
+                # answer* rather than asking again. `check_emulator_updates` is
+                # what asks, from a button, and it is the only thing that does.
                 path = await self._run(emu_install.installed_appimage, entry["id"])
                 if not path:
                     continue
                 record = await self._run(emu_install.read_build_record, entry["id"])
+                installed = record.get("tag", "")
+                published = checked.get(entry["id"]) or ""
                 rows.append({
                     "id": entry["id"],
                     "name": entry["name"],
@@ -448,10 +453,12 @@ class Emulators(plugin_base.PluginContext):
                     # Empty for anything installed before the record existed.
                     # Reported as unknown rather than guessed from the filename,
                     # which for two of these three identifies nothing.
-                    "build": record.get("tag", ""),
-                    # Not knowable without asking the network, and saying "no"
-                    # here would be a claim rather than an answer.
-                    "update_available": False,
+                    "build": installed,
+                    # Three states, not two. Nobody has checked, this build is
+                    # the newest published, or it is not -- and the first is not
+                    # a quieter way of saying the second. See
+                    # `emu_install.update_state`.
+                    "update_state": emu_install.update_state(installed, published),
                     # Nothing outside this plugin updates an AppImage it
                     # downloaded, so there is nothing for a hold to protect
                     # against and none is offered.
@@ -477,7 +484,10 @@ class Emulators(plugin_base.PluginContext):
                 # nothing anybody can read. The full value stays server-side and
                 # in `emulator_build_list`, which is what a rollback quotes back.
                 "build": commit[:12],
-                "update_available": app_id in pending,
+                # flatpak was asked, above, so this side is never unknown: one
+                # `remote-ls --updates` covers every emulator at once, which is
+                # exactly what the AppImage side cannot do.
+                "update_state": "available" if app_id in pending else "current",
                 "held": app_id in held,
                 # A system-scope install is root-owned and the plugin cannot
                 # answer a password prompt, so the row says why instead of
@@ -490,6 +500,66 @@ class Emulators(plugin_base.PluginContext):
                 ),
             })
         return rows
+
+    async def check_emulator_updates(self):
+        """Ask each installed AppImage emulator's project what it has published.
+
+        **The only thing that makes this network call, and it is never made on
+        the way to drawing something.** One call per installed AppImage emulator
+        -- four entries in the catalog install from a release, so at worst four
+        -- against other people's repositories, and a tab that did this on open
+        would spend somebody's rate limit every time they walked past it.
+
+        Flatpak emulators are not asked. `flatpak_updates` already answers for
+        all of them in one query, cheaply enough that `emulator_builds` does it
+        on open, so there is nothing here for them to gain.
+
+        Returns {ok, checked, available, error}. A repository that could not be
+        reached leaves its previous answer alone rather than overwriting it with
+        an empty one -- a failed check should cost the row nothing, and blanking
+        it would turn "there is an update" back into "nobody knows".
+        """
+        tags = await self._run(emu_install.read_latest_tags)
+        checked = 0
+        available = 0
+        failures = []
+
+        for entry in emulator_catalog.CATALOG:
+            source = entry.get("source") or {}
+            if source.get("kind") != "github":
+                continue
+            if not await self._run(emu_install.installed_appimage, entry["id"]):
+                continue
+
+            tag, error = await self._run(emu_install.latest_tag, entry)
+            if not tag:
+                failures.append(entry["name"])
+                decky.logger.warning(
+                    "Could not check %s for updates: %s", entry["id"], error
+                )
+                continue
+
+            checked += 1
+            tags[entry["id"]] = tag
+            record = await self._run(emu_install.read_build_record, entry["id"])
+            if emu_install.update_state(record.get("tag", ""), tag) == "available":
+                available += 1
+
+        await self._run(emu_install.write_latest_tags, tags)
+
+        # Named, not counted. "1 emulator could not be checked" sends the reader
+        # to open four dialogs to find out which; the name is the whole of what
+        # makes the sentence actionable, and there are never more than a few.
+        error = ""
+        if failures:
+            error = "Could not reach %s." % ", ".join(failures)
+
+        return {
+            "ok": True,
+            "checked": checked,
+            "available": available,
+            "error": error,
+        }
 
     async def emulator_build_list(self, entry_id: str):
         """Past builds of one emulator, newest first, for going back to.

@@ -1,4 +1,5 @@
 import {
+  ButtonItem,
   ConfirmModal,
   DialogButton,
   Field,
@@ -27,6 +28,7 @@ import {
 import { EmulatorLegendModal } from "./EmulatorLegendModal";
 
 import {
+  checkEmulatorUpdates,
   emulatorBuilds,
   getStatus,
   importedEmulators,
@@ -120,9 +122,13 @@ function describe(entry: CatalogEmulator, build?: EmulatorBuild): string {
   // nothing would otherwise prompt anybody to open it. "Held" is the one that
   // most needs saying: a pinned emulator stops receiving updates indefinitely,
   // and an invisible pin is a trap rather than a feature.
+  // Only when there is an update. "Up to date" on every other row would be a
+  // line of text per emulator saying nothing happened, and `unknown` -- an
+  // AppImage nobody has checked yet -- has nothing to say at all. What the
+  // check found is reported where the check was asked for, on the button.
   const version = build?.held
     ? "held at this build"
-    : build?.update_available
+    : build?.update_state === "available"
       ? "update available"
       : "";
 
@@ -153,6 +159,79 @@ export function EmulatorCatalogPanel({ onChanged }: Props) {
   // Two flatpak queries for all of them, so it is cheap enough to read here and
   // saves the version dialog asking again for the row that opened it.
   const [builds, setBuilds] = useState<Record<string, EmulatorBuild>>({});
+  /*
+   * What the last update check found, as a sentence to show under the button.
+   *
+   * Kept here rather than written into the rows, because "nothing is out of
+   * date" has no row to live on: the rows only ever say something when there IS
+   * an update, so a check that finds none would otherwise look identical to a
+   * check that never ran. That was the whole complaint being fixed.
+   */
+  const [checkNote, setCheckNote] = useState("");
+  const [checking, setChecking] = useState(false);
+
+  /*
+   * Separate from the catalog load, and a failure here must not blank the
+   * catalog: not knowing whether an update is waiting is a missing button,
+   * while not knowing what is installed is an empty tab.
+   *
+   * Reads only. The AppImage side of this answers from what the last check
+   * wrote down, so calling it again after a check is what moves the rows.
+   */
+  const loadBuilds = useCallback(
+    () =>
+      callWithRetry(emulatorBuilds)
+        .then((rows) =>
+          setBuilds(Object.fromEntries(rows.map((row) => [row.id, row]))),
+        )
+        .catch((buildError) =>
+          logError("could not read emulator builds", buildError),
+        ),
+    [],
+  );
+
+  /*
+   * The one thing on this tab that goes to the network for every installed
+   * AppImage emulator, so it happens because somebody asked and not because a
+   * tab was opened. Flatpak emulators are already answered for by the two
+   * queries `emulatorBuilds` makes.
+   */
+  const runCheck = useCallback(async () => {
+    setChecking(true);
+    setCheckNote("");
+    try {
+      const result = await callWithRetry(checkEmulatorUpdates);
+      await loadBuilds();
+      // The failures first, and kept even when something was checked
+      // successfully: "everything is up to date" alongside a project that could
+      // not be reached is the sentence that makes somebody stop looking.
+      const parts: string[] = [];
+      if (result.available > 0) {
+        parts.push(
+          result.available === 1
+            ? "1 emulator has an update."
+            : `${result.available} emulators have updates.`,
+        );
+      } else if (result.checked > 0) {
+        parts.push("Everything downloaded from a release is up to date.");
+      } else if (!result.error) {
+        // Nothing to check is not a failure and not a success. It is the state
+        // of a Deck whose emulators all came from Flathub, which is most of
+        // them, and saying "up to date" there would answer about emulators this
+        // button never looked at.
+        parts.push("No emulators here were installed from a release.");
+      }
+      if (result.error) {
+        parts.push(result.error);
+      }
+      setCheckNote(parts.join(" "));
+    } catch (checkError) {
+      logError("could not check emulators for updates", checkError);
+      setCheckNote("Could not check for updates.");
+    } finally {
+      setChecking(false);
+    }
+  }, [loadBuilds]);
   // Why any definition file was refused. Empty is the ordinary case.
   const [problems, setProblems] = useState<string[]>([]);
 
@@ -180,17 +259,8 @@ export function EmulatorCatalogPanel({ onChanged }: Props) {
         .catch((loadError) => logError("could not read the catalog", loadError))
         .finally(() => setLoading(false));
     })();
-    // Separate call, and a failure here must not blank the catalog: not knowing
-    // whether an update is waiting is a missing button, while not knowing what
-    // is installed is an empty tab.
-    callWithRetry(emulatorBuilds)
-      .then((rows) =>
-        setBuilds(Object.fromEntries(rows.map((row) => [row.id, row]))),
-      )
-      .catch((buildError) =>
-        logError("could not read emulator builds", buildError),
-      );
-  }, []);
+    void loadBuilds();
+  }, [loadBuilds]);
 
   // Where the "locate" picker starts. Read from the backend rather than
   // hardcoded, because the real home is not /home/deck on every install.
@@ -542,6 +612,13 @@ export function EmulatorCatalogPanel({ onChanged }: Props) {
 
   const refused = importProblems(problems);
 
+  // Nothing installed from a release means nothing for the check to ask about,
+  // and a button whose only possible answer is "there was nothing to do" is a
+  // row explaining an absence. Most Decks are in exactly this state.
+  const hasReleaseBuilds = Object.values(builds).some(
+    (row) => row.channel === "github",
+  );
+
   return (
     // Untitled section: SidebarNavigation already renders the tab's heading
     // above it. The name goes on the intro row instead, which had to exist
@@ -760,6 +837,31 @@ export function EmulatorCatalogPanel({ onChanged }: Props) {
         </PanelSectionRow>
         );
       })}
+
+      {/* Below the list, because it is about the list rather than a step in
+          reading it -- and because the thing it changes is the rows above,
+          which is easier to notice from underneath them than from a button
+          scrolled off the top.
+
+          Only for emulators installed from a release. A flatpak is already
+          answered for by the two queries the tab makes on open, so a check that
+          covered those as well would be claiming to have done something it did
+          not need to do. */}
+      {hasReleaseBuilds && (
+        <PanelSectionRow>
+          <ButtonItem
+            layout="below"
+            disabled={checking}
+            onClick={() => void runCheck()}
+            description={
+              checkNote ||
+              "Emulators installed from a release are not checked automatically — it asks each project directly, so it happens when you press this."
+            }
+          >
+            {checking ? "Checking..." : "Check for emulator updates"}
+          </ButtonItem>
+        </PanelSectionRow>
+      )}
 
       {error && (
         <PanelSectionRow>

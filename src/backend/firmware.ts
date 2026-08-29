@@ -249,7 +249,13 @@ export interface EmulatorBuild {
    * build was recorded, which reads as unknown rather than being guessed.
    */
   build: string;
-  update_available: boolean;
+  /**
+   * `unknown` is a real answer, not a quiet `current`. A flatpak is always one
+   * of the other two — one `remote-ls --updates` covers every emulator at once.
+   * An AppImage stays `unknown` until `checkEmulatorUpdates` has run, because
+   * finding out costs a call to somebody else's repository.
+   */
+  update_state: "unknown" | "current" | "available";
   /** Pinned, so no update will move it. */
   held: boolean;
   /** Non-empty when the version cannot be changed, and why. */
@@ -259,15 +265,26 @@ export interface EmulatorBuild {
 /**
  * Installed emulators whose build can be changed, and where each one is.
  *
- * Flatpak entries only. An AppImage can be reinstalled, but knowing whether that
- * is worth 200MB needs a release tag recorded at install time, and installs made
- * before that existed have none — so absent from this list means "not offered"
- * rather than "up to date".
- *
- * Two flatpak queries however many emulators there are, so this is cheap enough
- * to call when the tab opens.
+ * Two flatpak queries however many emulators there are, and for AppImages the
+ * answer recorded by the last `checkEmulatorUpdates` — so this is cheap enough
+ * to call when the tab opens and makes no network call of its own.
  */
 export const emulatorBuilds = callable<[], EmulatorBuild[]>("emulator_builds");
+
+/**
+ * Ask each installed AppImage emulator's project what it has published.
+ *
+ * One network call per installed AppImage emulator, against repositories that
+ * are not ours, so this is only ever run from a button — never on open, never
+ * per row. `emulatorBuilds` reads back what it found.
+ *
+ * `error` names the projects that could not be reached; their previous answers
+ * are left alone rather than blanked, so a failed check costs a row nothing.
+ */
+export const checkEmulatorUpdates = callable<
+  [],
+  { ok: boolean; checked: number; available: number; error: string }
+>("check_emulator_updates");
 
 /** One past build of an emulator, as offered to go back to. */
 export interface PastBuild {

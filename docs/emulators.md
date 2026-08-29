@@ -349,17 +349,38 @@ of your own, because their data lives in ordinary folders this does not remove.
 
 ## Updating an emulator, or going back
 
-Anything installed from Flathub — most of the list above, and RetroArch itself —
-can be moved between published builds without leaving the panel.
+Every emulator installed from the panel can be moved between published builds
+without leaving it, whether it came from Flathub or from the project's own
+releases.
 
 For an emulator, the branch button on its row under **Emulators**. For RetroArch,
 **RetroArch version** on its own tab. Both open the same dialog: which build is
 installed, an **Update** when a newer one is published, and every other build
-Flathub carries, listed by date. Each row opens to show the whole of its
+that is published, listed by date. Each row opens to show the whole of its
 description, the version, and **how much it would download** — switching build
 re-fetches the entire application, which for RetroArch is around 400MB.
 
 Nothing updates on its own. An emulator moves when you ask it to.
+
+### Emulators installed from a release
+
+RPCS3, Azahar, Vita3K and Xenia Canary publish no Flatpak, so the plugin
+downloads them from the projects' own release pages. They move between builds
+like the rest, with two differences.
+
+**Whether an update exists is not checked when the tab opens.** Finding out
+means asking each project's repository directly, one request per emulator, and a
+tab that did that every time you walked past it would be spending your
+connection on a question nobody asked. So there is a **Check for emulator
+updates** button at the foot of the Emulators tab. Press it and the rows say
+*update available* where there is one, and the button says what it found.
+
+Until you press it, the plugin does not claim either way. A row saying nothing
+means nobody has looked — not that the emulator is current.
+
+**They cannot be held.** A hold exists to stop something else moving an
+emulator, and nothing else on the Deck updates an AppImage this plugin
+downloaded. Staying on a build is simply not pressing update.
 
 **Choosing a build also holds it there**, and that is the part worth
 understanding. Holding stops *anything* moving it, not only this plugin — any
@@ -378,12 +399,14 @@ Not offered for:
 
 | | Why |
 | --- | --- |
-| RPCS3, Azahar, Vita3K | Downloaded from the projects' own releases rather than Flathub, which publishes no build history to choose from |
 | A system-wide Flatpak | Root-owned, and the plugin has no way to answer a password prompt |
 | RetroArch from a package or an AppImage | Neither was installed from here and neither has builds to move between |
+| An emulator you registered yourself | The plugin did not install it and does not know where it publishes |
 
-The note on each build describes its *packaging* — "Restrict nvidia-cg-toolkit to
-x86_64" — not the emulator's own release notes, which live on the project's site.
+For a Flathub build, the note on each row describes its *packaging* — "Restrict
+nvidia-cg-toolkit to x86_64" — not the emulator's own release notes, which live
+on the project's site. For a release build the row is the tag the project gave
+it, which is as much as a release listing carries.
 
 ## Adding your own emulator
 

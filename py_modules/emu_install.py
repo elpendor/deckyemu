@@ -928,6 +928,86 @@ def write_build_record(entry_id, tag, asset_name):
         decky.logger.warning("Could not record the build of %s: %s", entry_id, error)
 
 
+#: What the newest release of each AppImage emulator was, the last time somebody
+#: asked. Beside the build record rather than in it: the record says what *this
+#: device installed*, which is a fact about the install and must survive a failed
+#: network call, while this says what the *project has published*, which is a
+#: fact about somebody else's repository and is stale the moment it is written.
+#:
+#: In the settings directory, not the emulator's folder, because it is exactly
+#: the thing that may be thrown away: losing it costs one press of the check
+#: button, and losing the build record costs the ability to name the build at
+#: all.
+LATEST_TAGS = os.path.join(decky.DECKY_PLUGIN_RUNTIME_DIR, "latest-tags.json")
+
+
+def read_latest_tags():
+    """{entry_id: tag} from the last update check, or {}.
+
+    No timestamp, deliberately. A cached answer does not go wrong with age: the
+    only thing that changes it is installing the update, and that rewrites the
+    build record, which flips the comparison to "current" on its own. What a
+    stale entry costs is a *newer* update going unnoticed until the next check,
+    which is what the button is for.
+    """
+    try:
+        with open(LATEST_TAGS, "r", encoding="utf-8") as handle:
+            cached = json.load(handle)
+    except (OSError, ValueError):
+        return {}
+    return cached if isinstance(cached, dict) else {}
+
+
+def write_latest_tags(tags):
+    """Best effort. A cache that cannot be written costs a repeated check."""
+    try:
+        os.makedirs(os.path.dirname(LATEST_TAGS), exist_ok=True)
+        with open(LATEST_TAGS, "w", encoding="utf-8") as handle:
+            json.dump(tags, handle, indent=2)
+    except OSError as error:
+        decky.logger.warning("Could not record the latest tags: %s", error)
+
+
+def latest_tag(entry):
+    """The newest published tag for one AppImage emulator, or ('', reason).
+
+    One network call. **Never call this per row or per tab open** -- that is the
+    whole reason the answer is cached in a file and asked for by a button. Four
+    catalog entries install from a release, so a check is four calls at worst,
+    and none of them is a call anybody is waiting on a screen for.
+    """
+    source = entry.get("source") or {}
+    if source.get("kind") != "github":
+        return "", ""
+    asset, error = resolve_release_asset(
+        source.get("repo", ""), source.get("asset", ""), source.get("host", "")
+    )
+    if not asset:
+        return "", error or "Could not read the latest release."
+    return asset.get("tag", ""), ""
+
+
+def update_state(installed_tag, published_tag):
+    """"available", "current", or "unknown" for one AppImage emulator.
+
+    **Unknown is the answer whenever either side is missing**, and it is a
+    different answer from "current" rather than a softer version of it. An
+    install made before the build record existed has no tag of its own, and a
+    check that never ran -- or ran and failed -- has nothing published to compare
+    it with. Both were previously reported as no update available, which is a
+    claim the plugin was in no position to make: it reads as "you are up to date"
+    and is the reason this function exists as its own named thing.
+
+    String equality, not version ordering. These are the projects' own tags --
+    `v0.9.1`, `2026-08-10`, `4074`, `canary_experimental` -- and there is no
+    ordering that is right for all of them. Equality only ever claims the two
+    are the same build, which is true whatever the shape.
+    """
+    if not installed_tag or not published_tag:
+        return "unknown"
+    return "current" if installed_tag == published_tag else "available"
+
+
 def installed_appimage(entry_id):
     """The AppImage installed for `entry_id`, or ''."""
     if not emulator_catalog.is_safe_id(entry_id):

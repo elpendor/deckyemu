@@ -350,7 +350,7 @@ export function RetroArchPanel({ status, onRefresh, reloadKey = 0 }: Props) {
                   ? build.reason
                   : build.held
                     ? `${build.build} — updates will not move it until you release the hold.`
-                    : build.update_available
+                    : build.update_state === "available"
                       ? `${build.build} — a newer build is available.`
                       : `${build.build} — this is the newest build on Flathub.`
               }
@@ -374,7 +374,7 @@ export function RetroArchPanel({ status, onRefresh, reloadKey = 0 }: Props) {
                 }
                 description="Update, go back to an earlier build, or hold the one you have."
               >
-                {build.update_available ? "Update or change version" : "Change version"}
+                {build.update_state === "available" ? "Update or change version" : "Change version"}
               </ButtonItem>
             </PanelSectionRow>
           )}
