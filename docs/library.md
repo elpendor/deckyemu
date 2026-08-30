@@ -65,6 +65,18 @@ game that will not start.
 ![The Added games list, grouped by system, with play, details, edit and remove
 buttons on each row.](images/added-games.jpg)
 
+### Grouped, or one tab per system
+
+The list groups games under their system, all in one scroll, so what you own is
+visible on the way past. **Settings → Library → One tab per system** swaps that
+for a tab each, paged with L1 and R1.
+
+Which reads better depends on your library rather than on taste. A few games
+spread across many systems suit the grouped list — a tab holding one game is a
+lot of chrome for one row. A lot of games on a few systems suit tabs, where a
+system is one bumper press away instead of a scroll past everything above it.
+The tab you were last on is remembered until the plugin restarts.
+
 ## Editing a game
 
 The pencil on each row in **Added games** opens an editor for a game already in

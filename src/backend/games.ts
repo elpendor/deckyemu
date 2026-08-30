@@ -397,6 +397,15 @@ export interface PluginSettings {
    */
   show_update_dot: boolean;
   /**
+   * One tab per system in the added-games list, instead of one scrolling list
+   * of headed groups.
+   *
+   * Off by default. Tabs cost the overview — you see one system at a time —
+   * and only pay for themselves once a tab is full, which depends on a library
+   * this plugin cannot guess at.
+   */
+  added_games_tabs: boolean;
+  /**
    * The one hidden shortcut that opens an emulator's own window, or 0.
    *
    * Not in the library: it is not a game, it is repointed rather than added to,

@@ -1,4 +1,5 @@
 import {
+  ToggleField,
   ButtonItem,
   ConfirmModal,
   PanelSection,
@@ -7,7 +8,13 @@ import {
 import { addEventListener, removeEventListener, toaster } from "@decky/api";
 import { useCallback, useEffect, useState } from "react";
 
-import { clearLibrary, listAdded, type AddedGame } from "./backend";
+import {
+  clearLibrary,
+  getSettings,
+  listAdded,
+  setSettings,
+  type AddedGame,
+} from "./backend";
 import { removeShortcut } from "./steam";
 import { sweepEmptyCollections, unfileGames } from "./collections";
 import { AddedGamesModal } from "./AddedGamesModal";
@@ -58,6 +65,14 @@ export function LibraryPanel({ onRefresh }: Props) {
   // null while unread and after a failed read, which is not the same as 0 --
   // nothing here may treat "could not ask" as "there is nothing there".
   const [games, setGames] = useState<AddedGame[] | null>(null);
+  /**
+   * The added-games layout, or null until the setting has been read.
+   *
+   * Null disables the switch rather than showing it off, so it cannot be
+   * flipped in the moment before its real value lands -- which would write the
+   * default back over whatever was already stored.
+   */
+  const [tabs, setTabs] = useState<boolean | null>(null);
 
   // Bound to the component rather than started with the clear: the backend
   // emits from the moment the call lands, and a listener attached inside the
@@ -73,6 +88,15 @@ export function LibraryPanel({ onRefresh }: Props) {
       onProgress,
     );
     return () => removeEventListener("clear_library_progress", listener);
+  }, []);
+
+  useEffect(() => {
+    // A failure leaves the switch disabled rather than reporting anything: not
+    // knowing the layout preference is a switch nobody can flip, which is a far
+    // smaller problem than the two buttons below it not working.
+    callWithRetry(getSettings)
+      .then((settings) => setTabs(Boolean(settings.added_games_tabs)))
+      .catch((error) => logError("could not read the added-games layout", error));
   }, []);
 
   const loadGames = useCallback(async () => {
@@ -242,6 +266,28 @@ export function LibraryPanel({ onRefresh }: Props) {
                 ? "No games added yet"
                 : `Added games (${games.length})`}
           </ButtonItem>
+        </PanelSectionRow>
+
+        {/* Directly under the button it governs, rather than in a settings
+            group of its own: it changes what opening that list looks like, and
+            nothing else. */}
+        <PanelSectionRow>
+          <ToggleField
+            label="One tab per system"
+            description="Added games opens with a tab for each system, paged with L1 and R1, instead of one scrolling list of headed groups. Better when a system has many games; the grouped list shows more of what you own at once."
+            checked={tabs === true}
+            disabled={tabs === null}
+            onChange={(value) => {
+              // Optimistic, and safe to be: the switch is the whole of the
+              // change, so a write that fails leaves a stale toggle rather than
+              // a library in a state nobody asked for. Put back on failure.
+              setTabs(value);
+              setSettings({ added_games_tabs: value }).catch((error) => {
+                logError("could not save the added-games layout", error);
+                setTabs(!value);
+              });
+            }}
+          />
         </PanelSectionRow>
 
         <PanelSectionRow>

@@ -141,6 +141,16 @@ DEFAULT_SETTINGS = {
     # already said "do not tell me about plugin updates" would be told anyway.
     # This is the only way to answer them.
     "show_update_dot": True,
+    # Which layout the added-games list uses. Off is the grouped list: every
+    # system under a heading in one scroll, so what you own is visible on the
+    # way past. On is one tab per system, which L1 and R1 page -- fewer presses
+    # to a known system, and nothing about the others while you are there.
+    #
+    # Neither wins outright, which is why this is a switch rather than a
+    # decision. A library of a few games spread thinly across many systems reads
+    # better grouped; one with a lot of games on a few systems reads better
+    # tabbed, and a tab is worth its own row only when it is full.
+    "added_games_tabs": False,
 }
 
 _lock = threading.Lock()
