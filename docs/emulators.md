@@ -393,11 +393,12 @@ re-fetches the entire application, which for RetroArch is around 400MB.
 
 Nothing updates on its own. An emulator moves when you ask it to.
 
-### Emulators installed from a release
+### The ones marked (GitHub)
 
 RPCS3, Azahar, Vita3K and Xenia Canary publish no Flatpak, so the plugin
-downloads them from the projects' own release pages. They move between builds
-like the rest, with two differences.
+downloads them from the projects' own release pages — which is what the
+**(GitHub)** beside their names on the Emulators tab means. They move between
+builds like the rest, with two differences.
 
 **Whether an update exists is not checked when the tab opens.** Finding out
 means asking each project's repository directly, one request per emulator, and a

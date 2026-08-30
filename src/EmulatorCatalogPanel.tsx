@@ -214,13 +214,13 @@ export function EmulatorCatalogPanel({ onChanged }: Props) {
             : `${result.available} emulators have updates.`,
         );
       } else if (result.checked > 0) {
-        parts.push("Everything downloaded from a release is up to date.");
+        parts.push("Everything marked (GitHub) is up to date.");
       } else if (!result.error) {
         // Nothing to check is not a failure and not a success. It is the state
         // of a Deck whose emulators all came from Flathub, which is most of
         // them, and saying "up to date" there would answer about emulators this
         // button never looked at.
-        parts.push("No emulators here were installed from a release.");
+        parts.push("Nothing here is marked (GitHub), so there was nothing to ask about.");
       }
       if (result.error) {
         parts.push(result.error);
@@ -856,7 +856,7 @@ export function EmulatorCatalogPanel({ onChanged }: Props) {
             onClick={() => void runCheck()}
             description={
               checkNote ||
-              "Emulators installed from a release are not checked automatically — it asks each project directly, so it happens when you press this."
+              "Emulators marked (GitHub) are not checked automatically — this asks each project directly, so it happens when you press it."
             }
           >
             {checking ? "Checking..." : "Check for emulator updates"}
