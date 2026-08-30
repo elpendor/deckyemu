@@ -8,6 +8,7 @@ import {
   type Ps3Game,
 } from "./backend";
 import { selectPackagedGame } from "./addFlow";
+import { ICON_BUTTON_WIDE } from "./iconButton";
 
 /**
  * The games RPCS3 or shadPS4 already has, as somewhere to add one from.
@@ -104,7 +105,7 @@ export function PackagedGamesModal({ system, closeModal }: Props) {
               void selectPackagedGame(system, game.title_id);
               closeModal?.();
             }}
-            style={{ minWidth: "auto", width: "auto", padding: "6px 16px" }}
+            style={ICON_BUTTON_WIDE}
           >
             Add
           </DialogButton>

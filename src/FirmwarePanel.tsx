@@ -33,6 +33,7 @@ import { callWithRetry } from "./timeout";
 import { installThroughEmulator } from "./firmwareInstall";
 import { byName } from "./order";
 import { openModal } from "./modalStack";
+import { ICON_BUTTON } from "./iconButton";
 
 /** The tick or the triangle, in the colour that state is drawn in. */
 function StatusIcon({ state }: { state: FirmwareRowState }) {
@@ -448,7 +449,7 @@ export function FirmwarePanel({ reloadKey = 0 }: Props) {
                           <DialogButton
                             disabled={busy === `discard/${requirement.name}`}
                             onClick={() => discard(requirement)}
-                            style={{ minWidth: "auto", width: "auto", padding: "6px 12px" }}
+                            style={ICON_BUTTON}
                           >
                             Delete file
                           </DialogButton>
@@ -459,7 +460,7 @@ export function FirmwarePanel({ reloadKey = 0 }: Props) {
                             onClick={() =>
                               confirmUninstall(emulator.id, emulator.name, requirement)
                             }
-                            style={{ minWidth: "auto", width: "auto", padding: "6px 12px" }}
+                            style={ICON_BUTTON}
                           >
                             <FaTrash />
                           </DialogButton>
@@ -477,7 +478,7 @@ export function FirmwarePanel({ reloadKey = 0 }: Props) {
                             ? guiInstall(emulator.id, emulator.name, requirement)
                             : install(emulator.id, requirement)
                         }
-                        style={{ minWidth: "auto", width: "auto", padding: "6px 12px" }}
+                        style={ICON_BUTTON}
                       >
                         Install
                       </DialogButton>
@@ -487,7 +488,7 @@ export function FirmwarePanel({ reloadKey = 0 }: Props) {
                       <DialogButton
                         disabled={busy === key}
                         onClick={() => fetchIt(emulator.id, requirement)}
-                        style={{ minWidth: "auto", width: "auto", padding: "6px 12px" }}
+                        style={ICON_BUTTON}
                       >
                         <FaDownload />
                       </DialogButton>
@@ -495,7 +496,7 @@ export function FirmwarePanel({ reloadKey = 0 }: Props) {
                       <DialogButton
                         disabled={busy === key}
                         onClick={() => send(emulator.id, emulator.name, requirement)}
-                        style={{ minWidth: "auto", width: "auto", padding: "6px 12px" }}
+                        style={ICON_BUTTON}
                       >
                         <FaUpload />
                       </DialogButton>

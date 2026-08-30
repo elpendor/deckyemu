@@ -53,6 +53,7 @@ import { callWithRetry } from "./timeout";
 import { logError } from "./logError";
 import { openModal } from "./modalStack";
 import { importProblems } from "./importProblems";
+import { ICON_BUTTON } from "./iconButton";
 
 interface Props {
   /** Re-read cores and emulators, so a new install becomes selectable. */
@@ -644,7 +645,7 @@ export function EmulatorCatalogPanel({ onChanged }: Props) {
               somebody who already knows them. */}
           <DialogButton
             onClick={() => openModal(<EmulatorLegendModal />)}
-            style={{ minWidth: "auto", width: "auto", padding: "6px 12px" }}
+            style={ICON_BUTTON}
           >
             <FaQuestion />
           </DialogButton>
@@ -731,7 +732,7 @@ export function EmulatorCatalogPanel({ onChanged }: Props) {
                   <DialogButton
                     disabled={Boolean(busyId)}
                     onClick={() => register(entry)}
-                    style={{ minWidth: "auto", width: "auto", padding: "6px 12px" }}
+                    style={ICON_BUTTON}
                   >
                     <FaLink />
                   </DialogButton>
@@ -760,7 +761,7 @@ export function EmulatorCatalogPanel({ onChanged }: Props) {
                         />,
                       )
                     }
-                    style={{ minWidth: "auto", width: "auto", padding: "6px 12px" }}
+                    style={ICON_BUTTON}
                   >
                     <FaCodeBranch />
                   </DialogButton>
@@ -772,7 +773,7 @@ export function EmulatorCatalogPanel({ onChanged }: Props) {
                   <DialogButton
                     disabled={Boolean(busyId)}
                     onClick={() => openGui(entry)}
-                    style={{ minWidth: "auto", width: "auto", padding: "6px 12px" }}
+                    style={ICON_BUTTON}
                   >
                     <FaWindowMaximize />
                   </DialogButton>
@@ -785,7 +786,7 @@ export function EmulatorCatalogPanel({ onChanged }: Props) {
                   <DialogButton
                     disabled={Boolean(busyId)}
                     onClick={() => locate(entry)}
-                    style={{ minWidth: "auto", width: "auto", padding: "6px 12px" }}
+                    style={ICON_BUTTON}
                   >
                     <FaFolderOpen />
                   </DialogButton>
@@ -809,7 +810,7 @@ export function EmulatorCatalogPanel({ onChanged }: Props) {
                       // hit a password prompt nothing here can answer.
                       disabled={Boolean(busyId) || entry.scope === "system"}
                       onClick={() => confirmRemove(entry)}
-                      style={{ minWidth: "auto", width: "auto", padding: "6px 12px" }}
+                      style={ICON_BUTTON}
                     >
                       <FaTrash />
                     </DialogButton>
@@ -817,7 +818,7 @@ export function EmulatorCatalogPanel({ onChanged }: Props) {
                     <DialogButton
                       disabled={Boolean(busyId)}
                       onClick={() => confirmInstall(entry)}
-                      style={{ minWidth: "auto", width: "auto", padding: "6px 12px" }}
+                      style={ICON_BUTTON}
                     >
                       <FaDownload />
                     </DialogButton>
@@ -826,7 +827,7 @@ export function EmulatorCatalogPanel({ onChanged }: Props) {
                   <DialogButton
                     disabled={Boolean(busyId)}
                     onClick={() => confirmForget(entry)}
-                    style={{ minWidth: "auto", width: "auto", padding: "6px 12px" }}
+                    style={ICON_BUTTON}
                   >
                     <FaEraser />
                   </DialogButton>

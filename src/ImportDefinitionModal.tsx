@@ -10,6 +10,7 @@ import { DANGER_CLASS, DANGER_CSS } from "./danger";
 import { confirmDiscardTransfer } from "./discardTransfer";
 import { importDefinition } from "./importDefinition";
 import { logError } from "./logError";
+import { ICON_BUTTON, ICON_BUTTON_WIDE } from "./iconButton";
 
 interface Props {
   closeModal?: () => void;
@@ -95,7 +96,7 @@ export function ImportDefinitionModal({ closeModal, onImported }: Props) {
                 closeModal?.();
                 importDefinition(file.name, onImported);
               }}
-              style={{ minWidth: "auto", width: "auto", padding: "6px 16px" }}
+              style={ICON_BUTTON_WIDE}
             >
               Import
             </DialogButton>
@@ -114,7 +115,7 @@ export function ImportDefinitionModal({ closeModal, onImported }: Props) {
                   closeModal?.();
                   confirmDiscardTransfer(file, onImported);
                 }}
-                style={{ minWidth: "auto", width: "auto", padding: "6px 12px" }}
+                style={ICON_BUTTON}
               >
                 <FaTrash />
               </DialogButton>

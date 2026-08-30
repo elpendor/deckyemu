@@ -19,6 +19,7 @@ import { byName } from "./order";
 import { registeredDescription } from "./registeredEmulator";
 import { callWithRetry } from "./timeout";
 import { openModal } from "./modalStack";
+import { ICON_BUTTON } from "./iconButton";
 
 interface Props {
   /** Re-read status/cores after a change, so new emulators become selectable. */
@@ -144,13 +145,13 @@ export function EmulatorsPanel({ onChanged }: Props) {
               <div style={{ display: "flex", gap: "6px" }}>
                 <DialogButton
                   onClick={() => edit(emulator)}
-                  style={{ minWidth: "auto", width: "auto", padding: "6px 12px" }}
+                  style={ICON_BUTTON}
                 >
                   <FaPen />
                 </DialogButton>
                 <DialogButton
                   onClick={() => confirmRemove(emulator)}
-                  style={{ minWidth: "auto", width: "auto", padding: "6px 12px" }}
+                  style={ICON_BUTTON}
                 >
                   <FaTrash />
                 </DialogButton>

@@ -46,6 +46,7 @@ import { confirmDiscardTransfer } from "./discardTransfer";
 import { importDefinition } from "./importDefinition";
 import { openRestoreSaves } from "./openRestore";
 import { closeOpenModals, openModal } from "./modalStack";
+import { ICON_BUTTON, ICON_BUTTON_WIDE } from "./iconButton";
 
 /** How often to re-check while running, to pick up newly arrived files. */
 const POLL_MS = 3000;
@@ -793,7 +794,7 @@ export function TransferModal({
                     <DialogButton
                       onClick={() => void abandon(file.id)}
                       disabled={file.cancelled}
-                      style={{ minWidth: "auto", width: "auto", padding: "6px 16px" }}
+                      style={ICON_BUTTON_WIDE}
                     >
                       Cancel
                     </DialogButton>
@@ -824,7 +825,7 @@ export function TransferModal({
                   {file.name.endsWith(DEFINITION_SUFFIX) ? (
                     <DialogButton
                       onClick={() => importDefinition(file.name, load)}
-                      style={{ minWidth: "auto", width: "auto", padding: "6px 16px" }}
+                      style={ICON_BUTTON_WIDE}
                     >
                       Import
                     </DialogButton>
@@ -832,7 +833,7 @@ export function TransferModal({
                     <DialogButton
                       disabled={busy}
                       onClick={() => void install(file.name)}
-                      style={{ minWidth: "auto", width: "auto", padding: "6px 16px" }}
+                      style={ICON_BUTTON_WIDE}
                     >
                       Install
                     </DialogButton>
@@ -856,14 +857,14 @@ export function TransferModal({
                         closeModal?.();
                         openRestoreSaves();
                       }}
-                      style={{ minWidth: "auto", width: "auto", padding: "6px 16px" }}
+                      style={ICON_BUTTON_WIDE}
                     >
                       Restore
                     </DialogButton>
                   ) : (
                     <DialogButton
                       onClick={() => use(file.path, file.name)}
-                      style={{ minWidth: "auto", width: "auto", padding: "6px 16px" }}
+                      style={ICON_BUTTON_WIDE}
                     >
                       Add
                     </DialogButton>
@@ -883,7 +884,7 @@ export function TransferModal({
                     <div className={DANGER_CLASS}>
                       <DialogButton
                         onClick={() => confirmDiscardTransfer(file, load)}
-                        style={{ minWidth: "auto", width: "auto", padding: "6px 12px" }}
+                        style={ICON_BUTTON}
                       >
                         <FaTrash />
                       </DialogButton>

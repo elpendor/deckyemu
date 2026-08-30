@@ -16,6 +16,7 @@ import { sweepEmptyCollections, unfileGames } from "./collections";
 import { humanSize } from "./TransferModal";
 import { callWithRetry } from "./timeout";
 import { openModal } from "./modalStack";
+import { ICON_BUTTON_WIDE } from "./iconButton";
 
 /**
  * Declared here rather than in backend.ts, deliberately.
@@ -334,7 +335,7 @@ export function DevPanel({ onChanged }: Props) {
               <DialogButton
                 disabled={busy === action.id || targets.length === 0}
                 onClick={() => run(action, targets)}
-                style={{ minWidth: "auto", width: "auto", padding: "6px 16px" }}
+                style={ICON_BUTTON_WIDE}
               >
                 {busy === action.id ? "Working..." : "Reset"}
               </DialogButton>

@@ -25,6 +25,7 @@ import { logError } from "./logError";
 import { openModal } from "./modalStack";
 import { missingCount, presentCount, restoreSummary } from "./saveBackup";
 import { humanSize, TransferModal } from "./TransferModal";
+import { ICON_BUTTON, ICON_BUTTON_WIDE } from "./iconButton";
 
 /**
  * Backups waiting on this Deck, and what to do with one.
@@ -276,7 +277,7 @@ export function RestoreSavesModal({ closeModal }: Props) {
         >
           <DialogButton
             onClick={() => void open(file)}
-            style={{ minWidth: "auto", width: "auto", padding: "6px 16px" }}
+            style={ICON_BUTTON_WIDE}
           >
             Choose
           </DialogButton>
@@ -316,7 +317,7 @@ export function RestoreSavesModal({ closeModal }: Props) {
               <DialogButton
                 disabled={working}
                 onClick={() => confirmDiscard()}
-                style={{ minWidth: "auto", width: "auto", padding: "6px 12px" }}
+                style={ICON_BUTTON}
               >
                 <FaTrash />
               </DialogButton>

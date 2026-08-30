@@ -11,6 +11,7 @@ import {
 import { addPreparedGame } from "./addGame";
 import { getDraft } from "./romDraft";
 import { lookupArtwork } from "./addFlow";
+import { ICON_BUTTON_WIDE } from "./iconButton";
 
 interface Props {
   closeModal?: () => void;
@@ -126,7 +127,7 @@ export function VitaGamesModal({ closeModal, onAdded }: Props) {
           <DialogButton
             disabled={Boolean(busy)}
             onClick={() => add(game)}
-            style={{ minWidth: "auto", width: "auto", padding: "6px 16px" }}
+            style={ICON_BUTTON_WIDE}
           >
             {busy === game.title_id ? "Adding..." : "Add"}
           </DialogButton>

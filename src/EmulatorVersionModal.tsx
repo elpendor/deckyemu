@@ -24,6 +24,7 @@ import { buildDate } from "./buildDate";
 import { InstallProgress } from "./InstallProgress";
 import { humanSize } from "./TransferModal";
 import { logError } from "./logError";
+import { ICON_BUTTON } from "./iconButton";
 
 interface Props {
   closeModal?: () => void;
@@ -376,7 +377,7 @@ export function EmulatorVersionModal({ closeModal, emulator, onChanged }: Props)
 
                 <DialogButton
                   disabled={running}
-                  style={{ minWidth: "auto", width: "auto", padding: "8px 10px", flexShrink: 0 }}
+                  style={{ ...ICON_BUTTON, padding: "8px 10px", flexShrink: 0 }}
                   onClick={() => void toggleDetails(build.commit)}
                 >
                   {open ? <FaChevronUp /> : <FaChevronDown />}
@@ -388,7 +389,7 @@ export function EmulatorVersionModal({ closeModal, emulator, onChanged }: Props)
                     read. */}
                 <DialogButton
                   disabled={running}
-                  style={{ minWidth: "auto", width: "auto", padding: "8px 14px", flexShrink: 0 }}
+                  style={{ ...ICON_BUTTON, padding: "8px 14px", flexShrink: 0 }}
                   onClick={() =>
                     void start("Switching", "switch", () =>
                       rollbackEmulator(emulator.id, build.commit),
