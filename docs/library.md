@@ -65,6 +65,10 @@ game that will not start.
 ![The Added games list, grouped by system, with play, details, edit and remove
 buttons on each row.](images/added-games.jpg)
 
+Each row carries the game's own artwork. A game whose artwork was never found —
+the add flow says so at the time — gets a plain controller icon in its place, so
+the titles still line up in one column.
+
 ### Grouped, or one tab per system
 
 The list groups games under their system, all in one scroll, so what you own is

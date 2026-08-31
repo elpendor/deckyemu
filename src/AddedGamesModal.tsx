@@ -7,7 +7,7 @@ import {
   Tabs,
 } from "@decky/ui";
 import { useCallback, useEffect, useState } from "react";
-import { FaInfoCircle, FaPen, FaPlay, FaTrash } from "react-icons/fa";
+import { FaGamepad, FaInfoCircle, FaPen, FaPlay, FaTrash } from "react-icons/fa";
 
 import { getSettings, listAdded, type AddedGame } from "./backend";
 import { GameEditorModal } from "./GameEditorModal";
@@ -17,6 +17,7 @@ import { viewGameDetails } from "./viewGameDetails";
 import { systemLabel } from "./systemLabel";
 import { callWithRetry } from "./timeout";
 import { openModal } from "./modalStack";
+import { landscapeArtUrls } from "./steam";
 import { ICON_BUTTON } from "./iconButton";
 
 interface Props {
@@ -42,6 +43,81 @@ interface Props {
  * tab row.
  */
 const TABS_HEIGHT = "62vh";
+
+/**
+ * The artwork slot on each row.
+ *
+ * **A fixed box, and that is the point of it.** Some games have no art -- the
+ * add flow says so at the time, and it is an ordinary outcome rather than a
+ * fault -- so a slot that collapsed when empty would start every other title at
+ * a different place down the list. An empty box of the same size keeps one
+ * column of names.
+ *
+ * 84x40 for a 460x215 header, which is very close to its own 2.14:1, so nothing
+ * is squashed. It fits inside the row without lengthening it: the rows are
+ * already 48px tall because that is the size of the buttons at the other end.
+ */
+const ART_SLOT: React.CSSProperties = {
+  width: "84px",
+  height: "40px",
+  flexShrink: 0,
+  borderRadius: "3px",
+  overflow: "hidden",
+};
+
+/**
+ * What stands in when there is no artwork.
+ *
+ * An empty box was the first version and read as a rendering fault -- a gap
+ * where every other row has a picture looks like something failed rather than
+ * like a game nobody found art for, which is an ordinary outcome the add flow
+ * reports at the time.
+ *
+ * Quiet on purpose. It is filling a hole, not asking to be looked at, so it
+ * takes the same faint plate the rows use and a muted glyph rather than a
+ * colour or a word. At 84x40 a system name would not fit and a title would be
+ * illegible.
+ */
+function ArtPlaceholder() {
+  return (
+    <div
+      style={{
+        ...ART_SLOT,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background: "rgba(255, 255, 255, 0.06)",
+        color: "rgba(255, 255, 255, 0.28)",
+        fontSize: "20px",
+      }}
+    >
+      <FaGamepad />
+    </div>
+  );
+}
+
+/**
+ * A game's artwork, or the placeholder above.
+ *
+ * Its own component because it has to hold state: Steam offers one URL per
+ * extension the file might carry and only one of them is real, so this walks
+ * the list on each failure rather than trusting the first. Falling off the end
+ * lands on the placeholder, which is also what a game with no artwork gets --
+ * one path for "there is none" and "none of these loaded", because to a reader
+ * they are the same thing.
+ */
+function RowArt({ urls }: { urls: string[] }) {
+  const [tried, setTried] = useState(0);
+  if (tried >= urls.length) return <ArtPlaceholder />;
+  return (
+    <img
+      src={urls[tried]}
+      alt=""
+      style={{ ...ART_SLOT, objectFit: "cover" }}
+      onError={() => setTried((n) => n + 1)}
+    />
+  );
+}
 
 /**
  * The tab that was showing when this last closed.
@@ -147,8 +223,32 @@ export function AddedGamesModal({ closeModal, onChanged }: Props) {
   // library that has changed since the modal was last closed.
   const active = systems.includes(tab) ? tab : (systems[0] ?? "");
 
-  const gameRow = (game: AddedGame) => (
-    <Field key={game.app_id} label={game.title} childrenContainerWidth="min">
+  const gameRow = (game: AddedGame) => {
+    const art = landscapeArtUrls(game.app_id);
+    return (
+    <Field
+      key={game.app_id}
+      childrenContainerWidth="min"
+      // **The artwork lives in the label, not in `Field`'s `icon` slot.**
+      //
+      // The slot works and centres its own column -- every ancestor of the
+      // image reports `align-items: center` -- but `Field` lays the label out
+      // somewhere else, and `verticalAlignment="center"` did not reach it. The
+      // title sat ten pixels above the middle of a row whose height comes from
+      // the artwork and the buttons either side. Measured rather than judged:
+      // row centre 454, title centre 439.
+      //
+      // One flex row fixes it by no longer asking `Field` to align two things
+      // it lays out separately. The image is `alt=""`, so it is decorative and
+      // adds nothing to the row's accessible name -- which was the only reason
+      // the icon slot looked worth preferring.
+      label={
+        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+          <RowArt urls={art} />
+          <span>{game.title}</span>
+        </div>
+      }
+    >
       <div style={{ display: "flex", gap: "6px" }}>
         {/* First in the row because it is what the list is most often open
             for. Getting to a game otherwise means closing the panel, finding
@@ -197,7 +297,8 @@ export function AddedGamesModal({ closeModal, onChanged }: Props) {
         </DialogButton>
       </div>
     </Field>
-  );
+    );
+  };
 
   return (
     <ModalRoot closeModal={closeModal} bAllowFullSize>

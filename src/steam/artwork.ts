@@ -7,7 +7,7 @@
  */
 import type { ArtImage } from "../backend";
 import { fitToSlot } from "../fitArtwork";
-import { LibraryAssetType, sleep, steamClient } from "./client";
+import { appStore, LibraryAssetType, sleep, steamClient } from "./client";
 
 /** Strips the `data:image/png;base64,` prefix -- Steam wants bare base64. */
 function toBareBase64(dataUri: string): string {
@@ -241,4 +241,46 @@ export async function applyArtwork(appId: number, art: ResolvedArt): Promise<num
   }
 
   return applied;
+}
+
+
+/**
+ * A URL for the landscape art already on a shortcut, or "".
+ *
+ * The read side of everything above, and the only one there is: nothing writes
+ * these files but this plugin, and nothing else can read them back either --
+ * they live under Steam's own userdata and a panel cannot open a file. What
+ * `appStore` hands out is a `/customimages/<appid>.jpg?v=<stamp>` address the
+ * client already serves, which an `<img>` can use directly.
+ *
+ * **Landscape rather than the vertical capsule**, which is the other thing
+ * written. A capsule is 600x900, so at the height of a list row it comes out
+ * about thirty pixels wide -- a sliver nobody could recognise a game from. The
+ * header is 460x215 and drawn to be read small.
+ *
+ * The version stamp on the end is Steam's, and it is why replacing a game's
+ * artwork updates a list already on screen: the address changes with the
+ * picture, so nothing has to be told to refresh.
+ *
+ * **Every candidate, not the first one.** Steam returns one URL per file
+ * extension it might have been saved under, and only one of them exists: the
+ * art this plugin writes lands as `<appid>.png` while the first URL offered
+ * asks for `<appid>.jpg`, which 404s. Taking `[0]` produced a list of broken
+ * images. The caller tries them in order, which is what the array is for.
+ *
+ * Returns [] for every way this can come to nothing -- no store, a shortcut the
+ * store has not registered, a game whose artwork lookup found nothing at the
+ * time it was added. All three are ordinary, so none of them is logged.
+ */
+export function landscapeArtUrls(appId: number): string[] {
+  try {
+    const store = appStore();
+    const overview = store?.GetAppOverviewByAppID?.(appId);
+    if (!overview) return [];
+    // Steam's own spelling, not a typo here: `GetCustomLandcapeImageURLs`.
+    const urls = store.GetCustomLandcapeImageURLs?.(overview);
+    return Array.isArray(urls) ? urls.map(String).filter(Boolean) : [];
+  } catch {
+    return [];
+  }
 }
