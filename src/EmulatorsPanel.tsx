@@ -15,6 +15,7 @@ import { EmulatorCatalogPanel } from "./EmulatorCatalogPanel";
 import { ImportDefinitionModal } from "./ImportDefinitionModal";
 import { EmulatorEditorModal } from "./EmulatorEditorModal";
 import { FirmwarePanel } from "./FirmwarePanel";
+import { ToolsPanel } from "./ToolsPanel";
 import { byName } from "./order";
 import { registeredDescription } from "./registeredEmulator";
 import { callWithRetry } from "./timeout";
@@ -89,6 +90,11 @@ export function EmulatorsPanel({ onChanged }: Props) {
     <>
       <EmulatorCatalogPanel onChanged={afterChange} />
       <FirmwarePanel reloadKey={changes} />
+      {/* Under firmware, and separate from it: one section is the user's own
+          dumps and promises nothing on it is downloaded, the other is what
+          this plugin fetches. Neither can say that plainly if they are
+          merged. */}
+      <ToolsPanel reloadKey={changes} />
 
       {/* Not "Custom": installing anything from the list above registers it
           here too, so most of these are not custom at all. What the list

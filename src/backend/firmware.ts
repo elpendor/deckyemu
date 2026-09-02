@@ -120,6 +120,24 @@ export interface CatalogEmulator {
    */
   verified: boolean;
   firmware: FirmwareRequirement[];
+  /**
+   * The motion server, for the emulators that read the Deck's gyro over a local
+   * socket. `declared` is false for every other emulator, which is most of them.
+   *
+   * `waiting` is seconds until the next download attempt, and is what makes a
+   * rate-limited address readable as "not yet" rather than "broken".
+   */
+  motion: {
+    declared: boolean;
+    ready: boolean;
+    /**
+     * False when the binary is here but the emulator is not pointed at it —
+     * which happens when the user owns its controller config, so the
+     * settings this plugin writes are correctly refused.
+     */
+    configured: boolean;
+    waiting: number;
+  };
   /** Whether the emulator is actually present, not merely registered. */
   installed: boolean;
   present: boolean;
@@ -519,3 +537,38 @@ export const deleteFirmware = callable<
   [names: string[]],
   { ok: boolean; error?: string; removed?: string[]; missing?: string[] }
 >("delete_firmware");
+
+/**
+ * One helper binary this plugin fetches for an emulator that needs a second
+ * program — the motion server, the PS4 package extractor.
+ *
+ * Deliberately not a `FirmwareRequirement`. That list is the user's own dumps
+ * and promises that nothing on it is ever downloaded; these are the opposite,
+ * and the two are kept apart so each can say plainly where its contents come
+ * from.
+ */
+export interface HelperTool {
+  name: string;
+  label: string;
+  /** The project it comes from, shown so nobody has to trust an unnamed binary. */
+  repo: string;
+  /** What it does, in a sentence. A label alone explains nothing. */
+  why: string;
+  /** Emulators that want it, which is the whole of why the row exists. */
+  needed_by: string[];
+  installed: boolean;
+  path: string;
+  size: number;
+  /** False when no emulator that wants it is installed: not missing, just not needed. */
+  wanted: boolean;
+  /** Seconds until the next download attempt, when one is being waited out. */
+  waiting: number;
+}
+
+export const toolsStatus = callable<[], { tools: HelperTool[] }>("tools_status");
+export const installHelperTool = callable<[name: string], { ok: boolean; error?: string; path?: string }>(
+  "install_helper_tool",
+);
+export const removeHelperTool = callable<[name: string], { ok: boolean; error?: string }>(
+  "remove_helper_tool",
+);

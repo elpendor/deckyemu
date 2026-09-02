@@ -78,3 +78,36 @@ def motion_env(**extra):
     env = dict(_MOTION_ENV)
     env.update(extra)
     return env
+
+
+#: The motion server, for emulators that speak DSU.
+#:
+#: The other half of this module, and the opposite trade. `motion_env` above
+#: reaches the Deck's sensors through SDL, which means taking the physical pad
+#: and giving up Steam Input for every game of that system. An emulator that
+#: speaks the DSU protocol does not need that: a small server reads the
+#: controller's HID frames and sends motion over a local socket, the pad stays
+#: Steam's virtual one, and nothing about the layout changes.
+#:
+#: **Which also explains why it works where the SDL route needs a gyro layout.**
+#: What reads `(0,0,0)` under a layout that binds no gyro is SDL. The hardware
+#: underneath keeps producing data, and anything reading hidraw gets it -- so
+#: there is no layout to pin here and no cost to decline.
+#:
+#: One declaration shared by every entry that wants it, and one `name`, so the
+#: binary is fetched once and found by all of them. The project publishes a zip
+#: rather than a bare binary, which is what `extract` is for.
+DSU_SERVER = {
+    "name": "gyro-dsu",
+    "label": "Motion server",
+    "repo": "kmicki/SteamDeckGyroDSU",
+    "asset": r"^SteamDeckGyroDSUSetup\.zip$",
+    "extract": r"^sdgyrodsu$",
+}
+
+#: Where it listens. The protocol's default, and both emulators are told it
+#: explicitly rather than left to their own defaults -- Ryujinx drops the keys
+#: from its config when the backend does not use them, so "the default" is not
+#: something the file can be relied on to still say.
+DSU_HOST = "127.0.0.1"
+DSU_PORT = 26760

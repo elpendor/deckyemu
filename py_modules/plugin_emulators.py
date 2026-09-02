@@ -105,6 +105,11 @@ class Emulators(plugin_base.PluginContext):
         registered = {emulator.get("id") for emulator in self._emulators}
         for item in entries:
             entry = emulator_catalog.find(item["id"])
+            # Whether the second file this emulator needs for motion is here.
+            # Said out loud for the same reason firmware is: a requirement that
+            # can be absent has to be visible, or its absence reads as the
+            # feature not existing.
+            item["motion"] = await self._run(emu_install.motion_state, entry)
             if item["kind"] == "flatpak":
                 item["present"] = await self._run(
                     emu_install.flatpak_installed, entry["source"]["id"]
@@ -366,6 +371,41 @@ class Emulators(plugin_base.PluginContext):
         notice = await self._register_installed_emulator(entry, path)
         return {"ok": not notice, "error": notice, "notice": notice}
 
+
+    async def tools_status(self):
+        """The helper binaries this plugin fetches, and whether they are here.
+
+        Its own section rather than a row under BIOS and firmware, and that is
+        not cosmetic: the firmware list makes one promise -- everything on it is
+        the user's own dump and is never downloaded -- and a binary fetched from
+        somebody else's releases is the exact inverse. Two lists, each able to
+        say plainly where its contents come from.
+        """
+        present = [
+            emulator.get("id") for emulator in self._emulators if emulator.get("id")
+        ]
+        return {"tools": await self._run(emu_install.tools_report, present)}
+
+    async def install_helper_tool(self, name: str):
+        """Fetch one tool by name, for the row that offers it."""
+        path, error = await self._run(emu_install.install_named_tool, name)
+        if error:
+            return {"ok": False, "error": error}
+        # A launcher names the server it starts, so a tool arriving after games
+        # were added reaches none of them until they are rewritten. Same reason
+        # the startup fetch does it; here the user pressed the button and would
+        # otherwise see nothing change.
+        await self.rebuild_launchers()
+        return {"ok": True, "path": path}
+
+    async def remove_helper_tool(self, name: str):
+        """Delete one tool, and take it back out of the launchers."""
+        removed, error = await self._run(emu_install.remove_tool, name)
+        if error:
+            return {"ok": False, "error": error}
+        if removed:
+            await self.rebuild_launchers()
+        return {"ok": True}
 
     async def install_emulator(self, entry_id: str):
         """Install a catalog emulator and register it. Progress is streamed."""
@@ -1119,6 +1159,18 @@ class Emulators(plugin_base.PluginContext):
         #
         # First the emulator writes its own config, because settings written
         # into a file it has never made do not survive its first run.
+        # Motion, for the emulators that reach the Deck's gyro over a socket.
+        # Fetched here rather than at first launch: the launcher names the
+        # binary when it is written, so a server arriving after a game was
+        # added reaches that game only when its launcher is rewritten.
+        _server, motion_error = await self._run(emu_install.ensure_motion_server, entry)
+        if motion_error:
+            # Never fatal. The emulator is installed and every game will run;
+            # what is missing is gyro, in an emulator that has never had it.
+            decky.logger.warning(
+                "Could not fetch the motion server for %s: %s", entry["id"], motion_error
+            )
+
         await self._prime_emulator_config(entry, saved)
         result = await self._run(emu_config.apply_setup, entry)
         if not result.get("ok"):

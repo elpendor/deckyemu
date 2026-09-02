@@ -29,6 +29,8 @@ import os
 import re
 import shutil
 import subprocess
+import time
+import zipfile
 
 import decky
 
@@ -602,7 +604,7 @@ _HOST_RE = re.compile(
 )
 
 
-def resolve_release_asset(repo, pattern, host=""):
+def resolve_release_asset(repo, pattern, host="", failure=None):
     """Newest release asset matching `pattern`, from GitHub or a self-hosted forge.
 
     `host` empty means GitHub. Anything else is a hostname running the same
@@ -618,7 +620,8 @@ def resolve_release_asset(repo, pattern, host=""):
     if host and not _HOST_RE.match(host):
         return None, "Not a valid host name."
     api = SELF_HOSTED_API % (host, repo) if host else GITHUB_API % repo
-    return _resolve_asset(api, pattern, "%s on %s" % (repo, host) if host else repo)
+    return _resolve_asset(api, pattern, "%s on %s" % (repo, host) if host else repo,
+                          failure=failure)
 
 
 #: Releases rather than only the newest one, for choosing a build to go back to.
@@ -707,8 +710,11 @@ def resolve_github_asset(repo, pattern):
     return resolve_release_asset(repo, pattern)
 
 
-def _resolve_asset(api_url, pattern, label):
-    failure = {}
+def _resolve_asset(api_url, pattern, label, failure=None):
+    # The caller may want the reply's details as well as the message -- a rate
+    # limit carries the moment it lifts, which is the difference between backing
+    # off correctly and guessing.
+    failure = {} if failure is None else failure
     payload = net.get_json(api_url, failure=failure)
     if payload is None:
         # Which failure it was decides what to say, and saying the wrong one is
@@ -857,11 +863,56 @@ def installed_tool(name):
     return ""
 
 
-def install_tool(name, asset, on_progress=None):
+def _extract_tool(archive, destination, pattern):
+    """Pull one file out of a downloaded zip by basename. Returns (path, error).
+
+    Members are written by basename into `destination`, never by the path the
+    archive carries: this is fetched over the network, and `extractall` would
+    honour a directory inside it. Same rule, and the same reason, as the
+    firmware unpacker.
+
+    One file, because a tool is one binary. An archive matching the pattern
+    twice is a pattern that does not say what was meant, and taking the first of
+    them would decide it silently.
+    """
+    try:
+        matcher = re.compile(pattern)
+    except re.error as error:
+        return "", "Bad extract pattern: %s" % error
+
+    found = []
+    try:
+        with zipfile.ZipFile(archive) as bundle:
+            for info in bundle.infolist():
+                name = os.path.basename(info.filename)
+                if info.is_dir() or not name or not matcher.match(name):
+                    continue
+                found.append(info)
+        if len(found) != 1:
+            return "", ("The download did not contain what was expected."
+                        if not found else
+                        "The download contained %d files matching %r; expected "
+                        "one." % (len(found), pattern))
+        target = os.path.join(destination, os.path.basename(found[0].filename))
+        with zipfile.ZipFile(archive) as bundle:
+            with bundle.open(found[0]) as source, open(target, "wb") as handle:
+                shutil.copyfileobj(source, handle)
+    except (OSError, zipfile.BadZipFile, ValueError) as error:
+        return "", "Could not unpack the download: %s" % error
+    return target, ""
+
+
+def install_tool(name, asset, on_progress=None, extract=""):
     """Download a helper binary. Returns (path, error).
 
     Same shape as `install_appimage`, including the execute bit: a downloaded
     AppImage without it fails at exec time with nothing that names the cause.
+
+    `extract` names the member to keep when the release ships a zip rather than
+    a bare binary -- which is the only shape some projects publish. The archive
+    is deleted once the file is out of it, so `installed_tool` cannot answer
+    with it: that returns the first file in the directory, and a leftover zip
+    sorting before the binary would be handed to a launcher as the tool.
     """
     if not emulator_catalog.is_safe_id(name):
         return "", "Invalid tool name."
@@ -875,14 +926,158 @@ def install_tool(name, asset, on_progress=None):
     if not ok:
         return "", error or "Download failed."
 
+    if extract:
+        member, error = _extract_tool(path, target_dir, extract)
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+        if error:
+            return "", error
+        path = member
+
     try:
         os.chmod(path, 0o755)
     except OSError as error:
         return "", "Downloaded but could not make it executable: %s" % error
 
-    _remove_others(target_dir, keep=asset["name"])
+    _remove_others(target_dir, keep=os.path.basename(path))
     decky.logger.info("Installed tool %s to %s", name, path)
     return path, ""
+
+
+def motion_server(entry):
+    """The installed motion server for a catalog entry, or ''.
+
+    Its own function because two callers must agree: the launcher writer, which
+    starts it beside the emulator, and whatever offers to fetch it. An emulator
+    with no `motion` block, or one whose server has not been downloaded yet,
+    answers '' -- and a launcher written then is the ordinary one, so motion is
+    the only thing missing rather than the game.
+    """
+    server = ((entry or {}).get("motion") or {}).get("server") or {}
+    name = server.get("name") or ""
+    return installed_tool(name) if name else ""
+
+
+#: When it is worth asking GitHub about a motion server again, by tool name.
+#:
+#: **Because the same file is wanted by more than one emulator, and the startup
+#: check runs more than once.** Two emulators share one server, and the routine
+#: that calls this runs on every `get_status` -- so a Deck with both installed
+#: asked GitHub four times in under a second for one binary, against an
+#: unauthenticated budget of sixty an hour for the whole address. That budget is
+#: shared with everything else on the network, so spending it four at a time on
+#: a question already answered is how a download fails for somebody who was
+#: never near the limit.
+#:
+#: In memory rather than on disk: the point is to stop a burst, and a plugin
+#: reload is a fine moment to try again.
+_MOTION_RETRY_AFTER = {}
+
+
+def motion_configured(entry):
+    """Whether the emulator itself is pointed at the motion server.
+
+    **The binary being present is not the same as motion working, and the gap is
+    silent.** `emu_config` refuses to write a file the user has made their own,
+    which is right -- but it means somebody who configured their controller by
+    hand keeps their config and gets no motion, with nothing saying so. Cemu is
+    where this bites: its profile is supplied whole, so one save in its own
+    controller settings takes ownership of the file for good.
+
+    Answers True when there is nothing to check, so an emulator that declares no
+    verification is never reported as misconfigured.
+    """
+    verify = ((entry or {}).get("motion") or {}).get("verify") or {}
+    path, needle = verify.get("path"), verify.get("contains")
+    if not path or not needle:
+        return True
+    full = os.path.join(sysenv.user_home(), *path.split("/"))
+    try:
+        with open(full, "r", encoding="utf-8", errors="replace") as handle:
+            return needle in handle.read()
+    except OSError:
+        # No file yet is not "misconfigured": the emulator has not run and the
+        # settings pass has not reached it. Saying otherwise would report every
+        # fresh install as broken.
+        return True
+
+
+def motion_state(entry, now=None):
+    """What the panel says about this emulator's motion server.
+
+    **Because nothing said anything, and that is how it went wrong once.** The
+    server is fetched quietly and a failure only reached the log, so a Deck
+    where GitHub had rate-limited the download looked identical to one where
+    motion simply did not work -- and the only way to tell them apart was to
+    read a log file over SSH. An emulator that needs a second file has to be
+    able to say whether it has it, the same way a firmware requirement does.
+
+    `waiting` is seconds until the next attempt, and it is the difference
+    between "this is broken" and "this is coming": a rate-limited address fixes
+    itself, and saying when turns a dead end into a wait.
+    """
+    server = ((entry or {}).get("motion") or {}).get("server") or {}
+    name = server.get("name") or ""
+    if not name:
+        # Same shape whatever the answer, so a caller never has to ask which
+        # keys exist before reading them.
+        return {"declared": False, "ready": False, "configured": True, "waiting": 0}
+    now = time.time() if now is None else now
+    installed = bool(installed_tool(name))
+    return {
+        "declared": True,
+        "ready": installed,
+        # Only asked once the binary is here: before that the emulator not being
+        # pointed at it is expected, and two faults where there is one reads as
+        # a bigger problem than it is.
+        "configured": motion_configured(entry) if installed else True,
+        "waiting": max(0, int(_MOTION_RETRY_AFTER.get(name, 0.0) - now)),
+    }
+
+
+def ensure_motion_server(entry, now=None):
+    """Fetch this emulator's motion server if it is not here yet. (path, error).
+
+    Called from two places on purpose. Installing the emulator is the obvious
+    one; startup is the one that matters, because an emulator installed before
+    this existed would otherwise never get it, and there is no moment a user
+    would think to ask for a file they have not been told about.
+
+    **An error here is never fatal to anything.** What is lost is motion in an
+    emulator that has never had it, and every caller carries on -- the same
+    trade the launcher makes when the binary is missing at launch time.
+
+    **A failure is remembered for a while, and a rate limit until it lifts.**
+    GitHub says when its budget resets, so that is what is waited for rather
+    than a number chosen here; anything else backs off briefly, which is enough
+    to turn a burst into one attempt.
+    """
+    server = ((entry or {}).get("motion") or {}).get("server") or {}
+    name = server.get("name") or ""
+    if not name:
+        return "", ""
+    existing = installed_tool(name)
+    if existing:
+        return existing, ""
+
+    now = time.time() if now is None else now
+    until = _MOTION_RETRY_AFTER.get(name, 0.0)
+    if now < until:
+        return "", ""
+
+    failure = {}
+    asset, error = resolve_release_asset(server["repo"], server["asset"], failure=failure)
+    if not asset:
+        reset = net.rate_limit_reset(failure, now)
+        _MOTION_RETRY_AFTER[name] = reset or (now + 300.0)
+        return "", error or "No matching release asset."
+
+    path, error = install_tool(name, asset, extract=server.get("extract", ""))
+    if error:
+        _MOTION_RETRY_AFTER[name] = now + 300.0
+    return path, error
 
 
 #: What was installed, written beside the AppImage it describes.
@@ -1052,3 +1247,69 @@ def remove_appimage(entry_id):
     except OSError as error:
         return False, "Could not remove %s: %s" % (directory, error)
     return True, ""
+
+
+def remove_tool(name):
+    """Delete an installed helper binary. Returns (removed, error).
+
+    Only ever inside `tools_dir`, and only a directory this plugin made: the
+    name is checked the same way it is on the way in, so a name from the
+    frontend cannot name a path.
+    """
+    if not emulator_catalog.is_safe_id(name):
+        return False, "Invalid tool name."
+    directory = tools_dir(name, create=False)
+    if not os.path.isdir(directory):
+        return False, ""
+    try:
+        shutil.rmtree(directory)
+    except OSError as error:
+        return False, "Could not remove %s: %s" % (name, error)
+    # So a retry is not held off by a backoff from before it was removed.
+    _MOTION_RETRY_AFTER.pop(name, None)
+    decky.logger.info("Removed tool %s", name)
+    return True, ""
+
+
+def install_named_tool(name, on_progress=None):
+    """Fetch one tool the catalog declares, by name. Returns (path, error)."""
+    spec = emulator_catalog.tool_spec(name)
+    if not spec:
+        return "", "No tool called %r." % name
+    asset, error = resolve_release_asset(spec["repo"], spec["asset"])
+    if not asset:
+        return "", error or "No matching release asset."
+    return install_tool(name, asset, on_progress=on_progress,
+                        extract=spec.get("extract", ""))
+
+
+def tools_report(installed_emulator_ids=()):
+    """Every fetched helper, with whether it is here and whether it is wanted.
+
+    `wanted` is what keeps the section honest: a tool for an emulator nobody has
+    installed is not missing, it is simply not needed yet, and showing it as
+    absent would invent a chore. The same rule the firmware section follows.
+    """
+    present = set(installed_emulator_ids or ())
+    rows = []
+    for tool in emulator_catalog.tools():
+        entry_ids = [
+            entry["id"] for entry in emulator_catalog.CATALOG
+            if entry["name"] in tool["needed_by"]
+        ]
+        path = installed_tool(tool["name"])
+        size = 0
+        if path:
+            try:
+                size = os.path.getsize(path)
+            except OSError:
+                size = 0
+        rows.append(dict(
+            tool,
+            installed=bool(path),
+            path=path,
+            size=size,
+            wanted=any(entry_id in present for entry_id in entry_ids),
+            waiting=max(0, int(_MOTION_RETRY_AFTER.get(tool["name"], 0.0) - time.time())),
+        ))
+    return rows

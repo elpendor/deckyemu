@@ -1,4 +1,6 @@
 import emu_config
+
+from . import deck_gyro
 from .steam_pad import _STEAM_PAD_GUID
 
 _CEMU_CONFIG = ".var/app/info.cemu.Cemu/config/Cemu"
@@ -80,7 +82,35 @@ def _cemu_profile():
         "\t\t<trigger>\n\t\t\t<deadzone>0.25</deadzone>\n\t\t\t<range>1</range>\n\t\t</trigger>\n"
         "\t\t<mappings>\n%s\n\t\t</mappings>\n"
         "\t</controller>\n"
-        "</emulated_controller>\n" % (_STEAM_PAD_GUID, entries)
+        # A second controller, for motion only.
+        #
+        # Cemu takes several <controller> blocks under one emulated pad, and
+        # `EmulatedController::get_motion_data` returns the first one reporting
+        # motion. The Steam pad above has none -- it is Valve's virtual gamepad
+        # and carries no sensors -- so this wins the gyro without touching a
+        # single button binding, and Steam Input is never given up.
+        #
+        # The emulated type is already `Wii U GamePad`, which is the half of
+        # this that could have gone wrong: a Pro Controller has no gyro to send,
+        # and no DSU server would have changed that.
+        #
+        # `uuid` is the DSU pad index and nothing more -- `DSUController` is
+        # constructed as `ConvertString<uint32>(uuid)`. Confirmed against a
+        # running Cemu 2.6, which subscribed to the server and played Wind
+        # Waker HD's telescope on the Deck's own tilt.
+        "\t<controller>\n"
+        "\t\t<api>DSUController</api>\n"
+        "\t\t<uuid>0</uuid>\n"
+        "\t\t<display_name>DeckyEmu motion</display_name>\n"
+        "\t\t<motion>1</motion>\n"
+        "\t\t<ip>%s</ip>\n"
+        "\t\t<port>%d</port>\n"
+        "\t\t<axis>\n\t\t\t<deadzone>0.25</deadzone>\n\t\t\t<range>1</range>\n\t\t</axis>\n"
+        "\t\t<rotation>\n\t\t\t<deadzone>0.25</deadzone>\n\t\t\t<range>1</range>\n\t\t</rotation>\n"
+        "\t\t<trigger>\n\t\t\t<deadzone>0.25</deadzone>\n\t\t\t<range>1</range>\n\t\t</trigger>\n"
+        "\t</controller>\n"
+        "</emulated_controller>\n"
+        % (_STEAM_PAD_GUID, entries, deck_gyro.DSU_HOST, deck_gyro.DSU_PORT)
     )
 
 
@@ -162,7 +192,10 @@ _CEMU_SETUP = {
     #   3  the audio API set to Cubeb. Restoring TVDevice was not enough: the
     #      API still pointed at Windows-only DirectSound, so the device lookup
     #      threw and games were still silent
-    "version": 3,
+    #   4  a DSU controller beside the pad, so the GamePad's gyro works. The
+    #      profile is written whole, so an install on version 3 has a one-
+    #      controller profile and no motion until this reaches it
+    "version": 4,
     "files": {
         "%s/settings.xml" % _CEMU_CONFIG: _CEMU_SETTINGS,
         "%s/controllerProfiles/controller0.xml" % _CEMU_CONFIG: _cemu_profile(),
@@ -188,6 +221,20 @@ ENTRY = {
     "databases": ["Nintendo - Wii U"],
     "args": "-g {rom}",
     "fullscreen_args": "--fullscreen",
+    # The Wii U GamePad had a gyro and Wind Waker HD, Splatoon and Star Fox
+    # Zero all expect it. Same route as Ryujinx and the same reason -- see
+    # `deck_gyro.DSU_SERVER`. The profile above binds it; this fetches what
+    # serves it, and the launcher starts it beside the game.
+    "motion": {
+        "server": deck_gyro.DSU_SERVER,
+        # See the same key on the Ryujinx entry. It matters more here: the
+        # profile is supplied whole, so a user who saved anything in Cemu's own
+        # controller settings owns the file and this block never reaches it.
+        "verify": {
+            "path": "%s/controllerProfiles/controller0.xml" % _CEMU_CONFIG,
+            "contains": "DSUController",
+        },
+    },
     "setup": _CEMU_SETUP,
     "verified": True,
     "firmware": [

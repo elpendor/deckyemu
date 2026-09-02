@@ -6307,4 +6307,320 @@ for _path in sorted(_glob_tests.glob(os.path.join(os.path.dirname(os.path.abspat
     _module = _importlib.module_from_spec(_spec)
     _spec.loader.exec_module(_module)
 
+import zipfile as _zip_motion  # noqa: E402
+import decky  # noqa: E402
+import emu_install  # noqa: E402
+import emulator_catalog  # noqa: E402
+
+section("motion: a gyro server that lives exactly as long as the game")
+# Ryujinx reads the Deck's gyro off a local socket rather than through SDL, so
+# the pad stays Steam's and Steam Input keeps working. That costs a second
+# process, and the whole risk is in its lifetime: Steam's reaper waits for every
+# descendant, so one still running when the emulator exits leaves the game
+# "Running" in the library with nothing on screen to stop.
+_motion_entry = emulator_catalog.find("ryujinx")
+_cemu_entry = emulator_catalog.find("cemu")
+check("Ryujinx declares a motion server", bool((_motion_entry or {}).get("motion")), True)
+check(
+    "and asks Ryujinx itself for it over DSU, not off the pad",
+    _motion_entry["setup"]["files"][
+        ".var/app/io.github.ryubing.Ryujinx/config/Ryujinx/Config.json"
+    ]["input_config"]["value"][0]["motion"]["motion_backend"],
+    "CemuHook",
+)
+check(
+    "a server that was never fetched is simply absent",
+    emu_install.motion_server(_motion_entry),
+    "",
+)
+
+_ryu = {"id": "ryujinx", "kind": "flatpak", "target": "io.github.ryubing.Ryujinx",
+        "name": "Ryujinx", "args": "{rom}", "fullscreen_args": "--fullscreen"}
+_switch_rom = os.path.join(decky.DECKY_USER_HOME, "roms", "Game.nsp")
+os.makedirs(os.path.dirname(_switch_rom), exist_ok=True)
+open(_switch_rom, "w").close()
+
+_no_server = launchers.write_launcher(None, "No Server", "", _switch_rom, emulator=_ryu)
+check(
+    "with no server the launcher is the ordinary one -- motion is what is "
+    "missing, never the game",
+    open(_no_server, encoding="utf-8").read().strip().split("\n")[-1].startswith("exec "),
+    True,
+)
+
+# Now pretend it has been fetched. `installed_tool` answers with whatever file
+# is in the tool's directory, so writing one is the whole of it.
+_tool_dir = emu_install.tools_dir("gyro-dsu")
+_tool = os.path.join(_tool_dir, "sdgyrodsu")
+open(_tool, "w").close()
+check("an installed server is found by name", emu_install.motion_server(_motion_entry), _tool)
+
+_with_server = launchers.write_launcher(None, "With Server", "", _switch_rom, emulator=_ryu)
+_wbody = open(_with_server, encoding="utf-8").read()
+check("the launcher starts the server", _tool in _wbody, True)
+check(
+    "and does not exec, so the shell survives to clean up after the emulator",
+    _wbody.strip().split("\n")[-1].startswith("exec "),
+    False,
+)
+check(
+    "a trap kills it however the game ends -- a survivor hangs the library entry",
+    "trap 'kill" in _wbody and "EXIT INT TERM" in _wbody,
+    True,
+)
+check(
+    "the emulator's own exit status is what the launcher reports",
+    'exit "$_dke_status"' in _wbody,
+    True,
+)
+check(
+    "an unrunnable server costs motion, not the launch",
+    'if [ -x "$_dke_motion" ]; then' in _wbody,
+    True,
+)
+check(
+    "and with the binary gone it execs as an ordinary launcher would -- there "
+    "is nothing to clean up, so nothing to stay alive for",
+    "  exec flatpak run" in _wbody,
+    True,
+)
+check(
+    "the placeholder never reaches a launcher",
+    launchers.COMMAND_PLACEHOLDER in _wbody,
+    False,
+)
+check(
+    "the state the panel shows: declared, here, and actually in use",
+    emu_install.motion_state(_motion_entry),
+    {"declared": True, "ready": True, "configured": True, "waiting": 0},
+)
+check(
+    "and nothing to say for an emulator that has no motion server",
+    emu_install.motion_state({"id": "retroarch"}),
+    {"declared": False, "ready": False, "configured": True, "waiting": 0},
+)
+# The gap this closes: `emu_config` will not overwrite a config the user has
+# made their own, so somebody who saved anything in Cemu's controller settings
+# keeps their profile and gets no motion. The binary is still on disk, so a
+# check that only looked for the binary called that ready.
+_owned = os.path.join(decky.DECKY_USER_HOME, ".var", "app", "info.cemu.Cemu",
+                      "config", "Cemu", "controllerProfiles")
+os.makedirs(_owned, exist_ok=True)
+with open(os.path.join(_owned, "controller0.xml"), "w", encoding="utf-8") as _fh:
+    _fh.write("<emulated_controller><controller><api>SDLController</api>"
+              "</controller></emulated_controller>")
+check(
+    "a profile the user owns is reported as not using the server, not as ready",
+    emu_install.motion_configured(_cemu_entry),
+    False,
+)
+with open(os.path.join(_owned, "controller0.xml"), "a", encoding="utf-8") as _fh:
+    _fh.write("<!-- DSUController -->")
+check(
+    "and as using it once the binding is there",
+    emu_install.motion_configured(_cemu_entry),
+    True,
+)
+os.remove(os.path.join(_owned, "controller0.xml"))
+check(
+    "a config that does not exist yet is not a fault -- the emulator has not run",
+    emu_install.motion_configured(_cemu_entry),
+    True,
+)
+check(
+    "a server already here is not fetched again -- no network on every start",
+    emu_install.ensure_motion_server(_motion_entry),
+    (_tool, ""),
+)
+check(
+    "and an emulator with no motion block asks for nothing at all",
+    emu_install.ensure_motion_server({"id": "retroarch"}),
+    ("", ""),
+)
+launchers.remove_launcher(_no_server)
+launchers.remove_launcher(_with_server)
+os.remove(_tool)
+
+# One binary, two emulators, and a startup check that runs on every get_status
+# -- which asked GitHub four times in a second for the same file, against an
+# unauthenticated budget of sixty an hour shared by the whole address.
+_asked = []
+_real_resolve = emu_install.resolve_release_asset
+def _counting_resolve(repo, pattern, host="", failure=None):
+    _asked.append(repo)
+    if failure is not None:
+        failure.update({"status": 403, "rate_remaining": "0",
+                        "rate_reset": str(int(_now + 900))})
+    return None, "rate limited"
+_now = 1_000_000.0
+emu_install.resolve_release_asset = _counting_resolve
+emu_install._MOTION_RETRY_AFTER.clear()
+try:
+    for _ in range(4):
+        emu_install.ensure_motion_server(_motion_entry, now=_now)
+        emu_install.ensure_motion_server(_cemu_entry, now=_now)
+    check(
+        "a rate-limited lookup is asked once, not once per emulator per pass",
+        len(_asked),
+        1,
+    )
+    check(
+        "and it waits for the moment GitHub says its budget returns",
+        emu_install._MOTION_RETRY_AFTER["gyro-dsu"],
+        _now + 900,
+    )
+    check(
+        "then tries again after it lifts",
+        (emu_install.ensure_motion_server(_motion_entry, now=_now + 901),
+         len(_asked)),
+        (("", "rate limited"), 2),
+    )
+finally:
+    emu_install.resolve_release_asset = _real_resolve
+    emu_install._MOTION_RETRY_AFTER.clear()
+
+# The bug this guards: a Deck that had run Ryujinx once got setup version 5
+# recorded as applied while `motion_backend` stayed on `GamepadDriver`. Ryujinx
+# rewrites Config.json on exit, so the value last written no longer matches, and
+# without the live id in `superseded` the plugin's own pad reads as the user's.
+import re  # noqa: E402
+import emu_config as _emu_config  # noqa: E402
+import json as _json_motion  # noqa: E402
+
+_ryu_cfg = os.path.join(decky.DECKY_USER_HOME, "Config.json")
+_already = _json_motion.loads(_json_motion.dumps(
+    _motion_entry["setup"]["files"][
+        ".var/app/io.github.ryubing.Ryujinx/config/Ryujinx/Config.json"
+    ]["input_config"]["value"]
+))
+# What Ryujinx leaves behind: our pad, on the backend it really uses, with the
+# old motion block and the DSU keys it drops when the backend does not need them.
+_already[0]["motion"] = {
+    "motion_backend": "GamepadDriver", "sensitivity": 100,
+    "gyro_deadzone": 1, "enable_motion": True,
+}
+with open(_ryu_cfg, "w", encoding="utf-8") as _fh:
+    _json_motion.dump({"input_config": _already, "show_confirm_exit": True}, _fh)
+
+_spec = _motion_entry["setup"]["files"][
+    ".var/app/io.github.ryubing.Ryujinx/config/Ryujinx/Config.json"
+]
+_applied, _skipped, _written, _err = _emu_config._apply_json_keys(
+    _ryu_cfg, _spec, previous={},
+    superseded=tuple(re.compile(p) for p in _motion_entry["setup"]["superseded"]),
+)
+with open(_ryu_cfg, encoding="utf-8") as _fh:
+    _after = _json_motion.load(_fh)
+check(
+    "a config Ryujinx has already rewritten still takes the motion correction "
+    "-- the pad is ours even after Ryujinx normalises around it",
+    _after["input_config"][0]["motion"]["motion_backend"],
+    "CemuHook",
+)
+check("and nothing was skipped as the user's", _skipped, [])
+os.remove(_ryu_cfg)
+
+_cemu = _cemu_entry
+_profile = _cemu["setup"]["files"][
+    ".var/app/info.cemu.Cemu/config/Cemu/controllerProfiles/controller0.xml"
+]
+check("Cemu declares the same server", (_cemu.get("motion") or {}).get("server"),
+      (_motion_entry.get("motion") or {}).get("server"))
+check(
+    "one binary for both, so it is fetched once and found by each",
+    (_cemu["motion"]["server"]["name"], _motion_entry["motion"]["server"]["name"]),
+    ("gyro-dsu", "gyro-dsu"),
+)
+check(
+    "Cemu keeps its pad and gains a second controller for motion only -- the "
+    "Steam pad has no sensors, so the DSU one wins the gyro and no binding moves",
+    (_profile.count("<controller>"), "SDLController" in _profile,
+     "<api>DSUController</api>" in _profile),
+    (2, True, True),
+)
+check(
+    "and the emulated pad is the one that had a gyro at all",
+    "<type>Wii U GamePad</type>" in _profile,
+    True,
+)
+check(
+    "the DSU uuid is the pad index, which is all Cemu parses it as",
+    "<uuid>0</uuid>" in _profile,
+    True,
+)
+check(
+    "both emulators are told the port rather than left to a default",
+    ("<port>26760</port>" in _profile,
+     _motion_entry["setup"]["files"][
+         ".var/app/io.github.ryubing.Ryujinx/config/Ryujinx/Config.json"
+     ]["input_config"]["value"][0]["motion"]["dsu_server_port"]),
+    (True, 26760),
+)
+
+section("tools: the fetched helpers, listed where somebody can see them")
+# The section exists because nothing said where these were. A tool downloaded
+# silently is indistinguishable from a feature that does not exist.
+_tools = emulator_catalog.tools()
+check(
+    "one row per binary, not per emulator -- two entries share the motion server",
+    [(t["name"], t["needed_by"]) for t in _tools if t["name"] == "gyro-dsu"],
+    [("gyro-dsu", ["Ryujinx", "Cemu"])],
+)
+check(
+    "the PS4 extractor is the same kind of thing and gets a row too",
+    [t["name"] for t in _tools],
+    ["gyro-dsu", "ps4-pkg-extractor"],
+)
+check(
+    "every row names its project, so no binary is unattributed",
+    all(t["repo"] for t in _tools),
+    True,
+)
+check(
+    "and says what it is for -- a label alone explains nothing",
+    all(t["why"] for t in _tools),
+    True,
+)
+_report = emu_install.tools_report(["ryujinx"])
+check(
+    "a tool nothing installed wants is not reported as missing, just unwanted",
+    {t["name"]: t["wanted"] for t in _report},
+    {"gyro-dsu": True, "ps4-pkg-extractor": False},
+)
+check("and every entry's spec is findable by name",
+      bool(emulator_catalog.tool_spec("gyro-dsu")), True)
+check("while an unknown name finds nothing",
+      emulator_catalog.tool_spec("../etc"), {})
+check(
+    "removing refuses a name that is not a safe id, since it names a directory",
+    emu_install.remove_tool("../../etc"),
+    (False, "Invalid tool name."),
+)
+
+section("motion: unpacking a server from the archive its project publishes")
+# kmicki publishes a zip, not a bare binary, so the download is not the tool.
+_zip = os.path.join(TMP, "server.zip")
+with _zip_motion.ZipFile(_zip, "w") as _z:
+    _z.writestr("SteamDeckGyroDSUSetup/sdgyrodsu", "binary")
+    _z.writestr("SteamDeckGyroDSUSetup/install.sh", "#!/bin/sh")
+    _z.writestr("SteamDeckGyroDSUSetup/README.md", "docs")
+_out = os.path.join(TMP, "extracted")
+os.makedirs(_out, exist_ok=True)
+_got, _err = emu_install._extract_tool(_zip, _out, r"^sdgyrodsu$")
+check("the named binary comes out", os.path.basename(_got), "sdgyrodsu")
+check("and the scripts beside it do not", sorted(os.listdir(_out)), ["sdgyrodsu"])
+check(
+    "a member written by basename cannot escape the tool's own directory",
+    os.path.dirname(_got),
+    _out,
+)
+_, _none = emu_install._extract_tool(_zip, _out, r"^nothing-like-this$")
+check("an archive without it is an error, not an empty install", bool(_none), True)
+_, _many = emu_install._extract_tool(_zip, _out, r"^.*$")
+check(
+    "and a pattern matching several is refused rather than guessed",
+    "expected one" in _many,
+    True,
+)
+
 summary()

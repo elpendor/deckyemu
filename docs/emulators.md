@@ -168,15 +168,54 @@ only tells you; the switch lives on the Emulators tab and nowhere else.
 
 ## Motion controls
 
-Two consoles here had a motion sensor and games that expect it: the **PS Vita**,
-where Gravity Rush is unplayable without one, and the **PS4**, whose DualShock
-has a gyroscope. The Deck has one too, and it can drive both — but it is **off
-until you ask for it**, because switching it on costs something for every game
-of that system.
+Four consoles here had a motion sensor and games that expect it: the **PS
+Vita**, where Gravity Rush is unplayable without one, the **PS4**, whose
+DualShock has a gyroscope, the **Switch**, and the **Wii U**, whose GamePad had
+one that Wind Waker HD, Splatoon and Star Fox Zero all lean on. The Deck has one
+too, and it can drive all four — but the PS Vita and the PS4 pay for it, so
+there it is **off until you ask for it**.
+
+**On the Switch and the Wii U it is simply on, and costs nothing.** Ryujinx and
+Cemu can both take motion over a small local connection instead of reading the
+controller, so your Steam layout is untouched and the back buttons keep working.
+Nothing to switch on and no per-game choice to make: the piece that provides it
+is fetched with the emulator, runs only while a game is open, and stops when you
+close it.
+
+**A Tools section on the Emulators tab shows where it stands.** The piece that
+provides motion is a small download, listed there by name with the project it
+came from, whether it is installed, and how big it is. It can be removed and
+downloaded again from that row. The emulator's own row says **motion ready**
+too, so it is visible without scrolling.
+
+If it says it is waiting to retry, that is GitHub limiting how often one address
+may ask; it clears on its own.
+
+**If you have set up the emulator's controller yourself**, your settings are
+kept and never overwritten — which means the emulator is not pointed at the
+motion server and gyro will not work. The row says so rather than claiming it is
+ready. To use it, add a motion source to the emulator's own controller settings:
+in Cemu, a second controller with the **DSUController** API at `127.0.0.1` port
+`26760`; in Ryujinx, set the motion backend to **CemuHook** at the same address.
+
+**Tools are a separate list from BIOS and firmware on purpose.** Everything
+under BIOS and firmware is yours, and none of it is ever downloaded. Everything
+under Tools is fetched from the project that publishes it, and each row says
+which. Installing Ryujinx or Cemu tells you the motion server is coming before
+it is downloaded.
+
+If a Switch or Wii U game still ignores the Deck's tilt, check the game's own
+settings before anything else. Several ship with motion turned off — *Pokémon
+Legends: Arceus* has gyro aiming but sets **Motion Sensitivity** to zero, and it
+is not mentioned anywhere in the game.
+
+The rest of this section is about the PS Vita and the PS4, where it does cost
+something.
 
 **Turning it on.** Edit the emulator on the **Emulators** tab and switch on
 **Motion controls** under *Fixes* — see [Fixes](#fixes) above for how those
-work. Vita3K and shadPS4 are set separately.
+work. Vita3K and shadPS4 are set separately. Ryujinx and Cemu have no such
+switch, because they have nothing to trade.
 
 **Per game, if one differs.** That is the common shape of a PS4 library: one
 game that wants motion and twenty that would rather keep their back buttons.

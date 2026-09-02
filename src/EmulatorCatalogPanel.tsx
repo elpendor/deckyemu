@@ -45,6 +45,7 @@ import {
 import { EmulatorVersionModal } from "./EmulatorVersionModal";
 import { RemoveEmulatorModal } from "./RemoveEmulatorModal";
 import { InstallProgress } from "./InstallProgress";
+import { motion } from "./motionState";
 import { emulatorRowActions } from "./emulatorActions";
 import { sourceLabel } from "./emulatorSource";
 import { byName } from "./order";
@@ -134,9 +135,11 @@ function describe(entry: CatalogEmulator, build?: EmulatorBuild): string {
       : "";
 
   const extensions = entry.extensions.map((extension) => `.${extension}`).join(" ");
-  const parts = [entry.system, extensions, version].filter(Boolean);
+  const parts = [entry.system, extensions, version, motion(entry)].filter(Boolean);
   return parts.join(" · ");
 }
+
+
 
 export function EmulatorCatalogPanel({ onChanged }: Props) {
   const [entries, setEntries] = useState<CatalogEmulator[]>([]);
@@ -368,6 +371,19 @@ export function EmulatorCatalogPanel({ onChanged }: Props) {
               </div>
 
               {entry.note && <div style={MUTED}>{entry.note}</div>}
+
+              {/* Named before it happens rather than discovered afterwards.
+                  This plugin fetching a binary from somebody else's project is
+                  a thing to say out loud, even when it is small and the reason
+                  is good -- and "where did that come from" is exactly the
+                  question a silent download leaves behind. */}
+              {entry.motion?.declared && (
+                <div style={MUTED}>
+                  A small motion server is downloaded with it, so the Deck's gyro
+                  reaches games without giving up Steam Input. It runs only while
+                  a game is open, and can be removed under Tools.
+                </div>
+              )}
 
               {!entry.verified && (
                 <div style={MUTED}>

@@ -1,5 +1,7 @@
 import emu_config
 
+from . import deck_gyro
+
 _RYUJINX_CONFIG = ".var/app/io.github.ryubing.Ryujinx/config/Ryujinx"
 
 # Ryujinx names a pad by SDL joystick index joined to its GUID, and the GUID is
@@ -55,9 +57,17 @@ _RYUJINX_PAD = {
         "slot": 0,
         "alt_slot": 0,
         "mirror_input": False,
-        "dsu_server_host": "127.0.0.1",
-        "dsu_server_port": 26760,
-        "motion_backend": "GamepadDriver",
+        "dsu_server_host": deck_gyro.DSU_HOST,
+        "dsu_server_port": deck_gyro.DSU_PORT,
+        # DSU, not the pad. The pad bound above is Steam's virtual gamepad,
+        # which reports no sensors at all -- `enable_motion` was true here for
+        # four setup versions and could never have produced a reading, because
+        # `GamepadDriver` asks that pad and that pad has nothing to give.
+        # Reaching the real sensor through SDL means taking the physical pad,
+        # which costs Steam Input for every Switch game; a local DSU server
+        # reads the controller's HID frames instead and Steam neither notices
+        # nor minds. See `ENTRY["motion"]` for what serves this port.
+        "motion_backend": "CemuHook",
         "sensitivity": 100,
         "gyro_deadzone": 1.0,
         "enable_motion": True,
@@ -101,16 +111,34 @@ _RYUJINX_SETUP = {
     #   2  the id derived from the guid confirmed on this hardware instead
     #   3  that correction actually reaching an install, which version 2 did not
     #   4  the crc dropped from the id, which is the part Ryujinx does not use
-    "version": 4,
+    #   5  motion moved off the pad and onto DSU, which is the only route that
+    #      reaches the Deck's sensor without taking the pad away from Steam
+    #   6  and again, because 5 could not land: the pad this plugin had already
+    #      written was not recognised as its own after Ryujinx rewrote the file,
+    #      so the motion change was skipped as the user's while the version was
+    #      recorded as done. See `superseded`.
+    "version": 6,
     # Ryujinx rewrites Config.json whenever it exits, filling in fields it did
     # not find, so the input_config it saves is no longer the object this plugin
     # wrote -- and version 2 was skipped as "the user's" while being recorded as
     # done. Matching an id we wrote before survives that rewrite, because
     # whatever Ryujinx normalises around it, the id is still ours.
     # Removable once no install can still carry either.
+    #
+    # **The id in use is here too, and that is what makes a correction land.**
+    # Without it, `_is_ours` has only the exact value last written, which
+    # Ryujinx's rewrite destroys -- so a config already holding our own pad
+    # stops being recognised as ours, `replace_when_all` refuses it because the
+    # backend is no longer a keyboard, and the setup records itself as applied
+    # having written nothing. That is exactly how version 5 reached a Deck and
+    # left `motion_backend` on `GamepadDriver`.
+    #
+    # Only this plugin ever writes this id: it is the Steam virtual pad, in
+    # Ryujinx's own reordered form, which nobody arrives at by hand.
     "superseded": (
         r"f7390003-28de-0000-ff11-000001000000",
         r"f6790003-28de-0000-ff11-000001000000",
+        r"00000003-28de-0000-ff11-000001000000",
     ),
     "files": {
         "%s/Config.json" % _RYUJINX_CONFIG: {
@@ -155,6 +183,35 @@ ENTRY = {
     "platform": "Nintendo - Switch",
     "args": "{rom}",
     "fullscreen_args": "--fullscreen",
+    # Gyro, without giving up Steam Input.
+    #
+    # Every other motion route here hands the emulator the Deck's physical pad
+    # through SDL, and Steam Input stops for everything that emulator runs.
+    # Ryujinx speaks DSU, so the sensor can arrive on a socket instead while the
+    # pad stays exactly as `_RYUJINX_PAD` binds it. The server reads the
+    # controller's HID frames directly, which is also why it works under a
+    # layout that binds no gyro -- what reads `(0,0,0)` there is SDL, not the
+    # hardware.
+    #
+    # Confirmed on a Deck, in a game, rather than reasoned about: 18,659 packets
+    # across 75 seconds with none of them empty, all three axes, and Ryujinx
+    # naming the port in its own log the moment the server was stopped under it.
+    #
+    "motion": {
+        "server": deck_gyro.DSU_SERVER,
+        # How to tell the emulator is actually pointed at the server, rather
+        # than merely that the binary is on disk.
+        #
+        # **Because those are different, and the difference is silent.** The
+        # settings this plugin writes are refused when the file is the user's
+        # own -- correctly -- so somebody who configured their controller by
+        # hand keeps their config and gets no motion, while a panel that only
+        # checked for the binary would tell them motion was ready.
+        "verify": {
+            "path": "%s/Config.json" % _RYUJINX_CONFIG,
+            "contains": "CemuHook",
+        },
+    },
     "setup": _RYUJINX_SETUP,
     # Confirmed on a Deck rather than read: Pokemon Brilliant Diamond
     # launched from a Steam shortcut built with exactly these arguments,

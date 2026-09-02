@@ -391,9 +391,8 @@ class Startup(plugin_base.PluginContext):
         plugin are rewritten.
         """
         for entry in emulator_catalog.CATALOG:
-            if not entry.get("setup"):
-                continue
-            if not await self._run(emu_config.needs_setup, entry):
+            stale = entry.get("setup") and await self._run(emu_config.needs_setup, entry)
+            if not stale and not entry.get("motion"):
                 continue
 
             if entry["source"]["kind"] == "flatpak":
@@ -403,6 +402,46 @@ class Startup(plugin_base.PluginContext):
             else:
                 present = bool(await self._run(emu_install.installed_appimage, entry["id"]))
             if not present:
+                continue
+
+            # An emulator installed before it had a motion server has none, and
+            # nothing else would ever fetch one.
+            #
+            # **Deliberately not behind `needs_setup`.** A fetch that fails --
+            # no network at startup is the ordinary case, not the unlucky one --
+            # while the settings around it succeed would record the setup as
+            # done and retire the only thing that was going to try again. So the
+            # question asked here is "is the server here", which stays true
+            # until it is. Costs a directory listing per start once it is.
+            had = bool(await self._run(emu_install.motion_server, entry))
+            _server, motion_error = await self._run(
+                emu_install.ensure_motion_server, entry
+            )
+            if motion_error:
+                decky.logger.warning(
+                    "Could not fetch the motion server for %s: %s",
+                    entry["id"], motion_error,
+                )
+            elif _server and not had:
+                # **Arriving is what makes existing launchers wrong.**
+                # A launcher names the server when it is written, so every game
+                # added before the download has one with no motion in it -- and
+                # the format version cannot cover this, because it records that
+                # a rewrite *ran*, not what was on disk when it did. A Deck
+                # whose first startup was rate-limited recorded format 15 with
+                # no server present, and nothing would ever have rewritten
+                # them. So the download itself asks.
+                decky.logger.info(
+                    "Motion server arrived for %s; rewriting launchers", entry["id"]
+                )
+                # Directly, not by a flag: `_upgrade_launchers` runs *before*
+                # this pass in `_main`, so a flag would be read one startup
+                # late -- and this also runs from `_recheck_emulator_setups`,
+                # which is the path that fires when the panel is opened after a
+                # rate limit lifts.
+                await self.rebuild_launchers()
+
+            if not stale:
                 continue
 
             decky.logger.info("Updating recommended settings for %s", entry["id"])

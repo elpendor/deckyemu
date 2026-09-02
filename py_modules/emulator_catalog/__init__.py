@@ -679,3 +679,59 @@ def suggest_launch_options(target):
         if needle in haystack:
             return {"args": args, "fullscreen_args": fullscreen}
     return {"args": "", "fullscreen_args": ""}
+
+
+def tools():
+    """Every helper binary the catalog fetches, and which emulators want it.
+
+    **The other half of `firmware`, and deliberately not filed with it.** That
+    list is the user's own dumps and carries one promise -- nothing on it is
+    ever downloaded. These are the opposite: small binaries fetched from other
+    projects' releases because an emulator needs a second program to do
+    something it cannot. Keeping the two apart is what lets either say plainly
+    where its contents come from.
+
+    One row per binary, not per emulator: Ryujinx and Cemu share a motion
+    server, and a list that named it twice would offer to install the same file
+    in two places and disagree with itself about whether it was there.
+
+    `needed_by` is what makes a row explicable -- "Motion server" means nothing
+    on its own, and "for Ryujinx and Cemu" is the whole of why it exists.
+    """
+    found = {}
+    for entry in CATALOG:
+        # What each one is *for*, said once per kind rather than per emulator:
+        # the motion server is wanted by two entries and a reason written from
+        # one of them would name only that one.
+        specs = []
+        server = (entry.get("motion") or {}).get("server")
+        if server:
+            specs.append((server, "Sends the Deck's gyro to the emulator, so "
+                                  "motion works without giving up Steam Input. "
+                                  "Runs only while a game is open."))
+        helper = entry.get("helper")
+        if helper:
+            specs.append((helper, helper.get("why", "")))
+        for spec, why in specs:
+            name = spec.get("name") or ""
+            if not name:
+                continue
+            row = found.setdefault(name, {
+                "name": name,
+                "label": spec.get("label", name),
+                "repo": spec.get("repo", ""),
+                "needed_by": [],
+                "why": why,
+            })
+            if entry["name"] not in row["needed_by"]:
+                row["needed_by"].append(entry["name"])
+    return sorted(found.values(), key=lambda item: item["label"].lower())
+
+
+def tool_spec(name):
+    """The fetch recipe for one tool by name, or {}."""
+    for entry in CATALOG:
+        for spec in ((entry.get("motion") or {}).get("server"), entry.get("helper")):
+            if spec and spec.get("name") == name:
+                return spec
+    return {}

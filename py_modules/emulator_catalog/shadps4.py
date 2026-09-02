@@ -167,6 +167,9 @@ ENTRY = {
     "helper": {
         "name": "ps4-pkg-extractor",
         "label": "PS4 package extractor",
+        # Said on the Tools row, where the label alone explains nothing.
+        "why": "Unpacks a PS4 .pkg into a folder shadPS4 can run. Fetched the "
+               "first time you add one.",
         "repo": "AzaharPlus/shadPS4Plus",
         "asset": r"^ShadPs4Plus-PkgExtractor-.*-linux\.AppImage$",
     },

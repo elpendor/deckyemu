@@ -117,6 +117,15 @@ OPTIONAL = {
                "Matched as substrings against the flatpak id or binary name.",
     "helper": "An extra binary the emulator needs, fetched separately. See "
               "`emu_install.helper_path`. shadPS4 only.",
+    "motion": "How this emulator reaches the Deck's gyro, as "
+              "{'server': {...}}.\n"
+              "The server is fetched like a `helper` -- `name`, `label`, "
+              "`repo`, `asset`, and `extract` when the release ships an "
+              "archive -- and the launcher starts it beside the game and kills "
+              "it afterwards.\n"
+              "For emulators that read motion off a local socket rather than "
+              "through SDL, which is what leaves Steam Input alone. Ryujinx "
+              "only.",
     "root": "The directory under home this emulator owns, e.g. '.config/<name>', "
             "or a list of them. Required of an imported entry, where every path "
             "it writes must sit inside one. Optional for a bundled entry, which "
@@ -192,6 +201,9 @@ FORBIDDEN_WHEN_IMPORTED = {
             "another name",
     "helper": "downloads and runs a second binary beside the emulator, which is "
               "arbitrary code the definition did not describe",
+    "motion": "names a second binary to download and run for as long as a game "
+              "does, which is the same power as `helper` and refused for the "
+              "same reason",
     "fetch": "downloads a firmware file rather than the emulator. Firmware is "
              "the user's own dump; an entry that offers to fetch one is "
              "offering something it should not have",

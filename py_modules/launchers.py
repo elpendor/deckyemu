@@ -17,6 +17,8 @@ import time
 import decky
 
 import cheevos
+import emu_install
+import emulator_catalog
 import emulators
 import ra_detect
 import sysenv
@@ -131,7 +133,23 @@ LAUNCH_GATE_DIR = os.path.join(decky.DECKY_PLUGIN_RUNTIME_DIR, "launch")
 #      Worth keeping in mind whenever a rebuild is fixed: the version says an
 #      upgrade *ran*, not that it reached every game, so a bug in the rebuild
 #      itself always costs two numbers.
-FORMAT_VERSION = 14
+#  15  an emulator that reads motion off a socket starts its server here and
+#      stops it afterwards, which costs the `exec` for that emulator only. The
+#      server is named in the script, so a game added before it was fetched has
+#      a launcher with no motion in it and needs rewriting -- and fetching the
+#      server is exactly when that is true of every game already added.
+#  16  and again, for the reason version 14 gives: 15 ran on a Deck where the
+#      server had not downloaded yet -- GitHub was rate-limiting the address --
+#      so every launcher was rewritten without motion and the version recorded
+#      itself as done. Nothing would ever have retried. `_upgrade_emulator_setups`
+#      now rebuilds when the server *arrives*, which covers every future case;
+#      this number is what reaches the Decks that already recorded 15.
+#  17  the motion block execs when the server binary is missing, instead of
+#      running the emulator as a child for a cleanup that has nothing to clean.
+#      Only reachable when the binary is deleted from outside the panel, but the
+#      `exec` is deliberate everywhere else and a launcher should not give it up
+#      for nothing.
+FORMAT_VERSION = 17
 
 # One file per OSD mode rather than one shared file. Games can override the
 # global setting individually, and a single file would mean the last game
@@ -530,6 +548,63 @@ def log_capture(launcher):
     ])
 
 
+#: Where `motion_server` splices the emulator's own command line.
+#:
+#: The block needs that command twice -- once to `exec` when there is no server
+#: to wait for, once to run as a child when there is -- and building the block
+#: around an argv passed in would mean two places that must not disagree about
+#: what the game is.
+COMMAND_PLACEHOLDER = "@@COMMAND@@"
+
+
+def motion_server(binary):
+    """The shell that runs a motion server for exactly as long as the game does.
+
+    The Deck's gyro reaches an emulator one of two ways. Through SDL, which
+    means handing over the physical pad and losing Steam Input for everything
+    that emulator runs -- what `deck_gyro.motion_env` costs. Or over a local
+    socket from a server reading the controller's HID frames directly, which
+    Steam neither notices nor minds. This is the second, so the pad binding and
+    the layout stay exactly as they were.
+
+    **The server is a child of the launcher, not a daemon.** It reads the
+    controller whenever it runs, so a permanent one would leave the Deck's
+    sensor powered for every game in the library including the ones with no
+    motion. Started here, it exists for one game and dies with it.
+
+    **And it is not backgrounded behind an `exec`.** Measured on the Deck rather
+    than assumed: Steam's `reaper` waits for every descendant, so a server still
+    alive when the emulator exits keeps the reaper alive too -- the game stays
+    "Running" in the library until somebody presses Stop, with nothing on screen
+    to stop. So the emulator is run as a child of this script and the trap is
+    what guarantees the server goes with it, whether the game exited on its own
+    or Steam signalled it.
+
+    **Failing to start it must not fail the game.** A missing or unrunnable
+    server costs motion; refusing to launch costs the game. The same rule the
+    launch gate and the log capture above follow, for the same reason.
+    """
+    return "\n".join([
+        "# Motion, over a local socket rather than through SDL -- see",
+        "# launchers.motion_server. Dies with the game, and never outlives it:",
+        "# Steam's reaper waits for it, so a survivor hangs the library entry.",
+        "_dke_motion=%s" % shlex.quote(binary),
+        'if [ -x "$_dke_motion" ]; then',
+        '  "$_dke_motion" >/dev/null 2>&1 &',
+        "  _dke_motion_pid=$!",
+        "  trap 'kill \"$_dke_motion_pid\" 2>/dev/null' EXIT INT TERM",
+        "else",
+        "  # Nothing to clean up afterwards, so nothing to stay alive for: exec",
+        "  # into the emulator and leave the process tree exactly as Steam",
+        "  # expects it. Removing the server through the panel rewrites this",
+        "  # script without any of this, so the case here is the other one -- a",
+        "  # binary deleted from under a launcher that still names it.",
+        "  exec %s" % COMMAND_PLACEHOLDER,
+        "fi",
+        "",
+    ])
+
+
 def read_launch_log(launcher, limit=8000):
     """The tail of what this launcher's game last said, or "".
 
@@ -773,6 +848,25 @@ def write_launcher(
     argv = list(argv) + extra
 
     path = launcher_path(title, rom_path)
+    command = " ".join(shlex.quote(arg) for arg in argv)
+
+    # Only an emulator that reads motion off a socket, and only once its server
+    # has been fetched. Every other launcher is written exactly as it was --
+    # the wrapper below costs the `exec` (see `motion_server`), and nothing that
+    # does not need it should pay that.
+    server = emu_install.motion_server(
+        emulator_catalog.find((emulator or {}).get("id") or "")
+    ) if emulator else ""
+
+    run = (
+        [
+            motion_server(server).replace(COMMAND_PLACEHOLDER, command),
+            command,
+            "_dke_status=$?",
+            'exit "$_dke_status"',
+        ]
+        if server else ["exec %s" % command]
+    )
 
     body = "\n".join(
         [
@@ -789,9 +883,9 @@ def write_launcher(
             "",
             launch_gate(),
             log_capture(path),
-            "exec %s" % " ".join(shlex.quote(arg) for arg in argv),
-            "",
         ]
+        + run
+        + [""]
     )
 
     with open(path, "w", encoding="utf-8", newline="\n") as handle:
