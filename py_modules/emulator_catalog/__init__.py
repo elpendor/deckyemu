@@ -697,6 +697,12 @@ def tools():
 
     `needed_by` is what makes a row explicable -- "Motion server" means nothing
     on its own, and "for Ryujinx and Cemu" is the whole of why it exists.
+
+    **Adding a row here means editing README.md.** Two sentences there count
+    these -- the opening paragraph ("two helpers that are not emulators") and
+    the Thanks list, which credits each by project and licence. Both said "the
+    one thing" for as long as there was one, and stayed saying it after the
+    motion server made two.
     """
     found = {}
     for entry in CATALOG:
