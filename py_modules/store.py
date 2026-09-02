@@ -119,6 +119,14 @@ DEFAULT_SETTINGS = {
     # says which keys settings.json has -- one key that was written and read but
     # never listed is one the allowlist below would have dropped.
     "launcher_format": 0,
+    # Which emulators declared a motion server when the launchers were last
+    # written, as a sorted comma-joined list of ids. A launcher names the server
+    # it starts, so this set is baked into every one on disk -- and it moves
+    # without a release, whenever a definition declaring DSU is imported, edited
+    # or removed. `launcher_format` cannot see that; this can. Listed here for
+    # the same reason as the line above: a key the allowlist does not know is a
+    # key it drops.
+    "motion_emulators": "",
     # Remembered so the file picker reopens where the user left off.
     "last_rom_dir": "",
     # Remembered per-system so picking a core twice in a row is one tap.

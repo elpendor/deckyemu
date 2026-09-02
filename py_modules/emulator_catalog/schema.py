@@ -201,9 +201,6 @@ FORBIDDEN_WHEN_IMPORTED = {
             "another name",
     "helper": "downloads and runs a second binary beside the emulator, which is "
               "arbitrary code the definition did not describe",
-    "motion": "names a second binary to download and run for as long as a game "
-              "does, which is the same power as `helper` and refused for the "
-              "same reason",
     "fetch": "downloads a firmware file rather than the emulator. Firmware is "
              "the user's own dump; an entry that offers to fetch one is "
              "offering something it should not have",
@@ -743,6 +740,30 @@ def _validate_imported(entry, entry_id):
             bad("%s writes to %r, which is outside this entry's root%s (%s)"
                 % (where, path, "s" if len(roots) > 1 else "",
                    ", ".join(repr(root) for root in roots)))
+
+    # **`motion` is allowed, but only as a flag.**
+    #
+    # A bundled entry names the server it wants -- repo, asset pattern, the file
+    # to keep out of the archive -- and that is the power `helper` is refused
+    # for: a binary to download and run, chosen by the file. An imported entry
+    # gets to say *that it speaks the protocol* and nothing more; the plugin
+    # answers with `deck_gyro.DSU_SERVER`, which this project vetted. So there
+    # is no path from a definition to an arbitrary download, and an emulator
+    # somebody imported can still have gyro.
+    #
+    # The blanket refusal that came before this got the population backwards.
+    # The emulators that arrive as definitions are the ones this project does
+    # not carry, and several of them speak the protocol perfectly well -- so
+    # refusing the field outright meant the emulators most likely to be
+    # imported were exactly the ones that could never have motion.
+    motion = entry.get("motion")
+    if motion is not None:
+        if not isinstance(motion, dict):
+            bad("motion must be an object")
+        elif set(motion) != {"dsu"} or motion.get("dsu") is not True:
+            bad("an imported entry's motion may only be {\"dsu\": true} -- "
+                "naming a server is the power `helper` is refused for, and the "
+                "plugin supplies its own")
 
     # A patch rewrites bytes inside an executable the same entry chose to
     # download, and `find`/`replace` have no length limit -- so it is the power

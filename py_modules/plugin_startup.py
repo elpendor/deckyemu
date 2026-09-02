@@ -557,15 +557,41 @@ class Startup(plugin_base.PluginContext):
         not spend its first startup deciding it is behind.
         """
         settings = await self._run(store.get_settings)
-        if settings.get("launcher_format") == launchers.FORMAT_VERSION:
+
+        # **Which emulators start a motion server is not a format change, and a
+        # version number cannot see it.**
+        #
+        # A launcher names the server it starts, so the set of emulators
+        # declaring motion is baked into every launcher on disk. That set moves
+        # without any release: importing a definition that declares DSU, editing
+        # one, or removing an emulator all change it. `FORMAT_VERSION` was
+        # already current and the binary was already downloaded, so neither the
+        # version gate nor the arrival trigger fired -- and a game whose
+        # emulator had just started declaring motion kept a launcher with none
+        # in it, silently.
+        #
+        # A fingerprint asks the question directly: it changes exactly when the
+        # answer would, and settles to doing nothing.
+        declared = sorted(
+            entry["id"] for entry in emulator_catalog.CATALOG
+            if (entry.get("motion") or {}).get("server")
+        )
+        fingerprint = ",".join(declared)
+        stale = (settings.get("launcher_format") != launchers.FORMAT_VERSION
+                 or settings.get("motion_emulators") != fingerprint)
+        if not stale:
             return
 
-        await self._run(store.set_settings, {"launcher_format": launchers.FORMAT_VERSION})
+        await self._run(store.set_settings, {
+            "launcher_format": launchers.FORMAT_VERSION,
+            "motion_emulators": fingerprint,
+        })
         if not await self._run(store.get_library):
             return
 
         decky.logger.info(
-            "Rewriting launchers for format %d", launchers.FORMAT_VERSION
+            "Rewriting launchers for format %d (motion: %s)",
+            launchers.FORMAT_VERSION, fingerprint or "none"
         )
         await self.rebuild_launchers()
 

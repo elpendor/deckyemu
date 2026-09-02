@@ -39,6 +39,7 @@ import os
 
 import decky
 
+from . import deck_gyro
 from . import schema
 
 #: Imported definitions live beside the plugin's other settings rather than in
@@ -89,6 +90,23 @@ def parse(text, known_platforms=()):
         return None, "\n".join(problems)
 
     data["imported"] = True
+
+    # **`{"dsu": true}` becomes the real thing here, and only here.**
+    #
+    # An imported definition may say it speaks the DSU protocol but may not name
+    # the server -- see `schema.validate`, where that is refused as the power
+    # `helper` is refused for. Expanding the flag at the one point every
+    # definition passes through means nothing downstream has to know the
+    # difference: `emu_install.motion_server`, `tools_report` and the launcher
+    # writer all read `motion["server"]` exactly as they do for a bundled entry.
+    #
+    # No `verify` counterpart. A bundled entry names a file to look in to say
+    # whether the emulator is really pointed at the server; deriving one for an
+    # arbitrary definition would mean guessing at its config format, and a wrong
+    # guess reports a working setup as broken.
+    if (data.get("motion") or {}).get("dsu"):
+        data["motion"] = {"server": deck_gyro.DSU_SERVER}
+
     return data, ""
 
 

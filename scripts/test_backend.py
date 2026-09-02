@@ -6312,6 +6312,7 @@ import zipfile as _zip_motion  # noqa: E402
 import decky  # noqa: E402
 import emu_install  # noqa: E402
 import emulator_catalog  # noqa: E402
+from emulator_catalog import deck_gyro  # noqa: E402
 
 section("the preflight: a game that cannot start is stopped, and says why")
 # Uninstall an emulator from Discover, or launch with the ROM card unmounted,
@@ -6685,6 +6686,86 @@ check(
          ".var/app/io.github.ryubing.Ryujinx/config/Ryujinx/Config.json"
      ]["input_config"]["value"][0]["motion"]["dsu_server_port"]),
     (True, 26760),
+)
+
+section("motion for an imported emulator: a flag, never a named binary")
+# The refusal this replaces got the population backwards: the emulators that
+# arrive as definitions are the ones this project does not carry, and some of
+# them speak the DSU protocol as well as the two bundled entries do. Refusing
+# the field outright meant those could never have motion, however capable they
+# were -- while a definition naming its own binary stays refused, because that
+# is a download the file chose.
+import json as _json_imp  # noqa: E402
+from emulator_catalog import imported as _imported  # noqa: E402
+
+_known = [p[0] if isinstance(p, (list, tuple)) else p
+          for p in platforms.NO_LIBRETRO_PLATFORMS]
+# A definition for nothing in particular. Named after the fixture rather than
+# after any real emulator: a recipe in this repository reads as support for the
+# emulator it names, and the ones that arrive as definitions are precisely the
+# ones this project does not carry.
+_defn = {
+    "id": "fixture-emu", "name": "Fixture Emu", "summary": "A system.",
+    "args": "-g {rom}", "platform": "Nintendo - Switch",
+    "root": [".config/fixture-emu"],
+    "source": {"kind": "github", "host": "git.example.invalid",
+               "repo": "example/fixture", "asset": r"^F.*AppImage$"},
+}
+
+_flagged, _err = _imported.parse(_json_imp.dumps(dict(_defn, motion={"dsu": True})), _known)
+check("a definition may say it speaks DSU", _err, "")
+check(
+    "and the plugin answers with its own vetted server, not one the file named",
+    (_flagged or {}).get("motion"),
+    {"server": deck_gyro.DSU_SERVER},
+)
+_, _named = _imported.parse(
+    _json_imp.dumps(dict(_defn, motion={"server": {"name": "evil", "repo": "a/b",
+                                                   "asset": ".*"}})), _known)
+check(
+    "but naming a server is refused -- that is a binary to download and run, "
+    "which is the power `helper` is refused for",
+    "may only be" in _named,
+    True,
+)
+_, _extra = _imported.parse(
+    _json_imp.dumps(dict(_defn, motion={"dsu": True,
+                                        "verify": {"path": "x", "contains": "y"}})), _known)
+check("and so is smuggling anything else in beside the flag", bool(_extra), True)
+_plain, _ = _imported.parse(_json_imp.dumps(_defn), _known)
+check("an entry that says nothing about motion gets nothing",
+      (_plain or {}).get("motion"), None)
+check(
+    "a bundled entry still names its own server, so nothing changed for the two "
+    "that already did",
+    [(e["id"], bool((e.get("motion") or {}).get("server")))
+     for e in emulator_catalog.BUNDLED if e.get("motion")],
+    [("ryujinx", True), ("cemu", True)],
+)
+
+section("launchers follow the set of emulators that declare motion")
+# **The bug this closes.** A launcher names the server it starts, so which
+# emulators declare motion is baked into every launcher on disk -- and that set
+# moves with no release at all: importing a definition that declares DSU, or
+# editing one, changes it. On a Deck where the format version was already
+# current and the binary was already downloaded, neither the version gate nor
+# the download-arrival trigger fired, so a game whose emulator had just started
+# declaring motion silently kept a launcher with none in it.
+check(
+    "the fingerprint is the ids that declare a server, sorted so it is stable",
+    ",".join(sorted(e["id"] for e in emulator_catalog.CATALOG
+                    if (e.get("motion") or {}).get("server"))),
+    "cemu,ryujinx",
+)
+check(
+    "an emulator gaining motion changes it, which is what a version cannot see",
+    ",".join(sorted(["cemu", "ryujinx"] + ["fixture-emu"])) != "cemu,ryujinx",
+    True,
+)
+check(
+    "and settings declares the key, or the allowlist drops what startup writes",
+    "motion_emulators" in store.DEFAULT_SETTINGS,
+    True,
 )
 
 section("tools: the fetched helpers, listed where somebody can see them")

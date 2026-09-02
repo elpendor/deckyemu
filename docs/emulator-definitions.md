@@ -184,7 +184,10 @@ What is refused is everything that is not "install the emulator you asked for":
 - **Deleting.** No `removes`, no `data`. Nothing about installing an emulator
   requires the power to delete directory trees.
 - **A second binary.** No `helper` — that is arbitrary code beside the emulator,
-  which the definition did not describe.
+  which the definition did not describe. A definition may still *ask for motion*
+  with `"motion": {"dsu": true}`, which says the emulator speaks the gyro
+  protocol and nothing more; DeckyEmu supplies the server itself. Naming one —
+  a repository, a download — is refused for the same reason as `helper`.
 - **Editing the emulator.** A definition may carry *fixes* — switchable
   corrections for bugs in the emulator, each naming the upstream fix that will
   retire it — but not one that patches the emulator's own files. That is the
