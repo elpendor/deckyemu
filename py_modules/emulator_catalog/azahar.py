@@ -131,7 +131,19 @@ ENTRY = {
     "firmware": [
         {
             "name": "aes_keys.txt",
-            "note": "Only needed for encrypted dumps and eShop titles.",
+            # **Not "for encrypted dumps", which is what this said and is
+            # false.** Azahar decrypts nothing: `NCCHContainer::Load` reads one
+            # bit and returns `ErrorEncrypted` when it is clear -- "Encrypted
+            # NCCH are not supported", in its own comment -- so an encrypted
+            # cartridge dump fails identically whether these keys are present
+            # or not. A ROM has to be decrypted before it gets here, and a
+            # filename saying "Decrypted" is not evidence that it is: a real one
+            # sets the NoCrypto bit in its NCCH flags.
+            #
+            # What the keys are actually for is installed content -- eShop
+            # titles and DLC, which Azahar decrypts as it reads them.
+            "note": "For installed eShop titles and DLC. Cartridge dumps must "
+                    "already be decrypted; keys will not open one that is not.",
             "match": r"(?i)^(aes_keys\.txt|seeddb\.bin)$",
             "expects": "aes_keys.txt, and seeddb.bin if you have it.",
             # Confirmed on a real install: Azahar creates this folder itself.

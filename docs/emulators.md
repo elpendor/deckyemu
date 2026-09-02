@@ -74,6 +74,14 @@ that is the whole step. Anything already in place is never overwritten: a dump
 you put there by hand is left alone, and only a placeholder the emulator wrote
 for you to fill in is replaced.
 
+**Keys are not a decrypter.** For the 3DS in particular, `aes_keys.txt` opens
+installed eShop titles and DLC; it does nothing for a cartridge dump. Azahar
+refuses an encrypted dump outright — it decrypts nothing — so a `.3ds` has to be
+decrypted before you add it, with GodMode9 on a console or a decryption tool on
+a PC. A filename containing "Decrypted" is not evidence: the header is, and a
+mislabelled file is common enough to be worth suspecting first when a 3DS game
+will not start.
+
 Installing **moves** the file rather than copying it, so `~/deckyemu/firmware`
 does not accumulate a second copy of every BIOS you have ever sent — a PS3
 firmware update is a couple of hundred megabytes. Removing a requirement moves
