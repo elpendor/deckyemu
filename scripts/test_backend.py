@@ -6736,11 +6736,52 @@ _plain, _ = _imported.parse(_json_imp.dumps(_defn), _known)
 check("an entry that says nothing about motion gets nothing",
       (_plain or {}).get("motion"), None)
 check(
-    "a bundled entry still names its own server, so nothing changed for the two "
-    "that already did",
-    [(e["id"], bool((e.get("motion") or {}).get("server")))
-     for e in emulator_catalog.BUNDLED if e.get("motion")],
-    [("ryujinx", True), ("cemu", True)],
+    "every bundled entry still names its own server -- only an imported one is "
+    "answered with the plugin's",
+    all((e.get("motion") or {}).get("server")
+        for e in emulator_catalog.BUNDLED if e.get("motion")),
+    True,
+)
+
+section("3DS motion comes off the socket, not Azahar's mouse-driven fake")
+# The 3DS had a real gyroscope, and Azahar ships `motion_emu` -- a fake driven
+# by dragging a mouse, which on a handheld with no mouse is no motion at all.
+# Confirmed in the shipped AppImage before any of this was written: its own
+# binary carries `cemuhookudp`.
+_az = emulator_catalog.find("azahar")
+_azc = _az["setup"]["sections"]["Controls"]
+check(
+    "the motion device is the DSU engine, not the mouse fake",
+    _azc["profiles" + chr(92) + "1" + chr(92) + "motion_device"],
+    '"engine:cemuhookudp"',
+)
+check(
+    "and it is told the address and port rather than left to its own defaults",
+    (_azc["profiles" + chr(92) + "1" + chr(92) + "udp_input_address"],
+     _azc["profiles" + chr(92) + "1" + chr(92) + "udp_input_port"],
+     _azc["profiles" + chr(92) + "1" + chr(92) + "udp_pad_index"]),
+    (deck_gyro.DSU_HOST, str(deck_gyro.DSU_PORT), "0"),
+)
+check(
+    "it shares the one server with the others, so the binary is fetched once",
+    _az["motion"]["server"],
+    deck_gyro.DSU_SERVER,
+)
+check(
+    "and the panel can tell whether Azahar is really pointed at it",
+    _az["motion"]["verify"]["contains"],
+    "cemuhookudp",
+)
+check(
+    "the setup version moved, or an install already on disk never sees this",
+    _az["setup"]["version"] >= 3,
+    True,
+)
+check(
+    "three bundled emulators now share the server, on three different systems",
+    sorted(e["id"] for e in emulator_catalog.BUNDLED
+           if (e.get("motion") or {}).get("server")),
+    ["azahar", "cemu", "ryujinx"],
 )
 
 section("launchers follow the set of emulators that declare motion")
@@ -6751,12 +6792,15 @@ section("launchers follow the set of emulators that declare motion")
 # current and the binary was already downloaded, neither the version gate nor
 # the download-arrival trigger fired, so a game whose emulator had just started
 # declaring motion silently kept a launcher with none in it.
+_declaring = [e["id"] for e in emulator_catalog.CATALOG
+              if (e.get("motion") or {}).get("server")]
 check(
-    "the fingerprint is the ids that declare a server, sorted so it is stable",
-    ",".join(sorted(e["id"] for e in emulator_catalog.CATALOG
-                    if (e.get("motion") or {}).get("server"))),
-    "cemu,ryujinx",
+    "the fingerprint is sorted, so the same set never reads as a change",
+    ",".join(sorted(_declaring)),
+    ",".join(sorted(set(_declaring))),
 )
+check("and it is not empty, or it would never detect anything",
+      bool(_declaring), True)
 check(
     "an emulator gaining motion changes it, which is what a version cannot see",
     ",".join(sorted(["cemu", "ryujinx"] + ["fixture-emu"])) != "cemu,ryujinx",
@@ -6772,11 +6816,15 @@ section("tools: the fetched helpers, listed where somebody can see them")
 # The section exists because nothing said where these were. A tool downloaded
 # silently is indistinguishable from a feature that does not exist.
 _tools = emulator_catalog.tools()
+_server_rows = [t for t in _tools if t["name"] == "gyro-dsu"]
 check(
-    "one row per binary, not per emulator -- two entries share the motion server",
-    [(t["name"], t["needed_by"]) for t in _tools if t["name"] == "gyro-dsu"],
-    [("gyro-dsu", ["Ryujinx", "Cemu"])],
+    "one row per binary however many emulators want it -- a list naming it twice "
+    "would offer the same download in two places and disagree with itself",
+    len(_server_rows),
+    1,
 )
+check("and the row names every emulator that wants it",
+      len(_server_rows[0]["needed_by"]) > 1, True)
 check(
     "the PS4 extractor is the same kind of thing and gets a row too",
     [t["name"] for t in _tools],

@@ -155,8 +155,14 @@ try:
     _again = emu_config.apply_setup(emu_catalog.find("azahar"))
     check("applying twice changes nothing further", _read_cfg(), _text)
     check("our own writes are not mistaken for the user's", len(_again["skipped"]), 1)
-    # 16: every key in the spec except the one binding the user had changed.
-    check("so re-applying still re-applies", len(_again["applied"]), 16)
+    # Every key in the spec except the one binding the user had changed.
+    # Counted from the spec rather than written down: the literal was 16, and
+    # adding motion keys to the entry made a passing check fail for a reason
+    # that had nothing to do with what it was testing.
+    _expected = sum(
+        len(keys) for keys in emu_catalog.find("azahar")["setup"]["sections"].values()
+    ) - 1
+    check("so re-applying still re-applies", len(_again["applied"]), _expected)
 
     # A missing file is the fresh-install case: Azahar has not run yet, and a
     # partial file is fine because it fills in whatever it does not find.

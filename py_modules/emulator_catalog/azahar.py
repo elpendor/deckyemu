@@ -1,4 +1,6 @@
 import emu_config
+
+from . import deck_gyro
 from .steam_pad import (
     _PAD_A,
     _PAD_B,
@@ -42,7 +44,9 @@ _AZAHAR_SETUP = {
     #
     #   1  bindings using maptype:all, which the released Azahar ignores
     #   2  bound to Steam Input's virtual pad, matching the tested config
-    "version": 2,
+    #   3  motion taken from the gyro server instead of Azahar's mouse-driven
+    #      fake, so the 3DS games built around tilting one actually tilt
+    "version": 3,
     # Bindings an earlier version of this plugin wrote, before it recorded what
     # it had written. They were wrong -- `maptype:all` does not exist in the
     # released Azahar -- and without this they would be mistaken for the user's
@@ -68,6 +72,22 @@ _AZAHAR_SETUP = {
             r"profiles\1\button_right": _pad_hat("right"),
             r"profiles\1\circle_pad": _pad_stick(0, 1),
             r"profiles\1\c_stick": _pad_stick(3, 4),
+            # The 3DS had a gyroscope and an accelerometer, and Azahar ships
+            # `motion_emu` -- a fake driven by dragging the mouse, which on a
+            # handheld with no mouse is no motion at all. `cemuhookudp` is the
+            # real one, fed by the server in `ENTRY["motion"]`.
+            #
+            # Every key here arrives with Qt's `default` flag still set, so
+            # unlike some emulators this needs no step from the user. The
+            # address and port are already what the server binds, and they are
+            # restated rather than assumed for the reason `_CEMU_SETTINGS`
+            # restates its own: a value we depend on is one to write, not one to
+            # hope stays put.
+            r"profiles\1\motion_device": '"engine:cemuhookudp"',
+            r"profiles\1\udp_input_address": deck_gyro.DSU_HOST,
+            r"profiles\1\udp_input_port": str(deck_gyro.DSU_PORT),
+            # Slot 0 is the pad the server serves.
+            r"profiles\1\udp_pad_index": "0",
         },
     },
 }
@@ -92,6 +112,20 @@ ENTRY = {
     # Azahar has no fullscreen flag at all -- it is a config setting, which
     # is what `setup` is for.
     "fullscreen_args": "",
+    # The 3DS is the third system here whose motion reaches the emulator over a
+    # local socket rather than through SDL, so the pad stays Steam's virtual one
+    # and Steam Input keeps working. See `deck_gyro.DSU_SERVER`.
+    #
+    # Confirmed in the shipped build rather than assumed: `cemuhookudp` is in
+    # the AppImage's own 39MB binary, and Azahar already defaults its UDP
+    # address and port to exactly what the server binds.
+    "motion": {
+        "server": deck_gyro.DSU_SERVER,
+        "verify": {
+            "path": ".config/azahar-emu/qt-config.ini",
+            "contains": "cemuhookudp",
+        },
+    },
     "setup": _AZAHAR_SETUP,
     "verified": True,
     "firmware": [
