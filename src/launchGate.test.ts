@@ -22,6 +22,8 @@ const approveLaunch = vi.fn();
 const addedGame = vi.fn();
 const launchNoticesForGame = vi.fn();
 const showFixNotice = vi.fn();
+const showMissingPiece = vi.fn();
+const launchMissing = vi.fn();
 
 vi.mock("./LaunchConflictModal", () => ({
   showLaunchConflict: (...args: unknown[]) => showLaunchConflict(...args),
@@ -31,8 +33,13 @@ vi.mock("./LaunchConflictModal", () => ({
 vi.mock("./FixNoticeModal", () => ({
   showFixNotice: (...args: unknown[]) => showFixNotice(...args),
 }));
+// Same boundary again: the dialog that says a game's file or emulator has gone.
+vi.mock("./MissingPieceModal", () => ({
+  showMissingPiece: (...args: unknown[]) => showMissingPiece(...args),
+}));
 vi.mock("./backend", () => ({
   launchBounced: (...args: unknown[]) => launchBounced(...args),
+  launchMissing: (...args: unknown[]) => launchMissing(...args),
   approveLaunch: (...args: unknown[]) => approveLaunch(...args),
   launchNoticesForGame: (...args: unknown[]) => launchNoticesForGame(...args),
 }));
@@ -72,11 +79,15 @@ const settle = async () => {
 
 beforeEach(() => {
   for (const spy of [showLaunchConflict, launchBounced, approveLaunch, addedGame,
-                     launchNoticesForGame, showFixNotice]) {
+                     launchNoticesForGame, showFixNotice, showMissingPiece,
+                     launchMissing]) {
     spy.mockReset();
   }
   addedGame.mockReturnValue(undefined);
   launchBounced.mockResolvedValue({ bounced: false, others: "" });
+  // Every launch that is not bounced now goes on to ask whether the game is
+  // still complete, so the default has to answer that too.
+  launchMissing.mockResolvedValue({ missing: "" });
   approveLaunch.mockResolvedValue({ ok: true });
   launchNoticesForGame.mockResolvedValue({ notices: [] });
 });
@@ -280,5 +291,58 @@ describe("namedFromIds", () => {
 
   it("survives an empty note", () => {
     expect(namedFromIds("")).toEqual([]);
+  });
+});
+
+describe("a game whose file or emulator has gone", () => {
+  it("says which, instead of the game failing silently", async () => {
+    installSteam();
+    addedGame.mockReturnValue(OURS);
+    launchMissing.mockResolvedValue({ missing: "emulator", name: "shadPS4" });
+    watchLaunches();
+
+    fire!(1, "gid-100", "LaunchApp");
+    await settle();
+    // The name comes from the launcher, which recorded it when it was written.
+    expect(showMissingPiece).toHaveBeenCalledWith("emulator", OURS.title, "shadPS4");
+    expect(showLaunchConflict).not.toHaveBeenCalled();
+  });
+
+  it("stays quiet when nothing is missing", async () => {
+    installSteam();
+    addedGame.mockReturnValue(OURS);
+    watchLaunches();
+
+    fire!(1, "gid-100", "LaunchApp");
+    await settle();
+    expect(showMissingPiece).not.toHaveBeenCalled();
+  });
+
+  // Both notes are asked for together -- the launcher writes one or the other
+  // and which is not knowable in advance -- so what must hold is that only one
+  // dialog ever belongs to a launch, not that only one question was asked.
+  it("yields to the conflict dialog when that is what stopped the launch", async () => {
+    installSteam();
+    addedGame.mockReturnValue(OURS);
+    launchBounced.mockResolvedValue({ bounced: true, others: "7" });
+    watchLaunches();
+
+    fire!(1, "gid-100", "LaunchApp");
+    await settle();
+    expect(showLaunchConflict).toHaveBeenCalledTimes(1);
+    expect(showMissingPiece).not.toHaveBeenCalled();
+  });
+
+  // Same rule as the notice above: a backend that is down costs the message,
+  // never the session.
+  it("survives a backend that throws", async () => {
+    installSteam();
+    addedGame.mockReturnValue(OURS);
+    launchMissing.mockRejectedValue(new Error("backend is down"));
+    watchLaunches();
+
+    fire!(1, "gid-100", "LaunchApp");
+    await settle();
+    expect(showMissingPiece).not.toHaveBeenCalled();
   });
 });

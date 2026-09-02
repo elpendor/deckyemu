@@ -1868,6 +1868,23 @@ class Plugin(
         """Let this game past the gate once, because the user said so."""
         return {"ok": await self._run(launchers.approve_launch, app_id)}
 
+    async def launch_missing(self, app_id: int) -> dict:
+        """Did this game's launcher stop because a piece of it is gone?
+
+        The same note-and-collect shape as `launch_bounced`, and asked the same
+        way round for the same reason: the script is what knows whether the ROM
+        and the emulator are on the disk, so this side waits to be told rather
+        than working it out and risking a dialog that disagrees with what
+        actually happened.
+
+        Answers "rom" or "emulator", and for an emulator the name the launcher
+        recorded when it was written -- which is the only place it is reliably
+        known, since removing an emulator can take its record with it.
+        Consumed by reading.
+        """
+        kind, name = await self._run(launchers.take_missing, app_id)
+        return {"missing": kind, "name": name}
+
     @staticmethod
     def _stray_launchers(referenced):
         """Launcher scripts in our own directory that no registry entry claims."""

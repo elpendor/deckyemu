@@ -711,3 +711,19 @@ export const launchBounced = callable<[appId: number], LaunchBounce>("launch_bou
 
 /** Let one launch past the gate, after the user has said to. */
 export const approveLaunch = callable<[appId: number], { ok: boolean }>("approve_launch");
+
+/**
+ * Did this game's launcher stop because a piece of the game is gone?
+ *
+ * `"rom"` when the file is not there — an SD card that did not mount is the
+ * ordinary cause — `"emulator"` when the emulator or core is not, which is what
+ * uninstalling it outside this plugin looks like. `""` when nothing was stopped.
+ *
+ * Asked rather than predicted, exactly like `launchBounced`: the script is what
+ * knows what is on the disk, and a dialog built from this side's own guess could
+ * appear over a game that started perfectly well.
+ */
+export const launchMissing = callable<
+  [appId: number],
+  { missing: "" | "rom" | "emulator"; name: string }
+>("launch_missing");

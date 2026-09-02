@@ -62,6 +62,27 @@ If anything about that check goes wrong, the game launches normally. It is built
 to fail in that direction: a missing warning is a far smaller problem than a
 game that will not start.
 
+### If the game or its emulator has gone
+
+A shortcut keeps working after the things behind it have gone, and the two
+ordinary ways that happens are an SD card that did not mount and an emulator
+that is no longer installed. Either way the game used to start, fail, and put
+you back in the library a second later with nothing on screen to explain it.
+
+Now the launcher checks both before it starts anything, and if something is
+missing it stops and says which:
+
+- **The game file is not there** — usually a card that has not mounted, so
+  reinsert it and try again. If the file was moved or deleted for good, remove
+  the game and add it again.
+- **The emulator is not installed** — the message names which one, so open the
+  **Emulators** tab and install it. Saves and settings are kept, so this costs a
+  download and nothing else. For a RetroArch game it names the *core*, since
+  that is the piece that goes missing.
+
+Same as the check above, this only ever stops a launch that was going to fail:
+if it cannot tell, the game starts as usual.
+
 ![The Added games list, grouped by system, with play, details, edit and remove
 buttons on each row.](images/added-games.jpg)
 

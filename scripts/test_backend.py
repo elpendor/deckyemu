@@ -33,6 +33,7 @@ the two rules that came out of doing it are worth knowing before the next one:
 
 import io
 import os
+import shlex
 import shutil
 import sys
 
@@ -6311,6 +6312,135 @@ import zipfile as _zip_motion  # noqa: E402
 import decky  # noqa: E402
 import emu_install  # noqa: E402
 import emulator_catalog  # noqa: E402
+
+section("the preflight: a game that cannot start is stopped, and says why")
+# Uninstall an emulator from Discover, or launch with the ROM card unmounted,
+# and the shortcut used to start, fail, and return to the library in a second
+# with nothing on screen. The error went to the launch log, which is the file
+# nobody reads.
+_pf_rom = os.path.join(decky.DECKY_USER_HOME, "roms", "Preflight.nsp")
+os.makedirs(os.path.dirname(_pf_rom), exist_ok=True)
+open(_pf_rom, "w").close()
+_pf_emu = {"id": "ryujinx", "kind": "flatpak", "target": "io.github.ryubing.Ryujinx",
+           "name": "Ryujinx", "args": "{rom}", "fullscreen_args": "--fullscreen"}
+
+_pf = launchers.preflight(_pf_rom, _pf_emu, None, "", "")
+check("the ROM is tested by path", shlex.quote(_pf_rom) in _pf, True)
+check(
+    "a flatpak is tested as a deployed directory, never `flatpak info` -- this "
+    "runs in front of every game and a subprocess there is latency on all of them",
+    ("flatpak info" not in _pf, _pf.count("[ -d ") == 2),
+    (True, True),
+)
+check(
+    "both roots are tested, so a system-scope install is not called missing",
+    all(root in _pf for root in sysenv.flatpak_roots()),
+    True,
+)
+check(
+    "the ROM is reported first when both are gone -- one thing to fix, not two",
+    _pf.index("_dke_missing='rom'") < _pf.index("_dke_missing='emulator'"),
+    True,
+)
+check(
+    "and it fails open with no app id: a refusal nobody can explain is worse "
+    "than a launch that fails loudly",
+    '[ -n "$_dke_self" ]' in _pf,
+    True,
+)
+
+# Vita3K is handed an installed title, not a file, so testing for one would
+# refuse every launch of a game that works perfectly well.
+_pf_title = launchers.preflight(_pf_rom, {"kind": "path", "target": "/tmp/v.AppImage"},
+                                None, "", "PCSA00001")
+check(
+    "an emulator launched by title id has no ROM to test",
+    "_dke_missing='rom'" in _pf_title,
+    False,
+)
+check("but its binary is still tested", "[ -x /tmp/v.AppImage ]" in _pf_title, True)
+
+# For a libretro game the thing that goes missing is the core: `install["exe"]`
+# is often /usr/bin/flatpak, which says nothing about RetroArch.
+_pf_core = launchers.preflight(_pf_rom, None, {"exe": "/usr/bin/flatpak"},
+                              "/cores/snes9x_libretro.so", "")
+check("a libretro game tests its core, not the flatpak runner",
+      ("/cores/snes9x_libretro.so" in _pf_core, "/usr/bin/flatpak" in _pf_core),
+      (True, False))
+check("and an emulator with nothing to test adds no check at all",
+      launchers.preflight("", None, None, "", ""), "")
+
+# The note, which is how the panel learns any of this.
+os.makedirs(launchers.LAUNCH_GATE_DIR, exist_ok=True)
+_note = os.path.join(launchers.LAUNCH_GATE_DIR, "missing-4242")
+with open(_note, "w", encoding="utf-8") as _fh:
+    _fh.write("emulator" + chr(10) + "Ryujinx")
+check("the note is read, with the name the launcher recorded",
+      launchers.take_missing(4242), ("emulator", "Ryujinx"))
+check("and consumed, so two askers cannot both be told",
+      (launchers.take_missing(4242), os.path.exists(_note)), (("", ""), False))
+# The name is what makes the dialog useful, and the launcher is the only place
+# it is reliably known -- removing an emulator can take its record with it.
+check("the emulator's name is baked into the script when it is written",
+      "Ryujinx" in launchers.preflight(_pf_rom, _pf_emu, None, "", ""), True)
+check(
+    "and quoted, so a name with a space or a quote in it cannot break the script "
+    "or run anything -- an imported definition names itself",
+    launchers.preflight(
+        _pf_rom,
+        # No catalog entry, so the record's own name is what gets written -- and
+        # a hand-registered emulator names itself, so this is reachable.
+        {"id": "homemade", "kind": "path", "target": "/tmp/e",
+         "name": "Bob's Emu; rm -rf /"},
+        None, "", ""
+    ).count("'Bob'\"'\"'s Emu; rm -rf /'"),
+    1,
+)
+check(
+    "a libretro core is described as a core -- RetroArch is still installed, and "
+    "'snes9x is not installed' names something with no row anywhere",
+    launchers._presence_label(None, "/cores/snes9x_libretro.so"),
+    "The snes9x core",
+)
+# The bug this closes: a record adopted with the link button carries its flatpak
+# id in `name`, so the dialog said "io.github.ryubing.Ryujinx is not installed".
+check(
+    "the catalog's name wins over whatever the install was registered under",
+    launchers._presence_label(
+        {"id": "ryujinx", "name": "io.github.ryubing.Ryujinx"}, ""),
+    "Ryujinx",
+)
+check(
+    "but a hand-registered emulator keeps its own name, having no catalog entry",
+    launchers._presence_label({"id": "homemade", "name": "My Emu"}, ""),
+    "My Emu",
+)
+# **The case that got this wrong twice.** An emulator game whose emulator has no
+# record in emulators.json reaches the launcher writer with no emulator dict at
+# all and its flatpak id in `core_path` -- so the label came out as the package,
+# and then as "The io.github.ryubing.Ryujinx core" when only cores were expected
+# there. Only a `.so` is a core; anything else is a target to look up.
+check(
+    "a game whose emulator has no record is still named from the catalog",
+    [launchers._presence_label(None, target) for target in
+     ("io.github.ryubing.Ryujinx", "info.cemu.Cemu", "org.DolphinEmu.dolphin-emu")],
+    ["Ryujinx", "Cemu", "Dolphin"],
+)
+check(
+    "and a flatpak id is never described as a libretro core",
+    "core" in launchers._presence_label(None, "io.github.ryubing.Ryujinx"),
+    False,
+)
+check(
+    "nothing nameable beats naming a path back at somebody",
+    launchers._presence_label(None, "/home/deck/whatever.AppImage"),
+    "",
+)
+with open(_note, "w", encoding="utf-8") as _fh:
+    _fh.write("something else")
+check("a note that says something unexpected is ignored rather than shown",
+      launchers.take_missing(4242), ("", ""))
+os.remove(_pf_rom)
 
 section("motion: a gyro server that lives exactly as long as the game")
 # Ryujinx reads the Deck's gyro off a local socket rather than through SDL, so

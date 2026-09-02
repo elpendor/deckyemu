@@ -149,7 +149,23 @@ LAUNCH_GATE_DIR = os.path.join(decky.DECKY_PLUGIN_RUNTIME_DIR, "launch")
 #      Only reachable when the binary is deleted from outside the panel, but the
 #      `exec` is deliberate everywhere else and a launcher should not give it up
 #      for nothing.
-FORMAT_VERSION = 17
+#  18  the launcher checks that the game's ROM and its emulator are actually
+#      there, and refuses with a note instead of starting something that cannot
+#      run. Existing games need rewriting or the check only ever covers games
+#      added afterwards, which on a library that already exists is nothing.
+#  19  the note the preflight leaves names the emulator, so the dialog can say
+#      which one is gone rather than "the emulator". Baked into the script,
+#      because the name is known when it is written and may not be afterwards.
+#  20  that name is the emulator's, not its package's. A record registered
+#      with the link button carries its flatpak id in `name`, so the dialog
+#      said "io.github.ryubing.Ryujinx"; the catalog is asked first now. And a
+#      libretro core is described as a core rather than as the emulator.
+#  21  and again, because 20 was wrong for the case that prompted it. An
+#      emulator game whose emulator has no record arrives with `emulator` empty
+#      and its flatpak id in `core_path`, which version 20 read as a libretro
+#      core -- so the dialog said "The io.github.ryubing.Ryujinx core". Only a
+#      `.so` is a core now; anything else is looked up in the catalog by target.
+FORMAT_VERSION = 21
 
 # One file per OSD mode rather than one shared file. Games can override the
 # global setting individually, and a single file would mean the last game
@@ -764,6 +780,181 @@ def _gate_file(kind, app_id):
     return os.path.join(LAUNCH_GATE_DIR, "%s-%d" % (kind, int(app_id)))
 
 
+#: What a game needs, checked before its emulator is started.
+#:
+#: **Because the alternative is the worst failure this plugin can produce.**
+#: Uninstall an emulator from Discover, or launch with the SD card holding the
+#: ROMs unmounted, and the shortcut still starts: the script runs, the emulator
+#: is not there, and the user is back at the library a second later with nothing
+#: on screen. The error lands in the launch log, which is exactly the file
+#: nobody reads. This is the same trade the launch gate above makes -- refuse,
+#: leave a note, let the panel say why -- and for the same reason: a game that
+#: cannot start loses nothing by not starting.
+#:
+#: **Refusing is only right because the launch was going to fail anyway.** The
+#: rule that a launch notice must never block a launch (see `emulators.
+#: launch_notices`) is about warnings on a game that would otherwise run.
+#:
+#: **Stats, never subprocesses.** This runs in front of every game in the
+#: library, so `flatpak info` -- the honest question -- is the wrong way to ask
+#: it; a deployed flatpak is a directory, and a directory is a stat. The probes
+#: are built at write time by `_presence_test` so the paths match what the
+#: backend itself reads.
+#:
+#: **Fails open at every step**, like the gate and the log capture. No app id
+#: means no note can be left, and a refusal nobody can explain is worse than a
+#: launch that fails loudly.
+_LAUNCH_PREFLIGHT = r"""# What this game needs. See launchers.py -- a game whose emulator was
+# uninstalled, or whose ROM is on a card that did not mount, otherwise starts
+# and dies with nothing on screen to say why.
+_dke_missing=''
+{tests}
+if [ -n "$_dke_missing" ] && [ -n "$_dke_self" ]; then
+  mkdir -p "$_dke_gate" 2>/dev/null
+  printf '%s\n%s' "$_dke_missing" {label} > "$_dke_gate/missing-$_dke_self" 2>/dev/null
+  # Nothing started. The panel takes it from here.
+  exit 0
+fi
+"""
+
+
+def _presence_test(emulator, install, core_path):
+    """The shell test for "the thing that runs this game is here", or "".
+
+    A flatpak is a deployed directory under one of two roots; an executable is a
+    file with the execute bit. For a libretro game the thing that goes missing is
+    the **core**, not RetroArch -- `install["exe"]` is often `/usr/bin/flatpak`,
+    which says nothing about whether RetroArch is installed, while a core is a
+    file this plugin downloaded and can check directly.
+    """
+    if emulator:
+        kind, target = emulator.get("kind"), (emulator.get("target") or "").strip()
+        if kind == "flatpak" and target:
+            return " || ".join(
+                '[ -d %s ]' % shlex.quote(
+                    os.path.join(root, "app", target, "current", "active"))
+                for root in sysenv.flatpak_roots()
+            )
+        if kind == "path" and target:
+            return "[ -x %s ]" % shlex.quote(target)
+        return ""
+    return "[ -f %s ]" % shlex.quote(core_path) if core_path else ""
+
+
+def _presence_label(emulator, core_path):
+    """What to call the thing that is missing, for the dialog to name.
+
+    **Baked in when the launcher is written rather than looked up when the
+    dialog opens.** The name is known now and may not be later: removing an
+    emulator can take its record with it, and a message that says "the
+    emulator" because it could no longer find out which one is the vaguer half
+    of the problem this feature exists to fix.
+
+    A libretro core is named without its filename furniture -- `snes9x` rather
+    than `snes9x_libretro.so` -- because the file name is not what anybody
+    calls it.
+    """
+    if emulator:
+        # **The catalog first, the installed record second.** A record's `name`
+        # is whatever it was registered under, and an emulator adopted with the
+        # link button carries its flatpak id there -- so this said
+        # "io.github.ryubing.Ryujinx is not installed any more", which is the
+        # package and not the thing anybody calls it. The catalog knows it as
+        # Ryujinx. The record is still the fallback, because a hand-registered
+        # emulator has no catalog entry and its own name is the right one.
+        entry = emulator_catalog.find(emulator.get("id") or "")
+        return ((entry or {}).get("name") or emulator.get("name") or "").strip()
+    if not core_path:
+        return ""
+
+    stem = os.path.basename(core_path)
+
+    # **Only a `.so` is a core.** `core_path` carries the emulator's own target
+    # for an emulator game -- `io.github.ryubing.Ryujinx` -- and a game whose
+    # emulator has no record in `emulators.json` arrives here with `emulator`
+    # empty and that id in hand. Treating it as a core produced "The
+    # io.github.ryubing.Ryujinx core is not installed", which is the package
+    # name twice over and the exact thing this was asked to stop saying.
+    if stem.endswith(".so"):
+        for suffix in ("_libretro.so", ".so"):
+            if stem.endswith(suffix):
+                stem = stem[: -len(suffix)]
+                break
+        # Said as a core, because that is what it is. RetroArch is the emulator
+        # and it is still installed; "snes9x is not installed" names something
+        # the user has never seen a row for.
+        return "The %s core" % stem if stem else ""
+
+    # Not a core, so it is an emulator's target. The catalog is the only place
+    # that maps one to a name a person would recognise.
+    for entry in emulator_catalog.CATALOG:
+        if core_path == ((entry.get("source") or {}).get("id") or None):
+            return (entry.get("name") or "").strip()
+
+    # Something registered by hand with no record left to name it. The dialog's
+    # own fallback is "The emulator it needs", which is vague but true -- and
+    # better than repeating a path back at somebody.
+    return ""
+
+
+def preflight(rom_path, emulator, install, core_path, title_id=""):
+    """The shell that refuses a launch whose pieces are missing, or "".
+
+    `title_id` means the emulator is handed an installed title rather than a
+    file -- Vita3K -- so there is no ROM path to test and testing one would
+    refuse every launch of a game that works.
+    """
+    tests = []
+    if rom_path and not title_id:
+        tests.append(
+            "[ -e %s ] || _dke_missing='rom'" % shlex.quote(rom_path))
+
+    presence = _presence_test(emulator, install, core_path)
+    if presence:
+        # Only when the ROM is there, so a game missing both is reported as one
+        # thing to fix rather than whichever was tested last.
+        tests.append('if [ -z "$_dke_missing" ]; then\n'
+                     "  %s || _dke_missing='emulator'\nfi" % presence)
+
+    if not tests:
+        return ""
+    return (_LAUNCH_PREFLIGHT
+            .replace("{tests}", "\n".join(tests))
+            .replace("{label}", shlex.quote(_presence_label(emulator, core_path))))
+
+
+def take_missing(app_id):
+    """Which piece this game's launcher could not find: (kind, name).
+
+    `kind` is "rom", "emulator" or "", and `name` is what to call the emulator
+    that has gone -- written by the launcher, which knew it at the moment it was
+    generated. ("", "") when nothing was stopped.
+
+    Consumed like a bounce, and for the same reasons: read once so two askers
+    cannot both be told, and expiring rather than accumulating.
+    """
+    path = _gate_file("missing", app_id)
+    try:
+        fresh = (time.time() - os.stat(path).st_mtime) <= BOUNCE_SECONDS
+        with open(path, encoding="utf-8") as handle:
+            lines = handle.read().split("\n")
+    except (OSError, ValueError):
+        return "", ""
+    finally:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+    kind = lines[0].strip() if lines else ""
+    if not fresh or kind not in ("rom", "emulator"):
+        return "", ""
+    # Capped rather than trusted for length: it goes straight into a sentence on
+    # screen. The file is written by a script this plugin generated, so a wrong
+    # one is a bug here rather than hostile input -- and a cap keeps that bug
+    # from becoming a wall of text over the library.
+    return kind, (lines[1].strip()[:80] if len(lines) > 1 else "")
+
+
 #: How old a bounce note may be and still be answered.
 #:
 #: The panel asks for it a moment after the launch it belongs to, so anything
@@ -882,6 +1073,7 @@ def write_launcher(
             sysenv.SHELL_PREAMBLE,
             "",
             launch_gate(),
+            preflight(rom_path, emulator, install, core_path, title_id),
             log_capture(path),
         ]
         + run

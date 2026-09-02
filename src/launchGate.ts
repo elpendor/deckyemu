@@ -2,11 +2,14 @@ import { addedGame } from "./addedGames";
 import {
   approveLaunch,
   launchBounced,
+  launchMissing,
   launchNoticesForGame,
   sourceNoticeShown,
 } from "./backend";
 import { showFixNotice } from "./FixNoticeModal";
 import { showLaunchConflict } from "./LaunchConflictModal";
+import { showMissingPiece } from "./MissingPieceModal";
+import type { MissingPiece } from "./missingPiece";
 import { launchApp, onGameLaunch, runningGames, type RunningGame } from "./steam";
 import { logError } from "./logError";
 
@@ -51,12 +54,25 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
  * has to get there too, so the window is generous and cheap: a handful of calls
  * that stop at the first yes.
  */
-async function waitForBounce(appId: number): Promise<string | null> {
+type Stopped =
+  | { reason: "conflict"; others: string }
+  | { reason: "missing"; piece: MissingPiece; name: string };
+
+async function waitForStop(appId: number): Promise<Stopped | null> {
   const deadline = Date.now() + BOUNCE_TIMEOUT_MS;
   for (;;) {
     try {
-      const result = await launchBounced(appId);
-      if (result?.bounced) return result.others ?? "";
+      // **Both notes, every tick.** A launcher writes one or the other and
+      // exits, so which one is not knowable in advance -- and asking for the
+      // second only after giving up on the first would put the dialog four
+      // seconds behind a game that was already back at the library.
+      const [conflict, missing] = await Promise.all([
+        launchBounced(appId),
+        launchMissing(appId),
+      ]);
+      if (conflict?.bounced) return { reason: "conflict", others: conflict.others ?? "" };
+      if (missing?.missing)
+        return { reason: "missing", piece: missing.missing, name: missing.name ?? "" };
     } catch (error) {
       // The backend is the only thing that can answer this. If it cannot, the
       // launcher has already decided either way and nothing here improves on it.
@@ -150,8 +166,14 @@ async function handleLaunch(appId: number): Promise<void> {
   // has moved on.
   const others = runningGames(appId);
 
-  const bounced = await waitForBounce(appId);
-  if (bounced === null) return;
+  const stopped = await waitForStop(appId);
+  if (stopped === null) return;
+
+  if (stopped.reason === "missing") {
+    showMissingPiece(stopped.piece, game.title, stopped.name);
+    return;
+  }
+  const bounced = stopped.others;
 
   showLaunchConflict({
     title: game.title,
