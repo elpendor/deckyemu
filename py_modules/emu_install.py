@@ -973,7 +973,7 @@ def motion_server(entry):
 #:
 #: In memory rather than on disk: the point is to stop a burst, and a plugin
 #: reload is a fine moment to try again.
-_MOTION_RETRY_AFTER = {}
+_MOTION_RETRY_AFTER: dict = {}
 
 
 def motion_configured(entry):
