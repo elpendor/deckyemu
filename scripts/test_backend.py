@@ -6743,6 +6743,44 @@ check(
     True,
 )
 
+section("the name comes from whoever identified the game")
+# A real library produced "Legend of Zelda: Ocarina of Time 3D, The Decrypted":
+# libretro matched nothing so the title fell back to the filename, while
+# SteamGridDB identified the game well enough to fetch four pieces of artwork
+# for it. Trusting that identification for the picture and not for the name was
+# an asymmetry with nothing behind it.
+check(
+    "an exact libretro match wins -- the filename is a known ROM name",
+    meta.choose_title("exact", "The Legend of Zelda: Ocarina of Time 3D", "Zelda OoT"),
+    ("The Legend of Zelda: Ocarina of Time 3D", "libretro"),
+)
+check(
+    "so does an index match, which at least matched real ROMs for the system",
+    meta.choose_title("index", "Donkey Kong Country", "DKC"),
+    ("Donkey Kong Country", "libretro"),
+)
+check(
+    "with no match, the artwork source names the game it paid for",
+    meta.choose_title("none", "Legend of Zelda: Ocarina of Time 3D, The Decrypted",
+                      "The Legend of Zelda: Ocarina of Time 3D"),
+    ("The Legend of Zelda: Ocarina of Time 3D", "steamgriddb"),
+)
+check(
+    "and with nothing at all it stays the filename, honestly labelled",
+    meta.choose_title("none", "Some Weird Dump Name", ""),
+    ("Some Weird Dump Name", "filename"),
+)
+# The source is returned rather than the name quietly swapped because
+# SteamGridDB's search does answer with the wrong game: asked for "Famicom
+# Detective Club 1: The Missing Heir" it returns a different title in the same
+# series. The panel shows this beside a field that stays editable.
+check(
+    "the caller is always told which source named it",
+    sorted({meta.choose_title(k, "t", a)[1]
+            for k in ("exact", "index", "none") for a in ("", "Art Name")}),
+    ["filename", "libretro", "steamgriddb"],
+)
+
 section("3DS motion comes off the socket, not Azahar's mouse-driven fake")
 # The 3DS had a real gyroscope, and Azahar ships `motion_emu` -- a fake driven
 # by dragging a mouse, which on a handheld with no mouse is no motion at all.

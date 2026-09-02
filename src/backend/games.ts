@@ -247,6 +247,17 @@ export interface ResolvedGame {
   system: string;
   matched_name: string;
   match_kind: "exact" | "index" | "none";
+  /**
+   * Where the name came from, which is not always where the artwork came from.
+   *
+   * An exact libretro match wins outright — the filename is a known ROM name.
+   * With no match at all the title used to be the filename tidied up, even when
+   * SteamGridDB had identified the game well enough to fetch artwork for it;
+   * now that identification names it too. Reported rather than silently applied
+   * because SteamGridDB's search does sometimes answer with a different game in
+   * the same series.
+   */
+  title_source: "libretro" | "steamgriddb" | "filename";
   art: Partial<Record<"capsule" | "header" | "hero" | "logo", ArtImage>>;
   art_source: "libretro" | "steamgriddb" | "none";
   /** The SteamGridDB title the art came from, so a wrong match is spottable. */

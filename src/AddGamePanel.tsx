@@ -84,6 +84,23 @@ const MATCH_LABELS: Record<ResolvedGame["match_kind"], string> = {
   none: "No database match - name taken from filename",
 };
 
+/**
+ * Where the name came from, said under the name rather than under the artwork.
+ *
+ * It used to be reported only in the Artwork row, and only when artwork had
+ * *also* failed — so the common case, where SteamGridDB found art and the name
+ * quietly came from the filename, said nothing at all. That is how a game
+ * landed in a library called "Ocarina of Time 3D, The Decrypted".
+ *
+ * Only shown when it is not an exact libretro match: naming the source of a
+ * name that is certainly right is a line of text per game saying nothing.
+ */
+const NAME_SOURCE_LABELS: Record<ResolvedGame["title_source"], string> = {
+  libretro: "",
+  steamgriddb: "Named by SteamGridDB, which also supplied the artwork. Check it before adding.",
+  filename: "Named from the filename - nothing recognised this game.",
+};
+
 interface Props {
   status: RetroArchStatus;
   onGameAdded: () => void;
@@ -557,6 +574,9 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
               system: current?.system ?? "",
               matched_name: current?.matched_name ?? "",
               match_kind: current?.match_kind ?? "none",
+              // Picking artwork by hand does not re-identify the game, so the
+              // name's provenance is whatever it already was.
+              title_source: current?.title_source ?? "filename",
               core_id: coreId,
               rom_path: romPath,
               art: result.art,
@@ -1206,6 +1226,18 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
             style={{ paddingRight: "2.6em" }}
             onChange={(event) => updateDraft({ title: event.target.value })}
             disabled={adding}
+          />
+        </PanelSectionRow>
+      )}
+
+      {/* Under the field it describes, and only when the name is a guess. The
+          field above is editable, so this is the moment to look at it. */}
+      {romPath && !looking && !pendingPackage && resolved &&
+        NAME_SOURCE_LABELS[resolved.title_source] && (
+        <PanelSectionRow>
+          <Field
+            description={NAME_SOURCE_LABELS[resolved.title_source]}
+            focusable={false}
           />
         </PanelSectionRow>
       )}

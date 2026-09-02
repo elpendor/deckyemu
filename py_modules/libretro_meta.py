@@ -411,3 +411,32 @@ def resolve(rom_path, databases, allow_index=True):
                 }
 
     return fallback
+
+
+def choose_title(match_kind, title, art_game_name):
+    """Which name to use, and where it came from. Returns (title, source).
+
+    **Whoever identified the game supplies the name.**
+
+    A libretro `exact` match means the filename *is* a known ROM name, which no
+    search can beat, so it wins outright. `index` is libretro's own fuzzy pass
+    and keeps the name too -- it at least matched against a list of real ROMs
+    for the right system.
+
+    With no match at all the title is the filename tidied up, and that is where
+    this earns its keep: if SteamGridDB went on to identify the game well enough
+    to fetch artwork for it, that identification is better evidence than the
+    filename. Trusting it for the picture and not for the name was an asymmetry
+    with nothing behind it -- a wrong match produces wrong artwork either way.
+
+    Measured over a real library before this was written: of twelve games eight
+    names were identical, three were better from SteamGridDB (accents,
+    capitalisation, a stray trademark symbol) and one was a *different game in
+    the same series*. So the source is returned rather than the name quietly
+    swapped, and the panel shows it beside a field that stays editable.
+    """
+    if match_kind != "none":
+        return title, "libretro"
+    if art_game_name:
+        return art_game_name, "steamgriddb"
+    return title, "filename"

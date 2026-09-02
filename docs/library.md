@@ -62,6 +62,24 @@ If anything about that check goes wrong, the game launches normally. It is built
 to fail in that direction: a missing warning is a far smaller problem than a
 game that will not start.
 
+### Where a game's name comes from
+
+Adding a game looks the name up rather than trusting the filename. If libretro
+recognises it, that name is used. If nothing recognises it but **SteamGridDB**
+identified the game while fetching artwork, its name is used instead — that
+search is what found the artwork now on your game, so it identifies it better
+than the filename does.
+
+Only when nothing recognises it at all does the filename stand, tidied up. That
+is when a ROM named `... , The (USA (Rev 1) Decrypted` becomes a game called
+`Ocarina of Time 3D, The Decrypted`.
+
+**The panel says which of the three named it**, under the name, whenever the
+name is a guess — and the field is editable right there, so the moment to fix it
+is before you press Add. It says so because SteamGridDB's search occasionally
+answers with a different game in the same series, and a wrong name follows a
+game around in a way a wrong picture does not.
+
 ### If the game or its emulator has gone
 
 A shortcut keeps working after the things behind it have gone, and the two
