@@ -108,8 +108,9 @@ export function LibraryPanel({ onRefresh }: Props) {
   useEffect(() => {
     cloudStatus()
       .then((result) =>
-        // The service, and the account when the service will say. The name is
-        // a label somebody typed, so "saves go to cloud" answered nothing.
+        // The service, and the account when the service will say. Never the
+        // rclone name: that is a config key the Deck picked for itself, and a
+        // row reading "saves go to dropbox-2" says less than "Dropbox" does.
         setCloudRemote(
           result.remote
             ? [result.label || result.kind, result.account].filter(Boolean).join(" — ")

@@ -755,8 +755,6 @@ def cloud_page(backends, logins, token):
 <h1>Cloud saves</h1>
 <p class="note">Where save data gets copied to. The storage is yours -- this
 only writes down how to reach it, and the password is kept on the Deck.</p>
-<label>Name<input id="name" value="dropbox" autocomplete="off"
-  autocapitalize="off" spellcheck="false"></label>
 <label>Storage<select id="kind">
 <optgroup label="Sign in">%(signins)s</optgroup>
 <optgroup label="Type the details">%(options)s</optgroup>
@@ -818,11 +816,6 @@ and backing up stays something you ask for on the Deck.</p>
     shown();
     said.hidden = true;
     pasted.value = "";
-    /* Named after the service unless the user has renamed it themselves. A
-       generic default meant the Deck could only report "saves go to cloud",
-       which answers nothing anybody wanted to know. */
-    var box = document.getElementById("name");
-    if (!box.dataset.touched) box.value = kind.value;
   }
 
   link.addEventListener("click", function (event) {
@@ -836,7 +829,7 @@ and backing up stays something you ask for on the Deck.</p>
        browser is concerned, and gets blocked. */
     var tab = window.open("", "_blank");
 
-    post({ step: "start", kind: kind.value, name: "", pasted: "" })
+    post({ step: "start", kind: kind.value, pasted: "" })
       .then(function (result) {
         if (result.ok && result.url) {
           if (tab) { tab.location = result.url; } else { window.location = result.url; }
@@ -859,9 +852,6 @@ and backing up stays something you ask for on the Deck.</p>
       });
   });
   kind.addEventListener("change", ready);
-  document.getElementById("name").addEventListener("input", function () {
-    this.dataset.touched = "1";
-  });
   ready();
 
   go.addEventListener("click", function () {
@@ -879,21 +869,17 @@ and backing up stays something you ask for on the Deck.</p>
     said.textContent = "Checking...";
     go.disabled = true;
 
+    /* The service, read off the option somebody picked. Nothing is named or
+       asked to be named: rclone needs a key for its config file and that is
+       the Deck's business, not a question to put to a person on a phone. */
+    var service = kind.options[kind.selectedIndex].text;
+
     post(isLogin()
-      ? {
-          step: "finish",
-          name: document.getElementById("name").value,
-          kind: kind.value,
-          pasted: pasted.value
-        }
-      : {
-          name: document.getElementById("name").value,
-          kind: kind.value,
-          values: values
-        }
+      ? { step: "finish", kind: kind.value, pasted: pasted.value }
+      : { kind: kind.value, values: values }
     ).then(function (result) {
       said.textContent = result.ok
-        ? "Ready. " + result.name + " answered, so saves can go there."
+        ? "Ready. " + service + " answered, so saves can go there."
         : (result.error || "That did not work.");
       said.className = result.ok ? "said" : "said bad";
       /* Cleared whichever way it went. A password left in a form on a phone

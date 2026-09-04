@@ -16,7 +16,8 @@ import {
   type SaveSource,
 } from "./backend";
 import { logError } from "./logError";
-import { QrCode } from "./QrCode";
+import { HandoffCode } from "./HandoffCode";
+import { MUTED } from "./dialogStyle";
 import { backupSummary, defaultSelection, totals } from "./saveBackup";
 import { humanSize } from "./TransferModal";
 
@@ -35,8 +36,6 @@ import { humanSize } from "./TransferModal";
  * a real file, so it has a lifetime -- see the cleanup below, which deletes it.
  */
 
-const LABEL: React.CSSProperties = { opacity: 0.7, fontSize: "13px" };
-const VALUE: React.CSSProperties = { fontSize: "17px", fontWeight: 600, wordBreak: "break-all" };
 
 interface Props {
   closeModal?: () => void;
@@ -143,7 +142,7 @@ export function SaveBackupModal({ closeModal }: Props) {
         <div style={{ fontSize: "20px", fontWeight: 600, marginBottom: "4px" }}>
           Back up save data
         </div>
-        <div style={{ ...LABEL, marginBottom: "12px" }}>
+        <div style={{ ...MUTED, marginBottom: "12px" }}>
           Builds one file holding your saves and offers it to another device on this
           network. Nothing on the Deck is changed or removed.
         </div>
@@ -194,7 +193,7 @@ export function SaveBackupModal({ closeModal }: Props) {
                 />
               ))}
             </Focusable>
-            <div style={{ ...LABEL, marginTop: "10px" }}>
+            <div style={{ ...MUTED, marginTop: "10px" }}>
               {backupSummary(sums, humanSize(sums.bytes))}
             </div>
             <Focusable style={{ display: "flex", gap: "8px", marginTop: "12px" }}>
@@ -211,22 +210,14 @@ export function SaveBackupModal({ closeModal }: Props) {
 
         {url && (
           <>
-            <Focusable style={{ display: "flex", gap: "16px", alignItems: "center" }}>
-              <QrCode text={url} />
-              <div style={{ display: "flex", flexDirection: "column", gap: "10px", flex: 1 }}>
-                <div>
-                  <div style={LABEL}>Scan the code, or go to</div>
-                  <div style={VALUE}>{status?.short_url}</div>
-                </div>
-                <div>
-                  <div style={LABEL}>and enter</div>
-                  <div style={{ ...VALUE, letterSpacing: "2px" }}>{status?.pin}</div>
-                </div>
-                <div style={LABEL}>
-                  {status?.download_name} - {humanSize(status?.download_bytes ?? 0)}
-                </div>
-              </div>
-            </Focusable>
+            <HandoffCode
+              url={url}
+              shortUrl={status?.short_url}
+              pin={status?.pin}
+              pinLocked={status?.pin_locked}
+            >
+              {status?.download_name} - {humanSize(status?.download_bytes ?? 0)}
+            </HandoffCode>
 
             {/*
               Done means gone. The report this borrows its shape from is a log tail
@@ -234,7 +225,7 @@ export function SaveBackupModal({ closeModal }: Props) {
               disk, so leaving it behind after they said they had finished is a
               copy nobody asked to keep.
             */}
-            <div style={{ ...LABEL, marginTop: "14px" }}>
+            <div style={{ ...MUTED, marginTop: "14px" }}>
               Download it before pressing Done - the file is deleted from the Deck
               then, and in any case after {Math.round((status?.idle_timeout ?? 1800) / 60)}{" "}
               minutes.

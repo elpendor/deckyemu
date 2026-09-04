@@ -135,7 +135,7 @@ class Transfers(plugin_base.PluginContext):
         decky.logger.info("Cloud storage setup ready")
         return {"ok": True, **await self._run(fileserver.status)}
 
-    def _cloud_setup(self, name, kind, values):
+    def _cloud_setup(self, kind, values):
         """What the form posts back. Runs on the server's own thread.
 
         Made and then *checked*, because "saved" is not the answer anybody wants
@@ -143,7 +143,12 @@ class Transfers(plugin_base.PluginContext):
         looking at, not a backup that fails hours later behind a game that just
         closed. A remote that cannot be reached is removed again rather than
         left behind looking configured.
+
+        The name is minted here rather than asked for, and everything said back
+        to the person is the service -- see `cloudsave.next_name`.
         """
+        name = cloudsave.next_name(kind)
+        label = cloudsave._label_for(kind)
         ok, error = cloudsave.create_remote(name, kind, values)
         if not ok:
             return False, error
@@ -151,12 +156,12 @@ class Transfers(plugin_base.PluginContext):
         ok, error = cloudsave.check_remote(name)
         if not ok:
             cloudsave.remove_remote(name)
-            return False, "Saved, but %s did not answer: %s" % (name, error)
+            return False, "Saved, but %s did not answer: %s" % (label, error)
 
         store.set_settings({"cloud_remote": "%s:" % name})
         return True, ""
 
-    def _cloud_login(self, step, name, kind, pasted):
+    def _cloud_login(self, step, kind, pasted):
         """The login half of the form. Runs on the server's own thread.
 
         Two steps because a login has two halves and a person in between. The
@@ -171,6 +176,8 @@ class Transfers(plugin_base.PluginContext):
             cloudsave.login_cancel()
             return (True, "", "")
 
+        name = cloudsave.next_name(kind)
+        label = cloudsave._label_for(kind)
         ok, error = cloudsave.login_finish(name, kind, pasted)
         if not ok:
             return (False, error, "")
@@ -178,7 +185,7 @@ class Transfers(plugin_base.PluginContext):
         ok, error = cloudsave.check_remote(name)
         if not ok:
             cloudsave.remove_remote(name)
-            return (False, "Signed in, but %s did not answer: %s" % (name, error), "")
+            return (False, "Signed in, but %s did not answer: %s" % (label, error), "")
 
         store.set_settings({"cloud_remote": "%s:" % name})
         return (True, "", "")
@@ -262,9 +269,27 @@ class Transfers(plugin_base.PluginContext):
         return await self.cloud_status()
 
     async def end_cloud_setup(self):
-        """Take the form down. The server stops if nothing else is using it."""
+        """Take the form down, and stop the server if it was only serving that.
+
+        The second half is what this said it did for a while without doing it,
+        and withdrawing the form alone is worse than not withdrawing it: the
+        page falls back to the transfer page, so closing the dialog left a
+        stranger's browser looking at this Deck's file list rather than at
+        nothing at all.
+
+        The server itself only stops when nothing is moving, the same rule and
+        the same guard as `end_report` and `end_save_backup`. It may have been
+        up for a transfer that is still running, and cutting off a
+        multi-gigabyte ROM because somebody closed an unrelated dialog is the
+        failure that guard exists for.
+        """
         await self._run(cloudsave.login_cancel)
         await self._run(fileserver.offer_cloud_setup, None, None, None, None)
+        status = await self._run(fileserver.status)
+        if status.get("running") and not (
+            status.get("uploading") or status.get("paused") or status.get("downloading")
+        ):
+            return await self.stop_file_server()
         return {"ok": True, **await self._run(fileserver.status)}
 
     async def save_backup_sources(self):

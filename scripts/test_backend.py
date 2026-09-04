@@ -2226,6 +2226,7 @@ import urllib.error  # noqa: E402
 import urllib.request  # noqa: E402
 from urllib.parse import quote as _quote, urljoin  # noqa: E402
 
+import cloudsave  # noqa: E402  -- only for its `binary`, stubbed below
 import fileserver  # noqa: E402
 
 check("traversal is stripped", fileserver.safe_name("../../etc/passwd"), "passwd")
@@ -2898,6 +2899,44 @@ else:
     # Closing the dialog stops the server, so the frontend has to be able to tell
     # whether stopping now would cut a transfer off.
     check("nothing is in flight when idle", settled(), 0)
+
+    # The cloud setup form is the third errand this server runs, and it ends the
+    # way the other two do. It did not for a while: it withdrew the form and left
+    # the server up, so closing the dialog handed whoever held the code the
+    # transfer page instead -- the file list of the Deck they had been shown a
+    # settings form for.
+    _real_binary = cloudsave.binary
+    cloudsave.binary = lambda: os.path.join(TMP, "rclone")
+    try:
+        _cloud = run(plugin.start_cloud_setup())
+        check("the setup form can be offered", _cloud["ok"], True)
+        _cport = fileserver.status()["port"]
+        _ctok = fileserver.status()["url"].rstrip("/").rsplit("/", 1)[-1]
+        _cpage = urllib.request.urlopen(
+            "http://127.0.0.1:%d/%s/" % (_cport, _ctok), timeout=5
+        ).read().decode()
+        check("and it is the page, not an upload form",
+              ("Cloud saves" in _cpage, "Choose files" in _cpage), (True, False))
+
+        _closed = run(plugin.end_cloud_setup())
+        check("closing the dialog withdraws the form", _closed["ok"], True)
+        check("and stops the server it started", fileserver.status()["running"], False)
+
+        # Not while something is arriving, for the reason the report's own guard
+        # exists: an unrelated dialog closing must not cut off a transfer.
+        run(plugin.start_cloud_setup())
+        fileserver._in_flight[998] = {
+            "name": "big.iso", "received": 1, "total": 2, "at": 0, "cancelled": False,
+        }
+        try:
+            _held = run(plugin.end_cloud_setup())
+            check("with a transfer running, the form still goes",
+                  fileserver.status()["running"] and _held["running"], True)
+        finally:
+            fileserver._in_flight.pop(998, None)
+        run(plugin.stop_file_server())
+    finally:
+        cloudsave.binary = _real_binary
 
     # One tap from the panel: no folder argument, so the caller needs no round trip
     # to discover the default first.

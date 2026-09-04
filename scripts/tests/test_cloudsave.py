@@ -359,4 +359,36 @@ for bad in ("not a host", "a=b", "x/../y", "host name", "hos\tt"):
               "pcloud", "http://x/?code=A&hostname=" + urllib.parse.quote(bad)),
           [])
 
+section("the storage is named here, never asked for")
+
+# The form used to ask for a name before it would let anybody sign in, and the
+# word somebody typed was the only thing the panel could show -- "saves go to
+# cloud" was a real screen. rclone needs a key for its config file and nobody
+# else does, so it is chosen here and the service is what gets shown.
+_existing = []
+_real_remotes = cloudsave.remotes
+cloudsave.remotes = lambda: list(_existing)
+try:
+    check("the first of a service is just the service",
+          cloudsave.next_name("dropbox"), "dropbox")
+
+    _existing.append("dropbox")
+    check("a second account of the same service takes a number",
+          cloudsave.next_name("dropbox"), "dropbox-2")
+    check("and a different service is untouched by it",
+          cloudsave.next_name("pcloud"), "pcloud")
+
+    _existing.append("dropbox-2")
+    check("the number keeps counting past what is there",
+          cloudsave.next_name("dropbox"), "dropbox-3")
+
+    # It has to survive its own output: the name goes into a config file and
+    # into every command line rclone is given afterwards.
+    check("every name it picks is one rclone will accept",
+          all(cloudsave.valid_name(cloudsave.next_name(kind))
+              for kind in list(cloudsave.BACKENDS) + list(cloudsave.OAUTH_BACKENDS)),
+          True)
+finally:
+    cloudsave.remotes = _real_remotes
+
 summary()

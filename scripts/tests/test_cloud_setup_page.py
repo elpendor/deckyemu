@@ -41,15 +41,15 @@ posted = []
 logins = []
 
 
-def handler(name, kind, values):
-    posted.append((name, kind, dict(values)))
-    if name == "broken":
+def handler(kind, values):
+    posted.append((kind, dict(values)))
+    if values.get("url") == "broken":
         return False, "that host did not answer"
     return True, ""
 
 
-def login_handler(step, name, kind, pasted):
-    logins.append((step, name, kind, pasted))
+def login_handler(step, kind, pasted):
+    logins.append((step, kind, pasted))
     if step == "start":
         return True, "", "https://provider.example/auth?state=abc"
     if step == "explode":
@@ -67,30 +67,42 @@ BASE = started["url"].rstrip("/")
 TOKEN = BASE.rsplit("/", 1)[-1]
 
 
+def _ask(request):
+    """One request, retried past a loopback that drops it.
+
+    Windows aborts an occasional connection to 127.0.0.1 with WinError 10053 --
+    seen in the transfer server's own suite, on a tree with nothing changed in
+    it, and it is the socket rather than anything being tested. A retry keeps
+    that from reading as a failure of whatever check happened to be next; a
+    real refusal comes back as an HTTPError and is answered, not retried.
+    """
+    for attempt in range(4):
+        try:
+            with urllib.request.urlopen(request, timeout=10) as response:
+                return response.status, response.read().decode("utf-8", "replace")
+        except urllib.error.HTTPError as error:
+            return error.code, error.read().decode("utf-8", "replace")
+        except OSError:
+            if attempt == 3:
+                raise
+    raise AssertionError("unreachable")
+
+
 def get(path):
-    try:
-        with urllib.request.urlopen(BASE + path, timeout=10) as response:
-            return response.status, response.read().decode("utf-8", "replace")
-    except urllib.error.HTTPError as error:
-        return error.code, error.read().decode("utf-8", "replace")
+    return _ask(BASE + path)
 
 
 def post(path, payload, raw=None):
     body = raw if raw is not None else json.dumps(payload).encode()
-    request = urllib.request.Request(
+    return _ask(urllib.request.Request(
         BASE + path, data=body, method="POST",
-        headers={"Content-Type": "application/json"})
-    try:
-        with urllib.request.urlopen(request, timeout=10) as response:
-            return response.status, response.read().decode("utf-8", "replace")
-    except urllib.error.HTTPError as error:
-        return error.code, error.read().decode("utf-8", "replace")
+        headers={"Content-Type": "application/json"}))
 
 
 try:
     section("before it is offered, nothing answers")
 
-    status, _ = post("/cloud", {"name": "x", "kind": "webdav", "values": {}})
+    status, _ = post("/cloud", {"kind": "webdav", "values": {}})
     check("posting settings to a server not collecting them is refused",
           status, 404)
 
@@ -112,22 +124,27 @@ try:
 
     posted.clear()
     status, body = post("/cloud", {
-        "name": "mynas", "kind": "webdav",
+        "kind": "webdav",
         "values": {"url": "https://nas.example/dav", "user": "p", "pass": "s"}})
     check("answered", status, 200)
     check("the handler got it", posted,
-          [("mynas", "webdav",
+          [("webdav",
             {"url": "https://nas.example/dav", "user": "p", "pass": "s"})])
     check("and the page is told it worked", json.loads(body)["ok"], True)
 
+    # Nothing on the wire names the storage. rclone needs a key for its config
+    # file, the Deck picks it, and asking somebody on a phone to invent a word
+    # first is the question this page no longer asks.
+    check("nothing was asked to be named",
+          ("name" in json.loads(body), 'id="name"' in page), (False, False))
+
     section("a failure is reported as itself, not as a crash")
 
-    status, body = post("/cloud", {"name": "broken", "kind": "webdav",
-                                   "values": {"url": "x"}})
+    status, body = post("/cloud", {"kind": "webdav", "values": {"url": "broken"}})
     check("still a 200, because the page has to read the reason", status, 200)
     check("which carries the handler's own words",
           json.loads(body), {"ok": False, "error": "that host did not answer",
-                             "url": "", "name": "broken"})
+                             "url": ""})
 
     section("a sign-in provider is two steps with a person in between")
 
@@ -140,29 +157,28 @@ try:
 
     logins.clear()
     status, body = post("/cloud", {"step": "start", "kind": "dropbox",
-                                   "name": "", "pasted": ""})
+                                   "pasted": ""})
     check("starting hands back a link to open", json.loads(body)["url"],
           "https://provider.example/auth?state=abc")
-    check("and nothing was written yet", logins, [("start", "", "dropbox", "")])
+    check("and nothing was written yet", logins, [("start", "dropbox", "")])
 
     status, body = post("/cloud", {
-        "step": "finish", "name": "mydrop", "kind": "dropbox",
+        "step": "finish", "kind": "dropbox",
         "pasted": "http://localhost:53682/?code=REALCODE&state=abc"})
     check("finishing carries what the browser landed on", logins[-1],
-          ("finish", "mydrop", "dropbox",
+          ("finish", "dropbox",
            "http://localhost:53682/?code=REALCODE&state=abc"))
     check("and says it worked", json.loads(body)["ok"], True)
 
-    status, body = post("/cloud", {"step": "finish", "name": "stale",
+    status, body = post("/cloud", {"step": "finish",
                                    "kind": "dropbox", "pasted": "nonsense"})
     check("a paste with no code in it is a sentence, not a crash",
-          json.loads(body), {"ok": False, "error": "no code in that", "url": "",
-                             "name": "stale"})
+          json.loads(body), {"ok": False, "error": "no code in that", "url": ""})
 
     section("a handler that throws does not leave the page waiting")
 
     status, body = post("/cloud", {"step": "explode", "kind": "dropbox",
-                                   "name": "", "pasted": ""})
+                                   "pasted": ""})
     check("still answered", status, 200)
     check("with something the page can show",
           json.loads(body)["error"], "The Deck could not finish that.")
@@ -203,7 +219,7 @@ try:
 
     fileserver.offer_cloud_setup(None, None)
     check("the form is gone",
-          post("/cloud", {"name": "x", "kind": "webdav", "values": {}})[0], 404)
+          post("/cloud", {"kind": "webdav", "values": {}})[0], 404)
 
     section("stopping forgets the handler, not just the form")
 

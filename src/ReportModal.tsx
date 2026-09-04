@@ -3,7 +3,8 @@ import { useEffect, useRef, useState } from "react";
 
 import { endReport, startReport, type FileServerStatus } from "./backend";
 import { logError } from "./logError";
-import { QrCode } from "./QrCode";
+import { HandoffCode } from "./HandoffCode";
+import { MUTED } from "./dialogStyle";
 
 /**
  * Reading a diagnostic report off the Deck, from a device with a keyboard.
@@ -18,8 +19,6 @@ import { QrCode } from "./QrCode";
  * digits for anything without one. Same server, same token, same lockout.
  */
 
-const LABEL: React.CSSProperties = { opacity: 0.7, fontSize: "13px" };
-const VALUE: React.CSSProperties = { fontSize: "17px", fontWeight: 600, wordBreak: "break-all" };
 
 interface Props {
   closeModal?: () => void;
@@ -78,7 +77,7 @@ export function ReportModal({ closeModal }: Props) {
       <div style={{ fontSize: "20px", fontWeight: 600, marginBottom: "4px" }}>
         Report a problem
       </div>
-      <div style={{ ...LABEL, marginBottom: "12px" }}>
+      <div style={{ ...MUTED, marginBottom: "12px" }}>
         Open this on a phone or PC, copy the text, and paste it into the issue. Keys, tokens
         and the names of your games are removed from it.
       </div>
@@ -92,25 +91,19 @@ export function ReportModal({ closeModal }: Props) {
       )}
 
       {url && (
-        <Focusable style={{ display: "flex", gap: "16px", alignItems: "center" }}>
-          <QrCode text={url} />
-          <div style={{ display: "flex", flexDirection: "column", gap: "10px", flex: 1 }}>
-            <div>
-              <div style={LABEL}>Scan the code, or go to</div>
-              <div style={VALUE}>{status?.short_url}</div>
-            </div>
-            <div>
-              <div style={LABEL}>and enter</div>
-              <div style={{ ...VALUE, letterSpacing: "2px" }}>{status?.pin}</div>
-            </div>
-            {/* The code lands on the transfer page, which is the same server.
-                Saying so is cheaper than the alternative, which is somebody
-                typing six digits and wondering why they are looking at an
-                upload form. Quoted exactly as the button reads, so what is on
-                this screen and what is on the other one are the same words. */}
-            <div style={LABEL}>then press "Diagnostic report" at the top.</div>
-          </div>
-        </Focusable>
+        <HandoffCode
+          url={url}
+          shortUrl={status?.short_url}
+          pin={status?.pin}
+          pinLocked={status?.pin_locked}
+        >
+          {/* The code lands on the transfer page, which is the same server.
+              Saying so is cheaper than the alternative, which is somebody
+              typing six digits and wondering why they are looking at an
+              upload form. Quoted exactly as the button reads, so what is on
+              this screen and what is on the other one are the same words. */}
+          then press "Diagnostic report" at the top.
+        </HandoffCode>
       )}
 
       {/*
@@ -126,7 +119,7 @@ export function ReportModal({ closeModal }: Props) {
         finished.
       */}
       {url && (
-        <div style={{ ...LABEL, marginTop: "14px" }}>
+        <div style={{ ...MUTED, marginTop: "14px" }}>
           Open it before pressing Done — it stops being shared then, and in any case
           after {Math.round((status?.idle_timeout ?? 1800) / 60)} minutes.
         </div>

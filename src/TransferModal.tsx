@@ -28,7 +28,7 @@ import {
 } from "./backend";
 import { selectRom } from "./addFlow";
 import { FileName } from "./FileName";
-import { QrCode } from "./QrCode";
+import { HandoffCode } from "./HandoffCode";
 
 /**
  * What marks a sent file as an emulator definition rather than a ROM.
@@ -39,6 +39,7 @@ import { QrCode } from "./QrCode";
  */
 const DEFINITION_SUFFIX = ".deckyemu.json";
 import { DANGER_CLASS, DANGER_CSS, DANGER_TEXT } from "./danger";
+import { COLUMN, MUTED } from "./dialogStyle";
 import { logError } from "./logError";
 import { installThroughEmulator } from "./firmwareInstall";
 import { requirementForFile, type RequirementMatch } from "./firmwareMatch";
@@ -98,11 +99,6 @@ interface Props {
   onClosed?: () => void;
 }
 
-// 8px rather than 10: this gap is paid between every section of the dialog, so it
-// is one of the cheapest places to reclaim height without changing what is shown.
-const COLUMN = { display: "flex", flexDirection: "column" as const, gap: "8px" };
-const MUTED = { fontSize: "13px", opacity: 0.7 };
-
 /**
  * Something worth reading, which is not an error.
  *
@@ -127,23 +123,6 @@ const NOTICE = {
   borderRadius: "4px",
   background: "rgba(232, 163, 61, 0.12)",
   fontSize: "13px",
-};
-
-/**
- * QR on one side, the typed address on the other.
- *
- * Stacked, the code sat below the fold and the dialog scrolled -- which defeats
- * the point of a glance-and-scan dialog. They are alternatives to each other, so
- * side by side also reads better than one after the other.
- *
- * `wrap` rather than a fixed split: at a narrow width the columns stack instead of
- * squeezing the QR code, which has to stay large enough for a camera.
- */
-const SPLIT = {
-  display: "flex",
-  gap: "18px",
-  alignItems: "center",
-  flexWrap: "wrap" as const,
 };
 
 /**
@@ -700,52 +679,19 @@ export function TransferModal({
         )}
 
         {running && status && (
-          <div style={SPLIT}>
-            {/* The default 190 rather than 210: still comfortably scannable at
-                arm's length, and this dialog has gained a progress section and
-                a settings toggle since it was sized, so the height it gives
-                back is worth more than the pixels. */}
-            <QrCode text={status.url} />
-
-            {/* For anything without a camera. The token URL is 22 characters of
-                random text and nobody will type it, so the short address plus a
-                six-digit code is the way in from a computer. */}
-            <div style={{ ...COLUMN, flex: "1 1 240px", gap: "2px" }}>
-              <div style={MUTED}>Scan the code, or open this on a computer:</div>
-              <div style={{ fontSize: "19px", fontWeight: 600 }}>{status.short_url}</div>
-              <div style={{ ...MUTED, marginTop: "8px" }}>then enter</div>
-              {/* 28px, down from 34. It is read off the screen at arm's length by
-                  someone typing it into a laptop, not across a room, and the
-                  height it gives back is height the text below it can use before
-                  this column starts driving the split. */}
-              <div style={{ fontSize: "28px", fontWeight: 700, letterSpacing: "0.24em" }}>
-                {status.pin}
-              </div>
-
-              {status.pin_locked && (
-                <div style={{ color: "#e35d5d", fontSize: "13px", marginTop: "6px" }}>
-                  Too many wrong codes. Stop and start again for a new one.
-                </div>
-              )}
-
-              {/* Inside the column, not below the split.
-
-                  This is the one place in the dialog where height is free: the
-                  split is as tall as the QR code beside it, so anything this
-                  column does not use is simply empty. Moving this text out to a
-                  full-width row of its own read like it should be cheaper and was
-                  strictly worse -- it left that space blank and added a row.
-
-                  Worth saying at all because the Close button reads like it
-                  cancels. It does not, and a transfer still running is exactly
-                  when someone wants to put the Deck down. */}
-              <div style={{ ...MUTED, marginTop: "10px" }}>
-                Saving into {status.target_dir}. Stops after{" "}
-                {Math.round(status.idle_timeout / 60)} min idle — closing this is
-                fine, transfers keep going.
-              </div>
-            </div>
-          </div>
+          <HandoffCode
+            url={status.url}
+            shortUrl={status.short_url}
+            pin={status.pin}
+            pinLocked={status.pin_locked}
+          >
+            {/* Worth saying at all because the Close button reads like it
+                cancels. It does not, and a transfer still running is exactly
+                when someone wants to put the Deck down. */}
+            Saving into {status.target_dir}. Stops after{" "}
+            {Math.round(status.idle_timeout / 60)} min idle — closing this is fine,
+            transfers keep going.
+          </HandoffCode>
         )}
 
         {error && <div style={{ color: "#e35d5d", fontSize: "13px" }}>{error}</div>}

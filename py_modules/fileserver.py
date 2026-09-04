@@ -689,13 +689,11 @@ class _Handler(BaseHTTPRequestHandler):
                     return
                 ok, error, url = login(
                     step,
-                    str(asked.get("name") or ""),
                     str(asked.get("kind") or ""),
                     str(asked.get("pasted") or ""),
                 )
             else:
                 ok, error = handler(
-                    str(asked.get("name") or ""),
                     str(asked.get("kind") or ""),
                     values if isinstance(values, dict) else {},
                 )
@@ -707,8 +705,10 @@ class _Handler(BaseHTTPRequestHandler):
 
         self._send(
             200,
-            json.dumps({"ok": bool(ok), "error": error or "", "url": url or "",
-                        "name": str(asked.get("name") or "")}),
+            # No name goes either way. rclone needs one and nobody else does,
+            # so the Deck picks it; the page says the service, which it already
+            # knows because it is the option somebody chose.
+            json.dumps({"ok": bool(ok), "error": error or "", "url": url or ""}),
             "application/json",
         )
 

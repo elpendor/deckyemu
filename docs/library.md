@@ -303,17 +303,23 @@ answers**, so a mistyped hostname is a sentence on the screen you are looking at
 rather than a backup that fails days later. If it cannot be reached, nothing is
 kept.
 
-Once a storage is set up, the row says so: it reads **Cloud storage** and names
-the **service** — "Saves go to Dropbox" — rather than the label you gave it, so
-you can tell at a glance what you are signed in to. Where the service will say
-who you are signed in as, that is shown too; most will not, and Dropbox is one
-of them, so the service alone is often all there is to show.
+**You are never asked to name anything.** The service is what it is called, on
+the page and on the Deck. Something under the hood does need a name for its
+config file, so one is picked for you and never shown.
 
-Open it again and every storage set up on this Deck is listed, with the one
-saves go to marked. Pick another to switch, or sign out of one to remove it and
-its credentials. **That part stays on the Deck.** The web page exists because
-signing in needs a browser and a keyboard; choosing between accounts needs
-neither, and it is a decision about this device.
+Once a storage is set up, the row says so: it reads **Cloud storage** and names
+the service — "Saves go to Dropbox". Where the service will say who you are
+signed in as, that is shown too; most will not, and Dropbox is one of them, so
+the service alone is often all there is to show.
+
+Open it again and every storage set up on this Deck is listed, with **In use**
+beside the one saves go to. Pick another to switch, or sign out of one to remove
+it and its credentials. Two accounts of the same service are numbered, because
+that is the one case where the service alone cannot tell two rows apart.
+
+**That part stays on the Deck.** The web page exists because signing in needs a
+browser and a keyboard; choosing between accounts needs neither, and it is a
+decision about this device.
 
 Nothing is copied anywhere by setting this up. It only records where saves would
 go.

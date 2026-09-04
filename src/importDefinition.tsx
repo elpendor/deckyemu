@@ -3,6 +3,7 @@ import { toaster } from "@decky/api";
 
 import { importEmulatorDefinition, previewEmulatorDefinition } from "./backend";
 import { DANGER_TEXT } from "./danger";
+import { COLUMN, MUTED } from "./dialogStyle";
 import { openModal } from "./modalStack";
 
 /**
@@ -20,8 +21,7 @@ import { openModal } from "./modalStack";
  * what a file will install and where it may write *before* agreeing to it.
  */
 
-const COLUMN = { display: "flex", flexDirection: "column" as const, gap: "8px" };
-const MUTED = { fontSize: "13px", opacity: 0.7 };
+
 
 /**
  * Preview `name`, ask, and import it if the user agrees.

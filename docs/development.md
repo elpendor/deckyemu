@@ -298,6 +298,11 @@ src/                        Frontend (React + TypeScript, bundled by rollup).
                             tested -- there is no DOM environment, deliberately.
                             capsuleFit/fitArtwork is the pattern: the geometry
                             is testable, the canvas next door is not.
+  HandoffCode.tsx           The QR code, the short address and the six digits,
+                            drawn once for the four dialogs that hand an address
+                            to a phone or a PC. dialogStyle.ts, danger.ts and
+                            iconButton.ts are the same idea for measurements
+                            those dialogs otherwise restate.
   romDraft.ts               Module-scope draft state. Steam unmounts the panel
                             when a modal opens, so anything that must survive
                             that cannot live in component state.

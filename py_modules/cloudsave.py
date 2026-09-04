@@ -130,6 +130,30 @@ def valid_name(name):
     return bool(_NAME.match(name or ""))
 
 
+def next_name(kind):
+    """A name for a new remote, decided here rather than asked for.
+
+    rclone needs one -- it is the key of a section in a config file, and every
+    command names it. Nobody else does. The form used to ask, which meant
+    somebody signing in to Dropbox on a phone was made to invent a word for it
+    first, and the word they invented was the only thing the Deck could show:
+    "saves go to cloud" was a real screen. The service is what a person calls
+    this, and the service is what the panel now names, so the config key can be
+    ours to choose.
+
+    The service is the name, and a second account of the same service takes a
+    number. Two Dropbox accounts really are two things and rclone cannot hold
+    them under one key.
+    """
+    taken = set(remotes())
+    if kind not in taken:
+        return kind
+    nth = 2
+    while "%s-%d" % (kind, nth) in taken:
+        nth += 1
+    return "%s-%d" % (kind, nth)
+
+
 def _restrict(path):
     """Owner-only, because the file holds an obscured password and a token."""
     try:
