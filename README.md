@@ -39,11 +39,11 @@ keyboard, a desktop or a second device.
 
 DeckyEmu ships no games, no BIOS files and no encryption keys, and downloads
 none of them. It installs emulators from their own publishers and points them at
-files you already have. It also fetches two helpers that are not emulators:
+files you already have. It also fetches three helpers that are not emulators:
 [the PS4 package extractor](docs/emulators.md#unpacking-a-ps4-package), if you
-add a PlayStation 4 `.pkg`, and
+add a PlayStation 4 `.pkg`,
 [a motion server](docs/emulators.md#motion-controls), if you install an emulator
-that uses one.
+that uses one, and a copy of rclone, if you switch on cloud saves.
 
 ## Quick start
 
@@ -141,6 +141,11 @@ software this plugin downloads and runs.
   lets those emulators have motion while the controller stays Steam's — no
   layout, back button or stick curve is given up for it. MIT, fetched from its
   own release page when you install an emulator that wants it.
+- **[rclone](https://github.com/rclone/rclone)** is the third: the transfer tool
+  behind cloud saves. The storage is yours and so is the account — rclone talks
+  to some seventy services and this plugin has an account with none of them, so
+  nothing here ever holds your credentials. MIT, fetched from its own release
+  page when you switch cloud saves on.
 - **[unifideck](https://github.com/mubaraknumann/unifideck)** for the reason the
   update button works in Game Mode: the Quick Access panel is a popup window
   there, so Decky's global websocket sits on its opener rather than on `window`.

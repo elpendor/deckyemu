@@ -117,6 +117,7 @@ from . import (
     xemu,
     xenia,
 )
+from . import cloud
 from . import schema
 from .schema import validate  # noqa: F401  -- re-exported for tests and callers
 
@@ -731,6 +732,22 @@ def tools():
             })
             if entry["name"] not in row["needed_by"]:
                 row["needed_by"].append(entry["name"])
+
+    # The plugin's own tools, which belong to no emulator and so are reached by
+    # no walk of the catalog. `needed_by` names the feature instead, because the
+    # only thing that sentence has to do is say truthfully what stops working.
+    for spec in cloud.PLUGIN_TOOLS:
+        name = spec.get("name") or ""
+        if not name or name in found:
+            continue
+        found[name] = {
+            "name": name,
+            "label": spec.get("label", name),
+            "repo": spec.get("repo", ""),
+            "needed_by": list(spec.get("needed_by") or []),
+            "why": spec.get("why", ""),
+            "feature": spec.get("feature", ""),
+        }
     return sorted(found.values(), key=lambda item: item["label"].lower())
 
 
@@ -740,4 +757,7 @@ def tool_spec(name):
         for spec in ((entry.get("motion") or {}).get("server"), entry.get("helper")):
             if spec and spec.get("name") == name:
                 return spec
+    for spec in cloud.PLUGIN_TOOLS:
+        if spec.get("name") == name:
+            return spec
     return {}

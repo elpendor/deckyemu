@@ -520,6 +520,26 @@ class Startup(plugin_base.PluginContext):
         except Exception:
             decky.logger.exception("Could not prepare patched builds")
 
+    async def _fetch_cloud_tool(self):
+        """Keep rclone present for as long as cloud saves are switched on.
+
+        The counterpart of the motion-server fetch in `_upgrade_emulator_setups`
+        and for the same reason: a feature switched on before the binary existed
+        would otherwise never get it, and a download that failed once -- no
+        network at startup is the ordinary case -- has to be able to try again.
+        So the question asked here is "is it here", which stays true until it is.
+
+        Not an install anybody requested. Whoever turned cloud saves on asked
+        for cloud saves; the binary is how, and `ensure_tool` keeps a failure
+        from becoming a burst of retries.
+        """
+        settings = await self._run(store.get_settings)
+        if not settings.get("cloud_saves"):
+            return
+        _path, error = await self._run(emu_install.ensure_cloud_tool)
+        if error:
+            decky.logger.warning("Could not fetch rclone for cloud saves: %s", error)
+
     async def _claim_filed_collections(self):
         """Record the collections an existing library is already filed into.
 

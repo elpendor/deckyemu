@@ -384,7 +384,13 @@ class Emulators(plugin_base.PluginContext):
         present = [
             emulator.get("id") for emulator in self._emulators if emulator.get("id")
         ]
-        return {"tools": await self._run(emu_install.tools_report, present)}
+        # Tools that belong to the plugin rather than to an emulator are wanted
+        # by a setting instead of by an install, so the report is told which are
+        # on. A row for a feature nobody switched on would read as a missing
+        # piece and invent a chore.
+        settings = await self._run(store.get_settings)
+        features = [name for name in ("cloud_saves",) if settings.get(name)]
+        return {"tools": await self._run(emu_install.tools_report, present, features)}
 
     async def install_helper_tool(self, name: str):
         """Fetch one tool by name, for the row that offers it."""

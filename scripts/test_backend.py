@@ -6585,7 +6585,7 @@ def _counting_resolve(repo, pattern, host="", failure=None):
     return None, "rate limited"
 _now = 1_000_000.0
 emu_install.resolve_release_asset = _counting_resolve
-emu_install._MOTION_RETRY_AFTER.clear()
+emu_install._TOOL_RETRY_AFTER.clear()
 try:
     for _ in range(4):
         emu_install.ensure_motion_server(_motion_entry, now=_now)
@@ -6597,7 +6597,7 @@ try:
     )
     check(
         "and it waits for the moment GitHub says its budget returns",
-        emu_install._MOTION_RETRY_AFTER["gyro-dsu"],
+        emu_install._TOOL_RETRY_AFTER["gyro-dsu"],
         _now + 900,
     )
     check(
@@ -6608,7 +6608,7 @@ try:
     )
 finally:
     emu_install.resolve_release_asset = _real_resolve
-    emu_install._MOTION_RETRY_AFTER.clear()
+    emu_install._TOOL_RETRY_AFTER.clear()
 
 # The bug this guards: a Deck that had run Ryujinx once got setup version 5
 # recorded as applied while `motion_backend` stayed on `GamepadDriver`. Ryujinx
@@ -6866,7 +6866,14 @@ check("and the row names every emulator that wants it",
 check(
     "the PS4 extractor is the same kind of thing and gets a row too",
     [t["name"] for t in _tools],
-    ["gyro-dsu", "ps4-pkg-extractor"],
+    ["rclone", "gyro-dsu", "ps4-pkg-extractor"],
+)
+check(
+    "a tool the plugin fetches for itself is listed beside the emulators' own, "
+    "and names the feature rather than an emulator, because that is what stops "
+    "working when it is removed",
+    [t["needed_by"] for t in _tools if t["name"] == "rclone"],
+    [["Cloud saves"]],
 )
 check(
     "every row names its project, so no binary is unattributed",
@@ -6882,7 +6889,14 @@ _report = emu_install.tools_report(["ryujinx"])
 check(
     "a tool nothing installed wants is not reported as missing, just unwanted",
     {t["name"]: t["wanted"] for t in _report},
-    {"gyro-dsu": True, "ps4-pkg-extractor": False},
+    {"rclone": False, "gyro-dsu": True, "ps4-pkg-extractor": False},
+)
+check(
+    "and a feature's tool is wanted by the setting being on, never by an "
+    "install -- nobody is asked to fetch a binary to unlock a switch",
+    {t["name"]: t["wanted"]
+     for t in emu_install.tools_report([], ["cloud_saves"])},
+    {"rclone": True, "gyro-dsu": False, "ps4-pkg-extractor": False},
 )
 check("and every entry's spec is findable by name",
       bool(emulator_catalog.tool_spec("gyro-dsu")), True)

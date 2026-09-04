@@ -126,6 +126,23 @@ jobs:
       - name: Backend tests
         run: python scripts/test_backend.py --offline
 
+      # The suites under scripts/tests/ ran nowhere but on somebody's own
+      # machine until now, which made every one of them optional in practice --
+      # a file could stop passing and nothing would say so until the next person
+      # happened to run it by hand. They are each standalone by design, so the
+      # loop is the whole of it, and the first failure stops the job with the
+      # name of the file that failed.
+      - name: Backend test suites
+        run: |
+          for suite in scripts/tests/test_*.py; do
+            echo "--- $suite"
+            python "$suite" > /tmp/suite.log 2>&1 || {
+              tail -40 /tmp/suite.log
+              echo "FAILED: $suite"
+              exit 1
+            }
+          done
+
       # The backend runs on decky's bundled Python, so a syntax error in a module
       # that the suite happens not to import would only surface on the device.
       - name: Compile every backend module

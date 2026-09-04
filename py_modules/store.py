@@ -113,6 +113,17 @@ DEFAULT_SETTINGS = {
     # which is what invalidates every bookmark at once.
     "transfer_port": 0,
     "transfer_token": "",
+    # Copy save data to storage the user owns. Off until somebody asks, because
+    # this is the one feature here that sends their files somewhere else.
+    #
+    # Switching it on is what fetches rclone -- nobody is asked to install a
+    # binary to unlock a setting, the same way the motion server arrives with
+    # motion. The row under Tools is a report and a way back from a removal.
+    "cloud_saves": False,
+    # The rclone remote and path saves are copied to, as `remote:path`. Not
+    # secret and not a credential: the credentials live in rclone's own config,
+    # which this never reads and the frontend never sees.
+    "cloud_remote": "",
     # Which launchers.FORMAT_VERSION the scripts on disk were written in, so a
     # fix to how they are generated reaches games that already exist. Written by
     # startup rather than by anyone, and declared here because this dict is what

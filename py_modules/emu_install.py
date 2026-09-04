@@ -973,7 +973,7 @@ def motion_server(entry):
 #:
 #: In memory rather than on disk: the point is to stop a burst, and a plugin
 #: reload is a fine moment to try again.
-_MOTION_RETRY_AFTER: dict = {}
+_TOOL_RETRY_AFTER: dict = {}
 
 
 def motion_configured(entry):
@@ -1033,29 +1033,34 @@ def motion_state(entry, now=None):
         # pointed at it is expected, and two faults where there is one reads as
         # a bigger problem than it is.
         "configured": motion_configured(entry) if installed else True,
-        "waiting": max(0, int(_MOTION_RETRY_AFTER.get(name, 0.0) - now)),
+        "waiting": max(0, int(_TOOL_RETRY_AFTER.get(name, 0.0) - now)),
     }
 
 
-def ensure_motion_server(entry, now=None):
-    """Fetch this emulator's motion server if it is not here yet. (path, error).
+def ensure_tool(spec, now=None):
+    """Fetch one declared tool if it is not here yet. Returns (path, error).
 
-    Called from two places on purpose. Installing the emulator is the obvious
-    one; startup is the one that matters, because an emulator installed before
+    **Nobody is ever asked to install one of these.** A helper binary is not a
+    thing a user set out to acquire -- they turned on motion, or cloud saves --
+    so the feature that needs it fetches it, and the Tools section exists to
+    report state and to put one back after a removal, not to hand out a chore.
+
+    Called from two places on purpose. Turning the feature on is the obvious
+    one; startup is the one that matters, because anything switched on before
     this existed would otherwise never get it, and there is no moment a user
     would think to ask for a file they have not been told about.
 
-    **An error here is never fatal to anything.** What is lost is motion in an
-    emulator that has never had it, and every caller carries on -- the same
-    trade the launcher makes when the binary is missing at launch time.
+    **An error here is never fatal to anything.** What is lost is a feature that
+    has never worked yet, and every caller carries on -- the same trade the
+    launcher makes when the binary is missing at launch time.
 
     **A failure is remembered for a while, and a rate limit until it lifts.**
     GitHub says when its budget resets, so that is what is waited for rather
     than a number chosen here; anything else backs off briefly, which is enough
     to turn a burst into one attempt.
     """
-    server = ((entry or {}).get("motion") or {}).get("server") or {}
-    name = server.get("name") or ""
+    spec = spec or {}
+    name = spec.get("name") or ""
     if not name:
         return "", ""
     existing = installed_tool(name)
@@ -1063,21 +1068,36 @@ def ensure_motion_server(entry, now=None):
         return existing, ""
 
     now = time.time() if now is None else now
-    until = _MOTION_RETRY_AFTER.get(name, 0.0)
+    until = _TOOL_RETRY_AFTER.get(name, 0.0)
     if now < until:
         return "", ""
 
     failure = {}
-    asset, error = resolve_release_asset(server["repo"], server["asset"], failure=failure)
+    asset, error = resolve_release_asset(spec["repo"], spec["asset"], failure=failure)
     if not asset:
         reset = net.rate_limit_reset(failure, now)
-        _MOTION_RETRY_AFTER[name] = reset or (now + 300.0)
+        _TOOL_RETRY_AFTER[name] = reset or (now + 300.0)
         return "", error or "No matching release asset."
 
-    path, error = install_tool(name, asset, extract=server.get("extract", ""))
+    path, error = install_tool(name, asset, extract=spec.get("extract", ""))
     if error:
-        _MOTION_RETRY_AFTER[name] = now + 300.0
+        _TOOL_RETRY_AFTER[name] = now + 300.0
     return path, error
+
+
+def ensure_motion_server(entry, now=None):
+    """Fetch this emulator's motion server if it is not here yet. (path, error)."""
+    return ensure_tool(((entry or {}).get("motion") or {}).get("server") or {}, now)
+
+
+def ensure_cloud_tool(now=None):
+    """Fetch rclone if cloud saves are on and it is not here. (path, error).
+
+    The counterpart of `ensure_motion_server` for the tool that belongs to no
+    emulator. Whoever switches cloud saves on gets the binary; the row in Tools
+    is only ever a report and a way back from a removal.
+    """
+    return ensure_tool(emulator_catalog.cloud.RCLONE, now)
 
 
 #: What was installed, written beside the AppImage it describes.
@@ -1266,7 +1286,7 @@ def remove_tool(name):
     except OSError as error:
         return False, "Could not remove %s: %s" % (name, error)
     # So a retry is not held off by a backoff from before it was removed.
-    _MOTION_RETRY_AFTER.pop(name, None)
+    _TOOL_RETRY_AFTER.pop(name, None)
     decky.logger.info("Removed tool %s", name)
     return True, ""
 
@@ -1283,14 +1303,20 @@ def install_named_tool(name, on_progress=None):
                         extract=spec.get("extract", ""))
 
 
-def tools_report(installed_emulator_ids=()):
+def tools_report(installed_emulator_ids=(), features=()):
     """Every fetched helper, with whether it is here and whether it is wanted.
 
     `wanted` is what keeps the section honest: a tool for an emulator nobody has
     installed is not missing, it is simply not needed yet, and showing it as
     absent would invent a chore. The same rule the firmware section follows.
+
+    `features` is that same rule for the tools that belong to the plugin rather
+    than to an emulator: rclone is wanted once cloud saves are switched on and
+    not before, so the row appears when the setting does and there is never an
+    unexplained binary offered to somebody who asked for nothing.
     """
     present = set(installed_emulator_ids or ())
+    switched_on = set(features or ())
     rows = []
     for tool in emulator_catalog.tools():
         entry_ids = [
@@ -1309,7 +1335,8 @@ def tools_report(installed_emulator_ids=()):
             installed=bool(path),
             path=path,
             size=size,
-            wanted=any(entry_id in present for entry_id in entry_ids),
-            waiting=max(0, int(_MOTION_RETRY_AFTER.get(tool["name"], 0.0) - time.time())),
+            wanted=(tool["feature"] in switched_on if tool.get("feature")
+                    else any(entry_id in present for entry_id in entry_ids)),
+            waiting=max(0, int(_TOOL_RETRY_AFTER.get(tool["name"], 0.0) - time.time())),
         ))
     return rows

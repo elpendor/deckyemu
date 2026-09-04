@@ -335,6 +335,7 @@ class Plugin(
             ("upgrade emulator recipes", self._upgrade_emulator_recipes),
             ("upgrade emulator setups", self._upgrade_emulator_setups),
             ("re-file split firmware records", self._resplit_firmware_records),
+            ("fetch the cloud transfer tool", self._fetch_cloud_tool),
             ("forget settings that no longer exist", self._forget_removed_settings),
             # Every start rather than on a version change: what it trims is
             # written by playing, not by upgrading. See `LAUNCH_LOG_CAP` for why
@@ -2178,6 +2179,11 @@ class Plugin(
             )
         ):
             await self.rebuild_launchers()
+        # Switching cloud saves on is the request for the tool it needs, not a
+        # prompt to go and install one. Failures are logged and left to startup
+        # to retry, because nothing here is worth failing a settings write over.
+        if patch.get("cloud_saves"):
+            await self._fetch_cloud_tool()
         return await self.get_settings()
 
 
