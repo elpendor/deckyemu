@@ -682,3 +682,243 @@ const PENDING_BASE = '/%(token)s/pending/';
         "script": _SCRIPT,
         "icon": _FAVICON,
     }
+
+
+def cloud_page(backends, logins, token):
+    """The form a cloud remote is set up from, on a device with a keyboard.
+
+    **Why this is not in the panel.** Setting up storage means typing a URL, a
+    username and a password, and the Deck's on-screen keyboard makes that
+    genuinely unpleasant -- which is the same argument that put ROM transfers on
+    a phone in the first place. So it is the same server, the same QR code and
+    the same six digits, showing a different errand.
+
+    **Two kinds of storage, one page.** Some are a form -- a Nextcloud, an SFTP
+    box, an S3 bucket -- and some are a login. The second sort send their answer
+    to `localhost`, which from this page is the phone rather than the Deck, so
+    the browser lands on a page that will not load. That page still has the code
+    in its address, and the Deck can make the request rclone is waiting for, so
+    what this page asks for is that address pasted back.
+
+    **Nothing typed here is ever shown back.** The reply says whether the remote
+    was made and whether it answered, and the fields are cleared either way; a
+    password sitting in a form somebody walks away from is the one thing this
+    page must not leave behind.
+    """
+    options = "\n".join(
+        '<option value="%s">%s</option>' % (html.escape(kind), html.escape(spec["label"]))
+        for kind, spec in sorted(backends.items(), key=lambda item: item[1]["label"])
+    )
+    groups = "\n".join(
+        '<div class="fields" data-kind="%s" hidden>%s</div>' % (
+            html.escape(kind),
+            "".join(
+                '<label>%s<input name="%s" type="%s" autocomplete="off" '
+                'autocapitalize="off" spellcheck="false"></label>' % (
+                    html.escape(field.replace("_", " ")),
+                    html.escape(field),
+                    "password" if field in spec["secret"] else "text",
+                )
+                for field in spec["fields"]
+            ),
+        )
+        for kind, spec in sorted(backends.items(), key=lambda item: item[1]["label"])
+    )
+    signins = "\n".join(
+        '<option value="%s" data-login="1">%s</option>'
+        % (html.escape(kind), html.escape(spec["label"]))
+        for kind, spec in sorted(logins.items(), key=lambda item: item[1]["label"])
+    )
+    return """<!doctype html>
+<html><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="icon" href="%(icon)s">
+<title>Cloud saves</title>
+<style>%(style)s
+  main { max-width: 30rem; margin: 0 auto; padding: 18px; }
+  label { display: block; margin: 12px 0; font-size: 0.94rem; opacity: 0.85; }
+  input, select { display: block; width: 100%%; margin-top: 5px; padding: 11px;
+    font-size: 1rem; color: var(--text); background: var(--card);
+    border: 1px solid var(--line); border-radius: 9px; box-sizing: border-box; }
+  input:focus, select:focus { outline: none; border-color: var(--accent); }
+  button { margin-top: 18px; width: 100%%; padding: 13px; font-size: 1rem;
+    font-weight: 600; color: var(--text); background: var(--card);
+    border: 1px solid var(--line); border-radius: 10px; }
+  button:disabled { opacity: 0.55; }
+  .note { opacity: 0.75; font-size: 0.9rem; }
+  .said { margin-top: 16px; padding: 12px; border-radius: 9px;
+    border: 1px solid var(--line); background: var(--card); }
+  .said.bad { border-color: var(--accent); }
+</style>
+</head><body><main>
+<h1>Cloud saves</h1>
+<p class="note">Where save data gets copied to. The storage is yours -- this
+only writes down how to reach it, and the password is kept on the Deck.</p>
+<label>Name<input id="name" value="dropbox" autocomplete="off"
+  autocapitalize="off" spellcheck="false"></label>
+<label>Storage<select id="kind">
+<optgroup label="Sign in">%(signins)s</optgroup>
+<optgroup label="Type the details">%(options)s</optgroup>
+</select></label>
+%(groups)s
+<div id="login" hidden>
+  <p class="note">Sign in on this device. You will land on a page that will not
+  load -- that is expected. Copy its address and paste it below.</p>
+  <p><a id="link" class="get" href="#" rel="noopener">Sign in</a></p>
+  <label>Paste the address here<input id="pasted" autocomplete="off"
+    autocapitalize="off" spellcheck="false" placeholder="http://localhost:53682/?code=..."></label>
+</div>
+<button id="go">Save and test</button>
+<div id="said" class="said" hidden></div>
+<p class="note">Nothing is copied anywhere yet. This checks the storage answers,
+and backing up stays something you ask for on the Deck.</p>
+<script>
+(function () {
+  var kind = document.getElementById("kind");
+  var said = document.getElementById("said");
+  var go = document.getElementById("go");
+
+  var login = document.getElementById("login");
+  var link = document.getElementById("link");
+  var pasted = document.getElementById("pasted");
+
+  function isLogin() {
+    var picked = kind.options[kind.selectedIndex];
+    return !!(picked && picked.dataset.login);
+  }
+
+  function post(body) {
+    return fetch("/%(token)s/cloud", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    }).then(function (response) { return response.json(); });
+  }
+
+  function shown() {
+    var on = null;
+    document.querySelectorAll(".fields").forEach(function (group) {
+      var mine = !isLogin() && group.dataset.kind === kind.value;
+      group.hidden = !mine;
+      if (mine) on = group;
+    });
+    login.hidden = !isLogin();
+    go.textContent = isLogin() ? "Finish signing in" : "Save and test";
+    return on;
+  }
+
+  /* **Nothing starts a login except pressing the button.**
+     This used to prepare the link whenever the dropdown changed, which was
+     wrong on a phone: the native picker fires `change` for options scrolled
+     past, so idly scrolling the list started a login for each one and left the
+     link pointing at whichever was touched last. Picking Dropbox and pressing
+     Sign in then opened Box. */
+  function ready() {
+    shown();
+    said.hidden = true;
+    pasted.value = "";
+    /* Named after the service unless the user has renamed it themselves. A
+       generic default meant the Deck could only report "saves go to cloud",
+       which answers nothing anybody wanted to know. */
+    var box = document.getElementById("name");
+    if (!box.dataset.touched) box.value = kind.value;
+  }
+
+  link.addEventListener("click", function (event) {
+    event.preventDefault();
+    if (link.dataset.busy) return;
+    link.dataset.busy = "1";
+    link.textContent = "Preparing...";
+
+    /* Opened now, empty, while this is still inside the tap. A window opened
+       later -- once the Deck has answered -- is a popup as far as a phone
+       browser is concerned, and gets blocked. */
+    var tab = window.open("", "_blank");
+
+    post({ step: "start", kind: kind.value, name: "", pasted: "" })
+      .then(function (result) {
+        if (result.ok && result.url) {
+          if (tab) { tab.location = result.url; } else { window.location = result.url; }
+        } else {
+          if (tab) tab.close();
+          said.hidden = false;
+          said.className = "said bad";
+          said.textContent = result.error || "The Deck could not start that.";
+        }
+      })
+      .catch(function () {
+        if (tab) tab.close();
+        said.hidden = false;
+        said.className = "said bad";
+        said.textContent = "The Deck stopped answering.";
+      })
+      .finally(function () {
+        link.dataset.busy = "";
+        link.textContent = "Sign in";
+      });
+  });
+  kind.addEventListener("change", ready);
+  document.getElementById("name").addEventListener("input", function () {
+    this.dataset.touched = "1";
+  });
+  ready();
+
+  go.addEventListener("click", function () {
+    var group = shown();
+    var values = {};
+    if (group) {
+      group.querySelectorAll("input").forEach(function (input) {
+        values[input.name] = input.value;
+      });
+    } else if (!isLogin()) {
+      return;
+    }
+    said.hidden = false;
+    said.className = "said";
+    said.textContent = "Checking...";
+    go.disabled = true;
+
+    post(isLogin()
+      ? {
+          step: "finish",
+          name: document.getElementById("name").value,
+          kind: kind.value,
+          pasted: pasted.value
+        }
+      : {
+          name: document.getElementById("name").value,
+          kind: kind.value,
+          values: values
+        }
+    ).then(function (result) {
+      said.textContent = result.ok
+        ? "Ready. " + result.name + " answered, so saves can go there."
+        : (result.error || "That did not work.");
+      said.className = result.ok ? "said" : "said bad";
+      /* Cleared whichever way it went. A password left in a form on a phone
+         somebody puts down is worse than making them type it again, and a
+         used login code is worth nothing to anybody anyway. */
+      if (group) {
+        group.querySelectorAll("input").forEach(function (input) {
+          input.value = "";
+        });
+      }
+      pasted.value = "";
+    }).catch(function () {
+      said.textContent = "The Deck stopped answering.";
+      said.className = "said bad";
+    }).finally(function () {
+      go.disabled = false;
+    });
+  });
+})();
+</script>
+</main></body></html>""" % {
+        "options": options,
+        "signins": signins,
+        "groups": groups,
+        "token": token,
+        "style": _STYLE,
+        "icon": _FAVICON,
+    }

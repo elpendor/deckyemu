@@ -10,6 +10,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import {
   clearLibrary,
+  cloudStatus,
   getSettings,
   listAdded,
   setSettings,
@@ -22,6 +23,7 @@ import { clearWarning, shouldConfirmClear } from "./clearWarning";
 import { DANGER_CLASS, DANGER_CSS } from "./danger";
 import { InstallProgress } from "./InstallProgress";
 import { OrphanModal } from "./OrphanModal";
+import { CloudSetupModal } from "./CloudSetupModal";
 import { SaveBackupModal } from "./SaveBackupModal";
 import { RestoreSavesModal } from "./RestoreSavesModal";
 import { callWithRetry } from "./timeout";
@@ -73,6 +75,7 @@ export function LibraryPanel({ onRefresh }: Props) {
    * default back over whatever was already stored.
    */
   const [tabs, setTabs] = useState<boolean | null>(null);
+  const [cloudRemote, setCloudRemote] = useState("");
 
   // Bound to the component rather than started with the clear: the backend
   // emits from the moment the call lands, and a listener attached inside the
@@ -97,6 +100,23 @@ export function LibraryPanel({ onRefresh }: Props) {
     callWithRetry(getSettings)
       .then((settings) => setTabs(Boolean(settings.added_games_tabs)))
       .catch((error) => logError("could not read the added-games layout", error));
+  }, []);
+
+  // Where saves would go, so the row can say so. Read on every open rather than
+  // remembered: the remote can be removed from the setup page, and a row still
+  // claiming a destination that is gone is worse than one that claims nothing.
+  useEffect(() => {
+    cloudStatus()
+      .then((result) =>
+        // The service, and the account when the service will say. The name is
+        // a label somebody typed, so "saves go to cloud" answered nothing.
+        setCloudRemote(
+          result.remote
+            ? [result.label || result.kind, result.account].filter(Boolean).join(" — ")
+            : "",
+        ),
+      )
+      .catch((error) => logError("could not read the cloud destination", error));
   }, []);
 
   const loadGames = useCallback(async () => {
@@ -324,6 +344,27 @@ export function LibraryPanel({ onRefresh }: Props) {
             description="Puts saves back from a backup you have sent to this Deck. Nothing already here is overwritten unless you ask for it."
           >
             Restore save data
+          </ButtonItem>
+        </PanelSectionRow>
+
+        {/* Third rather than first: the two above work on their own and this
+            one asks for an account somewhere else. Somebody reading down the
+            section meets the thing that needs nothing before the thing that
+            needs a Nextcloud. */}
+        <PanelSectionRow>
+          <ButtonItem
+            layout="below"
+            onClick={() => openModal(<CloudSetupModal />)}
+            description={
+              /* Set up or not is the whole of what somebody wants to know here,
+                 and the row is the only place it can be said without opening
+                 anything. The name, never a credential — rclone holds those. */
+              cloudRemote
+                ? `Saves go to ${cloudRemote}. Press to switch accounts, add another, or sign out.`
+                : "Chooses where saves get copied to — Dropbox, a Nextcloud, an SFTP box or an S3 bucket. Set up from a phone or PC, because it means signing in or typing an address."
+            }
+          >
+            {cloudRemote ? "Cloud storage" : "Set up cloud storage"}
           </ButtonItem>
         </PanelSectionRow>
       </PanelSection>

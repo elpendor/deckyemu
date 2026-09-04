@@ -217,6 +217,13 @@ export interface FileServerStatus {
   pin: string;
   /** True once too many wrong codes were tried; a restart mints a new one. */
   pin_locked: boolean;
+  /**
+   * Whether this server is an inbox, rather than one that only hands something
+   * out. Not the same as `uploading` below: an idle transfer session accepts
+   * files without any being in flight, and an errand that needs the inbox shut
+   * — a report, a backup, the cloud form — has to be able to tell those apart.
+   */
+  accepts_uploads: boolean;
   /** Uploads in flight. Stopping now would cut them off. */
   uploading: number;
   /**
@@ -308,6 +315,77 @@ export const endReport = callable<
   [],
   { ok: boolean } & Partial<FileServerStatus>
 >("end_report");
+/**
+ * Put the cloud storage setup form where a device with a keyboard can reach it.
+ *
+ * Same server, same QR code and same six digits as a transfer and a report, and
+ * on another device for the same reason: setting storage up means typing a URL,
+ * a username and a password, which is exactly what the Deck's on-screen
+ * keyboard is worst at.
+ *
+ * Only the storage that needs no browser login is offered — Nextcloud, SFTP,
+ * S3. The OAuth providers answer to `localhost`, which from a phone is the
+ * phone, so they take the Deck's own browser instead.
+ */
+export const startCloudSetup = callable<
+  [],
+  { ok: boolean; error?: string } & Partial<FileServerStatus>
+>("start_cloud_setup");
+/**
+ * Whether saves have somewhere to go, and where.
+ *
+ * The remote's name only. rclone holds the password and the token and nothing
+ * on this side ever reads them back, so there is no credential to leak here.
+ */
+export interface CloudRemote {
+  /** The name it was set up under. A label, not a service. */
+  name: string;
+  /** The rclone backend: "dropbox", "webdav", "sftp"… */
+  kind: string;
+  /** That backend in words, for a person to read. */
+  label: string;
+}
+
+export interface CloudState {
+  ok: boolean;
+  /** Whether rclone is here yet. */
+  tool: boolean;
+  /** Which storage saves go to, or "" when none is chosen. */
+  remote: string;
+  kind: string;
+  label: string;
+  /**
+   * Who the remote is signed in as, when the service will say. Most will not —
+   * Dropbox answers "doesn't support UserInfo" — so empty is ordinary and the
+   * panel names the service instead of claiming to know the account.
+   */
+  account: string;
+  /** Live figures, so their presence is itself proof the sign-in still works. */
+  space: { total?: number; used?: number; free?: number };
+  remotes: CloudRemote[];
+}
+
+export const cloudStatus = callable<[], CloudState>("cloud_status");
+/**
+ * Choose which configured storage saves go to. Empty name clears the choice.
+ *
+ * On the Deck rather than the web page: signing in needs a browser, but picking
+ * between storages already set up needs neither a browser nor a keyboard.
+ */
+export const chooseCloudRemote = callable<[name: string], CloudState & { error?: string }>(
+  "choose_cloud_remote",
+);
+/** Remove one storage and its credentials. */
+export const forgetCloudRemote = callable<[name: string], CloudState & { error?: string }>(
+  "forget_cloud_remote",
+);
+/**
+ * Done: take the form down, and stop the server if it was only there for that.
+ */
+export const endCloudSetup = callable<
+  [],
+  { ok: boolean } & Partial<FileServerStatus>
+>("end_cloud_setup");
 /**
  * What a save backup would carry, per emulator, measured on the device.
  *

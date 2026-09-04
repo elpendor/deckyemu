@@ -264,6 +264,60 @@ It is a copy of your saves, and leaving one lying in the plugin's working
 directory is a copy nobody asked to keep. It also goes when the transfer server
 times out, as everything else there does.
 
+## Setting up cloud storage
+
+**Set up cloud storage**, under **Save data**, chooses somewhere off the Deck
+for saves to be copied to. The storage is yours and the account is yours: the
+Deck only writes down how to reach it, and the password stays on the device.
+
+The form is filled in from a phone or PC — the same QR code and six digits as
+everything else here — because it means typing an address, a username and a
+password, and the on-screen keyboard is the wrong tool for that.
+
+Two sorts of storage, on the same page.
+
+**Ones you type the details for**, where the form is all there is:
+
+| | |
+| --- | --- |
+| **Nextcloud or WebDAV** | The address of the WebDAV endpoint, and the username and password you use for it |
+| **SFTP or SSH** | A hostname, a username and a password — a NAS or any box you can already log into |
+| **S3 storage** | The provider, the endpoint, and an access key pair |
+
+**Ones you sign in to** — Dropbox, OneDrive, Box and pCloud. Pick one and the
+page gives you a **Sign in** link. Log in as you normally would, and the browser
+will land on a page that does not load. **That is expected.** Copy the address
+of that page and paste it into the box, and the Deck takes it from there.
+
+The reason for that last step: signing in sends the answer back to
+`localhost`, which from your phone means your phone. The answer is still sitting
+in the address of the page that failed, so pasting it across is what gets it to
+the Deck. Nothing is typed on the Deck either way.
+
+Google Drive is not offered. The shared credentials rclone uses for it are being
+retired during 2026, and the alternative is registering your own application in
+Google's developer console — more work than this feature is worth.
+
+The page saves the settings and then **checks that the storage actually
+answers**, so a mistyped hostname is a sentence on the screen you are looking at
+rather than a backup that fails days later. If it cannot be reached, nothing is
+kept.
+
+Once a storage is set up, the row says so: it reads **Cloud storage** and names
+the **service** — "Saves go to Dropbox" — rather than the label you gave it, so
+you can tell at a glance what you are signed in to. Where the service will say
+who you are signed in as, that is shown too; most will not, and Dropbox is one
+of them, so the service alone is often all there is to show.
+
+Open it again and every storage set up on this Deck is listed, with the one
+saves go to marked. Pick another to switch, or sign out of one to remove it and
+its credentials. **That part stays on the Deck.** The web page exists because
+signing in needs a browser and a keyboard; choosing between accounts needs
+neither, and it is a decision about this device.
+
+Nothing is copied anywhere by setting this up. It only records where saves would
+go.
+
 ## Restoring a backup
 
 Press **Restore save data** under **Save data** on the Library tab, beside the

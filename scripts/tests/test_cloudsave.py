@@ -22,6 +22,7 @@ the argument list built for it -- which is the part that decides both of those.
 import os
 import subprocess
 import sys
+import urllib.parse
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -151,5 +152,211 @@ try:
     check("and listing is empty rather than an error", cloudsave.remotes(), [])
 finally:
     cloudsave.binary = real_binary
+
+section("the code out of whatever the browser ended up at")
+
+for pasted, want in (
+    ("http://localhost:53682/?code=ABC&state=XYZ", ("ABC", "XYZ")),
+    ("http://127.0.0.1:53682/?state=XYZ&code=ABC", ("ABC", "XYZ")),
+    # Some phones share a bare query, or append a fragment of their own.
+    ("code=ABC&state=XYZ", ("ABC", "XYZ")),
+    ("http://localhost:53682/?code=ABC&state=XYZ#done", ("ABC", "XYZ")),
+    ("  http://localhost:53682/?code=ABC&state=XYZ  ", ("ABC", "XYZ")),
+    # A provider that refused, which must not read as a code.
+    ("http://localhost:53682/?error=access_denied&state=XYZ", ("", "XYZ")),
+    ("https://www.dropbox.com/oauth2/authorize", ("", "")),
+    ("", ("", "")),
+):
+    check("parsed: %r" % (pasted[:44] or "(empty)"), cloudsave._code_from(pasted), want)
+
+section("the credential blob rclone prints")
+
+check(
+    "taken out of the chatter around it",
+    cloudsave._token_from(
+        'NOTICE: Got code\nPaste the following into your remote machine --->\n'
+        '{"access_token":"sl.u.AAA","refresh_token":"BBB"}\n<---End paste\n'),
+    '{"access_token":"sl.u.AAA","refresh_token":"BBB"}',
+)
+check("and absent when the login failed", cloudsave._token_from(
+    "Fatal error: failed to get token: lookup api.dropboxapi.com"), "")
+
+section("a login that is not open cannot be finished")
+
+cloudsave._login.clear()
+check("says so rather than pretending",
+      cloudsave.login_finish("mydrop", "dropbox", "?code=A&state=B"),
+      (False, "That login is no longer open. Start it again."))
+check("an unknown provider is refused",
+      cloudsave.login_finish("mydrop", "nowhere", "?code=A")[0], False)
+check("and so is a name that could be read as a flag",
+      cloudsave.login_finish("-x", "dropbox", "?code=A")[0], False)
+
+section("a login with nothing pasted into it")
+
+
+class FakeProcess:
+    """Stands in for a waiting `rclone authorize`."""
+
+    def __init__(self):
+        self.killed = False
+
+    def kill(self):
+        self.killed = True
+
+    def wait(self, timeout=None):
+        return 0
+
+
+held = FakeProcess()
+cloudsave._login.update({"process": held, "kind": "dropbox",
+                         "started": __import__("time").time()})
+ok, error = cloudsave.login_finish("mydrop", "dropbox", "not a url")
+check("is told what to copy", (ok, "Copy the whole" in error), (False, True))
+check("and the login is left open to try again", cloudsave._login.get("process"),
+      held)
+
+check("cancelling ends it", cloudsave.login_cancel(), (True, ""))
+check("the process was killed", held.killed, True)
+check("and nothing is left behind", cloudsave._login, {})
+
+section("a login already open is handed back, not restarted")
+
+# The regression this exists for: the page asks for a link when it loads, and a
+# phone browser reloads a tab it discarded while the user was away signing in.
+# Restarting the login there mints a new state, so the code they had just been
+# given belonged to a login that no longer existed -- rclone answers "State did
+# not match" and the sign-in cannot be finished at all.
+
+
+class OpenProcess:
+    """A `rclone authorize` that is still waiting."""
+
+    def __init__(self):
+        self.killed = False
+
+    def poll(self):
+        return None
+
+    def kill(self):
+        self.killed = True
+
+    def wait(self, timeout=None):
+        return 0
+
+
+import time as _time  # noqa: E402  -- only for the clock these two tests set
+
+waiting = OpenProcess()
+cloudsave._login.clear()
+cloudsave._login.update({"process": waiting, "kind": "dropbox",
+                         "started": _time.time(),
+                         "url": "https://www.dropbox.com/oauth2/authorize?x=1"})
+real_binary = cloudsave.binary
+cloudsave.binary = lambda: "/tools/rclone"
+try:
+    check("the same provider gets the link it already had",
+          cloudsave.login_start("dropbox"),
+          ("https://www.dropbox.com/oauth2/authorize?x=1", ""))
+    check("and the process it belongs to is left alone", waiting.killed, False)
+
+    # A different provider is a different login, and there is only one port.
+    stale = OpenProcess()
+    cloudsave._login.update({"process": stale, "kind": "dropbox",
+                            "started": _time.time() - 10_000,
+                            "url": "https://old.example/"})
+    cloudsave.login_start("dropbox")
+    check("but one that has timed out is abandoned rather than reused",
+          stale.killed, True)
+finally:
+    cloudsave.binary = real_binary
+    cloudsave._login_stop()
+
+section("only the providers rclone can still sign into")
+
+check("Google Drive is not offered -- its shared client id retires during 2026",
+      "drive" in cloudsave.OAUTH_BACKENDS, False)
+check("and every one that is has a name for a person to read",
+      all(spec.get("label") for spec in cloudsave.OAUTH_BACKENDS.values()), True)
+
+section("which service each remote is, read without touching the token")
+
+import tempfile as _tempfile  # noqa: E402
+
+_conf = os.path.join(_tempfile.mkdtemp(), "rclone.conf")
+with open(_conf, "w", encoding="utf-8") as _handle:
+    _handle.write("\n".join([
+        "[cloud]",
+        "type = dropbox",
+        # A real token: JSON, full of quotes and % signs, and none of this may
+        # be read, interpreted or handed anywhere.
+        'token = {"access_token":"sl.u.AAA%BBB","refresh_token":"R"}',
+        "",
+        "[mynas]",
+        "type = webdav",
+        "url = https://nas.example/dav",
+        "pass = 0Is0UQhO6BrecA",
+        "",
+        "[halfmade]",
+        "",
+    ]))
+_real_path = cloudsave.CONFIG_PATH
+cloudsave.CONFIG_PATH = _conf
+try:
+    check("each remote's service is found",
+          cloudsave.remote_kinds(),
+          {"cloud": "dropbox", "mynas": "webdav", "halfmade": ""})
+    check("a service has a name a person would recognise",
+          cloudsave._label_for("dropbox"), "Dropbox")
+    check("and one for the typed-in kinds too",
+          cloudsave._label_for("webdav"), "Nextcloud or WebDAV")
+    check("an unknown one falls back to the bare type rather than to nothing",
+          cloudsave._label_for("swift"), "swift")
+finally:
+    cloudsave.CONFIG_PATH = _real_path
+
+check("a missing config is empty rather than an error",
+      cloudsave.remote_kinds(), {})
+
+section("everything the provider sent is replayed, not just the code")
+
+# pCloud is why. It returns the API host the account lives on, and that is how
+# rclone knows to exchange against the EU endpoint instead of the US one.
+# Rebuilding the callback from `code` and `state` dropped it, and an EU account
+# then failed with `Invalid 'code' provided` -- naming the one part that was fine.
+check(
+    "a provider's extra parameters survive",
+    sorted(cloudsave._query_from(
+        "http://localhost:53682/?code=ABC&state=XYZ&hostname=eapi.pcloud.com"
+    ).split("&")),
+    sorted(["code=ABC", "state=XYZ", "hostname=eapi.pcloud.com"]),
+)
+check("a bare query works the same",
+      cloudsave._query_from("code=ABC&state=XYZ"), "code=ABC&state=XYZ")
+check("and a fragment the phone appended is not part of it",
+      cloudsave._query_from("http://x/?code=ABC#done"), "code=ABC")
+check("a value is decoded once and re-encoded, never doubled",
+      cloudsave._query_from("http://x/?code=" + urllib.parse.quote("a/b c")),
+      "code=" + urllib.parse.quote_plus("a/b c"))
+check("nothing pasted is nothing sent", cloudsave._query_from(""), "")
+
+section("settings the sign-in itself carried end up in the remote")
+
+check(
+    "pCloud's region is kept, because a token is regional",
+    cloudsave._kept_settings(
+        "pcloud", "http://localhost:53682/?code=A&state=B&hostname=eapi.pcloud.com"),
+    ["hostname=eapi.pcloud.com"],
+)
+check("a US account sends none, and none is written",
+      cloudsave._kept_settings("pcloud", "http://localhost:53682/?code=A&state=B"), [])
+check("providers that declare nothing keep nothing",
+      cloudsave._kept_settings(
+          "dropbox", "http://localhost:53682/?code=A&hostname=evil.example"), [])
+for bad in ("not a host", "a=b", "x/../y", "host name", "hos\tt"):
+    check("refused as a hostname: %r" % bad,
+          cloudsave._kept_settings(
+              "pcloud", "http://x/?code=A&hostname=" + urllib.parse.quote(bad)),
+          [])
 
 summary()

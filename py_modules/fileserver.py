@@ -96,6 +96,24 @@ _report = ""
 # responsible for deleting afterwards. Same server, same token, same lockout, and
 # `_uploads` is off for it for the same reason it is off for a report.
 _download: dict = {}
+# The storage kinds a cloud remote can be set up for, or {} when this server is
+# not offering that.
+#
+# The fourth thing this server can be showing, after an upload form, a report
+# and a downloadable backup, and it follows their rule exactly: one errand per
+# session, decided before the QR code is handed over, so what somebody is given
+# access to is what they were told they were being given access to. `_uploads`
+# stays off for it -- setting up storage must not also open a writable inbox,
+# the same reason a report does not.
+_cloud_setup: dict = {}
+#: The providers set up by signing in rather than by filling in fields.
+_cloud_logins: dict = {}
+#: Called with (name, kind, values) from the setup form; returns (ok, error).
+#: Set by the plugin, for the same reason as `_on_arrival` below: running rclone
+#: is policy and this module is sockets.
+_on_cloud_setup = None
+#: Called with (step, name, kind, pasted); returns (ok, error, url).
+_on_cloud_login = None
 #: Called with the path of each completed upload; returns where the file ended
 #: up. Set by the plugin, because "which folder does this kind of file belong
 #: in" is policy and this module is sockets. None means leave everything alone.
@@ -515,6 +533,18 @@ class _Handler(BaseHTTPRequestHandler):
             with _state_lock:
                 report_only = not _uploads and bool(_report)
                 offered = dict(_download) if not _uploads else {}
+                setup = dict(_cloud_setup) if not _uploads else {}
+            # Same rule as the report and the backup below: on a server started
+            # for one errand, that errand is the page.
+            if setup:
+                with _state_lock:
+                    logins = dict(_cloud_logins)
+                self._send(
+                    200,
+                    fileserver_page.cloud_page(setup, logins, _token),
+                    "text/html; charset=utf-8",
+                )
+                return
             # Whoever came in by the six-digit code lands here, and on a server
             # that exists only to hand a backup over, the backup is the page --
             # the same rule the report follows below, for the same reason.
@@ -604,6 +634,83 @@ class _Handler(BaseHTTPRequestHandler):
             self._send(200, diagnostics.as_page(report), "text/html; charset=utf-8")
         else:
             self._deny()
+
+    def do_POST(self):
+        """The setup form's answer. Exists only while a setup is being offered.
+
+        Its own verb rather than a branch of `do_PUT`, and that is the point:
+        PUT is gated on `_uploads`, which is off for this errand, so writing the
+        form into that path would have meant either loosening the gate that
+        keeps a report from handing over a writable inbox, or carving an
+        exception through it. A verb that answers nothing unless
+        `offer_cloud_setup` was called is the narrower thing.
+        """
+        with _state_lock:
+            setup = dict(_cloud_setup)
+            handler = _on_cloud_setup
+        if not setup or handler is None:
+            self._deny()
+            return
+
+        rest = self._authorised()
+        if rest is None or rest != ["cloud"]:
+            self._deny()
+            return
+
+        _touch()
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            self._send(400, "A Content-Length is required.")
+            return
+        # A form is a few hundred bytes. The cap is here because this reads a
+        # body into memory, and "how big" is decided by whoever is sending.
+        if length <= 0 or length > 64 * 1024:
+            self._send(400, "That is not a settings form.")
+            return
+        try:
+            asked = json.loads(self.rfile.read(length).decode("utf-8"))
+        except (ValueError, UnicodeDecodeError):
+            self._send(400, "That is not a settings form.")
+            return
+        if not isinstance(asked, dict):
+            self._send(400, "That is not a settings form.")
+            return
+
+        values = asked.get("values")
+        step = str(asked.get("step") or "")
+        url = ""
+        try:
+            if step:
+                with _state_lock:
+                    login = _on_cloud_login
+                if login is None:
+                    self._deny()
+                    return
+                ok, error, url = login(
+                    step,
+                    str(asked.get("name") or ""),
+                    str(asked.get("kind") or ""),
+                    str(asked.get("pasted") or ""),
+                )
+            else:
+                ok, error = handler(
+                    str(asked.get("name") or ""),
+                    str(asked.get("kind") or ""),
+                    values if isinstance(values, dict) else {},
+                )
+        except Exception as problem:
+            # Inside a request thread. A throw here would answer nothing and the
+            # page would sit on "Checking..." forever.
+            decky.logger.exception("Cloud setup failed: %s", problem)
+            ok, error, url = False, "The Deck could not finish that.", ""
+
+        self._send(
+            200,
+            json.dumps({"ok": bool(ok), "error": error or "", "url": url or "",
+                        "name": str(asked.get("name") or "")}),
+            "application/json",
+        )
 
     def do_PUT(self):
         # A server started to hand out a report does not take files. The token
@@ -1045,6 +1152,26 @@ def offer_download(path="", name="", size=0, emulators=()):
     return bool(path)
 
 
+def offer_cloud_setup(backends=None, handler=None, logins=None, login_handler=None):
+    """Serve the storage setup form at `/<token>/`. No backends withdraws it.
+
+    The handlers are taken here rather than set separately, so a server can
+    never be showing a form that nothing is listening behind -- which would be a
+    page that accepts a password and quietly does nothing with it.
+
+    `logins` are the providers set up by signing in rather than by filling
+    fields in. They reach the same page and the same POST, and differ only in
+    what the page asks for.
+    """
+    global _cloud_setup, _on_cloud_setup, _cloud_logins, _on_cloud_login
+    with _state_lock:
+        _cloud_setup = dict(backends or {})
+        _cloud_logins = dict(logins or {}) if backends else {}
+        _on_cloud_setup = handler if backends else None
+        _on_cloud_login = login_handler if backends else None
+    return bool(backends)
+
+
 def offer_report(report):
     """Make a diagnostic report readable at `/<token>/report`. "" withdraws it.
 
@@ -1124,6 +1251,12 @@ def status():
             else "",
             "pin": _pin if running else "",
             "pin_locked": _pin_locked,
+            # Whether this server is an inbox, as opposed to one that only hands
+            # something out. Not the same question as `uploading` below, which
+            # counts transfers happening right now: an idle transfer session is
+            # still an open inbox, and something starting an errand that needs
+            # the inbox shut has to be able to tell the difference.
+            "accepts_uploads": _uploads if running else False,
             # Non-zero means a transfer would be cut off by stopping now.
             "uploading": len(_in_flight),
             # And so does this one: a transfer between two attempts is not
@@ -1320,6 +1453,7 @@ def stop_if_idle():
 
 def stop():
     global _server, _thread, _token, _pin, _report, _download
+    global _cloud_setup, _on_cloud_setup, _cloud_logins, _on_cloud_login
     with _state_lock:
         server = _server
         _server = None
@@ -1335,6 +1469,13 @@ def stop():
         # forgotten. Deleting it belongs to whoever built it, and the address it
         # was offered at has just stopped existing anyway.
         _download = {}
+        # And the setup form, with the callback behind it. Leaving the handler
+        # installed past its server would mean a later session, started for some
+        # other errand, still had something listening for a password.
+        _cloud_setup = {}
+        _cloud_logins = {}
+        _on_cloud_setup = None
+        _on_cloud_login = None
         # _in_flight is deliberately left alone. Clearing it here while a PUT was
         # still running would drop an entry its own handler is about to remove --
         # the counter version of this bug drove the count to -1, and since start()

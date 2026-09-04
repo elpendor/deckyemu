@@ -28,6 +28,7 @@ import decky
 
 import plugin_base
 
+import cloudsave
 import diagnostics
 import emu_install
 import emulator_catalog
@@ -88,6 +89,182 @@ class Transfers(plugin_base.PluginContext):
 
         await self._run(fileserver.offer_report, report)
         decky.logger.info("Diagnostic report ready (%d characters)", len(report))
+        return {"ok": True, **await self._run(fileserver.status)}
+
+    async def start_cloud_setup(self):
+        """Put the storage setup form where a device with a keyboard can fill it.
+
+        The third errand this server runs and the same shape as the other two: a
+        QR code for a camera, six digits for anything else, and uploads off,
+        because handing somebody a settings form must not also hand them a
+        writable ROM folder.
+
+        On a phone rather than in the panel because of what it collects. A
+        Nextcloud address, a username and a password typed on the Deck's
+        on-screen keyboard is exactly the experience that put ROM transfers on
+        another device in the first place.
+
+        **The providers that need a browser login work here too**, which took a
+        detour to establish. Their redirect goes to `localhost`, which from a
+        phone is the phone, so the login looks like it fails at the last step.
+        But the dead page still carries `?code=...` in its address, and rclone's
+        callback is an ordinary endpoint -- so the phone pastes that address
+        back and the Deck makes the request rclone was waiting for. Nothing is
+        typed on the Deck either way, which is the whole point of this page.
+        """
+        if not await self._run(cloudsave.binary):
+            return {"ok": False,
+                    "error": "The cloud transfer tool is still downloading."}
+
+        serving = await self._run(fileserver.status)
+        if not serving.get("running"):
+            started = await self._serve(False)
+            if started.get("error"):
+                return {"ok": False, "error": started["error"]}
+        elif serving.get("accepts_uploads"):
+            # A running transfer owns the page, and this errand needs uploads
+            # off. Said plainly rather than started anyway: a form that silently
+            # never appeared would look like the feature is broken.
+            return {"ok": False,
+                    "error": "A file transfer is open. Finish that first."}
+
+        await self._run(
+            fileserver.offer_cloud_setup, cloudsave.BACKENDS, self._cloud_setup,
+            cloudsave.OAUTH_BACKENDS, self._cloud_login
+        )
+        decky.logger.info("Cloud storage setup ready")
+        return {"ok": True, **await self._run(fileserver.status)}
+
+    def _cloud_setup(self, name, kind, values):
+        """What the form posts back. Runs on the server's own thread.
+
+        Made and then *checked*, because "saved" is not the answer anybody wants
+        -- a typo in a hostname should be a sentence on the page they are still
+        looking at, not a backup that fails hours later behind a game that just
+        closed. A remote that cannot be reached is removed again rather than
+        left behind looking configured.
+        """
+        ok, error = cloudsave.create_remote(name, kind, values)
+        if not ok:
+            return False, error
+
+        ok, error = cloudsave.check_remote(name)
+        if not ok:
+            cloudsave.remove_remote(name)
+            return False, "Saved, but %s did not answer: %s" % (name, error)
+
+        store.set_settings({"cloud_remote": "%s:" % name})
+        return True, ""
+
+    def _cloud_login(self, step, name, kind, pasted):
+        """The login half of the form. Runs on the server's own thread.
+
+        Two steps because a login has two halves and a person in between. The
+        first hands back a link; the second takes what the browser ended up at
+        and gives rclone the code out of it, which is the whole reason this can
+        happen on a phone at all.
+        """
+        if step == "start":
+            url, error = cloudsave.login_start(kind)
+            return (bool(url), error or "", url)
+        if step == "cancel":
+            cloudsave.login_cancel()
+            return (True, "", "")
+
+        ok, error = cloudsave.login_finish(name, kind, pasted)
+        if not ok:
+            return (False, error, "")
+
+        ok, error = cloudsave.check_remote(name)
+        if not ok:
+            cloudsave.remove_remote(name)
+            return (False, "Signed in, but %s did not answer: %s" % (name, error), "")
+
+        store.set_settings({"cloud_remote": "%s:" % name})
+        return (True, "", "")
+
+    async def cloud_status(self):
+        """Whether saves have somewhere to go, and where. Never a credential.
+
+        The panel had no way to say any of this, which made a successful setup
+        indistinguishable from one that silently failed: the phone said it had
+        worked and the Deck said nothing at all.
+
+        What comes back is the remote's *name* and nothing else. rclone holds
+        the password and the token, and neither this nor anything downstream of
+        it ever reads them back out.
+        """
+        tool = bool(await self._run(cloudsave.binary))
+        settings = await self._run(store.get_settings)
+        configured = await self._run(cloudsave.remotes) if tool else []
+        chosen = (settings.get("cloud_remote") or "").rstrip(":")
+        # Only a remote that still exists counts. A settings key naming one
+        # somebody deleted is a destination that is not there, and saying
+        # "ready" about it would be the same lie the panel told by saying
+        # nothing at all.
+        remote = chosen if chosen in configured else ""
+
+        kinds = await self._run(cloudsave.remote_kinds) if tool else {}
+        kind = kinds.get(remote, "")
+        # **The service, not just the name somebody typed.** The name is a
+        # label -- it defaults to something generic -- so a row reading "saves
+        # go to cloud" answered nothing anybody wanted to know. The service is
+        # the answer to "am I signed in, and to what".
+        return {
+            "ok": True,
+            "tool": tool,
+            "remote": remote,
+            "kind": kind,
+            "label": await self._run(cloudsave._label_for, kind) if kind else "",
+            # Empty for services that will not say, which is most of them --
+            # Dropbox answers "doesn't support UserInfo". Not an error, and the
+            # panel says the service without claiming to know the account.
+            "account": await self._run(cloudsave.account_for, remote) if remote else "",
+            # Numbers can only come back from a service that answered, so this
+            # doubles as proof the sign-in still works.
+            "space": await self._run(cloudsave.remote_space, remote) if remote else {},
+            "remotes": [{"name": name, "kind": kinds.get(name, ""),
+                         "label": await self._run(cloudsave._label_for,
+                                                  kinds.get(name, ""))}
+                        for name in configured],
+        }
+
+    async def choose_cloud_remote(self, name: str):
+        """Pick which configured storage saves go to. Returns the new status.
+
+        **On the Deck, not on the web page.** Signing in needs a browser and a
+        keyboard, so that happens on a phone; choosing between storages already
+        set up needs neither, and it is a decision about this device. Putting it
+        on the page would mean going and finding another device to answer a
+        question the panel is perfectly able to ask.
+        """
+        if not await self._run(cloudsave.binary):
+            return {"ok": False, "error": "The cloud transfer tool is missing."}
+        if name and name not in await self._run(cloudsave.remotes):
+            return {"ok": False, "error": "There is no storage called %r." % name}
+        await self._run(store.set_settings,
+                        {"cloud_remote": ("%s:" % name) if name else ""})
+        return await self.cloud_status()
+
+    async def forget_cloud_remote(self, name: str):
+        """Remove one storage and the credentials with it. Returns the status.
+
+        Also on the Deck, and for a second reason beyond the first: this is the
+        destructive one, and a page reachable by anybody holding a six-digit
+        code is the wrong place to put the button that deletes a sign-in.
+        """
+        ok, error = await self._run(cloudsave.remove_remote, name)
+        if not ok:
+            return {"ok": False, "error": error}
+        settings = await self._run(store.get_settings)
+        if (settings.get("cloud_remote") or "").rstrip(":") == name:
+            await self._run(store.set_settings, {"cloud_remote": ""})
+        return await self.cloud_status()
+
+    async def end_cloud_setup(self):
+        """Take the form down. The server stops if nothing else is using it."""
+        await self._run(cloudsave.login_cancel)
+        await self._run(fileserver.offer_cloud_setup, None, None, None, None)
         return {"ok": True, **await self._run(fileserver.status)}
 
     async def save_backup_sources(self):
