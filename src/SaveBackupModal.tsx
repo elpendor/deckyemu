@@ -6,9 +6,12 @@ import {
   Spinner,
   ToggleField,
 } from "@decky/ui";
+import { addEventListener, removeEventListener } from "@decky/api";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
+  cloudBackupNow,
+  cloudStatus,
   endSaveBackup,
   saveBackupSources,
   startSaveBackup,
@@ -19,7 +22,7 @@ import { logError } from "./logError";
 import { HandoffCode } from "./HandoffCode";
 import { MUTED } from "./dialogStyle";
 import { backupSummary, defaultSelection, totals } from "./saveBackup";
-import { humanSize } from "./TransferModal";
+import { humanSize, ProgressBar } from "./TransferModal";
 
 /**
  * Taking save data off the Deck, on the server that already brings ROMs in.
@@ -47,6 +50,17 @@ export function SaveBackupModal({ closeModal }: Props) {
   const [status, setStatus] = useState<Partial<FileServerStatus> | null>(null);
   const [building, setBuilding] = useState(false);
   const [error, setError] = useState("");
+  /* The storage in use, when there is one, and what it is called. Read once:
+     signing in happens on a phone, so it cannot change while this is open. */
+  const [cloud, setCloud] = useState<{ remote: string; label: string } | null>(null);
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState<string[] | null>(null);
+  /* What rclone last said it was doing, and how far through. A copy of a save
+     directory over wifi is not instant, and a button reading "Copying..." for
+     ninety seconds cannot be told from one that has hung. */
+  const [carrying, setCarrying] = useState<{ name: string; percent: number } | null>(
+    null,
+  );
   /*
    * Whether there is a backup on disk to delete on the way out. A ref rather
    * than state for the same reason `ReportModal` uses one: the cleanup below
@@ -57,6 +71,13 @@ export function SaveBackupModal({ closeModal }: Props) {
 
   useEffect(() => {
     let live = true;
+    void cloudStatus()
+      .then((result) => {
+        if (live && result.remote) {
+          setCloud({ remote: result.remote, label: result.label || result.kind });
+        }
+      })
+      .catch((cloudError) => logError("could not read the cloud destination", cloudError));
     void saveBackupSources()
       .then((result) => {
         if (!live) return;
@@ -84,6 +105,33 @@ export function SaveBackupModal({ closeModal }: Props) {
       void endSaveBackup().catch((endError) =>
         logError("could not clear away the save backup", endError),
       );
+    };
+  }, []);
+
+  // The copy runs in the backend and says how it is going, so this end listens
+  // rather than polls -- the same pair of events the emulator installs use, and
+  // the same reason: a percentage that arrives when it changes beats one asked
+  // for on a timer.
+  useEffect(() => {
+    const progress = addEventListener<[name: string, percent: number]>(
+      "cloud_sync_progress",
+      (name, percent) => setCarrying({ name, percent }),
+    );
+    const done = addEventListener<[ok: boolean, error: string, names: string[]]>(
+      "cloud_sync_done",
+      (ok, failure, names) => {
+        setSending(false);
+        setCarrying(null);
+        if (!ok) {
+          setError(failure || "The saves could not be copied.");
+          return;
+        }
+        setSent(names);
+      },
+    );
+    return () => {
+      removeEventListener("cloud_sync_progress", progress);
+      removeEventListener("cloud_sync_done", done);
     };
   }, []);
 
@@ -117,6 +165,40 @@ export function SaveBackupModal({ closeModal }: Props) {
       })
       .finally(() => setBuilding(false));
   }, [selected]);
+
+  /*
+   * The other destination.
+   *
+   * Same list, same ticks, same totals -- what differs is where it lands, so it
+   * is a second button rather than a second dialog. What goes up is loose files
+   * per emulator rather than the archive built above: a zip cannot be diffed,
+   * so a second copy of it would send every save again to record a change of a
+   * few kilobytes.
+   */
+  const toCloud = useCallback(() => {
+    if (!cloud) return;
+    setSending(true);
+    setError("");
+    setSent(null);
+    setCarrying({ name: "", percent: 0 });
+    // Only starts it. How it went arrives on `cloud_sync_done` above, which is
+    // also what puts the button back -- so there is no `finally` here: this
+    // resolving means the copy began, not that it finished.
+    void cloudBackupNow([...selected])
+      .then((result) => {
+        if (!result.ok) {
+          setError(result.error ?? "The saves could not be copied.");
+          setSending(false);
+          setCarrying(null);
+        }
+      })
+      .catch((sendError) => {
+        logError("could not copy saves to the cloud", sendError);
+        setError("The saves could not be copied.");
+        setSending(false);
+        setCarrying(null);
+      });
+  }, [cloud, selected]);
 
   const url = status?.download_url ?? "";
   const sums = totals(sources ?? [], selected);
@@ -196,14 +278,64 @@ export function SaveBackupModal({ closeModal }: Props) {
             <div style={{ ...MUTED, marginTop: "10px" }}>
               {backupSummary(sums, humanSize(sums.bytes))}
             </div>
+            {/* A bar rather than a spinner, because the question while this
+                runs is not whether it is doing something but how much longer.
+                It takes the row the summary below would otherwise use, so
+                nothing moves when it appears. */}
+            {carrying && (
+              <div style={{ marginTop: "10px" }}>
+                <div style={{ ...MUTED, marginBottom: "4px" }}>
+                  {carrying.name
+                    ? `Copying ${carrying.name} to ${cloud?.label}...`
+                    : `Copying to ${cloud?.label}...`}
+                </div>
+                <ProgressBar fraction={carrying.percent / 100} />
+              </div>
+            )}
+
+            {/* What went up, said where the decision was made rather than as a
+                toast that is gone before the dialog is. */}
+            {sent !== null && !carrying && (
+              <div style={{ ...MUTED, marginTop: "10px" }}>
+                {sent.length > 0
+                  ? `Copied to ${cloud?.label}: ${sent.join(", ")}.`
+                  : "Nothing was copied."}
+              </div>
+            )}
+
+            {/* Equal thirds with `minWidth: auto`, which is the only shape that
+                works here. Cancel was left to size itself and Steam's own
+                minimum width for a DialogButton carried it clean off the right
+                of the dialog -- the same failure RestoreSavesModal records four
+                attempts at, and the same fix. */}
             <Focusable style={{ display: "flex", gap: "8px", marginTop: "12px" }}>
               <DialogButton
-                disabled={building || sums.names.length === 0}
+                disabled={building || sending || sums.names.length === 0}
                 onClick={() => build()}
+                style={{ flex: 1, minWidth: "auto" }}
               >
                 {building ? "Building..." : "Build the backup"}
               </DialogButton>
-              <DialogButton onClick={() => closeModal?.()}>Cancel</DialogButton>
+              {/* Offered only once there is somewhere for it to go. A button
+                  that opens the setup page would be a second route into it,
+                  and the row that opens that page is directly above this one
+                  in the panel. */}
+              {cloud && (
+                <DialogButton
+                  disabled={building || sending || sums.names.length === 0}
+                  onClick={() => toCloud()}
+                  style={{ flex: 1, minWidth: "auto" }}
+                >
+                  {sending ? "Copying..." : `Copy to ${cloud.label}`}
+                </DialogButton>
+              )}
+              <DialogButton
+                disabled={sending}
+                onClick={() => closeModal?.()}
+                style={{ flex: 1, minWidth: "auto" }}
+              >
+                Cancel
+              </DialogButton>
             </Focusable>
           </>
         )}

@@ -101,19 +101,38 @@ def _last_line(text):
     return ""
 
 
-def _run(args, timeout):
+def argv(args):
+    """The whole command line for one rclone call, or [] when it is not here yet.
+
+    Every call goes through this, including the streamed ones `cloudsync` runs
+    for itself: `--config` is what keeps this plugin out of the user's own
+    `~/.config/rclone`, and a second place that builds a command line is a
+    second place that can forget it.
+    """
+    tool = binary()
+    if not tool:
+        return []
+    os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)
+    return [tool, "--config", CONFIG_PATH] + list(args)
+
+
+def rclone(args, timeout):
     """One rclone call against our own config. Returns (ok, output).
+
+    Public because `cloudsync` does the copying and this module owns where the
+    config file is and how a failure is turned into a sentence. Two modules
+    building the same command line differently is how one of them ends up
+    writing to the user's own `~/.config/rclone`.
 
     Output is whatever rclone said, trimmed, and safe to log: passwords come
     back from `config create` as `*** ENCRYPTED ***` rather than as themselves.
     """
-    tool = binary()
-    if not tool:
+    command = argv(args)
+    if not command:
         return False, "rclone is not installed yet."
-    os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)
     try:
         done = subprocess.run(
-            [tool, "--config", CONFIG_PATH] + list(args),
+            command,
             capture_output=True, text=True, timeout=timeout,
         )
     except subprocess.TimeoutExpired:
@@ -190,7 +209,7 @@ def create_remote(name, kind, values):
     # would carry it.
     args.append("--obscure")
 
-    ok, output = _run(args, _CREATE_SECONDS)
+    ok, output = rclone(args, _CREATE_SECONDS)
     if not ok:
         return False, output
     _restrict(CONFIG_PATH)
@@ -200,7 +219,7 @@ def create_remote(name, kind, values):
 
 def remotes():
     """The remotes that exist, by name. Never their contents."""
-    ok, output = _run(["listremotes"], _CREATE_SECONDS)
+    ok, output = rclone(["listremotes"], _CREATE_SECONDS)
     if not ok:
         return []
     return [line.rstrip(":") for line in output.splitlines() if line.strip()]
@@ -215,7 +234,7 @@ def check_remote(name):
     """
     if not valid_name(name):
         return False, "That name cannot be used."
-    ok, output = _run(["lsd", "%s:" % name, "--max-depth", "1"], _CHECK_SECONDS)
+    ok, output = rclone(["lsd", "%s:" % name, "--max-depth", "1"], _CHECK_SECONDS)
     return (True, "") if ok else (False, output)
 
 
@@ -223,7 +242,7 @@ def remove_remote(name):
     """Forget a remote and its credentials. Returns (ok, error)."""
     if not valid_name(name):
         return False, "That name cannot be used."
-    ok, output = _run(["config", "delete", name], _CREATE_SECONDS)
+    ok, output = rclone(["config", "delete", name], _CREATE_SECONDS)
     return (ok, "" if ok else output)
 
 
@@ -540,7 +559,7 @@ def login_finish(name, kind, pasted):
     # attempt failed with "address already in use". A fresh token does not
     # trigger it, which is exactly what makes it the kind of thing that works in
     # testing and hangs on somebody's device a month later.
-    ok, error = _run(
+    ok, error = rclone(
         ["config", "create", name, kind, "token=" + token]
         + _kept_settings(kind, pasted) + ["--non-interactive"],
         _CREATE_SECONDS,
@@ -558,7 +577,7 @@ def login_cancel():
     return True, ""
 
 
-def _label_for(kind):
+def label_for(kind):
     """What to call a storage type on screen, or the bare type if unknown."""
     spec = BACKENDS.get(kind) or OAUTH_BACKENDS.get(kind) or {}
     return spec.get("label") or kind
@@ -604,7 +623,7 @@ def remote_space(name):
     """
     if not valid_name(name):
         return {}
-    ok, output = _run(["about", "%s:" % name, "--json"], _CHECK_SECONDS)
+    ok, output = rclone(["about", "%s:" % name, "--json"], _CHECK_SECONDS)
     if not ok:
         return {}
     try:
@@ -625,7 +644,7 @@ def account_for(name):
     """
     if not valid_name(name):
         return ""
-    ok, output = _run(["config", "userinfo", "%s:" % name, "--json"],
+    ok, output = rclone(["config", "userinfo", "%s:" % name, "--json"],
                       _CHECK_SECONDS)
     if not ok:
         return ""

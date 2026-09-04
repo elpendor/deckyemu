@@ -307,11 +307,11 @@ try:
           cloudsave.remote_kinds(),
           {"cloud": "dropbox", "mynas": "webdav", "halfmade": ""})
     check("a service has a name a person would recognise",
-          cloudsave._label_for("dropbox"), "Dropbox")
+          cloudsave.label_for("dropbox"), "Dropbox")
     check("and one for the typed-in kinds too",
-          cloudsave._label_for("webdav"), "Nextcloud or WebDAV")
+          cloudsave.label_for("webdav"), "Nextcloud or WebDAV")
     check("an unknown one falls back to the bare type rather than to nothing",
-          cloudsave._label_for("swift"), "swift")
+          cloudsave.label_for("swift"), "swift")
 finally:
     cloudsave.CONFIG_PATH = _real_path
 

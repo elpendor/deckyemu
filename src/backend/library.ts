@@ -499,6 +499,62 @@ export const restoreSaveBackup = callable<
     removed?: string;
   }
 >("restore_save_backup");
+/**
+ * Start copying saves up to the storage in use, per emulator.
+ *
+ * Loose files rather than the zip the transfer flow builds, so a second copy
+ * sends only what changed.
+ *
+ * Returns as soon as it has started, because a save directory over wifi takes
+ * as long as it takes and a blocked call cannot report a percentage. Both this
+ * and `cloudRestore` report on `cloud_sync_progress` (emulator, percent) and
+ * finish on `cloud_sync_done` (ok, error, emulators) — one pair of events,
+ * since only one of them can be running and both screens draw one bar.
+ */
+export const cloudBackupNow = callable<
+  [ids: string[] | null],
+  { ok: boolean; error?: string; started?: boolean }
+>("cloud_backup_now");
+/**
+ * What one signed-in storage holds, per emulator.
+ *
+ * Any storage, not only the one in use: saves left on a provider switched away
+ * from are still there and still readable, which is the whole reason switching
+ * costs nothing.
+ */
+export const cloudContents = callable<
+  [name: string, stamp: string],
+  { ok: boolean; error?: string; sources?: SaveBackupContents[] }
+>("cloud_contents");
+/** One state a copy replaced, kept in the storage rather than thrown away. */
+export interface CloudSnapshot {
+  /** The folder it lives in. Passed back to read or restore from it. */
+  stamp: string;
+  /** That moment as somebody would say it. */
+  label: string;
+}
+/**
+ * The states a copy replaced, newest first and capped at a few.
+ *
+ * Offered on the Deck rather than left for a laptop to find: a safety copy
+ * reachable only through a storage provider's website is the second device this
+ * plugin exists to do without.
+ */
+export const cloudSnapshots = callable<
+  [name: string],
+  { ok: boolean; error?: string; snapshots: CloudSnapshot[] }
+>("cloud_snapshots");
+/**
+ * Start bringing saves down from one storage.
+ *
+ * `replace` means what it means on the archive restore — off writes only what
+ * is missing here and cannot lose a save played since; on overwrites. Reports
+ * on the same two events as `cloudBackupNow`.
+ */
+export const cloudRestore = callable<
+  [name: string, ids: string[] | null, replace: boolean, stamp: string],
+  { ok: boolean; error?: string; started?: boolean }
+>("cloud_restore");
 export const stopFileServer = callable<
   [],
   { ok: boolean } & Partial<FileServerStatus>

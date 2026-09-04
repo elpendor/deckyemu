@@ -205,6 +205,9 @@ py_modules/                 Backend logic. Plain Python, stdlib only -- it runs
                             them into one archive to take off the device
   cloudsave.py              Talking to rclone: our own config file, and making
                             a remote from a form. Holds no credential itself
+  cloudsync.py              The half that copies. Loose files per emulator, so a
+                            second copy sends only what changed; `copy` and
+                            never `sync`, so nothing on the remote is deleted
   net.py                    stdlib-only HTTP, with a system-CA fallback
   jsonstore.py              Read and write the plugin's own JSON, atomically
   procout.py                Read what a subprocess says while it is still saying it

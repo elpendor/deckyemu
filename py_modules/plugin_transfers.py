@@ -22,6 +22,7 @@ methods it finds on the plugin object, so the names have to stay there while the
 code lives somewhere findable. Nothing here may be instantiated alone.
 """
 
+import asyncio
 import os
 
 import decky
@@ -29,10 +30,12 @@ import decky
 import plugin_base
 
 import cloudsave
+import cloudsync
 import diagnostics
 import emu_install
 import emulator_catalog
 import fileserver
+import procout
 import savedata
 import unpack
 import store
@@ -148,7 +151,7 @@ class Transfers(plugin_base.PluginContext):
         to the person is the service -- see `cloudsave.next_name`.
         """
         name = cloudsave.next_name(kind)
-        label = cloudsave._label_for(kind)
+        label = cloudsave.label_for(kind)
         ok, error = cloudsave.create_remote(name, kind, values)
         if not ok:
             return False, error
@@ -177,7 +180,7 @@ class Transfers(plugin_base.PluginContext):
             return (True, "", "")
 
         name = cloudsave.next_name(kind)
-        label = cloudsave._label_for(kind)
+        label = cloudsave.label_for(kind)
         ok, error = cloudsave.login_finish(name, kind, pasted)
         if not ok:
             return (False, error, "")
@@ -222,7 +225,7 @@ class Transfers(plugin_base.PluginContext):
             "tool": tool,
             "remote": remote,
             "kind": kind,
-            "label": await self._run(cloudsave._label_for, kind) if kind else "",
+            "label": await self._run(cloudsave.label_for, kind) if kind else "",
             # Empty for services that will not say, which is most of them --
             # Dropbox answers "doesn't support UserInfo". Not an error, and the
             # panel says the service without claiming to know the account.
@@ -231,7 +234,7 @@ class Transfers(plugin_base.PluginContext):
             # doubles as proof the sign-in still works.
             "space": await self._run(cloudsave.remote_space, remote) if remote else {},
             "remotes": [{"name": name, "kind": kinds.get(name, ""),
-                         "label": await self._run(cloudsave._label_for,
+                         "label": await self._run(cloudsave.label_for,
                                                   kinds.get(name, ""))}
                         for name in configured],
         }
@@ -291,6 +294,161 @@ class Transfers(plugin_base.PluginContext):
         ):
             return await self.stop_file_server()
         return {"ok": True, **await self._run(fileserver.status)}
+
+    def _chosen_remote(self):
+        """Which storage saves go to, without its trailing colon, or ""."""
+        return (store.get_settings().get("cloud_remote") or "").rstrip(":")
+
+    async def _stream_cloud(self, steps):
+        """Run each copy, reporting how far along it is. Returns (ok, reason).
+
+        Watched rather than waited on, because the thing being copied is
+        somebody's save directory over a phone's wifi and a dialog that says
+        "Copying..." for ninety seconds is indistinguishable from one that has
+        hung. rclone is asked for a stats line a second and the percentage is
+        read out of it; each step is one save root, so the bar is that step's
+        share of the whole rather than the step's own number, which would
+        restart at zero for every emulator.
+        """
+        total = max(1, len(steps))
+        env = self._subprocess_env()
+        for index, step in enumerate(steps):
+            output = procout.Output()
+            try:
+                process = await asyncio.create_subprocess_exec(
+                    *step["argv"],
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.STDOUT,
+                    env=env,
+                )
+            except (OSError, NotImplementedError) as error:
+                return False, "Could not run rclone: %s" % error
+
+            async for text in output.segments(process.stdout):
+                decky.logger.info("rclone: %s", text)
+                within = cloudsync.percent_in(text)
+                if within is None:
+                    continue
+                await decky.emit(
+                    "cloud_sync_progress",
+                    step["name"],
+                    int((index * 100 + within) / total),
+                )
+
+            code = await process.wait()
+            if code != 0:
+                # The last lines carry the reason; an exit code on its own has
+                # cost a debugging round elsewhere in this plugin already. Put
+                # through `readable` first: raw rclone log lines in a dialog are
+                # six lines of red saying one thing three times.
+                return False, "%s: %s" % (
+                    step["name"], cloudsync.readable(output.reason))
+            await decky.emit(
+                "cloud_sync_progress", step["name"], int((index + 1) * 100 / total))
+        return True, ""
+
+    async def _carry_saves(self, steps, done_event, tidy=""):
+        """The detached half: run the steps and say how it went, once.
+
+        `tidy` names the storage to prune afterwards, which only a copy *up*
+        passes. It happens after the answer has gone out: removing a safety copy
+        that has aged out is housekeeping, and nobody should watch a progress
+        bar for it.
+        """
+        names = []
+        for step in steps:
+            if step["name"] not in names:
+                names.append(step["name"])
+        try:
+            ok, reason = await self._stream_cloud(steps)
+            await decky.emit(done_event, ok, reason, names if ok else [])
+            if ok and tidy:
+                await self._run(cloudsync.prune, tidy)
+        # Not CancelledError: this runs detached, and `_detach` re-raises a
+        # cancellation rather than swallowing it into an emit over a socket that
+        # is closing.
+        except OSError as error:
+            await decky.emit(done_event, False, str(error), [])
+
+    async def cloud_backup_now(self, ids=None):
+        """Start copying saves up to the storage in use. Returns once it starts.
+
+        Started rather than awaited: a save directory over wifi takes as long as
+        it takes, and a call the panel is blocked on cannot report a percentage.
+        The answer arrives on `cloud_sync_done`.
+
+        Asked for rather than automatic, and that is deliberate for now: Steam's
+        reaper waits for every descendant of a launcher, so an upload started
+        from a game's exit trap keeps the library tile reading "Running" until
+        it finishes. A button somebody presses has no such cost, and it is the
+        thing to have working before anything does it unattended.
+        """
+        remote = await self._run(self._chosen_remote)
+        if not remote:
+            return {"ok": False, "error": "No cloud storage is set up yet."}
+        steps, error = await self._run(cloudsync.push_steps, remote, ids)
+        if error:
+            return {"ok": False, "error": error}
+        self._detach(
+            self._carry_saves(steps, "cloud_sync_done", remote), "cloud_sync_done",
+            False, "", [],
+        )
+        return {"ok": True, "started": True}
+
+    async def cloud_contents(self, name: str, stamp: str = ""):
+        """What one storage holds, per emulator, in the restore screen's shape.
+
+        Any storage signed into, not only the one in use. That is the whole of
+        the answer to "my saves are in Dropbox and I am on pCloud now": nothing
+        was moved, nothing was stranded, and reading the old one is one press
+        rather than a migration.
+
+        `stamp` reads what one copy replaced rather than the live saves.
+        """
+        if not await self._run(cloudsave.binary):
+            return {"ok": False, "error": "The cloud transfer tool is missing."}
+        if name not in await self._run(cloudsave.remotes):
+            return {"ok": False, "error": "That storage is not set up on this Deck."}
+        return await self._run(cloudsync.contents, name, stamp)
+
+    async def cloud_snapshots(self, name: str):
+        """The states a copy replaced on one storage, newest first.
+
+        Offered on the Deck rather than left in the folder. A safety copy that
+        can only be reached by opening Dropbox on a laptop is the second device
+        this plugin exists to do without -- it would be a net nobody in Game
+        Mode can get to.
+        """
+        if not await self._run(cloudsave.binary):
+            return {"ok": True, "snapshots": []}
+        if name not in await self._run(cloudsave.remotes):
+            return {"ok": False, "error": "That storage is not set up on this Deck.",
+                    "snapshots": []}
+        listed, error = await self._run(cloudsync.snapshots, name)
+        return {"ok": not error, "error": error, "snapshots": listed}
+
+    async def cloud_restore(self, name: str, ids=None, replace: bool = False,
+                            stamp: str = ""):
+        """Start bringing saves down from one storage. `replace` overwrites.
+
+        The same two words the local restore uses, meaning the same two things,
+        because they are the same decision -- see `cloudsync.pull_steps`. Also
+        streamed, and on the same pair of events: only one of these can be
+        running and both screens draw one bar.
+        """
+        if not await self._run(cloudsave.binary):
+            return {"ok": False, "error": "The cloud transfer tool is missing."}
+        if name not in await self._run(cloudsave.remotes):
+            return {"ok": False, "error": "That storage is not set up on this Deck."}
+        steps, error = await self._run(
+            cloudsync.pull_steps, name, ids, replace, stamp)
+        if error:
+            return {"ok": False, "error": error}
+        self._detach(
+            self._carry_saves(steps, "cloud_sync_done"), "cloud_sync_done",
+            False, "", [],
+        )
+        return {"ok": True, "started": True}
 
     async def save_backup_sources(self):
         """What a save backup would carry, per emulator, measured on the device.

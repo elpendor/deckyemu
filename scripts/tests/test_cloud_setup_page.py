@@ -194,25 +194,18 @@ try:
     check("an empty body", post("/cloud", None, raw=b"")[0], 400)
     check("nothing reached the handler through any of those", posted, [])
 
-    request = urllib.request.Request(
+    # Through `_ask` like everything else: a refusal is where the server closes
+    # the connection rather than answering, and that is the exact shape Windows
+    # turns into WinError 10053 on the client side.
+    code, _ = _ask(urllib.request.Request(
         started["url"].rstrip("/").rsplit("/", 1)[0] + "/notthetoken/cloud",
-        data=b"{}", method="POST", headers={"Content-Type": "application/json"})
-    try:
-        with urllib.request.urlopen(request, timeout=10) as response:
-            code = response.status
-    except urllib.error.HTTPError as error:
-        code = error.code
+        data=b"{}", method="POST", headers={"Content-Type": "application/json"}))
     check("and a wrong token", code, 404)
 
     section("collecting settings does not open an inbox")
 
-    put = urllib.request.Request(BASE + "/upload/sneaky.sfc", data=b"x",
-                                 method="PUT")
-    try:
-        with urllib.request.urlopen(put, timeout=10) as response:
-            code = response.status
-    except urllib.error.HTTPError as error:
-        code = error.code
+    code, _ = _ask(urllib.request.Request(
+        BASE + "/upload/sneaky.sfc", data=b"x", method="PUT"))
     check("a PUT is still refused while the form is being served", code, 404)
 
     section("withdrawn: it stops answering")

@@ -321,8 +321,61 @@ that is the one case where the service alone cannot tell two rows apart.
 browser and a keyboard; choosing between accounts needs neither, and it is a
 decision about this device.
 
-Nothing is copied anywhere by setting this up. It only records where saves would
-go.
+Setting this up copies nothing. It only records where saves would go.
+
+## Sending saves to the cloud
+
+**Back up save data** is where it happens, because it is the same decision — which
+emulators, and where to. Tick what you want and the dialog offers two
+destinations: **Build the backup** makes the .zip and hands it to a phone or PC as
+it always did, and **Copy to Dropbox** (or whichever storage is in use) sends the
+same saves straight up.
+
+What goes up is loose files, one folder per emulator, not a zip. That is what
+makes a second copy cheap: only what actually changed is sent, rather than a
+hundred megabytes to record a two-kilobyte change. You can open your own storage
+in its website or app and look at it — it is laid out as
+`DeckyEmu/saves/<emulator>/` and you can delete an emulator's saves from there
+without any tool.
+
+**Nothing is ever deleted from your storage by this plugin.** A save removed from
+the Deck stays in the cloud, and uninstalling an emulator does not empty its
+folder there. That is deliberate: the alternative is one uninstall quietly taking
+your backup with it.
+
+**Copying always sends the Deck's version.** A file already in the cloud that is
+different gets the Deck's copy — so if you restore an old save and then press
+copy, the cloud now holds the old one.
+
+Nothing is destroyed by that. Whatever a copy replaced is kept, and **Restore
+save data** lists it: under each storage you will see rows like *Replaced 3 Sep,
+14:51*, one per press that overwrote something, newest first. Choosing one shows
+the same per-emulator rows as anything else and puts those saves back the same
+way.
+
+The five most recent are kept, and the five most recent are what you are offered
+— the same number on purpose. Older ones are removed after each copy, rather than
+being left somewhere you would need a web browser and another device to reach.
+Your saves themselves are never deleted by any of this; only these safety copies
+age out.
+
+## Restoring from the cloud
+
+**Restore save data** lists your signed-in storages beside the backup files on the
+Deck, because from that screen they are the same thing — somewhere a backup is.
+Pick one and you get the same per-emulator rows and the same two buttons:
+**Restore missing** writes only what is not already here, and **Replace saves**
+overwrites, exactly as with a .zip.
+
+**Every account is offered, not just the one saves currently go to.** This is what
+makes changing storage cost nothing. If your saves are in Dropbox and you switch
+to pCloud, nothing is moved, nothing is copied across and nothing is stranded —
+Dropbox keeps exactly what it had, and it is still one press away on this screen
+whenever you want it back. New saves simply start going to pCloud.
+
+An emulator you no longer have installed still shows in the list, marked, rather
+than being hidden — so you can see that your Vita saves are safe on a Deck with no
+Vita3K on it right now.
 
 ## Restoring a backup
 
