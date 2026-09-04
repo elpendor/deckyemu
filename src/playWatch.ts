@@ -1,5 +1,9 @@
 import { addedGame } from "./addedGames";
-import { cloudBackupAfterPlay } from "./backend";
+import { addEventListener, removeEventListener } from "@decky/api";
+
+import { cloudBackupAfterPlay, cloudReleaseLaunch } from "./backend";
+import { showCloudDiffer } from "./CloudDifferModal";
+import { showCloudFetch } from "./CloudFetchModal";
 import { logError } from "./logError";
 import { onGameLaunch, runningGames } from "./steam";
 
@@ -25,6 +29,13 @@ import { onGameLaunch, runningGames } from "./steam";
  *
  * The polling costs nothing when nothing is running: it starts on a launch of
  * one of ours and stops the moment that game is gone. There is no timer at rest.
+ *
+ * The other end of the same launch is watched from here but not driven from
+ * here. Bringing saves *down* is the backend's own loop, because Steam tells
+ * this side about a launch a moment after the script has already run -- twice
+ * that cost a game its save. The launcher announces itself and the backend
+ * answers; this only puts the dialogs on screen, on the two events that
+ * reports.
  */
 
 /**
@@ -48,6 +59,20 @@ const LOOK_MS = 4000;
  * is bounded.
  */
 const GIVE_UP_MS = 8 * 60 * 60 * 1000;
+
+/**
+ * How long a launch may be held before it is worth explaining.
+ *
+ * Under this, nothing appears at all. The ordinary launch has nothing to fetch
+ * and is answered in a fraction of a second, and a dialog for that is a flash
+ * on every launch of every game -- worse than silence, and impossible to read.
+ *
+ * Over it, the alternative is several seconds of a black screen that looks
+ * exactly like a game which has failed to start, which is the one moment this
+ * is worth interrupting for. 1.2s is past the fast path with room to spare and
+ * short enough that the dialog arrives before somebody starts wondering.
+ */
+const EXPLAIN_AFTER_MS = 1200;
 
 /** The games being watched, so a relaunch does not start a second interval. */
 const watching = new Set<number>();
@@ -114,11 +139,72 @@ export function watchOne(appId: number, coreId: string): void {
  * this has to work whether or not anybody has opened the Quick Access panel.
  */
 export function watchPlaying(): () => void {
-  return onGameLaunch((appId) => {
+  const stopLaunches = onGameLaunch((appId) => {
     const game = addedGame(appId);
     // Not one of ours. Steam Cloud already covers a real Steam game, and a
     // shortcut somebody else made is not ours to copy anything for.
     if (!game) return;
     watchOne(appId, game.core_id);
   });
+
+  /*
+   * The saves coming down, which the backend is already doing by the time this
+   * hears about it.
+   *
+   * Opened late, and that is the whole reason there is a timer here rather than
+   * a dialog on the event itself: almost every launch has nothing to fetch and
+   * is answered in a fraction of a second, and a dialog for that would be a
+   * flash on every launch of every game.
+   */
+  let waiting: number | null = null;
+  let close: (() => void) | null = null;
+  let explain: number | null = null;
+
+  const done = () => {
+    if (explain !== null) window.clearTimeout(explain);
+    explain = null;
+    close?.();
+    close = null;
+    waiting = null;
+  };
+
+  const started = addEventListener<[appId: number, title: string]>(
+    "cloud_fetch_started",
+    (appId, title) => {
+      done();
+      waiting = appId;
+      explain = window.setTimeout(() => {
+        if (waiting !== appId) return;
+        close = showCloudFetch(title || "Your game", () => {
+          done();
+          // The game goes now. What is still coming down keeps coming.
+          void cloudReleaseLaunch(appId).catch((error) =>
+            logError("could not release a held launch", error),
+          );
+        });
+      }, EXPLAIN_AFTER_MS);
+    },
+  );
+
+  const finished = addEventListener<[appId: number, differing: string[]]>(
+    "cloud_fetch_done",
+    (appId, differing) => {
+      done();
+      if (!differing?.length) return;
+      const game = addedGame(appId);
+      showCloudDiffer({
+        appId,
+        coreId: game?.core_id ?? "",
+        title: game?.title ?? "this game",
+        names: differing,
+      });
+    },
+  );
+
+  return () => {
+    stopLaunches();
+    done();
+    removeEventListener("cloud_fetch_started", started);
+    removeEventListener("cloud_fetch_done", finished);
+  };
 }

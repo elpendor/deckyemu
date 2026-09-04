@@ -56,6 +56,10 @@ LAUNCH_LOG_CAP = 2 * 1024 * 1024
 #: refused to start and listing what was already running, and `approved-<id>`,
 #: written by the panel when the user said go and consumed by the next launch.
 #:
+#: A third kind joins them for cloud saves: `cloudwait` says the panel is
+#: fetching saves for this game and the launcher should hold, and
+#: `cloudready-<id>` says it may go. See `_CLOUD_GATE`.
+#:
 #: Files rather than a socket because the other end is `/bin/sh` with Steam's
 #: runtime stripped out of its environment. A file it can read with `[ -f ]` is
 #: the whole protocol, and nothing in the launch path depends on the plugin
@@ -165,7 +169,21 @@ LAUNCH_GATE_DIR = os.path.join(decky.DECKY_PLUGIN_RUNTIME_DIR, "launch")
 #      and its flatpak id in `core_path`, which version 20 read as a libretro
 #      core -- so the dialog said "The io.github.ryubing.Ryujinx core". Only a
 #      `.so` is a core now; anything else is looked up in the catalog by target.
-FORMAT_VERSION = 21
+#  22  the launcher waits for cloud saves to come down, when the panel says a
+#      launch is worth waiting for. A file check that finds nothing on a Deck
+#      with cloud saves off, so it costs an existing game nothing -- but the
+#      line has to be in the script, and a game added before this has no line.
+#  23  and it waits for the panel to *claim* the launch first. 22 asked once,
+#      at the moment the script started, which is before the panel can have
+#      answered -- so the game began while the save was still coming down.
+#  24  and 23 lost the same race with a longer grace on it, measured on the
+#      device. The script now *announces itself* and waits; nothing has to
+#      hear about the launch from Steam in time to claim it.
+#  25  the wait follows the work rather than a fixed ceiling. 24 gave up at 8
+#      seconds and the fetch answered at 8.2 -- three network round trips,
+#      measured on the device. The backend now says it is still working and
+#      this waits while it keeps saying so.
+FORMAT_VERSION = 25
 
 # One file per OSD mode rather than one shared file. Games can override the
 # global setting individually, and a single file would mean the last game
@@ -771,9 +789,106 @@ fi
 """
 
 
+#: How long a launch waits with nothing happening, in seconds.
+#:
+#: **This is the timeout for a backend that is not there**, not for a fetch that
+#: is taking a while -- those are different questions and answering them with
+#: one number is what made the third version of this fail. A fixed ceiling has
+#: to be short enough that a Deck with decky reloading still starts its games,
+#: and long enough to cover three network round trips on hotel wifi, and there
+#: is no number that is both. Measured on the device: the fetch answered at 8.2
+#: seconds against a ceiling of 8, and the game had already gone.
+#:
+#: So the backend says it is working, once a second, and this is only how long
+#: to wait after it stops saying anything. Nothing there at all costs a launch
+#: this much and no more.
+CLOUD_QUIET_SECONDS = 3
+
+#: The most a launch will ever wait, however busy the backend claims to be.
+#:
+#: A backend that hangs mid-fetch while its heartbeat keeps ticking would
+#: otherwise hold a game forever, and there is no save worth that.
+CLOUD_MAX_SECONDS = 60
+
+#: A step small enough that the usual case is not rounded up to a whole second.
+#: `sleep` is coreutils on any SteamOS, and takes fractions.
+CLOUD_STEP = "0.2"
+
+#: Written while cloud saves have somewhere to go, and removed when they do not.
+#:
+#: The launcher's way of knowing whether waiting for anything is worth it,
+#: without asking the plugin -- which is the whole point: a launch must not
+#: depend on decky being up, and reading a file cannot.
+CLOUD_ON_FILE = "cloud-on"
+
+#: The shell that waits for the panel to bring saves down before the game starts.
+#:
+#: **Why the waiting is here and the asking is not.** Checking a remote takes a
+#: network round trip, and doing that in the launcher would put it on the front
+#: of every launch of every game, whether or not there is anything to fetch --
+#: with Steam's runtime stripped, no rclone on the path, and nothing to show
+#: somebody while it happened. So the panel does the asking, in decky's process,
+#: where it can also put a dialog on screen; this waits for the answer.
+#:
+#: **And it only waits when it has been told to.** `cloudwait` is written by the
+#: panel the moment it takes an interest in a launch. No file, no wait: a Deck
+#: with cloud saves off, a plugin that is not loaded, or a game the panel does
+#: not recognise all reach the emulator with nothing added to the launch at all.
+_CLOUD_GATE = r"""# Saves coming down before the game opens them. See launchers.py.
+# **This script announces itself; nothing has to notice the launch in time.**
+# Two versions of this waited for the panel to claim the launch first, and both
+# lost the same race: Steam tells the panel a launch has started at about the
+# moment this runs, and the round trip through decky is slower than a shell
+# reaching its next line. Writing the file here cannot lose that race, because
+# there is no longer one to lose -- this is the first thing that happens, and
+# whatever answers has as long as it needs, up to the ceiling.
+if [ -n "$_dke_self" ] && [ -f "$_dke_gate/{onfile}" ]; then
+  mkdir -p "$_dke_gate" 2>/dev/null
+  printf '%s' "$_dke_self" > "$_dke_gate/launching-$_dke_self" 2>/dev/null
+  # Two limits, because "the backend is gone" and "the fetch is slow" are
+  # different questions. `_dke_quiet` counts down while nothing is heard and is
+  # reset by every heartbeat; `_dke_cap` is the outside limit whatever happens.
+  _dke_quiet={quiet}
+  _dke_cap={cap}
+  _dke_beat=""
+  while [ ! -f "$_dke_gate/cloudready-$_dke_self" ]; do
+    _dke_now=$(cat "$_dke_gate/cloudbusy-$_dke_self" 2>/dev/null)
+    if [ -n "$_dke_now" ] && [ "$_dke_now" != "$_dke_beat" ]; then
+      # Still working. Reading a changed counter is how this knows, rather than
+      # comparing timestamps, which /bin/sh cannot do without another process.
+      _dke_beat="$_dke_now"
+      _dke_quiet={quiet}
+    fi
+    _dke_quiet=$((_dke_quiet - 1))
+    _dke_cap=$((_dke_cap - 1))
+    # Nothing is coming, or it is taking longer than any save is worth. Start
+    # the game -- see CLOUD_QUIET_SECONDS.
+    [ "$_dke_quiet" -le 0 ] && break
+    [ "$_dke_cap" -le 0 ] && break
+    sleep {step}
+  done
+  rm -f "$_dke_gate/launching-$_dke_self" "$_dke_gate/cloudready-$_dke_self" \
+        "$_dke_gate/cloudbusy-$_dke_self"
+fi
+"""
+
+
 def launch_gate():
-    """The gate, with this install's paths in it."""
-    return _LAUNCH_GATE.replace("{gate}", LAUNCH_GATE_DIR)
+    """The gate, with this install's paths in it.
+
+    Two gates, in the order they have to run. The two-games check can end the
+    launch outright, so it goes first: waiting for saves to come down and then
+    refusing to start is a wait nobody got anything for.
+    """
+    # Both waits count in steps rather than seconds, so the numbers written
+    # into the script are the seconds divided by the step.
+    steps = lambda seconds: str(int(round(seconds / float(CLOUD_STEP))))
+    return (_LAUNCH_GATE.replace("{gate}", LAUNCH_GATE_DIR)
+            + _CLOUD_GATE
+            .replace("{onfile}", CLOUD_ON_FILE)
+            .replace("{quiet}", steps(CLOUD_QUIET_SECONDS))
+            .replace("{cap}", steps(CLOUD_MAX_SECONDS))
+            .replace("{step}", CLOUD_STEP))
 
 
 def _gate_file(kind, app_id):
@@ -984,6 +1099,84 @@ def take_bounce(app_id):
         except OSError:
             pass
     return others if fresh else ""
+
+
+def set_cloud_wanted(on):
+    """Say whether a launch should wait for the panel at all.
+
+    A file rather than a setting the launcher reads, because the launcher runs
+    with Steam's environment stripped and nothing of ours on its path. Present
+    means "there is somewhere for saves to go, so a panel will claim this
+    launch"; absent means every launch goes straight through, which is what a
+    Deck with cloud saves off must cost.
+    """
+    path = os.path.join(LAUNCH_GATE_DIR, CLOUD_ON_FILE)
+    try:
+        if on:
+            os.makedirs(LAUNCH_GATE_DIR, exist_ok=True)
+            with open(path, "w", encoding="utf-8") as handle:
+                handle.write("1")
+        else:
+            try:
+                os.remove(path)
+            except FileNotFoundError:
+                pass
+    except OSError as error:
+        # Not fatal either way: with the file missing nothing waits, and with it
+        # stale a launch costs the grace and then goes.
+        decky.logger.warning("Could not record cloud saves as %s: %s",
+                             "on" if on else "off", error)
+
+
+def launches_waiting():
+    """The app ids of launchers currently held, waiting for their saves.
+
+    Written by the launcher itself as its first act, which is what makes this
+    reliable: nothing has to hear about a launch from Steam in time to claim
+    it. The backend watches this directory instead -- see
+    `plugin_transfers._watch_launches`.
+    """
+    found = []
+    try:
+        names = os.listdir(LAUNCH_GATE_DIR)
+    except OSError:
+        return found
+    for name in names:
+        if not name.startswith("launching-"):
+            continue
+        rest = name[len("launching-"):]
+        if rest.isdigit():
+            found.append(int(rest))
+    return found
+
+
+def still_fetching(app_id, beat):
+    """Say the fetch for `app_id` is still going. `beat` must change each time.
+
+    The launcher waits on this rather than on a clock: it cannot compare file
+    timestamps without spawning something, but it can notice that a number
+    changed. See `_CLOUD_GATE`.
+    """
+    try:
+        os.makedirs(LAUNCH_GATE_DIR, exist_ok=True)
+        with open(_gate_file("cloudbusy", app_id), "w", encoding="utf-8") as handle:
+            handle.write(str(beat))
+    except OSError:
+        # The launch gives up a few seconds later and starts the game, which is
+        # the same thing that happens with no plugin at all.
+        pass
+
+
+def release_from_cloud(app_id):
+    """Let a held launch go. Safe to call when nothing is holding."""
+    try:
+        os.makedirs(LAUNCH_GATE_DIR, exist_ok=True)
+        with open(_gate_file("cloudready", app_id), "w", encoding="utf-8") as handle:
+            handle.write("1")
+    except OSError as error:
+        # The launcher gives up on its own after CLOUD_WAIT_SECONDS, so the
+        # worst this costs is that wait.
+        decky.logger.warning("Could not release %s: %s", app_id, error)
 
 
 def approve_launch(app_id):

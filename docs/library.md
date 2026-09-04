@@ -374,6 +374,34 @@ It does not run from the launcher, which is why your library tile goes back to
 "Stopped" the moment you quit rather than waiting for the network. The plugin
 notices the game has ended and does the copying itself.
 
+## Saves coming back before a game starts
+
+The other half of the same idea. Starting a game checks your storage for saves
+this Deck does not have, and brings them down before the emulator opens
+anything. Nothing is overwritten by this — a file that is not here cannot
+replace one that is — so it happens silently and asks nothing.
+
+If a fetch takes more than a moment, a dialog says what is happening — *Getting
+your saves* — with a bar and a **Start now** button, so you are never stuck
+looking at a black screen wondering whether the game failed. A launch with
+nothing to fetch shows nothing at all.
+
+**It is one request, and it has a deadline.** The launch waits while it happens,
+usually well under a second, and the game starts within about six seconds
+whatever your storage is doing. If the plugin cannot answer at all — the network
+is gone, decky is reloading — the launcher gives up on its own and starts the
+game with the saves already on the Deck. A game that will not start is worse than
+a game with an old save.
+
+**One case does ask.** If a save exists both here and in your storage and the two
+are different, you get a dialog naming the files, with two answers: *Use the
+cloud copy* or *Keep this Deck's*. Neither loses anything — the replaced versions
+are kept, as always. It is a question rather than a decision because working out
+which copy is "newer" would mean trusting this Deck's clock against a storage
+provider's against whatever device wrote the other one, and none of those have
+been compared. Taking the cloud copy means starting the game again, since the
+emulator has already read what was on disk.
+
 ## Restoring from the cloud
 
 **Restore save data** lists your signed-in storages beside the backup files on the

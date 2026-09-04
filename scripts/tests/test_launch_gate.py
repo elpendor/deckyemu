@@ -25,6 +25,7 @@ import io
 import os
 import re
 import subprocess
+import threading
 import sys
 import time
 
@@ -59,6 +60,30 @@ check("naming the directory the backend reads",
 # rewrites launchers on upgrade without this number changing.
 check("the format version rose, so existing games are rewritten",
       launchers.FORMAT_VERSION >= 7, True)
+
+section("waiting for cloud saves, in the script")
+
+check("the wait is in the launcher",
+      "cloudready-" in _body and "launching-" in _body, True)
+# The race this closes: the panel hears about a launch at the same moment the
+# script runs, so asking once whether it has claimed the launch asks too early.
+# Measured on the device -- the script won and the round trip through decky
+# lost, and the game started while the save was still coming down.
+check("and it waits for the panel to claim the launch before waiting for saves",
+      _body.index(launchers.CLOUD_ON_FILE) < _body.index("cloudready-"), True)
+check("and it is bounded, so a launch cannot be held forever",
+      str(int(launchers.CLOUD_MAX_SECONDS / float(launchers.CLOUD_STEP))) in _body,
+      True)
+# **The wait follows the work.** A fixed ceiling has to be short enough that a
+# Deck with decky reloading still starts its games and long enough to cover
+# three round trips on hotel wifi, and no number is both -- measured on the
+# device, the fetch answered at 8.2 seconds against a ceiling of 8.
+check("it waits on the backend saying it is busy, not on a fixed number",
+      "cloudbusy-" in _body, True)
+# The two-games check can end a launch outright. Waiting for saves and then
+# refusing to start would be a wait nobody got anything for.
+check("the two-games check comes first",
+      _body.index("bounced-") < _body.index("launching-"), True)
 
 
 section("what the gate does, run as a shell actually runs it")
@@ -96,6 +121,12 @@ else:
 
     check("syntax the shell accepts",
           subprocess.run(["sh", "-n", _script]).returncode, 0)
+
+    def _elapsed(app_id):
+        """How long a launch took, and what it printed."""
+        began = time.time()
+        said = _launch(app_id)
+        return time.time() - began, said
 
     check("with nothing else running, the game launches",
           "LAUNCHED" in _launch(111), True)
@@ -151,6 +182,99 @@ else:
     check("an unrecognisable parent launches anyway",
           "LAUNCHED" in subprocess.run(
               [_script], capture_output=True, text=True, timeout=30).stdout, True)
+
+    section("a launch waits for its saves, and never waits forever")
+
+    os.makedirs(_dir, exist_ok=True)
+    for _leftover in ("launching-321", "cloudready-321", "cloudbusy-321"):
+        try:
+            os.remove(os.path.join(_dir, _leftover))
+        except OSError:
+            pass
+
+    # Cloud saves off. **This is the one that matters to everybody else**: a
+    # Deck that does not use this feature must not pay a millisecond for it, and
+    # the check is one `[ -f ]` on a file that is not there.
+    launchers.set_cloud_wanted(False)
+    _took, _said = _elapsed(321)
+    check("with cloud saves off, a launch is not delayed and announces nothing",
+          ("LAUNCHED" in _said, _took < 1, launchers.launches_waiting()),
+          (True, True, []))
+
+    launchers.set_cloud_wanted(True)
+
+    # **The announcement is the point.** Two earlier versions had the launcher
+    # wait to be claimed by the panel, and both lost the same race: Steam tells
+    # the panel about a launch at about the moment the script runs, and the
+    # round trip through decky is slower than a shell reaching its next line.
+    # So the script says it is waiting, and whatever is watching has as long as
+    # it needs.
+    _seen = []
+
+    def _answer():
+        _seen.extend(launchers.launches_waiting())
+        launchers.release_from_cloud(321)
+
+    _watcher = threading.Timer(0.6, _answer)
+    _watcher.start()
+    try:
+        _took, _said = _elapsed(321)
+        check("a waiting launch is visible to whatever is watching, and goes "
+              "when it is answered",
+              ("LAUNCHED" in _said, 321 in _seen, _took < 6), (True, True, True))
+    finally:
+        _watcher.cancel()
+
+    # **A fetch that outlasts any fixed ceiling still finishes.** This is the
+    # failure that took three attempts: the backend answered at 8.2 seconds,
+    # the script gave up at 8, and the game started without its save.
+    _beats = []
+
+    def _beat():
+        for count in range(1, 8):
+            launchers.still_fetching(321, count)
+            _beats.append(count)
+            time.sleep(0.8)
+        launchers.release_from_cloud(321)
+
+    _slow = threading.Thread(target=_beat, daemon=True)
+    _slow.start()
+    try:
+        _took, _said = _elapsed(321)
+        check("a slow fetch is waited for, as long as it keeps saying it is "
+              "working",
+              ("LAUNCHED" in _said,
+               _took > launchers.CLOUD_QUIET_SECONDS + 1,
+               len(_beats) >= 5),
+              (True, True, True))
+    finally:
+        _slow.join(timeout=15)
+    check("and the launch clears both files after itself, so the next one is "
+          "judged on its own",
+          [name for name in os.listdir(_dir) if name.endswith("-321")], [])
+
+    # Held and never released: decky reloading, the panel gone, the network
+    # dead. **The game still starts.** A launch that never happens is a worse
+    # failure than a launch with an old save.
+    for _leftover in ("cloudready-321", "cloudbusy-321"):
+        try:
+            os.remove(os.path.join(_dir, _leftover))
+        except OSError:
+            pass
+    _took, _said = _elapsed(321)
+    # A band rather than an exact figure: the loop counts a step down before
+    # sleeping it, so it gives up one step short. **This is the number a Deck
+    # with decky reloading pays**, so it is the one worth keeping small.
+    check("nobody answering at all costs the quiet wait and then launches",
+          ("LAUNCHED" in _said,
+           launchers.CLOUD_QUIET_SECONDS - 1 <= _took < launchers.CLOUD_QUIET_SECONDS + 3),
+          (True, True))
+    check("and it still cleans up after itself",
+          [name for name in os.listdir(_dir) if name.endswith("-321")], [])
+
+    launchers.set_cloud_wanted(False)
+    check("switching cloud saves off takes the wait away again",
+          os.path.exists(os.path.join(_dir, launchers.CLOUD_ON_FILE)), False)
 
     # An unwritable gate directory: the note cannot be left, but the decision was
     # already made and a launch that stops with nobody able to explain why is the

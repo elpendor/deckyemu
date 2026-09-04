@@ -533,6 +533,12 @@ class Startup(plugin_base.PluginContext):
         for cloud saves; the binary is how, and `ensure_tool` keeps a failure
         from becoming a burst of retries.
         """
+        # Written on every start, whichever way the answer goes: the launcher
+        # reads this file rather than asking the plugin, so a Deck that had
+        # cloud saves switched off while decky was not running would otherwise
+        # keep pausing every launch for a panel that will never claim it.
+        await self._run(self._note_cloud_state)
+
         settings = await self._run(store.get_settings)
         if not settings.get("cloud_saves"):
             return

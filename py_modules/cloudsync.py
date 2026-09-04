@@ -449,7 +449,147 @@ def contents(remote, stamp=""):
     return {"ok": True, "sources": sorted(found.values(), key=lambda row: row["name"])}
 
 
-def pull_steps(remote, ids=None, replace=False, stamp=""):
+#: How long the check before a launch may take.
+#:
+#: **This is the number that decides whether launching a game got slower.** It
+#: is not a timeout for a slow network so much as a promise: whatever the
+#: storage is doing, the game starts within about this long. Six seconds is the
+#: outside of what a Dropbox listing takes on hotel wifi; the ordinary answer
+#: arrives in well under one.
+BEFORE_PLAY_SECONDS = 6
+
+#: How much newer a remote file must look before it counts as a different save.
+#:
+#: A margin, because the two timestamps come from two machines. A file this
+#: Deck uploaded itself comes back with a modification time set by the storage
+#: provider, and provider and Deck agree to within seconds rather than exactly.
+#: Without this, every save this Deck pushed would come back looking like
+#: somebody else's newer copy.
+_NEWER_BY = 120
+
+
+def compare(remote, source_id, seconds=BEFORE_PLAY_SECONDS):
+    """What one emulator has up there that this Deck does not. One call.
+
+    Returns (missing, differing, roots, error): how many files exist only on
+    the remote, the names of the ones that exist in both and do not look like
+    the same save, and which of this emulator's save roots exist up there at
+    all -- that last one so the fetch which follows does not repeat this call.
+
+    **One listing for the whole emulator, not a comparison per save root.** This
+    runs on the front of a launch, so every network round trip here is time
+    somebody spends looking at a black screen before their game. The first
+    version of this called `rclone check` per root -- two round trips for
+    RetroArch before anything started -- which is the kind of cost that makes a
+    feature not worth having.
+
+    **Missing is exact. Differing is a guess, deliberately.** A file that is not
+    here cannot be mistaken for one that is. Whether two files that both exist
+    are the *same* file cannot be settled from a listing: sizes match constantly
+    -- a PS1 memory card is 128KB whatever is written in it -- so size alone
+    would never notice, and a hash means asking the provider to read every file.
+    So size *or* a remote modification time meaningfully newer than the local
+    one is taken as "worth asking about". A guess is the right shape here
+    because the answer is a question put to a person, not an action: the cost of
+    a false positive is one dialog, and the cost of a miss is the save this Deck
+    already had.
+    """
+    if not cloudsave.valid_name(remote):
+        return 0, [], [], "That storage cannot be used."
+    source = next(
+        (one for one in savedata._all_sources() if one["id"] == source_id), None)
+    if source is None:
+        return 0, [], [], ""
+    if not _SEGMENT.match(source_id):
+        return 0, [], [], ""
+
+    ok, output = cloudsave.rclone(
+        ["lsjson", "%s:%s/%s" % (remote, ROOT, source_id),
+         "--recursive", "--files-only"],
+        seconds,
+    )
+    if not ok:
+        # Never copied up, so nothing to bring down. Not a failure and not
+        # anything to say at the start of a game.
+        if "not found" in output.lower():
+            return 0, [], [], ""
+        return 0, [], [], output
+    try:
+        entries = json.loads(output or "[]")
+    except ValueError:
+        return 0, [], [], "The storage answered with something unreadable."
+
+    landing = {segment: path for segment, path in _roots_of(source)}
+    missing = 0
+    differing = []
+    # Which save roots actually exist up there, so the fetch that follows does
+    # not have to ask again. It is the same listing and the same answer, and
+    # asking twice put a second network round trip on the front of every launch
+    # -- measured on the device as the difference between a save arriving and a
+    # game starting without it.
+    present = set()
+    for entry in entries:
+        parts = (entry.get("Path") or "").split("/")
+        if len(parts) < 2:
+            continue
+        root = landing.get(parts[0])
+        if not root:
+            continue
+        present.add(parts[0])
+        here = os.path.join(root, *parts[1:])
+        try:
+            found = os.stat(here)
+        except OSError:
+            missing += 1
+            continue
+        try:
+            if int(entry.get("Size") or -1) != found.st_size:
+                differing.append(parts[-1])
+                continue
+        except (TypeError, ValueError):
+            pass
+        when = _when(entry.get("ModTime") or "")
+        if when and when > found.st_mtime + _NEWER_BY:
+            differing.append(parts[-1])
+    return missing, differing, sorted(present), ""
+
+
+def _when(stamp):
+    """An RFC3339 time from rclone as unix seconds, or 0 if it is not one.
+
+    The arithmetic is here rather than `calendar.timegm` because `calendar` is
+    not on the list of stdlib modules proven to exist in decky's trimmed Python
+    -- and one that is not there is not a degraded feature, it is the backend
+    failing to import at all. `time.mktime` is the other obvious answer and is
+    wrong: it reads its input as local time, so every comparison would be out by
+    the Deck's offset, which is a bug that behaves perfectly in London and not
+    in Madrid.
+
+    So: days from the civil calendar, the standard shift-the-year-to-March form
+    that makes leap days fall at the end of the cycle.
+    """
+    found = re.match(
+        r"^(\d{4})-(\d\d)-(\d\d)[Tt ](\d\d):(\d\d):(\d\d)", (stamp or "").strip())
+    if not found:
+        return 0
+    year, month, day, hour, minute, second = (int(part) for part in found.groups())
+    if not 1 <= month <= 12 or not 1 <= day <= 31:
+        return 0
+    # rclone reports UTC, and an offset is not worth honouring against a margin
+    # of two minutes -- but a time that is not UTC is not silently taken as one
+    # either: anything with an offset on it is simply not compared.
+    if re.search(r"[+-]\d\d:?\d\d$", (stamp or "").strip()):
+        return 0
+    shifted = year - (1 if month <= 2 else 0)
+    era = (shifted if shifted >= 0 else shifted - 399) // 400
+    year_of_era = shifted - era * 400
+    day_of_year = (153 * (month + (-3 if month > 2 else 9)) + 2) // 5 + day - 1
+    day_of_era = year_of_era * 365 + year_of_era // 4 - year_of_era // 100 + day_of_year
+    days = era * 146097 + day_of_era - 719468
+    return days * 86400 + hour * 3600 + minute * 60 + second
+
+
+def pull_steps(remote, ids=None, replace=False, stamp="", known=None):
     """One rclone call per save root, coming the other way. Returns (steps, error).
 
     `replace` is the same switch as the local restore and means the same thing:
@@ -468,8 +608,12 @@ def pull_steps(remote, ids=None, replace=False, stamp=""):
     there is no undo -- so what it destroys was named before it happened.
     Pressing copy asks nothing, which is exactly why that side needs a net.
 
-    The remote is listed first, and what comes back is matched **per save
-    root**, not per emulator. Matching per emulator was a real failure: RPCS3
+    `known` is the set of `(emulator, root)` pairs a caller has already looked
+    up -- `compare` returns them, and passing them through is what keeps a
+    launch to one network round trip instead of two.
+
+    Otherwise the remote is listed first, and what comes back is matched **per
+    save root**, not per emulator. Matching per emulator was a real failure: RPCS3
     keeps `savedata` and `savestates`, only one of them had ever been copied up,
     and a restore planned a call for both -- so rclone was asked to read a
     folder that was never created and the dialog filled with "error reading
@@ -483,16 +627,19 @@ def pull_steps(remote, ids=None, replace=False, stamp=""):
     if not root:
         return [], "That is not a copy this can read."
 
-    ok, entries, error = _index(remote, stamp)
-    if not ok:
-        return [], error or "The storage did not answer."
-    # The pairs that actually exist up there. `<emulator>/<root>/<file>` is the
-    # shallowest path that means anything, so anything shorter is not ours.
-    up_there = set()
-    for entry in entries:
-        parts = (entry.get("Path") or "").split("/")
-        if len(parts) >= 3:
-            up_there.add((parts[0], parts[1]))
+    if known is not None:
+        up_there = set(known)
+    else:
+        ok, entries, error = _index(remote, stamp)
+        if not ok:
+            return [], error or "The storage did not answer."
+        # The pairs that actually exist up there. `<emulator>/<root>/<file>` is
+        # the shallowest path that means anything; anything shorter is not ours.
+        up_there = set()
+        for entry in entries:
+            parts = (entry.get("Path") or "").split("/")
+            if len(parts) >= 3:
+                up_there.add((parts[0], parts[1]))
 
     listed = [source for source in _sources(ids)
               if any(source["id"] == emulator for emulator, _ in up_there)]

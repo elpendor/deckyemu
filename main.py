@@ -305,6 +305,16 @@ class Plugin(
             previous.cancel()
         self._update_task = self.loop.create_task(self._watch_for_updates())
 
+        # A launcher holding a game at the starting line has written a file
+        # saying so, and this is what answers it. Here rather than in the panel
+        # because the panel is told about a launch a moment *after* the script
+        # runs -- measured twice on the device, and twice the game started
+        # before the save arrived. See `_watch_launches`.
+        previous_launch = getattr(self, "_launch_task", None)
+        if previous_launch is not None:
+            previous_launch.cancel()
+        self._launch_task = self.loop.create_task(self._watch_launches())
+
         # Ordered, and each one on its own. The sequence stays here because this
         # is where it is read; the steps themselves are plugin_startup.py.
         #
@@ -387,6 +397,15 @@ class Plugin(
             except Exception:
                 decky.logger.exception("Unload: could not stop the update watch")
             self._update_task = None
+
+        launch_task = getattr(self, "_launch_task", None)
+        if launch_task is not None:
+            launch_task.cancel()
+            try:
+                await asyncio.wait({launch_task}, timeout=2)
+            except Exception:
+                decky.logger.exception("Unload: could not stop the launch watch")
+            self._launch_task = None
 
         for label, step in (
             ("cancel transfers in flight", fileserver.cancel),
@@ -2184,6 +2203,12 @@ class Plugin(
         # to retry, because nothing here is worth failing a settings write over.
         if patch.get("cloud_saves"):
             await self._fetch_cloud_tool()
+        # Whether a launch should wait for saves is read by the launcher from a
+        # file, so it has to be rewritten whenever the answer can have changed
+        # -- switching cloud saves off is exactly when a launch must stop
+        # pausing for a panel that will never claim it.
+        if "cloud_saves" in patch or "cloud_remote" in patch:
+            await self._run(self._note_cloud_state)
         return await self.get_settings()
 
 

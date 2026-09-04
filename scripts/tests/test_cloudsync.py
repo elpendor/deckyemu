@@ -421,4 +421,101 @@ check("a reason too long for a dialog is cut rather than allowed to push the "
       len(cloudsync.readable("2026/09/03 15:08:11 ERROR : " + "x" * 400)) <= 163,
       True)
 
+section("the check on the front of a launch")
+
+# **This is the one that decides whether launching a game got slower.** One
+# listing for the emulator, not a comparison per save root: the first version
+# called `rclone check` once per root, which is two round trips before
+# RetroArch starts anything.
+import tempfile as _tempfile  # noqa: E402
+
+_home = _tempfile.mkdtemp()
+_saves = os.path.join(_home, "saves")
+os.makedirs(_saves, exist_ok=True)
+with open(os.path.join(_saves, "here.srm"), "wb") as _handle:
+    _handle.write(b"x" * 128)
+_old = os.stat(os.path.join(_saves, "here.srm")).st_mtime
+
+ONE = [{"id": "retroarch", "name": "RetroArch", "whole": False,
+        "roots": [("saves", _saves)]}]
+
+_listing = (
+    '[{"Path":"saves/here.srm","Size":128,"ModTime":"2001-01-01T00:00:00Z"},'
+    ' {"Path":"saves/gone.srm","Size":64,"ModTime":"2001-01-01T00:00:00Z"}]'
+)
+fake = FakeRun(stdout=_listing)
+missing, differing, roots, error = with_run(
+    fake, lambda: cloudsync.compare("dropbox", "retroarch"), sources=ONE)
+check("one call for the whole emulator, however many save roots it has",
+      len(fake.calls), 1)
+check("a file only up there is missing here, and needs no permission to fetch",
+      (missing, error), (1, ""))
+# Handed back so the fetch that follows does not list the same folder again --
+# two round trips on the front of a launch is what made a game start without
+# its save, measured on the device.
+check("and it says which save roots exist up there, so nothing asks twice",
+      roots, ["saves"])
+check("and a file that matches is not reported as anything",
+      differing, [])
+
+# A memory card is 128KB whatever is written in it, so size alone would never
+# notice a save that had been played somewhere else.
+_newer = (
+    '[{"Path":"saves/here.srm","Size":128,"ModTime":"2099-01-01T00:00:00Z"}]'
+)
+fake = FakeRun(stdout=_newer)
+_, differing, _, _ = with_run(
+    fake, lambda: cloudsync.compare("dropbox", "retroarch"), sources=ONE)
+check("a copy up there that is meaningfully newer is worth asking about",
+      differing, ["here.srm"])
+
+_bigger = (
+    '[{"Path":"saves/here.srm","Size":999,"ModTime":"2001-01-01T00:00:00Z"}]'
+)
+fake = FakeRun(stdout=_bigger)
+_, differing, _, _ = with_run(
+    fake, lambda: cloudsync.compare("dropbox", "retroarch"), sources=ONE)
+check("so is one that is a different size, whatever the clocks say",
+      differing, ["here.srm"])
+
+# The failure this margin prevents: a file this Deck pushed comes back with a
+# time the storage provider stamped, which is never exactly the local one --
+# so every save would look like somebody else's newer copy.
+import time as _time  # noqa: E402
+
+_soon = _time.strftime("%Y-%m-%dT%H:%M:%SZ", _time.gmtime(_old + 30))
+fake = FakeRun(stdout='[{"Path":"saves/here.srm","Size":128,"ModTime":"%s"}]' % _soon)
+_, differing, _, _ = with_run(
+    fake, lambda: cloudsync.compare("dropbox", "retroarch"), sources=ONE)
+check("a few seconds of disagreement between two clocks is not a conflict",
+      differing, [])
+
+check("the listing is asked for with a deadline, so a launch cannot hang on it",
+      cloudsync.BEFORE_PLAY_SECONDS <= 10, True)
+
+fake = FakeRun(returncode=1, stderr="ERROR : directory not found")
+check("an emulator never copied up has nothing to fetch and nothing to say",
+      with_run(fake, lambda: cloudsync.compare("dropbox", "retroarch"), sources=ONE),
+      (0, [], [], ""))
+
+check("a time rclone did not write is not a time",
+      (cloudsync._when(""), cloudsync._when("nonsense"),
+       cloudsync._when("2026-13-01T00:00:00Z")),
+      (0, 0, 0))
+
+# The arithmetic is written out rather than handed to `calendar`, which is not
+# on the list of modules proven to exist in decky's trimmed Python -- and
+# `time.mktime` reads its input as local time, which is a bug that behaves
+# perfectly in London and not in Madrid. So it is checked against the answer.
+_dates = [
+    ("1970-01-01T00:00:00Z", 0),
+    ("2000-02-29T12:00:00Z", 951825600),
+    ("2024-12-31T23:59:59Z", 1735689599),
+    ("2026-09-03T16:24:05.123456789Z", 1788452645),
+]
+check("every date it reads is the date it is",
+      [cloudsync._when(text) for text, _ in _dates], [when for _, when in _dates])
+check("and a time that is not UTC is not quietly taken as one",
+      cloudsync._when("2026-09-03T16:24:05+02:00"), 0)
+
 summary()

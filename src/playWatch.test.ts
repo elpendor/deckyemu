@@ -21,7 +21,19 @@ vi.mock("./backend", () => ({
     copied.calls.push(coreId);
     return Promise.resolve({ ok: true });
   },
+  cloudHoldLaunch: () => Promise.resolve({ ok: true, held: false }),
+  cloudBeforePlay: () => Promise.resolve({ ok: true, differing: [], restored: 0 }),
+  cloudTakeTheirs: () => Promise.resolve({ ok: true }),
 }));
+vi.mock("./CloudDifferModal", () => ({ showCloudDiffer: () => undefined }));
+// @decky/api reaches for a manifest that only exists in a built plugin.
+vi.mock("@decky/api", () => ({
+  addEventListener: () => () => undefined,
+  removeEventListener: () => undefined,
+}));
+// Pulls in @decky/ui, which needs Steam's webpack chunk to exist. There is no
+// DOM here on purpose -- see the repo's test notes.
+vi.mock("./CloudFetchModal", () => ({ showCloudFetch: () => () => undefined }));
 vi.mock("./addedGames", () => ({ addedGame: () => undefined }));
 vi.mock("./logError", () => ({ logError: () => undefined }));
 

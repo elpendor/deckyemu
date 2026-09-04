@@ -37,6 +37,7 @@ import emu_install
 import emulator_catalog
 import emulators
 import fileserver
+import launchers
 import procout
 import savedata
 import unpack
@@ -164,6 +165,7 @@ class Transfers(plugin_base.PluginContext):
             return False, "Saved, but %s did not answer: %s" % (label, error)
 
         store.set_settings({"cloud_remote": "%s:" % name})
+        self._note_cloud_state()
         return True, ""
 
     def _cloud_login(self, step, kind, pasted):
@@ -193,6 +195,7 @@ class Transfers(plugin_base.PluginContext):
             return (False, "Signed in, but %s did not answer: %s" % (label, error), "")
 
         store.set_settings({"cloud_remote": "%s:" % name})
+        self._note_cloud_state()
         return (True, "", "")
 
     async def cloud_status(self):
@@ -261,6 +264,7 @@ class Transfers(plugin_base.PluginContext):
             return {"ok": False, "error": "There is no storage called %r." % name}
         await self._run(store.set_settings,
                         {"cloud_remote": ("%s:" % name) if name else ""})
+        await self._run(self._note_cloud_state)
         return await self.cloud_status()
 
     async def forget_cloud_remote(self, name: str):
@@ -276,6 +280,7 @@ class Transfers(plugin_base.PluginContext):
         settings = await self._run(store.get_settings)
         if (settings.get("cloud_remote") or "").rstrip(":") == name:
             await self._run(store.set_settings, {"cloud_remote": ""})
+        await self._run(self._note_cloud_state)
         return await self.cloud_status()
 
     async def end_cloud_setup(self):
@@ -402,6 +407,24 @@ class Transfers(plugin_base.PluginContext):
         )
         return {"ok": True, "started": True}
 
+    #: Launches already being answered, so one that takes four seconds is not
+    #: started again on every quarter-second look.
+    _fetching: set = set()
+
+    def _note_cloud_state(self):
+        """Tell the launcher whether waiting for saves is worth it.
+
+        Called from every path that can change the answer -- the setting, the
+        chosen storage, signing out of the last one, and startup. One function
+        rather than a line at each, because the file being wrong in the "on"
+        direction costs every launch a moment for nothing, and in the "off"
+        direction costs a save.
+        """
+        settings = store.get_settings()
+        wanted = bool(settings.get("cloud_saves")) and bool(
+            (settings.get("cloud_remote") or "").strip())
+        launchers.set_cloud_wanted(wanted)
+
     @staticmethod
     def _source_of(core_id):
         """Which save source a game's core belongs to.
@@ -460,6 +483,175 @@ class Transfers(plugin_base.PluginContext):
         await self._run(cloudsync.prune, remote)
         decky.logger.info("Copied %s up after play", source)
         return {"ok": True}
+
+    async def cloud_before_play(self, app_id: int, core_id: str):
+        """Bring down what this Deck is missing before a game opens its saves.
+
+        Called as a launch begins. The launcher is waiting on a file by then --
+        see `launchers.hold_for_cloud` -- so this has to answer, and answer
+        whatever happens: every path out of here releases the launch.
+
+        **What comes down without asking is only what is not here.** That cannot
+        overwrite a save, so there is no question to put to anybody and none is
+        asked. Files that exist in both places and differ are reported instead:
+        deciding which of two versions somebody wants is not a decision to make
+        on their behalf from two clocks, and it is the one thing here worth
+        interrupting a launch for.
+        """
+        settings = await self._run(store.get_settings)
+        remote = (settings.get("cloud_remote") or "").rstrip(":")
+        if not settings.get("cloud_saves") or not remote:
+            await self._run(launchers.release_from_cloud, app_id)
+            return {"ok": True, "differing": [], "restored": 0}
+        if not await self._run(cloudsave.binary):
+            await self._run(launchers.release_from_cloud, app_id)
+            return {"ok": True, "differing": [], "restored": 0}
+
+        source = self._source_of(core_id)
+        beating = self.loop.create_task(self._say_still_fetching(app_id))
+        try:
+            missing, differing, roots, error = await self._run(
+                cloudsync.compare, remote, source)
+            if error:
+                # A storage that cannot be reached is not a reason to stop
+                # somebody playing. The saves on the Deck are the ones that get
+                # used, which is what would have happened anyway.
+                decky.logger.info("Could not compare %s before play: %s", source, error)
+                return {"ok": True, "differing": [], "restored": 0}
+
+            restored = 0
+            if missing:
+                # The pairs `compare` already found, rather than a second
+                # listing of the same folder: two round trips on the front of a
+                # launch is what made the game start without its save.
+                known = {(source, root) for root in roots}
+                steps, plan_error = await self._run(
+                    cloudsync.pull_steps, remote, [source], False, "", known)
+                if not plan_error:
+                    ok, reason = await self._stream_cloud(steps)
+                    if ok:
+                        restored = missing
+                        decky.logger.info(
+                            "Brought %d file(s) down for %s before play", missing, source)
+                    else:
+                        decky.logger.warning(
+                            "Could not bring %s down before play: %s", source, reason)
+            return {"ok": True, "differing": differing, "restored": restored}
+        finally:
+            # Every way out, including a throw. A launch held by a check that
+            # died is a game that does not start, which is worse than every
+            # problem this method exists to prevent.
+            beating.cancel()
+            await self._run(launchers.release_from_cloud, app_id)
+
+    #: How often to look for a launcher that is waiting.
+    #:
+    #: A `listdir` of a directory with at most a couple of files in it, and only
+    #: while cloud saves have somewhere to go. The number is how long a launch
+    #: sits idle before anything starts happening, so it is small; the cost of
+    #: making it small is nothing anybody can measure.
+    _WATCH_SECONDS = 0.25
+
+    async def _watch_launches(self):
+        """Answer launchers that are waiting for their saves.
+
+        **Why the backend watches rather than the panel telling it.** Steam
+        announces a launch to the panel at about the moment the launcher script
+        runs, and the round trip from that announcement through decky is slower
+        than a shell reaching its next line -- so two versions of this, one with
+        a two-second grace on it, both let the game start before the save
+        arrived. Measured on the device, twice.
+
+        The launcher now writes its own file before it waits, so there is no
+        race left to lose: whatever finds that file has as long as it needs.
+        This loop is what finds it.
+        """
+        while True:
+            try:
+                await asyncio.sleep(self._WATCH_SECONDS)
+                waiting = await self._run(launchers.launches_waiting)
+                for app_id in waiting:
+                    if app_id in self._fetching:
+                        continue
+                    self._fetching.add(app_id)
+                    self._detach(
+                        self._answer_launch(app_id), "cloud_fetch_done", app_id, [])
+            except asyncio.CancelledError:
+                raise
+            except Exception as error:  # noqa: BLE001 -- a loop that must not die
+                decky.logger.exception("Launch watch failed: %s", error)
+
+    async def _answer_launch(self, app_id):
+        """Fetch what one held launch is missing, then let it go."""
+        try:
+            library = await self._run(store.get_library)
+            entry = (library or {}).get(str(app_id)) or {}
+            core_id = entry.get("core_id") or ""
+            if not core_id:
+                # Not one of ours, or a record we no longer have. Either way the
+                # launcher is waiting and nothing here can help it.
+                return
+            await decky.emit("cloud_fetch_started", app_id, entry.get("title") or "")
+            result = await self.cloud_before_play(app_id, core_id)
+            await decky.emit(
+                "cloud_fetch_done", app_id, result.get("differing") or [])
+        finally:
+            # Whatever happened, the launch goes and the id is free to be seen
+            # again. `cloud_before_play` releases too; this is the path where it
+            # was never reached.
+            await self._run(launchers.release_from_cloud, app_id)
+            self._fetching.discard(app_id)
+
+    async def _say_still_fetching(self, app_id):
+        """Tell a waiting launcher this is still going, once a second.
+
+        The launcher waits on this rather than on a fixed ceiling, because
+        "the backend is gone" and "the fetch is slow" are different questions
+        and one number cannot answer both -- a ceiling short enough to survive
+        decky reloading is shorter than three round trips on hotel wifi.
+        Measured on the device at 8.2 seconds against a ceiling of 8.
+        """
+        beat = 0
+        try:
+            while True:
+                beat += 1
+                await self._run(launchers.still_fetching, app_id, beat)
+                await asyncio.sleep(1)
+        except asyncio.CancelledError:
+            raise
+
+    async def cloud_release_launch(self, app_id: int):
+        """Let a held launch go now, whatever the fetch is doing.
+
+        The dialog's own button. Whatever was still coming down keeps coming --
+        it is a copy into a directory, not a transaction -- and a file that
+        lands after the emulator has read it is one the restore screen can put
+        back. A game that will not start is the failure none of this is worth.
+        """
+        await self._run(launchers.release_from_cloud, app_id)
+        return {"ok": True}
+
+    async def cloud_take_theirs(self, app_id: int, core_id: str, names):
+        """Replace this Deck's copies of `names` with the storage's.
+
+        The answer to the question `cloud_before_play` asks, when it is
+        answered that way. Whole roots rather than the named files: rclone
+        copies directories, the named files are what the dialog listed, and the
+        alternative is a call per file.
+        """
+        settings = await self._run(store.get_settings)
+        remote = (settings.get("cloud_remote") or "").rstrip(":")
+        if not remote:
+            return {"ok": False, "error": "No cloud storage is set up."}
+        source = self._source_of(core_id)
+        steps, error = await self._run(
+            cloudsync.pull_steps, remote, [source], True)
+        if error:
+            return {"ok": False, "error": error}
+        ok, reason = await self._stream_cloud(steps)
+        decky.logger.info(
+            "Took the storage's copy of %d file(s) for %s", len(names or []), source)
+        return {"ok": ok, "error": "" if ok else reason}
 
     async def cloud_contents(self, name: str, stamp: str = ""):
         """What one storage holds, per emulator, in the restore screen's shape.

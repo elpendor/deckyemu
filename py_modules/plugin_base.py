@@ -76,6 +76,18 @@ class PluginContext:
         """
         raise NotImplementedError
 
+    def _watch_launches(self) -> Any:
+        """Answer launchers waiting for their saves. Started as a task by _main."""
+        raise NotImplementedError
+
+    def _note_cloud_state(self) -> None:
+        """Tell the launcher whether waiting for cloud saves is worth it.
+
+        Declared here because startup calls it and `plugin_transfers` implements
+        it -- the same arrangement every other cross-mixin call uses.
+        """
+        raise NotImplementedError
+
     @staticmethod
     def _subprocess_env() -> dict:
         """The environment a system binary needs: Steam's runtime stripped, HOME set."""

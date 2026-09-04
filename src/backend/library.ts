@@ -574,6 +574,41 @@ export const cloudBackupAfterPlay = callable<
   [core_id: string],
   { ok: boolean; error?: string; skipped?: string }
 >("cloud_backup_after_play");
+/**
+ * Bring down what this Deck is missing, then let the launch go.
+ *
+ * `restored` is how many files came down without anyone being asked — a file
+ * that is not here cannot overwrite anything, so it needs no permission.
+ * `differing` names files that exist in both places and are not the same, which
+ * is the one thing worth interrupting a launch for.
+ *
+ * Releases the launch on every path, including failure. A game held by a check
+ * that died is worse than any problem this prevents.
+ *
+ * Called by the backend's own launch watch, not from here: the launcher writes
+ * a file as it starts waiting and the backend answers it, because Steam tells
+ * the panel about a launch a moment *after* the script has run. The panel hears
+ * about it on `cloud_fetch_started` (app id, title) and `cloud_fetch_done`
+ * (app id, differing files), which is what puts the dialogs up.
+ */
+export const cloudBeforePlay = callable<
+  [app_id: number, core_id: string],
+  { ok: boolean; differing: string[]; restored: number }
+>("cloud_before_play");
+/**
+ * Let a held launch go now, whatever the fetch is doing.
+ *
+ * Whatever is still coming down keeps coming; a file that lands after the
+ * emulator read it can be put back from the restore screen.
+ */
+export const cloudReleaseLaunch = callable<[app_id: number], { ok: boolean }>(
+  "cloud_release_launch",
+);
+/** Replace this Deck's copies with the storage's, after being asked. */
+export const cloudTakeTheirs = callable<
+  [app_id: number, core_id: string, names: string[]],
+  { ok: boolean; error?: string }
+>("cloud_take_theirs");
 export const stopFileServer = callable<
   [],
   { ok: boolean } & Partial<FileServerStatus>
