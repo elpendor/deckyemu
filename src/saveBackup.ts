@@ -91,11 +91,66 @@ export function restoreSummary(contents: SaveBackupContents[]): string {
   return `${files} file(s), ${present} of them already on this Deck.`;
 }
 
+/**
+ * What one emulator's row says, with the number that matters first.
+ *
+ * The row used to lead with what the backup holds and mention what is already
+ * here at the end -- "3 file(s), 40 KB - 2 already on this Deck" -- which left
+ * the only actionable number, the one file that would actually be written, as
+ * arithmetic for the reader to do. Restoring is a decision about what is
+ * *missing*, so that is what the row is about.
+ *
+ * A row with nothing to restore says so plainly rather than going quiet, since
+ * "all of them are here" and "this row failed to load" must not look alike.
+ */
+export function sourceLine(
+  entry: SaveBackupContents,
+  size: string,
+): { line: string; missing: number } {
+  if (!entry.installed) {
+    return {
+      line: `${entry.files} file(s), ${size} - not installed here, so these stay in the backup`,
+      missing: 0,
+    };
+  }
+  const missing = Math.max(0, entry.files - entry.present);
+  if (missing === 0) {
+    return {
+      line: `All ${entry.files} already on this Deck - only replacing would change anything`,
+      missing: 0,
+    };
+  }
+  return {
+    line: `${missing} of ${entry.files} missing here, ${size} in the backup`,
+    missing,
+  };
+}
+
 /** How many files a plain restore would write. Zero disables its button. */
 export function missingCount(contents: SaveBackupContents[]): number {
   return contents
     .filter((entry) => entry.installed)
     .reduce((sum, entry) => sum + entry.files - entry.present, 0);
+}
+
+/**
+ * The emulators a plain restore would actually write to.
+ *
+ * What "restore missing" is *for*: with one file gone from one emulator, this
+ * is one emulator, not thirteen. Passing them all is what the buttons used to
+ * do, and against cloud storage that is a network call per save root of every
+ * emulator up there -- twenty-odd round trips to write one file, with the
+ * progress bar naming each in turn, which reads as restoring everything
+ * because it very nearly is.
+ *
+ * `--ignore-existing` meant the extra calls changed nothing, so this was slow
+ * and alarming rather than destructive. It was still wrong: the screen said one
+ * row would change and the work said otherwise.
+ */
+export function missingIds(contents: SaveBackupContents[]): string[] {
+  return contents
+    .filter((entry) => entry.installed && entry.files - entry.present > 0)
+    .map((entry) => entry.id);
 }
 
 /** How many an overwrite would destroy, for the sentence that confirms it. */

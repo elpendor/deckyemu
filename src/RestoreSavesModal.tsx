@@ -29,7 +29,13 @@ import { DANGER_CLASS, DANGER_CSS, DANGER_TEXT } from "./danger";
 import { FileName } from "./FileName";
 import { logError } from "./logError";
 import { openModal } from "./modalStack";
-import { missingCount, presentCount, restoreSummary } from "./saveBackup";
+import {
+  missingCount,
+  missingIds,
+  presentCount,
+  restoreSummary,
+  sourceLine,
+} from "./saveBackup";
 import { humanSize, ProgressBar, TransferModal } from "./TransferModal";
 import { ICON_BUTTON, ICON_BUTTON_WIDE } from "./iconButton";
 
@@ -253,10 +259,21 @@ export function RestoreSavesModal({ closeModal }: Props) {
       setWorking(true);
       setError("");
 
+      /*
+       * Which emulators to touch.
+       *
+       * Restoring what is missing goes to the rows that have something missing
+       * -- see `missingIds`. Replacing goes to all of them, because that is
+       * what the confirmation counted before it was agreed to: it names a
+       * number of files across the whole list, and quietly restoring fewer than
+       * it said would be its own kind of wrong.
+       */
+      const scope = replace ? null : missingIds(contents ?? []);
+
       if (chosen.kind === "cloud") {
         setCarrying({ name: "", percent: 0 });
         // Only starts it; the listener above closes the dialog when it lands.
-        void cloudRestore(chosen.remote, null, replace, chosen.stamp)
+        void cloudRestore(chosen.remote, scope, replace, chosen.stamp)
           .then((result) => {
             if (!result.ok) {
               setError(result.error ?? "The saves could not be restored.");
@@ -274,7 +291,7 @@ export function RestoreSavesModal({ closeModal }: Props) {
       }
 
       const file = chosen.file;
-      void restoreSaveBackup(file.path, null, replace)
+      void restoreSaveBackup(file.path, scope, replace)
         .then((result) => {
           if (!result.ok) {
             setError(result.error ?? "The saves could not be restored.");
@@ -298,7 +315,7 @@ export function RestoreSavesModal({ closeModal }: Props) {
         })
         .finally(() => setWorking(false));
     },
-    [chosen, closeModal],
+    [chosen, contents, closeModal],
   );
 
   /**
@@ -565,27 +582,30 @@ export function RestoreSavesModal({ closeModal }: Props) {
               is close to it while still scaling with the window.
               */}
           <Focusable style={{ maxHeight: "38vh", overflowY: "auto" }}>
-          {(contents ?? []).map((entry) => (
-            // Wrapped so a controller can enter the list at all. A `Field` with
-            // no interactive child is not focusable, and a scroller only scrolls
-            // when focus moves into it -- so a list of plain rows cannot be
-            // reached or scrolled with a gamepad, however tall the container is.
-            // This is why the list read as "not scrollable" while the backup
-            // dialog, whose rows are ToggleFields, scrolled fine.
-            <Focusable key={entry.id} focusWithinClassName="gpfocuswithin">
-              <Field
-                label={entry.name}
-                description={
-                `${entry.files} file(s), ${humanSize(entry.bytes)}` +
-                (!entry.installed
-                  ? " - not installed here, so these stay in the backup"
-                  : entry.present > 0
-                    ? ` - ${entry.present} already on this Deck`
-                      : "")
-                }
-              />
-            </Focusable>
-          ))}
+          {(contents ?? []).map((entry) => {
+            const said = sourceLine(entry, humanSize(entry.bytes));
+            return (
+              // Wrapped so a controller can enter the list at all. A `Field`
+              // with no interactive child is not focusable, and a scroller only
+              // scrolls when focus moves into it -- so a list of plain rows
+              // cannot be reached or scrolled with a gamepad, however tall the
+              // container is. This is why the list read as "not scrollable"
+              // while the backup dialog, whose rows are ToggleFields, scrolled
+              // fine.
+              <Focusable key={entry.id} focusWithinClassName="gpfocuswithin">
+                {/* Dimmed when there is nothing to restore from it.
+                    Emphasis by contrast rather than by decoration: what a
+                    person is looking for here is the row that will change, and
+                    on a list of thirteen emulators with one file missing it was
+                    the same weight as the twelve that would do nothing. No icon
+                    -- the difference is a fact about the row, and the row says
+                    it in words directly underneath. */}
+                <div style={{ opacity: said.missing > 0 || !entry.installed ? 1 : 0.5 }}>
+                  <Field label={entry.name} description={said.line} />
+                </div>
+              </Focusable>
+            );
+          })}
           </Focusable>
         </>
       )}

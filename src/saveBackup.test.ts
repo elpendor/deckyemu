@@ -5,9 +5,11 @@ import {
   backupSummary,
   defaultSelection,
   missingCount,
+  missingIds,
   notInstalled,
   presentCount,
   restoreSummary,
+  sourceLine,
   totals,
 } from "./saveBackup";
 
@@ -148,5 +150,69 @@ describe("notInstalled", () => {
         inBackup({ id: "b", name: "Vita3K", installed: false }),
       ]),
     ).toEqual(["Vita3K"]);
+  });
+});
+
+describe("sourceLine", () => {
+  it("leads with what is missing, since that is what restoring would write", () => {
+    expect(sourceLine(inBackup({ id: "a", files: 3, present: 2 }), "40 KB")).toEqual({
+      line: "1 of 3 missing here, 40 KB in the backup",
+      missing: 1,
+    });
+  });
+
+  it("says when there is nothing to restore rather than going quiet", () => {
+    // A row that said nothing was indistinguishable from one that failed to
+    // load, and this is the case where the button beside it is disabled.
+    expect(sourceLine(inBackup({ id: "a", files: 3, present: 3 }), "40 KB")).toEqual({
+      line: "All 3 already on this Deck - only replacing would change anything",
+      missing: 0,
+    });
+  });
+
+  it("counts everything as missing when none of it is here", () => {
+    expect(sourceLine(inBackup({ id: "a", files: 3 }), "40 KB").missing).toBe(3);
+  });
+
+  it("says an emulator that is not installed keeps its saves in the backup", () => {
+    const said = sourceLine(
+      inBackup({ id: "a", files: 3, present: 0, installed: false }),
+      "40 KB",
+    );
+    expect(said).toEqual({
+      line: "3 file(s), 40 KB - not installed here, so these stay in the backup",
+      missing: 0,
+    });
+  });
+
+  it("never reports a negative, whatever the archive claims", () => {
+    // `present` is counted on this Deck and `files` in the archive, so nothing
+    // stops the two disagreeing if a root is listed twice.
+    expect(sourceLine(inBackup({ id: "a", files: 1, present: 4 }), "1 KB").missing).toBe(0);
+  });
+});
+
+describe("missingIds", () => {
+  it("is the emulators that would actually be written to", () => {
+    // The failure this prevents: one file missing from one emulator asked the
+    // storage for all thirteen, a network call per save root of each.
+    expect(
+      missingIds([
+        inBackup({ id: "xenia", files: 3, present: 2 }),
+        inBackup({ id: "rpcs3", files: 200, present: 200 }),
+        inBackup({ id: "xemu", files: 61, present: 61 }),
+      ]),
+    ).toEqual(["xenia"]);
+  });
+
+  it("leaves out an emulator that is not installed here", () => {
+    // Its saves stay where they are; there is nowhere on this Deck to put them.
+    expect(
+      missingIds([inBackup({ id: "vita3k", files: 9, installed: false })]),
+    ).toEqual([]);
+  });
+
+  it("is empty when there is nothing to do, which disables the button", () => {
+    expect(missingIds([inBackup({ id: "a", files: 3, present: 3 })])).toEqual([]);
   });
 });
