@@ -23,7 +23,6 @@ vi.mock("./backend", () => ({
   },
   cloudHoldLaunch: () => Promise.resolve({ ok: true, held: false }),
   cloudBeforePlay: () => Promise.resolve({ ok: true, differing: [], restored: 0 }),
-  cloudTakeTheirs: () => Promise.resolve({ ok: true }),
 }));
 vi.mock("./CloudDifferModal", () => ({ showCloudDiffer: () => undefined }));
 // @decky/api reaches for a manifest that only exists in a built plugin.

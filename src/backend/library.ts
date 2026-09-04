@@ -566,12 +566,15 @@ export const cloudRestore = callable<
  * every libretro core keeps its saves in RetroArch's directories rather than
  * its own.
  *
- * Answers `{ok: true, skipped}` when cloud saves are off, no storage is chosen
- * or the emulator has nothing to send. None of those is a failure worth
+ * Answers `{ok: true, skipped}` when cloud saves are off, no storage is chosen,
+ * the emulator has nothing to send, or the launch never reached the emulator —
+ * a launch refused by the two-games gate or declined at the save conflict ends
+ * exactly like a finished session, and uploading after one of those overwrites
+ * the saves somebody just declined to overwrite. None of those is a failure worth
  * surfacing at the moment a game ends.
  */
 export const cloudBackupAfterPlay = callable<
-  [core_id: string],
+  [core_id: string, app_id: number],
   { ok: boolean; error?: string; skipped?: string }
 >("cloud_backup_after_play");
 /**
@@ -604,11 +607,17 @@ export const cloudBeforePlay = callable<
 export const cloudReleaseLaunch = callable<[app_id: number], { ok: boolean }>(
   "cloud_release_launch",
 );
-/** Replace this Deck's copies with the storage's, after being asked. */
-export const cloudTakeTheirs = callable<
-  [app_id: number, core_id: string, names: string[]],
+/**
+ * What somebody chose in the save conflict dialog.
+ *
+ * The game is held while the question is on screen — the launcher waits on the
+ * backend's heartbeat — so this is what lets it go. "cloud" takes the storage's
+ * copies, "deck" keeps what is here, "stop" does not start the game at all.
+ */
+export const cloudAnswerConflict = callable<
+  [app_id: number, choice: "cloud" | "deck" | "stop"],
   { ok: boolean; error?: string }
->("cloud_take_theirs");
+>("cloud_answer_conflict");
 export const stopFileServer = callable<
   [],
   { ok: boolean } & Partial<FileServerStatus>

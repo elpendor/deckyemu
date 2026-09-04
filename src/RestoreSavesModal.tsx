@@ -271,7 +271,7 @@ export function RestoreSavesModal({ closeModal }: Props) {
       const scope = replace ? null : missingIds(contents ?? []);
 
       if (chosen.kind === "cloud") {
-        setCarrying({ name: "", percent: 0 });
+        setCarrying({ name: "", percent: -1 });
         // Only starts it; the listener above closes the dialog when it lands.
         void cloudRestore(chosen.remote, scope, replace, chosen.stamp)
           .then((result) => {

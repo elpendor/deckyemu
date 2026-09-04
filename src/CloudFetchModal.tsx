@@ -32,7 +32,9 @@ interface Props {
 }
 
 export function CloudFetchModal({ title, onSkip }: Props) {
-  const [percent, setPercent] = useState(0);
+  // Below zero until rclone says a figure. A small save finishes before the
+  // first one arrives, and a bar stuck at zero reads as nothing happening.
+  const [percent, setPercent] = useState(-1);
 
   useEffect(() => {
     const progress = addEventListener<[name: string, done: number]>(

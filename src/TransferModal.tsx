@@ -126,6 +126,19 @@ const NOTICE = {
 };
 
 /**
+ * The stripe an unknown-length transfer sweeps back and forth.
+ *
+ * Injected beside the bar rather than kept in a stylesheet, for the reason the
+ * danger styling gives: a modal renders outside whichever panel opened it, so
+ * anything scoped to a panel is not there.
+ */
+const SWEEP = `
+@keyframes deckyemu-sweep {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(300%); }
+}`;
+
+/**
  * A progress bar, hand-rolled.
  *
  * @decky/ui does export Steam's own ProgressBar, but it is resolved at runtime by
@@ -134,7 +147,21 @@ const NOTICE = {
  * with it. The same reasoning as steam.ts: a Steam change should cost a feature,
  * not the panel. Two divs and a width owe nothing to Steam's internals.
  */
+/**
+ * A bar, and what it does when there is no number yet.
+ *
+ * `fraction` below zero means "something is happening and nobody knows how
+ * much of it". That is not a hypothetical: rclone reports a percentage once a
+ * second, and a 40KB save is finished before the first one arrives -- so a
+ * plain bar sat at zero for the whole transfer and then vanished, which reads
+ * exactly like a transfer that never started. Measured on the device, on the
+ * save that prompted this.
+ *
+ * A stripe that moves says the same thing an empty bar cannot: this is running,
+ * the figure is what is missing.
+ */
 export function ProgressBar({ fraction }: { fraction: number }) {
+  const unknown = fraction < 0;
   const clamped = Math.max(0, Math.min(1, fraction));
   return (
     <div
@@ -145,11 +172,13 @@ export function ProgressBar({ fraction }: { fraction: number }) {
         overflow: "hidden",
       }}
     >
+      <style>{SWEEP}</style>
       <div
         style={{
           height: "100%",
-          width: `${clamped * 100}%`,
+          width: unknown ? "35%" : `${clamped * 100}%`,
           background: "#4c6ef5",
+          ...(unknown ? { animation: "deckyemu-sweep 1.1s ease-in-out infinite" } : {}),
           // Matches the poll interval, so the bar glides between readings
           // instead of stepping once a second.
           transition: "width 1s linear",

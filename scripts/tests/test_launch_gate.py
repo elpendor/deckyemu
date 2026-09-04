@@ -61,25 +61,46 @@ check("naming the directory the backend reads",
 check("the format version rose, so existing games are rewritten",
       launchers.FORMAT_VERSION >= 7, True)
 
+section("a launch that never reached the emulator says so")
+
+# **"A game closed" is not "a game was played".** Steam counts an app as
+# running from the moment it starts the script, so a launch the two-games gate
+# refused and one declined at the save conflict both end exactly like a
+# session -- and both were uploading afterwards. The conflict one overwrote the
+# saves the person had just declined to overwrite, and after two or three goes
+# there was nothing left to decline.
+check("the marker is written past every gate, not before them",
+      _body.index("launching-") < _body.index("ran-"), True)
+check("and it is the last thing before the emulator, so anything that refuses "
+      "a launch refuses it first",
+      _body.rindex("ran-") > _body.rindex("kill -STOP"), True)
+
+check("nothing has taken off until a launcher says so",
+      launchers.took_off(4242), False)
+check("and a marker is consumed once, so one session is not counted twice",
+      (launchers.ran_marker().count("ran-"), launchers.took_off(4242)),
+      (1, False))
+
 section("waiting for cloud saves, in the script")
 
 check("the wait is in the launcher",
-      "cloudready-" in _body and "launching-" in _body, True)
+      "launching-" in _body and "kill -STOP" in _body, True)
 # The race this closes: the panel hears about a launch at the same moment the
 # script runs, so asking once whether it has claimed the launch asks too early.
 # Measured on the device -- the script won and the round trip through decky
 # lost, and the game started while the save was still coming down.
-check("and it waits for the panel to claim the launch before waiting for saves",
-      _body.index(launchers.CLOUD_ON_FILE) < _body.index("cloudready-"), True)
+check("and none of it happens without somewhere for saves to go",
+      _body.index(launchers.CLOUD_ON_FILE) < _body.index("launching-"), True)
 check("and it is bounded, so a launch cannot be held forever",
-      str(int(launchers.CLOUD_MAX_SECONDS / float(launchers.CLOUD_STEP))) in _body,
-      True)
-# **The wait follows the work.** A fixed ceiling has to be short enough that a
-# Deck with decky reloading still starts its games and long enough to cover
-# three round trips on hotel wifi, and no number is both -- measured on the
-# device, the fetch answered at 8.2 seconds against a ceiling of 8.
-check("it waits on the backend saying it is busy, not on a fixed number",
-      "cloudbusy-" in _body, True)
+      str(launchers.CLOUD_MAX_SECONDS) in _body, True)
+# **The wait is a stopped process, not a conversation.** Every timing bug in
+# versions 22-27 was in that conversation: two lost a race with Steam, one gave
+# up 0.2s before the answer came, one left a note that refused the next launch.
+# A stopped process has no timing to get wrong.
+check("the script stops itself rather than polling for an answer",
+      ("kill -STOP" in _body, "cloudbusy-" in _body), (True, False))
+check("and says which process to wake, which is the whole protocol",
+      "launching-" in _body, True)
 # The two-games check can end a launch outright. Waiting for saves and then
 # refusing to start would be a wait nobody got anything for.
 check("the two-games check comes first",
@@ -121,6 +142,14 @@ else:
 
     check("syntax the shell accepts",
           subprocess.run(["sh", "-n", _script]).returncode, 0)
+
+    def _launch_code(app_id):
+        """What the launch printed, and the status Steam would see."""
+        done = subprocess.run(
+            [_reaper, "SteamLaunch", "AppId=%d" % app_id, "--", _script],
+            capture_output=True, text=True, timeout=30,
+        )
+        return done.stdout, done.returncode
 
     def _elapsed(app_id):
         """How long a launch took, and what it printed."""
@@ -183,14 +212,13 @@ else:
           "LAUNCHED" in subprocess.run(
               [_script], capture_output=True, text=True, timeout=30).stdout, True)
 
-    section("a launch waits for its saves, and never waits forever")
+    section("a launch waits by stopping, and is woken or ended")
 
     os.makedirs(_dir, exist_ok=True)
-    for _leftover in ("launching-321", "cloudready-321", "cloudbusy-321"):
-        try:
-            os.remove(os.path.join(_dir, _leftover))
-        except OSError:
-            pass
+    try:
+        os.remove(os.path.join(_dir, "launching-321"))
+    except OSError:
+        pass
 
     # Cloud saves off. **This is the one that matters to everybody else**: a
     # Deck that does not use this feature must not pay a millisecond for it, and
@@ -203,74 +231,90 @@ else:
 
     launchers.set_cloud_wanted(True)
 
-    # **The announcement is the point.** Two earlier versions had the launcher
-    # wait to be claimed by the panel, and both lost the same race: Steam tells
-    # the panel about a launch at about the moment the script runs, and the
-    # round trip through decky is slower than a shell reaching its next line.
-    # So the script says it is waiting, and whatever is watching has as long as
-    # it needs.
+    # **The whole protocol is a pid in a file.** Two earlier versions had the
+    # script poll for an answer and both lost a race with Steam; a third gave up
+    # 0.2s before the answer arrived. A stopped process has no timing to get
+    # wrong -- it waits exactly as long as it is left stopped.
     _seen = []
 
-    def _answer():
+    def _wake():
         _seen.extend(launchers.launches_waiting())
-        launchers.release_from_cloud(321)
+        launchers.wake_launch(321)
 
-    _watcher = threading.Timer(0.6, _answer)
-    _watcher.start()
+    _waker = threading.Timer(1.0, _wake)
+    _waker.start()
     try:
         _took, _said = _elapsed(321)
-        check("a waiting launch is visible to whatever is watching, and goes "
-              "when it is answered",
-              ("LAUNCHED" in _said, 321 in _seen, _took < 6), (True, True, True))
-    finally:
-        _watcher.cancel()
-
-    # **A fetch that outlasts any fixed ceiling still finishes.** This is the
-    # failure that took three attempts: the backend answered at 8.2 seconds,
-    # the script gave up at 8, and the game started without its save.
-    _beats = []
-
-    def _beat():
-        for count in range(1, 8):
-            launchers.still_fetching(321, count)
-            _beats.append(count)
-            time.sleep(0.8)
-        launchers.release_from_cloud(321)
-
-    _slow = threading.Thread(target=_beat, daemon=True)
-    _slow.start()
-    try:
-        _took, _said = _elapsed(321)
-        check("a slow fetch is waited for, as long as it keeps saying it is "
-              "working",
-              ("LAUNCHED" in _said,
-               _took > launchers.CLOUD_QUIET_SECONDS + 1,
-               len(_beats) >= 5),
+        check("a stopped launch is visible to whatever is watching, and carries "
+              "on the moment it is woken",
+              ("LAUNCHED" in _said, 321 in _seen, 0.8 < _took < 5),
               (True, True, True))
     finally:
-        _slow.join(timeout=15)
-    check("and the launch clears both files after itself, so the next one is "
-          "judged on its own",
+        _waker.cancel()
+    check("and it takes its own file away afterwards",
           [name for name in os.listdir(_dir) if name.endswith("-321")], [])
 
-    # Held and never released: decky reloading, the panel gone, the network
-    # dead. **The game still starts.** A launch that never happens is a worse
-    # failure than a launch with an old save.
-    for _leftover in ("cloudready-321", "cloudbusy-321"):
-        try:
-            os.remove(os.path.join(_dir, _leftover))
-        except OSError:
-            pass
-    _took, _said = _elapsed(321)
-    # A band rather than an exact figure: the loop counts a step down before
-    # sleeping it, so it gives up one step short. **This is the number a Deck
-    # with decky reloading pays**, so it is the one worth keeping small.
-    check("nobody answering at all costs the quiet wait and then launches",
-          ("LAUNCHED" in _said,
-           launchers.CLOUD_QUIET_SECONDS - 1 <= _took < launchers.CLOUD_QUIET_SECONDS + 3),
-          (True, True))
-    check("and it still cleans up after itself",
-          [name for name in os.listdir(_dir) if name.endswith("-321")], [])
+    # **Told not to start.** The process is stopped and has not reached the
+    # emulator, so ending it costs nothing -- and unlike a note left in a file,
+    # it cannot arrive too late and refuse the *next* launch instead.
+    _refused = []
+    _killer = threading.Timer(
+        1.0, lambda: _refused.append(launchers.refuse_launch(321)))
+    _killer.start()
+    try:
+        _said, _code = _launch_code(321)
+            # **A clean exit, not a kill.** Steam is waiting on this process: killed,
+        # its loading screen stayed up and the launch never finished. `exit 0`
+        # is what the two-games gate has always done.
+        check("a refused launch never reaches the game, and exits cleanly",
+              ("LAUNCHED" in _said, _refused, _code), (False, [True], 0))
+    finally:
+        _killer.cancel()
+
+    # **The file has to go with it.** A killed launch never reaches the line
+    # that would have cleared its own file, and a file nothing clears is a
+    # launch the backend answers again on every look -- the same conflict
+    # dialog, endlessly, for a game that is not going to start.
+    check("and the file it left goes with it",
+          [name for name in os.listdir(_dir) if name.startswith("launching-")], [])
+
+    # The same hazard from the other direction: a launch whose process died for
+    # any other reason.
+    with io.open(os.path.join(_dir, "launching-321"), "w", encoding="utf-8") as _h:
+        _h.write(os.linesep.join(["999999", "/gone/for/good.sh"]))
+    check("a file whose process is gone is recognised and cleared, not answered",
+          launchers.gone(321), True)
+    launchers.forget_launch(321)
+    check("and clearing it is what leaves nothing to answer",
+          launchers.launches_waiting(), [])
+
+    # Nobody answers at all -- decky reloading, the plugin gone. The script
+    # wakes itself. Rebuilt with a short watchdog so the suite does not sit
+    # through the real one, which is deliberately generous.
+    _was = launchers.CLOUD_MAX_SECONDS
+    launchers.CLOUD_MAX_SECONDS = 2
+    try:
+        _patient = os.path.join(TMP, "gate-patient.sh")
+        with io.open(_patient, "w", encoding="utf-8", newline="\n") as _handle:
+            _handle.write("#!/bin/sh\n" + launchers.launch_gate() + "\necho LAUNCHED\n")
+        os.chmod(_patient, 0o755)
+        _began = time.time()
+        _said = _launch(321, _patient)
+        _took = time.time() - _began
+        check("with nobody there at all, the launch wakes itself and the game "
+              "starts anyway",
+              ("LAUNCHED" in _said, 1.5 < _took < 8), (True, True))
+    finally:
+        launchers.CLOUD_MAX_SECONDS = _was
+
+    # A pid comes out of a file and one of the two things done with it is a
+    # kill. A file left by a launch whose process has gone names a number the
+    # system is free to have given to something else.
+    check("and a pid that is not the launcher that wrote it is never signalled",
+          (launchers._is_ours(os.getpid(), "/nothing/like/this"),
+           launchers._is_ours(999999, _script),
+           launchers._is_ours(0, "")),
+          (False, False, False))
 
     launchers.set_cloud_wanted(False)
     check("switching cloud saves off takes the wait away again",

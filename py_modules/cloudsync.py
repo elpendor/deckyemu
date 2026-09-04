@@ -449,6 +449,24 @@ def contents(remote, stamp=""):
     return {"ok": True, "sources": sorted(found.values(), key=lambda row: row["name"])}
 
 
+#: What every copy up leaves beside the saves, and what every launch reads.
+#:
+#: **Because provider metadata is not something to build on.** Dropbox cannot
+#: set a modification time at all -- rclone re-uploads a file to stamp it, and
+#: says so in the log -- pCloud has the same limitation, S3 keeps it as metadata
+#: that a copy rewrites, and SFTP just works. A comparison resting on those
+#: behaves differently on every service somebody might choose, which is not what
+#: "cloud saves" can mean.
+#:
+#: So the only numbers compared are ones written here: what was uploaded, how
+#: big each file was, when this Deck's clock said it happened, and which Deck
+#: did it. Every provider stores a JSON file identically.
+STATE_FILE = ".deckyemu-state.json"
+
+#: Where the same record is kept on this side, so "did somebody else write to
+#: the storage since we last did?" is one comparison rather than a guess.
+STATE_DIR = os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "cloudstate")
+
 #: How long the check before a launch may take.
 #:
 #: **This is the number that decides whether launching a game got slower.** It
@@ -458,135 +476,277 @@ def contents(remote, stamp=""):
 #: arrives in well under one.
 BEFORE_PLAY_SECONDS = 6
 
-#: How much newer a remote file must look before it counts as a different save.
-#:
-#: A margin, because the two timestamps come from two machines. A file this
-#: Deck uploaded itself comes back with a modification time set by the storage
-#: provider, and provider and Deck agree to within seconds rather than exactly.
-#: Without this, every save this Deck pushed would come back looking like
-#: somebody else's newer copy.
-_NEWER_BY = 120
 
+def _device():
+    """Which Deck this is, as far as a storage needs to know.
 
-def compare(remote, source_id, seconds=BEFORE_PLAY_SECONDS):
-    """What one emulator has up there that this Deck does not. One call.
-
-    Returns (missing, differing, roots, error): how many files exist only on
-    the remote, the names of the ones that exist in both and do not look like
-    the same save, and which of this emulator's save roots exist up there at
-    all -- that last one so the fetch which follows does not repeat this call.
-
-    **One listing for the whole emulator, not a comparison per save root.** This
-    runs on the front of a launch, so every network round trip here is time
-    somebody spends looking at a black screen before their game. The first
-    version of this called `rclone check` per root -- two round trips for
-    RetroArch before anything started -- which is the kind of cost that makes a
-    feature not worth having.
-
-    **Missing is exact. Differing is a guess, deliberately.** A file that is not
-    here cannot be mistaken for one that is. Whether two files that both exist
-    are the *same* file cannot be settled from a listing: sizes match constantly
-    -- a PS1 memory card is 128KB whatever is written in it -- so size alone
-    would never notice, and a hash means asking the provider to read every file.
-    So size *or* a remote modification time meaningfully newer than the local
-    one is taken as "worth asking about". A guess is the right shape here
-    because the answer is a question put to a person, not an action: the cost of
-    a false positive is one dialog, and the cost of a miss is the save this Deck
-    already had.
+    Not a fingerprint and not stable across a reinstall -- it only has to tell
+    "this Deck" from "some other device", and it is written into a file in
+    somebody's own storage, so it says nothing about the machine.
     """
-    if not cloudsave.valid_name(remote):
-        return 0, [], [], "That storage cannot be used."
+    path = os.path.join(STATE_DIR, "device")
+    try:
+        with open(path, encoding="utf-8") as handle:
+            found = handle.read().strip()
+        if found:
+            return found
+    except OSError:
+        pass
+    made = "deck-%s" % os.urandom(4).hex()
+    try:
+        os.makedirs(STATE_DIR, exist_ok=True)
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(made)
+    except OSError as error:
+        decky.logger.warning("Could not keep a device name: %s", error)
+    return made
+
+
+def _local_files(source):
+    """Every save file of one emulator, as `<root>/<relative>`: (size, mtime)."""
+    listed = {}
+    skip = savedata._SKIP_TOP if source.get("whole") else ()
+    for segment, path in _roots_of(source):
+        for absolute, relative in savedata._walk(path, skip):
+            try:
+                found = os.stat(absolute)
+            except OSError:
+                continue
+            listed["%s/%s" % (segment, relative.replace(os.sep, "/"))] = (
+                found.st_size, int(found.st_mtime))
+    return listed
+
+
+def _state_of(source):
+    """What this Deck would upload, in the shape the record keeps it."""
+    return {
+        "device": _device(),
+        "at": int(time.time()),
+        "files": {name: {"size": size, "mtime": mtime}
+                  for name, (size, mtime) in _local_files(source).items()},
+    }
+
+
+def _mine_path(source_id):
+    return os.path.join(STATE_DIR, "%s.json" % source_id)
+
+
+def read_mine(source_id):
+    """The record of what this Deck last put up for one emulator, or {}."""
+    try:
+        with open(_mine_path(source_id), encoding="utf-8") as handle:
+            found = json.load(handle)
+        return found if isinstance(found, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _keep_mine(source_id, state):
+    try:
+        os.makedirs(STATE_DIR, exist_ok=True)
+        with open(_mine_path(source_id), "w", encoding="utf-8") as handle:
+            json.dump(state, handle)
+    except OSError as error:
+        decky.logger.warning("Could not keep the cloud record: %s", error)
+
+
+def changed_since_push(source_id):
+    """Whether this emulator's saves differ from what was last put up.
+
+    **A game closing is not evidence that anything was written.** Steam counts
+    an app as running while its launcher script is still deciding what to do, so
+    a launch the two-games gate refused, a launch somebody declined at the save
+    conflict, and a game that failed to start all look exactly like a session
+    that ended. Every one of them was uploading, and the upload rewrote the
+    record beside the saves -- which, in the conflict case, quietly did the
+    thing the dialog had just been used to decline.
+
+    So the question asked after a game is not "did something close" but "is any
+    of this different". Answered from `os.stat` against the record kept here:
+    no network, no provider, and no upload at all when a session wrote nothing.
+    """
     source = next(
         (one for one in savedata._all_sources() if one["id"] == source_id), None)
     if source is None:
-        return 0, [], [], ""
-    if not _SEGMENT.match(source_id):
-        return 0, [], [], ""
+        return False
+    mine = read_mine(source_id)
+    # Never uploaded. Everything is new by definition.
+    if not mine:
+        return True
+    was = mine.get("files") or {}
+    now = _local_files(source)
+    if set(was) != set(now):
+        return True
+    for name, (size, mtime) in now.items():
+        said = was.get(name) or {}
+        if said.get("size") != size or said.get("mtime") != mtime:
+            return True
+    return False
+
+
+def record_push(remote, source_id):
+    """Write the record of what was just uploaded, both sides. (ok, error).
+
+    Both, and the same bytes: the storage's copy says what is up there, and this
+    Deck's copy says what *it* put there. A launch compares the two, and a
+    difference means another device wrote since -- which is the only question
+    worth asking, and it is answered without consulting a provider for anything
+    but a file it was handed.
+    """
+    source = next(
+        (one for one in savedata._all_sources() if one["id"] == source_id), None)
+    if source is None or not _SEGMENT.match(source_id):
+        return False, ""
+
+    state = _state_of(source)
+    body = json.dumps(state, sort_keys=True)
+    staged = os.path.join(STATE_DIR, "%s.uploading" % source_id)
+    try:
+        os.makedirs(STATE_DIR, exist_ok=True)
+        with open(staged, "w", encoding="utf-8") as handle:
+            handle.write(body)
+    except OSError as error:
+        return False, str(error)
 
     ok, output = cloudsave.rclone(
-        ["lsjson", "%s:%s/%s" % (remote, ROOT, source_id),
-         "--recursive", "--files-only"],
-        seconds,
+        ["copyto", staged, "%s:%s/%s/%s" % (remote, ROOT, source_id, STATE_FILE)],
+        LIST_SECONDS,
     )
-    if not ok:
-        # Never copied up, so nothing to bring down. Not a failure and not
-        # anything to say at the start of a game.
-        if "not found" in output.lower():
-            return 0, [], [], ""
-        return 0, [], [], output
     try:
-        entries = json.loads(output or "[]")
-    except ValueError:
-        return 0, [], [], "The storage answered with something unreadable."
+        os.remove(staged)
+    except OSError:
+        pass
+    if ok:
+        _keep_mine(source_id, state)
+    return ok, "" if ok else output
 
-    landing = {segment: path for segment, path in _roots_of(source)}
+
+def adopt_state(remote, source_id):
+    """Take the storage's record as this Deck's own. (ok, error).
+
+    For the answer "play with the cloud's": the files here are now the files up
+    there, so the record of what this Deck last put there is that one. Copying
+    it rather than writing a fresh one keeps the two byte-identical, which is
+    what `compare` checks -- a new record would look like a third device.
+    """
+    theirs, error = _remote_state(remote, source_id, LIST_SECONDS)
+    if error or not theirs:
+        return False, error
+    _keep_mine(source_id, theirs)
+    return True, ""
+
+
+def _remote_state(remote, source_id, seconds):
+    """The record sitting beside one emulator's saves. (state, error).
+
+    One request, and a small one: the record lists every file, so this answers
+    what is up there as well as who put it there. Listing the folder as well
+    would be a second round trip on the front of a launch.
+    """
+    ok, output = cloudsave.rclone(
+        ["cat", "%s:%s/%s/%s" % (remote, ROOT, source_id, STATE_FILE)], seconds)
+    if not ok:
+        # Never copied up, or copied up by a version that did not keep records.
+        # Both mean there is nothing here to compare against.
+        if "not found" in output.lower() or "no such" in output.lower():
+            return {}, ""
+        return {}, output
+    try:
+        found = json.loads(output or "{}")
+    except ValueError:
+        return {}, ""
+    return (found if isinstance(found, dict) else {}), ""
+
+
+def _nothing(error):
+    """The shape `compare` answers with when there is nothing to say."""
+    return {"missing": 0, "differing": [], "roots": [], "here": 0, "there": 0,
+            "error": error}
+
+
+def compare(remote, source_id, seconds=BEFORE_PLAY_SECONDS):
+    """What one emulator has up there that this Deck does not. One request.
+
+    Returns a dict: `missing` (files up there and not here), `differing` (names
+    that this Deck and another device have both changed), `roots` (which save
+    roots exist up there, so the fetch that follows does not ask again), `here`
+    and `there` (when each side was last written, as unix seconds) and `error`.
+
+    **Nothing here reads a provider's metadata, and that is the point.** Dropbox
+    cannot set a modification time -- rclone re-uploads a file to stamp one, and
+    says so -- pCloud has the same limitation, S3 keeps it as metadata a copy
+    rewrites, and SFTP just works. Comparing those would mean a feature that
+    behaves differently on every service somebody might pick. The only numbers
+    compared are ones this plugin wrote: the record beside the saves says what
+    was uploaded and which Deck uploaded it, and the copy kept here says what
+    *this* Deck last put there. Every provider stores a JSON file the same way.
+
+    **The question is only ever "did something else write since we did?"** If
+    the record up there is the one this Deck wrote, nothing has, whatever the
+    files look like -- so a save played here and not yet uploaded is not a
+    conflict, it is the ordinary state of a save after playing. If the record is
+    somebody else's, then the files this Deck has also changed since its own
+    last upload are the ones worth asking about, and only those.
+    """
+    if not cloudsave.valid_name(remote):
+        return _nothing("That storage cannot be used.")
+    source = next(
+        (one for one in savedata._all_sources() if one["id"] == source_id), None)
+    if source is None or not _SEGMENT.match(source_id):
+        return _nothing("")
+
+    theirs, error = _remote_state(remote, source_id, seconds)
+    if error:
+        return _nothing(error)
+    if not theirs:
+        # Nothing up there, or up there from before records were kept. Either
+        # way there is nothing to compare and nothing to ask.
+        return _nothing("")
+
+    up_there = theirs.get("files") or {}
+    here_now = _local_files(source)
+    mine = read_mine(source_id)
+
+    # Whether the record up there is this Deck's own last upload. Compared on
+    # the whole record rather than a timestamp: two Decks writing in the same
+    # second is unlikely and a clock going backwards is not.
+    ours = bool(mine) and (
+        mine.get("device") == theirs.get("device")
+        and mine.get("at") == theirs.get("at"))
+
     missing = 0
     differing = []
-    # Which save roots actually exist up there, so the fetch that follows does
-    # not have to ask again. It is the same listing and the same answer, and
-    # asking twice put a second network round trip on the front of every launch
-    # -- measured on the device as the difference between a save arriving and a
-    # game starting without it.
-    present = set()
-    for entry in entries:
-        parts = (entry.get("Path") or "").split("/")
-        if len(parts) < 2:
+    roots = set()
+    for name, said in up_there.items():
+        root = name.split("/", 1)[0]
+        if not isinstance(said, dict):
             continue
-        root = landing.get(parts[0])
-        if not root:
-            continue
-        present.add(parts[0])
-        here = os.path.join(root, *parts[1:])
-        try:
-            found = os.stat(here)
-        except OSError:
+        roots.add(root)
+        if name not in here_now:
             missing += 1
             continue
-        try:
-            if int(entry.get("Size") or -1) != found.st_size:
-                differing.append(parts[-1])
-                continue
-        except (TypeError, ValueError):
-            pass
-        when = _when(entry.get("ModTime") or "")
-        if when and when > found.st_mtime + _NEWER_BY:
-            differing.append(parts[-1])
-    return missing, differing, sorted(present), ""
+        if ours:
+            # Our own upload. Whatever differs is what this Deck has done
+            # since, which is not a question for anybody.
+            continue
+        was = (mine.get("files") or {}).get(name)
+        size, mtime = here_now[name]
+        changed_here = was is None or (
+            was.get("size") != size or was.get("mtime") != mtime)
+        changed_there = said.get("size") != size or said.get("mtime") != mtime
+        if changed_here and changed_there:
+            differing.append(name.rsplit("/", 1)[-1])
 
-
-def _when(stamp):
-    """An RFC3339 time from rclone as unix seconds, or 0 if it is not one.
-
-    The arithmetic is here rather than `calendar.timegm` because `calendar` is
-    not on the list of stdlib modules proven to exist in decky's trimmed Python
-    -- and one that is not there is not a degraded feature, it is the backend
-    failing to import at all. `time.mktime` is the other obvious answer and is
-    wrong: it reads its input as local time, so every comparison would be out by
-    the Deck's offset, which is a bug that behaves perfectly in London and not
-    in Madrid.
-
-    So: days from the civil calendar, the standard shift-the-year-to-March form
-    that makes leap days fall at the end of the cycle.
-    """
-    found = re.match(
-        r"^(\d{4})-(\d\d)-(\d\d)[Tt ](\d\d):(\d\d):(\d\d)", (stamp or "").strip())
-    if not found:
-        return 0
-    year, month, day, hour, minute, second = (int(part) for part in found.groups())
-    if not 1 <= month <= 12 or not 1 <= day <= 31:
-        return 0
-    # rclone reports UTC, and an offset is not worth honouring against a margin
-    # of two minutes -- but a time that is not UTC is not silently taken as one
-    # either: anything with an offset on it is simply not compared.
-    if re.search(r"[+-]\d\d:?\d\d$", (stamp or "").strip()):
-        return 0
-    shifted = year - (1 if month <= 2 else 0)
-    era = (shifted if shifted >= 0 else shifted - 399) // 400
-    year_of_era = shifted - era * 400
-    day_of_year = (153 * (month + (-3 if month > 2 else 9)) + 2) // 5 + day - 1
-    day_of_era = year_of_era * 365 + year_of_era // 4 - year_of_era // 100 + day_of_year
-    days = era * 146097 + day_of_era - 719468
-    return days * 86400 + hour * 3600 + minute * 60 + second
+    return {
+        "missing": missing,
+        "differing": differing,
+        "roots": sorted(roots),
+        # What each side last wrote, by its own clock. Shown in the dialog and
+        # never compared with each other -- see the module docstring.
+        "here": int(mine.get("at") or 0),
+        "there": int(theirs.get("at") or 0),
+        "error": "",
+    }
 
 
 def pull_steps(remote, ids=None, replace=False, stamp="", known=None):

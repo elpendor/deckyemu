@@ -126,7 +126,7 @@ export function watchOne(appId: number, coreId: string): void {
     // Not awaited and quiet on failure: the game is over and the panel may not
     // even be open. The backend logs what happened and the Library row says
     // when saves last went up, which is where somebody looks for this.
-    void cloudBackupAfterPlay(coreId).catch((error) =>
+    void cloudBackupAfterPlay(coreId, appId).catch((error) =>
       logError("could not copy saves up after playing", error),
     );
   }, LOOK_MS);
@@ -186,19 +186,30 @@ export function watchPlaying(): () => void {
     },
   );
 
+  /*
+   * A save that differs on both sides, which is the one thing here nobody but
+   * the person can settle. The game is still held while this is up -- the
+   * backend keeps its heartbeat going until the answer comes back -- so this
+   * closes the "getting your saves" dialog first and asks in its place.
+   */
+  const conflicted = addEventListener<
+    [appId: number, names: string[], here: number, there: number]
+  >("cloud_conflict", (appId, names, here, there) => {
+    done();
+    if (!names?.length) return;
+    const game = addedGame(appId);
+    showCloudDiffer({
+      appId,
+      title: game?.title ?? "this game",
+      names,
+      here,
+      there,
+    });
+  });
+
   const finished = addEventListener<[appId: number, differing: string[]]>(
     "cloud_fetch_done",
-    (appId, differing) => {
-      done();
-      if (!differing?.length) return;
-      const game = addedGame(appId);
-      showCloudDiffer({
-        appId,
-        coreId: game?.core_id ?? "",
-        title: game?.title ?? "this game",
-        names: differing,
-      });
-    },
+    () => done(),
   );
 
   return () => {
@@ -206,5 +217,6 @@ export function watchPlaying(): () => void {
     done();
     removeEventListener("cloud_fetch_started", started);
     removeEventListener("cloud_fetch_done", finished);
+    removeEventListener("cloud_conflict", conflicted);
   };
 }

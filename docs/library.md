@@ -393,14 +393,27 @@ is gone, decky is reloading — the launcher gives up on its own and starts the
 game with the saves already on the Deck. A game that will not start is worse than
 a game with an old save.
 
-**One case does ask.** If a save exists both here and in your storage and the two
-are different, you get a dialog naming the files, with two answers: *Use the
-cloud copy* or *Keep this Deck's*. Neither loses anything — the replaced versions
-are kept, as always. It is a question rather than a decision because working out
-which copy is "newer" would mean trusting this Deck's clock against a storage
-provider's against whatever device wrote the other one, and none of those have
-been compared. Taking the cloud copy means starting the game again, since the
-emulator has already read what was on disk.
+**One case does ask, the way Steam asks it.** If a save exists both here and in
+your storage and the two are different, the game waits and you get a dialog with
+a date for each side — *This Deck: changed 2 hours ago* / *Cloud storage: changed
+20 minutes ago* — the files that differ, and three answers:
+
+| | |
+| --- | --- |
+| **Play with this Deck's** | Nothing is written. Your storage keeps its copy, and the next copy up replaces it — keeping what it replaced |
+| **Play with the cloud's** | The cloud copies come down first, and the game starts with them |
+| **Don't start** | The game does not launch at all, so you can go and look before deciding |
+
+Neither of the first two loses anything. It is a question rather than a decision
+because nothing here can tell which copy you want. And the plugin does not ask
+your storage provider what it thinks: a small record is written beside your
+saves each time they go up, and the only thing compared is whether that record
+is the one this Deck wrote. That works the same on every service — Dropbox and
+pCloud cannot even store a file's modification time without re-uploading it,
+which is exactly the kind of difference this avoids depending on.
+
+If nobody answers within about forty seconds the game starts with this Deck's
+saves, which writes nothing.
 
 ## Restoring from the cloud
 

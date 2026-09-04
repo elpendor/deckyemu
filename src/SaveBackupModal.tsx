@@ -180,7 +180,10 @@ export function SaveBackupModal({ closeModal }: Props) {
     setSending(true);
     setError("");
     setSent(null);
-    setCarrying({ name: "", percent: 0 });
+    // -1, not 0: rclone reports a percentage once a second and a small save
+    // is done before the first one, so a bar at zero reads as a copy that
+    // never started.
+    setCarrying({ name: "", percent: -1 });
     // Only starts it. How it went arrives on `cloud_sync_done` above, which is
     // also what puts the button back -- so there is no `finally` here: this
     // resolving means the copy began, not that it finished.

@@ -423,10 +423,12 @@ check("a reason too long for a dialog is cut rather than allowed to push the "
 
 section("the check on the front of a launch")
 
-# **This is the one that decides whether launching a game got slower.** One
-# listing for the emulator, not a comparison per save root: the first version
-# called `rclone check` once per root, which is two round trips before
-# RetroArch starts anything.
+# **Nothing here reads a provider's metadata, and that is the point.** Dropbox
+# cannot set a modification time -- rclone re-uploads a file to stamp one and
+# says so in the log -- pCloud has the same limitation, S3 keeps it as metadata
+# a copy rewrites, and SFTP just works. A comparison resting on those is a
+# feature that behaves differently on every service somebody might pick.
+import json as _json  # noqa: E402
 import tempfile as _tempfile  # noqa: E402
 
 _home = _tempfile.mkdtemp()
@@ -434,88 +436,138 @@ _saves = os.path.join(_home, "saves")
 os.makedirs(_saves, exist_ok=True)
 with open(os.path.join(_saves, "here.srm"), "wb") as _handle:
     _handle.write(b"x" * 128)
-_old = os.stat(os.path.join(_saves, "here.srm")).st_mtime
+_here = os.stat(os.path.join(_saves, "here.srm"))
 
 ONE = [{"id": "retroarch", "name": "RetroArch", "whole": False,
         "roots": [("saves", _saves)]}]
 
-_listing = (
-    '[{"Path":"saves/here.srm","Size":128,"ModTime":"2001-01-01T00:00:00Z"},'
-    ' {"Path":"saves/gone.srm","Size":64,"ModTime":"2001-01-01T00:00:00Z"}]'
-)
-fake = FakeRun(stdout=_listing)
-missing, differing, roots, error = with_run(
-    fake, lambda: cloudsync.compare("dropbox", "retroarch"), sources=ONE)
-check("one call for the whole emulator, however many save roots it has",
-      len(fake.calls), 1)
-check("a file only up there is missing here, and needs no permission to fetch",
-      (missing, error), (1, ""))
-# Handed back so the fetch that follows does not list the same folder again --
-# two round trips on the front of a launch is what made a game start without
-# its save, measured on the device.
-check("and it says which save roots exist up there, so nothing asks twice",
-      roots, ["saves"])
-check("and a file that matches is not reported as anything",
-      differing, [])
+# Where the records live, pointed at scratch so a real install is not read.
+cloudsync.STATE_DIR = os.path.join(_home, "state")
 
-# A memory card is 128KB whatever is written in it, so size alone would never
-# notice a save that had been played somewhere else.
-_newer = (
-    '[{"Path":"saves/here.srm","Size":128,"ModTime":"2099-01-01T00:00:00Z"}]'
-)
-fake = FakeRun(stdout=_newer)
-_, differing, _, _ = with_run(
-    fake, lambda: cloudsync.compare("dropbox", "retroarch"), sources=ONE)
-check("a copy up there that is meaningfully newer is worth asking about",
-      differing, ["here.srm"])
 
-_bigger = (
-    '[{"Path":"saves/here.srm","Size":999,"ModTime":"2001-01-01T00:00:00Z"}]'
-)
-fake = FakeRun(stdout=_bigger)
-_, differing, _, _ = with_run(
-    fake, lambda: cloudsync.compare("dropbox", "retroarch"), sources=ONE)
-check("so is one that is a different size, whatever the clocks say",
-      differing, ["here.srm"])
+def _record(device, at, files):
+    return {"device": device, "at": at, "files": files}
 
-# The failure this margin prevents: a file this Deck pushed comes back with a
-# time the storage provider stamped, which is never exactly the local one --
-# so every save would look like somebody else's newer copy.
-import time as _time  # noqa: E402
 
-_soon = _time.strftime("%Y-%m-%dT%H:%M:%SZ", _time.gmtime(_old + 30))
-fake = FakeRun(stdout='[{"Path":"saves/here.srm","Size":128,"ModTime":"%s"}]' % _soon)
-_, differing, _, _ = with_run(
-    fake, lambda: cloudsync.compare("dropbox", "retroarch"), sources=ONE)
-check("a few seconds of disagreement between two clocks is not a conflict",
-      differing, [])
+_as_uploaded = {"saves/here.srm": {"size": 128, "mtime": int(_here.st_mtime)}}
 
-check("the listing is asked for with a deadline, so a launch cannot hang on it",
+# 1. The storage holds this Deck's own last upload.
+cloudsync._keep_mine("retroarch", _record("deck-aaa", 1000, _as_uploaded))
+fake = FakeRun(stdout=_json.dumps(_record("deck-aaa", 1000, _as_uploaded)))
+found = with_run(fake, lambda: cloudsync.compare("dropbox", "retroarch"), sources=ONE)
+check("one request for the whole emulator, and it is the record, not a listing",
+      (len(fake.calls), "cat" in fake.calls[0]), (1, True))
+check("our own upload is never a question, whatever the files look like",
+      (found["missing"], found["differing"], found["error"]), (0, [], ""))
+check("and it says which save roots are up there, so the fetch does not ask again",
+      found["roots"], ["saves"])
+
+# 2. Our own upload, and this Deck has played since. **Still not a question**:
+# that is a save waiting to be uploaded, not a conflict. After a session with no
+# wifi it is every save somebody owns.
+_played = {"saves/here.srm": {"size": 200, "mtime": int(_here.st_mtime) - 900}}
+cloudsync._keep_mine("retroarch", _record("deck-aaa", 1000, _played))
+fake = FakeRun(stdout=_json.dumps(_record("deck-aaa", 1000, _played)))
+found = with_run(fake, lambda: cloudsync.compare("dropbox", "retroarch"), sources=ONE)
+check("a save this Deck has changed since its own upload is not a conflict",
+      found["differing"], [])
+
+# 3. Somebody else wrote, and this Deck has not touched the file since its own
+# upload. Nothing to ask: their copy is simply newer.
+_theirs = {"saves/here.srm": {"size": 999, "mtime": 5}}
+cloudsync._keep_mine("retroarch", _record("deck-aaa", 1000, _as_uploaded))
+fake = FakeRun(stdout=_json.dumps(_record("deck-bbb", 2000, _theirs)))
+found = with_run(fake, lambda: cloudsync.compare("dropbox", "retroarch"), sources=ONE)
+check("another device writing is not itself a conflict when this Deck has not "
+      "touched the file",
+      found["differing"], [])
+
+# 4. Both wrote. **This is the only question worth interrupting a launch for.**
+cloudsync._keep_mine("retroarch", _record("deck-aaa", 1000, _played))
+fake = FakeRun(stdout=_json.dumps(_record("deck-bbb", 2000, _theirs)))
+found = with_run(fake, lambda: cloudsync.compare("dropbox", "retroarch"), sources=ONE)
+check("two devices having changed the same save is the one thing that asks",
+      found["differing"], ["here.srm"])
+check("and each side's own time comes back, for the dialog to show",
+      (found["here"], found["there"]), (1000, 2000))
+
+# 5. A file up there that is not here at all. Exact, and it needs no permission.
+_extra = dict(_as_uploaded)
+_extra["saves/other.srm"] = {"size": 64, "mtime": 7}
+cloudsync._keep_mine("retroarch", _record("deck-aaa", 1000, _as_uploaded))
+fake = FakeRun(stdout=_json.dumps(_record("deck-aaa", 1000, _extra)))
+found = with_run(fake, lambda: cloudsync.compare("dropbox", "retroarch"), sources=ONE)
+check("a save only up there is missing here, and is fetched without asking",
+      (found["missing"], found["differing"]), (1, []))
+
+# 6. Nothing up there at all, or up there from before records were kept.
+fake = FakeRun(returncode=1, stderr="ERROR : directory not found")
+check("an emulator never copied up has nothing to compare and nothing to say",
+      with_run(fake, lambda: cloudsync.compare("dropbox", "retroarch"), sources=ONE),
+      {"missing": 0, "differing": [], "roots": [], "here": 0, "there": 0,
+       "error": ""})
+
+check("the record is asked for with a deadline, so a launch cannot hang on it",
       cloudsync.BEFORE_PLAY_SECONDS <= 10, True)
 
-fake = FakeRun(returncode=1, stderr="ERROR : directory not found")
-check("an emulator never copied up has nothing to fetch and nothing to say",
-      with_run(fake, lambda: cloudsync.compare("dropbox", "retroarch"), sources=ONE),
-      (0, [], [], ""))
+section("a game closing is not evidence that anything was written")
 
-check("a time rclone did not write is not a time",
-      (cloudsync._when(""), cloudsync._when("nonsense"),
-       cloudsync._when("2026-13-01T00:00:00Z")),
-      (0, 0, 0))
+# **Steam counts an app as running while its launcher is still deciding.** A
+# launch the two-games gate refused, one somebody declined at the save conflict,
+# and a game that failed to start all look exactly like a session that ended --
+# and every one of them was uploading. In the conflict case the upload rewrote
+# the record beside the saves, which quietly did the thing the dialog had just
+# been used to decline.
+cloudsync._keep_mine("retroarch", _record("deck-aaa", 1000, _as_uploaded))
+check("a session that wrote nothing sends nothing",
+      with_run(FakeRun(), lambda: cloudsync.changed_since_push("retroarch"),
+               sources=ONE),
+      False)
 
-# The arithmetic is written out rather than handed to `calendar`, which is not
-# on the list of modules proven to exist in decky's trimmed Python -- and
-# `time.mktime` reads its input as local time, which is a bug that behaves
-# perfectly in London and not in Madrid. So it is checked against the answer.
-_dates = [
-    ("1970-01-01T00:00:00Z", 0),
-    ("2000-02-29T12:00:00Z", 951825600),
-    ("2024-12-31T23:59:59Z", 1735689599),
-    ("2026-09-03T16:24:05.123456789Z", 1788452645),
-]
-check("every date it reads is the date it is",
-      [cloudsync._when(text) for text, _ in _dates], [when for _, when in _dates])
-check("and a time that is not UTC is not quietly taken as one",
-      cloudsync._when("2026-09-03T16:24:05+02:00"), 0)
+_edited = {"saves/here.srm": {"size": 5, "mtime": 1}}
+cloudsync._keep_mine("retroarch", _record("deck-aaa", 1000, _edited))
+check("a save that changed does send",
+      with_run(FakeRun(), lambda: cloudsync.changed_since_push("retroarch"),
+               sources=ONE),
+      True)
+
+_gone = dict(_as_uploaded)
+_gone["saves/vanished.srm"] = {"size": 1, "mtime": 1}
+cloudsync._keep_mine("retroarch", _record("deck-aaa", 1000, _gone))
+check("and so does a save that is no longer here, since the record must follow",
+      with_run(FakeRun(), lambda: cloudsync.changed_since_push("retroarch"),
+               sources=ONE),
+      True)
+
+_real = cloudsync.read_mine
+cloudsync.read_mine = lambda _id: {}
+try:
+    check("with nothing ever uploaded, everything is new",
+          with_run(FakeRun(), lambda: cloudsync.changed_since_push("retroarch"),
+                   sources=ONE),
+          True)
+finally:
+    cloudsync.read_mine = _real
+
+section("what a copy up leaves behind")
+
+fake = FakeRun()
+ok, error = with_run(
+    fake, lambda: cloudsync.record_push("dropbox", "retroarch"), sources=ONE)
+check("it writes the record beside the saves", (ok, error), (True, ""))
+check("and puts it where the next launch looks for it",
+      fake.calls[-1][-1], "dropbox:DeckyEmu/saves/retroarch/.deckyemu-state.json")
+
+_mine = cloudsync.read_mine("retroarch")
+check("the same record is kept here, which is what makes the comparison work",
+      (_mine["files"], bool(_mine["device"])), (_as_uploaded, True))
+
+# Byte-identical on both sides, because `compare` decides "is this our own
+# upload?" by comparing them. A freshly written one would look like a third
+# device.
+fake = FakeRun(stdout=_json.dumps(_record("deck-bbb", 2000, _theirs)))
+with_run(fake, lambda: cloudsync.adopt_state("dropbox", "retroarch"), sources=ONE)
+check("taking the storage's copy adopts its record rather than writing a new one",
+      cloudsync.read_mine("retroarch"), _record("deck-bbb", 2000, _theirs))
 
 summary()

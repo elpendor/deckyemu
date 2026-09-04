@@ -359,6 +359,18 @@ class Transfers(plugin_base.PluginContext):
                 "cloud_sync_progress", step["name"], int((index + 1) * 100 / total))
         return True, ""
 
+    async def _record_pushes(self, remote, steps):
+        """Write the record for every emulator a copy just covered.
+
+        One per emulator rather than one per save root: the record is what a
+        launch reads, and a launch asks about an emulator.
+        """
+        for source_id in sorted({step["id"] for step in steps}):
+            ok, error = await self._run(cloudsync.record_push, remote, source_id)
+            if not ok and error:
+                decky.logger.warning(
+                    "Could not record what went up for %s: %s", source_id, error)
+
     async def _carry_saves(self, steps, done_event, tidy=""):
         """The detached half: run the steps and say how it went, once.
 
@@ -373,6 +385,8 @@ class Transfers(plugin_base.PluginContext):
                 names.append(step["name"])
         try:
             ok, reason = await self._stream_cloud(steps)
+            if ok and tidy:
+                await self._record_pushes(tidy, steps)
             await decky.emit(done_event, ok, reason, names if ok else [])
             if ok and tidy:
                 await self._run(cloudsync.prune, tidy)
@@ -411,6 +425,20 @@ class Transfers(plugin_base.PluginContext):
     #: started again on every quarter-second look.
     _fetching: set = set()
 
+    #: A launch waiting on a person to settle a save conflict, by app id. The
+    #: value is what they chose, once they have.
+    _asked: dict = {}
+
+    #: How long a conflict dialog holds a game before deciding for itself.
+    #:
+    #: It decides the safe way -- keep what is on this Deck -- because that
+    #: overwrites nothing and the storage keeps what it had. The game is a
+    #: stopped process while this runs, costing nothing, so the number is about
+    #: a dialog nobody is in front of rather than about the game: under the
+    #: launcher's own watchdog, so the answer is this rather than the script
+    #: waking itself.
+    _ASK_SECONDS = 30
+
     def _note_cloud_state(self):
         """Tell the launcher whether waiting for saves is worth it.
 
@@ -437,7 +465,7 @@ class Transfers(plugin_base.PluginContext):
             return emulators.emulator_id(core_id)
         return "retroarch"
 
-    async def cloud_backup_after_play(self, core_id: str):
+    async def cloud_backup_after_play(self, core_id: str, app_id: int = 0):
         """Copy one emulator's saves up, after a game using it has closed.
 
         **Not run from the launcher.** Steam's reaper waits for every descendant
@@ -456,6 +484,14 @@ class Transfers(plugin_base.PluginContext):
         turns off, and the thing it would be announcing is that nothing went
         wrong.
         """
+        # **Did this launch reach the emulator at all?** Steam counts an app as
+        # running from the moment the script starts, so a launch the two-games
+        # gate refused and one declined at the save conflict both end like a
+        # session. The launcher says which it was -- see `launchers.took_off`.
+        if app_id and not await self._run(launchers.took_off, app_id):
+            decky.logger.info("Launch %s never started; nothing copied up", app_id)
+            return {"ok": True, "skipped": "never started"}
+
         settings = await self._run(store.get_settings)
         if not settings.get("cloud_saves") or not settings.get("cloud_after_play"):
             return {"ok": True, "skipped": "off"}
@@ -466,6 +502,15 @@ class Transfers(plugin_base.PluginContext):
             return {"ok": True, "skipped": "no rclone"}
 
         source = self._source_of(core_id)
+
+        # Nothing was written, so there is nothing to send -- and sending
+        # anyway is not merely wasteful: it rewrites the record beside the
+        # saves, which is how "Don't start" at a save conflict ended up doing
+        # the thing it was pressed to avoid. See `changed_since_push`.
+        if not await self._run(cloudsync.changed_since_push, source):
+            decky.logger.info("Nothing changed for %s; nothing copied up", source)
+            return {"ok": True, "skipped": "nothing changed"}
+
         steps, error = await self._run(cloudsync.push_steps, remote, [source])
         if error:
             # Ordinary, not a failure: an emulator with no save directory yet
@@ -479,6 +524,10 @@ class Transfers(plugin_base.PluginContext):
             decky.logger.warning("Could not copy %s up after play: %s", source, reason)
             return {"ok": False, "error": reason}
 
+        # The record of what just went up, beside the saves and here. Without it
+        # the next launch has nothing to compare and treats the storage as
+        # untouched -- see `cloudsync.compare`.
+        await self._run(cloudsync.record_push, remote, source)
         await self._run(store.set_settings, {"cloud_last_sync": int(time.time())})
         await self._run(cloudsync.prune, remote)
         decky.logger.info("Copied %s up after play", source)
@@ -501,17 +550,20 @@ class Transfers(plugin_base.PluginContext):
         settings = await self._run(store.get_settings)
         remote = (settings.get("cloud_remote") or "").rstrip(":")
         if not settings.get("cloud_saves") or not remote:
-            await self._run(launchers.release_from_cloud, app_id)
+            await self._run(launchers.wake_launch, app_id)
             return {"ok": True, "differing": [], "restored": 0}
         if not await self._run(cloudsave.binary):
-            await self._run(launchers.release_from_cloud, app_id)
+            await self._run(launchers.wake_launch, app_id)
             return {"ok": True, "differing": [], "restored": 0}
 
         source = self._source_of(core_id)
-        beating = self.loop.create_task(self._say_still_fetching(app_id))
         try:
-            missing, differing, roots, error = await self._run(
-                cloudsync.compare, remote, source)
+            found = await self._run(cloudsync.compare, remote, source)
+            missing = found["missing"]
+            differing = found["differing"]
+            roots = found["roots"]
+            here_at, there_at = found["here"], found["there"]
+            error = found["error"]
             if error:
                 # A storage that cannot be reached is not a reason to stop
                 # somebody playing. The saves on the Deck are the ones that get
@@ -520,6 +572,34 @@ class Transfers(plugin_base.PluginContext):
                 return {"ok": True, "differing": [], "restored": 0}
 
             restored = 0
+            if differing:
+                # **The game waits while the question is on screen**, which is
+                # what Steam's own cloud conflict does and the reason the
+                # heartbeat above exists. Answering is what releases it.
+                await decky.emit(
+                    "cloud_conflict", app_id, differing, here_at, there_at)
+                chosen = await self._wait_for_answer(app_id)
+                if chosen == "stop":
+                    # Ends the stopped process rather than leaving a note for it
+                    # to find. A note written a moment too late used to refuse
+                    # the *next* launch instead of this one.
+                    await self._run(launchers.refuse_launch, app_id)
+                    return {"ok": True, "differing": differing, "restored": 0,
+                            "stopped": True}
+                if chosen == "cloud":
+                    steps, plan_error = await self._run(
+                        cloudsync.pull_steps, remote, [source], True)
+                    if not plan_error:
+                        await self._stream_cloud(steps)
+                    # This Deck now holds what the storage holds, so the record
+                    # of "what we last put there" is theirs. Without this the
+                    # next launch would ask the same question again.
+                    await self._run(cloudsync.adopt_state, remote, source)
+                    return {"ok": True, "differing": [], "restored": len(differing)}
+                # Keeping this Deck's: nothing is written, and the next copy up
+                # puts them in the storage -- where what they replace is kept.
+                return {"ok": True, "differing": [], "restored": 0}
+
             if missing:
                 # The pairs `compare` already found, rather than a second
                 # listing of the same folder: two round trips on the front of a
@@ -538,11 +618,11 @@ class Transfers(plugin_base.PluginContext):
                             "Could not bring %s down before play: %s", source, reason)
             return {"ok": True, "differing": differing, "restored": restored}
         finally:
-            # Every way out, including a throw. A launch held by a check that
-            # died is a game that does not start, which is worse than every
-            # problem this method exists to prevent.
-            beating.cancel()
-            await self._run(launchers.release_from_cloud, app_id)
+            # Every way out, including a throw. A launch left stopped by a check
+            # that died is a game that never starts, which is worse than every
+            # problem this method exists to prevent. Harmless after a refusal:
+            # the process is gone and `wake_launch` checks before it signals.
+            await self._run(launchers.wake_launch, app_id)
 
     #: How often to look for a launcher that is waiting.
     #:
@@ -573,6 +653,13 @@ class Transfers(plugin_base.PluginContext):
                 for app_id in waiting:
                     if app_id in self._fetching:
                         continue
+                    # A file whose process has gone is not a launch waiting for
+                    # anything. Left alone it would be answered on every look --
+                    # the same conflict dialog over and over, for a game that is
+                    # not going to start.
+                    if await self._run(launchers.gone, app_id):
+                        await self._run(launchers.forget_launch, app_id)
+                        continue
                     self._fetching.add(app_id)
                     self._detach(
                         self._answer_launch(app_id), "cloud_fetch_done", app_id, [])
@@ -599,26 +686,40 @@ class Transfers(plugin_base.PluginContext):
             # Whatever happened, the launch goes and the id is free to be seen
             # again. `cloud_before_play` releases too; this is the path where it
             # was never reached.
-            await self._run(launchers.release_from_cloud, app_id)
+            await self._run(launchers.wake_launch, app_id)
             self._fetching.discard(app_id)
 
-    async def _say_still_fetching(self, app_id):
-        """Tell a waiting launcher this is still going, once a second.
+    async def _wait_for_answer(self, app_id):
+        """Hold until somebody settles a save conflict, or decide for them.
 
-        The launcher waits on this rather than on a fixed ceiling, because
-        "the backend is gone" and "the fetch is slow" are different questions
-        and one number cannot answer both -- a ceiling short enough to survive
-        decky reloading is shorter than three round trips on hotel wifi.
-        Measured on the device at 8.2 seconds against a ceiling of 8.
+        Nothing has to be told this is still going: the launch is a stopped
+        process and stays stopped until it is woken, so a dialog somebody is
+        reading costs exactly nothing.
         """
-        beat = 0
-        try:
-            while True:
-                beat += 1
-                await self._run(launchers.still_fetching, app_id, beat)
-                await asyncio.sleep(1)
-        except asyncio.CancelledError:
-            raise
+        self._asked[app_id] = ""
+        waited = 0.0
+        while waited < self._ASK_SECONDS:
+            await asyncio.sleep(0.2)
+            waited += 0.2
+            if self._asked.get(app_id):
+                return self._asked.pop(app_id)
+        self._asked.pop(app_id, None)
+        # Nobody there. Keep what is on the Deck, which writes nothing and
+        # loses nothing -- the storage still holds its copy.
+        decky.logger.info("Save conflict for %s went unanswered; kept the Deck's",
+                          app_id)
+        return "deck"
+
+    async def cloud_answer_conflict(self, app_id: int, choice: str):
+        """What somebody chose in the save conflict dialog.
+
+        "cloud" takes the storage's copies, "deck" keeps what is here, "stop"
+        does not start the game at all.
+        """
+        if choice not in ("cloud", "deck", "stop"):
+            return {"ok": False, "error": "That is not an answer."}
+        self._asked[app_id] = choice
+        return {"ok": True}
 
     async def cloud_release_launch(self, app_id: int):
         """Let a held launch go now, whatever the fetch is doing.
@@ -628,30 +729,8 @@ class Transfers(plugin_base.PluginContext):
         lands after the emulator has read it is one the restore screen can put
         back. A game that will not start is the failure none of this is worth.
         """
-        await self._run(launchers.release_from_cloud, app_id)
+        await self._run(launchers.wake_launch, app_id)
         return {"ok": True}
-
-    async def cloud_take_theirs(self, app_id: int, core_id: str, names):
-        """Replace this Deck's copies of `names` with the storage's.
-
-        The answer to the question `cloud_before_play` asks, when it is
-        answered that way. Whole roots rather than the named files: rclone
-        copies directories, the named files are what the dialog listed, and the
-        alternative is a call per file.
-        """
-        settings = await self._run(store.get_settings)
-        remote = (settings.get("cloud_remote") or "").rstrip(":")
-        if not remote:
-            return {"ok": False, "error": "No cloud storage is set up."}
-        source = self._source_of(core_id)
-        steps, error = await self._run(
-            cloudsync.pull_steps, remote, [source], True)
-        if error:
-            return {"ok": False, "error": error}
-        ok, reason = await self._stream_cloud(steps)
-        decky.logger.info(
-            "Took the storage's copy of %d file(s) for %s", len(names or []), source)
-        return {"ok": ok, "error": "" if ok else reason}
 
     async def cloud_contents(self, name: str, stamp: str = ""):
         """What one storage holds, per emulator, in the restore screen's shape.

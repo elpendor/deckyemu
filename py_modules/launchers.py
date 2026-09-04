@@ -183,7 +183,22 @@ LAUNCH_GATE_DIR = os.path.join(decky.DECKY_PLUGIN_RUNTIME_DIR, "launch")
 #      seconds and the fetch answered at 8.2 -- three network round trips,
 #      measured on the device. The backend now says it is still working and
 #      this waits while it keeps saying so.
-FORMAT_VERSION = 25
+#  26  and a save conflict can answer "do not start", which is the third thing
+#      Steam's own cloud dialog offers and the only one that needed the script.
+#  27  the wait writes what it did to `lastwait.log`. The gate runs before the
+#      launch log is opened, so a launch that went wrong left nothing to read.
+#      It also clears its own leftovers before waiting, so a stop written after
+#      a launcher had gone cannot refuse the launch after it.
+#  28  and it says when a launch actually reached the emulator. Without that,
+#      a launch stopped at the save conflict still uploaded afterwards -- which
+#      overwrote the very saves the person had declined to overwrite.
+#  29  the wait is a stopped process rather than a conversation over files.
+#      Every timing bug 22-27 fixed was in that conversation; a stopped process
+#      has no timing. See `_CLOUD_GATE`.
+#  30  and refusing a launch wakes it to exit rather than killing it. Steam is
+#      waiting on that process: killed, the loading screen stayed up and the
+#      launch never finished.
+FORMAT_VERSION = 30
 
 # One file per OSD mode rather than one shared file. Games can override the
 # global setting individually, and a single file would mean the last game
@@ -789,30 +804,18 @@ fi
 """
 
 
-#: How long a launch waits with nothing happening, in seconds.
+#: The most a launch will wait to be woken, in seconds.
 #:
-#: **This is the timeout for a backend that is not there**, not for a fetch that
-#: is taking a while -- those are different questions and answering them with
-#: one number is what made the third version of this fail. A fixed ceiling has
-#: to be short enough that a Deck with decky reloading still starts its games,
-#: and long enough to cover three network round trips on hotel wifi, and there
-#: is no number that is both. Measured on the device: the fetch answered at 8.2
-#: seconds against a ceiling of 8, and the game had already gone.
+#: **A watchdog, not a schedule.** Nothing waits this long in practice: the
+#: plugin resumes the launch the moment it is done, and a stopped process costs
+#: nothing while it waits. This is only what happens when nothing answers at
+#: all -- decky reloading, the plugin removed -- and it is generous because the
+#: cost of it being generous is zero unless that has happened.
 #:
-#: So the backend says it is working, once a second, and this is only how long
-#: to wait after it stops saying anything. Nothing there at all costs a launch
-#: this much and no more.
-CLOUD_QUIET_SECONDS = 3
-
-#: The most a launch will ever wait, however busy the backend claims to be.
-#:
-#: A backend that hangs mid-fetch while its heartbeat keeps ticking would
-#: otherwise hold a game forever, and there is no save worth that.
-CLOUD_MAX_SECONDS = 60
-
-#: A step small enough that the usual case is not rounded up to a whole second.
-#: `sleep` is coreutils on any SteamOS, and takes fractions.
-CLOUD_STEP = "0.2"
+#: The version before this had *two* numbers here, a quiet timeout and a cap,
+#: because polling could not tell "gone" from "slow". Stopping can: a process is
+#: woken or it is not.
+CLOUD_MAX_SECONDS = 45
 
 #: Written while cloud saves have somewhere to go, and removed when they do not.
 #:
@@ -835,42 +838,99 @@ CLOUD_ON_FILE = "cloud-on"
 #: with cloud saves off, a plugin that is not loaded, or a game the panel does
 #: not recognise all reach the emulator with nothing added to the launch at all.
 _CLOUD_GATE = r"""# Saves coming down before the game opens them. See launchers.py.
-# **This script announces itself; nothing has to notice the launch in time.**
-# Two versions of this waited for the panel to claim the launch first, and both
-# lost the same race: Steam tells the panel a launch has started at about the
-# moment this runs, and the round trip through decky is slower than a shell
-# reaching its next line. Writing the file here cannot lose that race, because
-# there is no longer one to lose -- this is the first thing that happens, and
-# whatever answers has as long as it needs, up to the ceiling.
+# **This script stops itself and waits to be woken.** Three versions negotiated
+# with the plugin over files -- announce, heartbeat, poll, give up after a
+# ceiling -- and each one had a timing bug of its own: two lost a race with
+# Steam, one gave up 0.2s before the answer arrived, and one left a stop note
+# that refused the *next* launch. None of that exists here. A stopped process
+# waits exactly as long as it is left stopped, at no cost, and the plugin says
+# when by resuming it. Both decky cloud-save plugins reach the same conclusion
+# from the other end, suspending the game once it has started; stopping before
+# the emulator runs is the same idea without the window where it could already
+# have read a save.
 if [ -n "$_dke_self" ] && [ -f "$_dke_gate/{onfile}" ]; then
   mkdir -p "$_dke_gate" 2>/dev/null
-  printf '%s' "$_dke_self" > "$_dke_gate/launching-$_dke_self" 2>/dev/null
-  # Two limits, because "the backend is gone" and "the fetch is slow" are
-  # different questions. `_dke_quiet` counts down while nothing is heard and is
-  # reset by every heartbeat; `_dke_cap` is the outside limit whatever happens.
-  _dke_quiet={quiet}
-  _dke_cap={cap}
-  _dke_beat=""
-  while [ ! -f "$_dke_gate/cloudready-$_dke_self" ]; do
-    _dke_now=$(cat "$_dke_gate/cloudbusy-$_dke_self" 2>/dev/null)
-    if [ -n "$_dke_now" ] && [ "$_dke_now" != "$_dke_beat" ]; then
-      # Still working. Reading a changed counter is how this knows, rather than
-      # comparing timestamps, which /bin/sh cannot do without another process.
-      _dke_beat="$_dke_now"
-      _dke_quiet={quiet}
-    fi
-    _dke_quiet=$((_dke_quiet - 1))
-    _dke_cap=$((_dke_cap - 1))
-    # Nothing is coming, or it is taking longer than any save is worth. Start
-    # the game -- see CLOUD_QUIET_SECONDS.
-    [ "$_dke_quiet" -le 0 ] && break
-    [ "$_dke_cap" -le 0 ] && break
-    sleep {step}
-  done
-  rm -f "$_dke_gate/launching-$_dke_self" "$_dke_gate/cloudready-$_dke_self" \
-        "$_dke_gate/cloudbusy-$_dke_self"
+  _dke_me=$$
+  # What this wait did, overwritten each launch. The gate runs before the launch
+  # log is opened, so without this a launch that went wrong leaves nothing to
+  # read -- which cost three rounds of guessing.
+  _dke_trace="$_dke_gate/lastwait.log"
+  echo "$(date +%H:%M:%S.%N) waiting as $_dke_me" > "$_dke_trace" 2>/dev/null
+  # The pid is the whole protocol: whoever finds this file can wake this launch
+  # or end it, and needs nothing else from it.
+  printf '%s
+%s' "$_dke_me" "$0" > "$_dke_gate/launching-$_dke_self" 2>/dev/null
+  # Nobody there -- decky reloading, the plugin gone -- and the game still
+  # starts, this late rather than never.
+  #
+  # **`setsid`, and its output thrown away, both for the same reason.** Steam's
+  # reaper waits for every descendant, and anything holding this script's
+  # stdout keeps whoever reads it waiting too: an ordinary `( sleep ) &` left a
+  # `sleep` behind that outlived the game and held the library tile on
+  # "Running". A new session is not a descendant, and a watchdog writing to
+  # /dev/null holds nothing. Measured: the launch returns in 1.0s against 45s
+  # of watchdog still to run.
+  setsid sh -c "sleep {cap}; kill -CONT $_dke_me 2>/dev/null" >/dev/null 2>&1 &
+  _dke_net=$!
+  kill -STOP "$_dke_me"
+  # Best effort, and nothing depends on it: the watchdog is in its own session
+  # and ends by itself, so the worst this misses is one sleeping process that
+  # nothing is waiting for.
+  kill -- -"$_dke_net" 2>/dev/null || kill "$_dke_net" 2>/dev/null
+  rm -f "$_dke_gate/launching-$_dke_self"
+  # Told not to start. **Read only after being woken, which is why there is no
+  # race left**: this process was stopped while whoever wrote it was writing,
+  # so it cannot have looked too early. An earlier version raced for exactly
+  # that reason and refused the *next* launch instead of this one.
+  #
+  # And it is an `exit 0`, not a kill from outside. Steam is waiting on this
+  # process: a clean exit is the same thing the two-games gate does and returns
+  # to the library, where a SIGKILL left the loading screen up and the launch
+  # unfinished.
+  if [ -f "$_dke_gate/cloudstop-$_dke_self" ]; then
+    rm -f "$_dke_gate/cloudstop-$_dke_self"
+    echo "$(date +%H:%M:%S.%N) told not to start" >> "$_dke_trace" 2>/dev/null
+    exit 0
+  fi
+  echo "$(date +%H:%M:%S.%N) resumed" >> "$_dke_trace" 2>/dev/null
 fi
 """
+
+
+#: Written by the launcher at the last moment before the emulator runs.
+#:
+#: **Because "a game closed" is not "a game was played".** Steam counts an app
+#: as running from the moment it starts the script, so a launch the two-games
+#: gate refused, one declined at the save conflict, and one the preflight
+#: stopped all end exactly like a session -- and every one of them was
+#: uploading afterwards. In the conflict case that upload overwrote the other
+#: device's saves and rewrote the record, which is the thing the person had
+#: just declined; after two or three goes there was nothing left to decline.
+#:
+#: Only the script can answer this, because only the script knows whether it
+#: reached the emulator. It is the line before it does.
+RAN_MARKER = r"""# Past every gate: what happens after this is the game itself.
+[ -n "$_dke_self" ] && printf 1 > '{gate}/ran-'"$_dke_self" 2>/dev/null
+"""
+
+
+def ran_marker():
+    """The line that records that a launch got as far as the emulator."""
+    return RAN_MARKER.replace("{gate}", LAUNCH_GATE_DIR)
+
+
+def took_off(app_id):
+    """Whether that launch reached the emulator, consuming the answer.
+
+    Consumed like a bounce note and for the same reason: read once, so a
+    session that has been accounted for cannot be counted again by the next
+    thing that asks.
+    """
+    try:
+        os.remove(_gate_file("ran", app_id))
+        return True
+    except OSError:
+        return False
 
 
 def launch_gate():
@@ -882,13 +942,10 @@ def launch_gate():
     """
     # Both waits count in steps rather than seconds, so the numbers written
     # into the script are the seconds divided by the step.
-    steps = lambda seconds: str(int(round(seconds / float(CLOUD_STEP))))
     return (_LAUNCH_GATE.replace("{gate}", LAUNCH_GATE_DIR)
             + _CLOUD_GATE
             .replace("{onfile}", CLOUD_ON_FILE)
-            .replace("{quiet}", steps(CLOUD_QUIET_SECONDS))
-            .replace("{cap}", steps(CLOUD_MAX_SECONDS))
-            .replace("{step}", CLOUD_STEP))
+            .replace("{cap}", str(CLOUD_MAX_SECONDS)))
 
 
 def _gate_file(kind, app_id):
@@ -1150,33 +1207,122 @@ def launches_waiting():
     return found
 
 
-def still_fetching(app_id, beat):
-    """Say the fetch for `app_id` is still going. `beat` must change each time.
+#: The one signal a stopped launch understands, by number.
+#:
+#: Not `signal.SIGCONT`, because `signal` is not on the
+#: list of stdlib modules proven to exist in decky's trimmed Python -- and one
+#: that is not there is not a degraded feature, it is the backend failing to
+#: import. The numbers are fixed by Linux on every architecture this runs on,
+#: and `os.kill` takes an int.
+_SIGCONT = 18
 
-    The launcher waits on this rather than on a clock: it cannot compare file
-    timestamps without spawning something, but it can notice that a number
-    changed. See `_CLOUD_GATE`.
+
+def _waiting(app_id):
+    """The stopped launch for `app_id` as (pid, script), or (0, "").
+
+    Read back rather than remembered, because the thing that wrote it is a
+    shell script and the thing that reads it may have been restarted since.
     """
     try:
-        os.makedirs(LAUNCH_GATE_DIR, exist_ok=True)
-        with open(_gate_file("cloudbusy", app_id), "w", encoding="utf-8") as handle:
-            handle.write(str(beat))
+        with open(_gate_file("launching", app_id), encoding="utf-8") as handle:
+            lines = handle.read().splitlines()
     except OSError:
-        # The launch gives up a few seconds later and starts the game, which is
-        # the same thing that happens with no plugin at all.
+        return 0, ""
+    if not lines or not lines[0].strip().isdigit():
+        return 0, ""
+    return int(lines[0].strip()), (lines[1].strip() if len(lines) > 1 else "")
+
+
+def _is_ours(pid, script):
+    """Whether `pid` is still the launcher that wrote the file it came from.
+
+    **The one check that matters here.** A pid comes out of a file, and the two
+    things done with it are resuming and killing -- one of which is harmless
+    and one of which is not. A file left behind by a launch whose process has
+    since gone names a number the system is free to give to something else, and
+    this plugin has no business signalling that.
+
+    Checked against the script the file names rather than against the launcher
+    directory: same guarantee, and it does not quietly stop being true for a
+    launcher run from anywhere else -- which is how the suite runs it.
+    """
+    if not pid or not script:
+        return False
+    try:
+        with open("/proc/%d/cmdline" % pid, "rb") as handle:
+            argv = handle.read().decode("utf-8", "replace")
+    except OSError:
+        return False
+    return script in argv
+
+
+def wake_launch(app_id):
+    """Let a stopped launch carry on. Safe to call when nothing is stopped."""
+    pid, script = _waiting(app_id)
+    if not _is_ours(pid, script):
+        return
+    try:
+        os.kill(pid, _SIGCONT)
+    except OSError as error:
+        # The watchdog in the script resumes it anyway; this only makes it
+        # prompt.
+        decky.logger.warning("Could not wake launch %s: %s", app_id, error)
+
+
+def forget_launch(app_id):
+    """Remove the file a stopped launch left, whatever became of the process.
+
+    A launch that is woken clears its own file on the way past. A launch that
+    is *killed* never gets there, and a file nothing clears is a launch the
+    backend answers again on its next look -- which is the same conflict dialog,
+    over and over, for a game that is not going to start.
+    """
+    try:
+        os.remove(_gate_file("launching", app_id))
+    except OSError:
         pass
 
 
-def release_from_cloud(app_id):
-    """Let a held launch go. Safe to call when nothing is holding."""
+def gone(app_id):
+    """Whether the launch that wrote this file is no longer there.
+
+    A file whose process has died -- killed, crashed, or the Deck suspended
+    through it -- is not a launch waiting for anything, and answering it is
+    work done at nobody.
+    """
+    pid, script = _waiting(app_id)
+    return not _is_ours(pid, script)
+
+
+def refuse_launch(app_id):
+    """End a stopped launch without starting the game.
+
+    For the one answer a save conflict has that neither copy settles. The
+    process is stopped and has not reached the emulator, so ending it here
+    costs nothing and starting cannot be undone.
+
+    **Asked to exit, not killed.** Steam is waiting on that process, and a
+    SIGKILL leaves it waiting -- the loading screen stays up and the launch
+    never finishes. A note plus a wake-up gets a clean `exit 0`, which is what
+    the two-games gate has always done and what Steam handles.
+
+    The note cannot be read too early, which is the whole reason this shape
+    works now: the process is stopped while it is being written.
+    """
+    pid, script = _waiting(app_id)
+    if not _is_ours(pid, script):
+        forget_launch(app_id)
+        return False
     try:
         os.makedirs(LAUNCH_GATE_DIR, exist_ok=True)
-        with open(_gate_file("cloudready", app_id), "w", encoding="utf-8") as handle:
+        with open(_gate_file("cloudstop", app_id), "w", encoding="utf-8") as handle:
             handle.write("1")
+        os.kill(pid, _SIGCONT)
+        return True
     except OSError as error:
-        # The launcher gives up on its own after CLOUD_WAIT_SECONDS, so the
-        # worst this costs is that wait.
-        decky.logger.warning("Could not release %s: %s", app_id, error)
+        decky.logger.warning("Could not refuse launch %s: %s", app_id, error)
+        forget_launch(app_id)
+        return False
 
 
 def approve_launch(app_id):
@@ -1268,6 +1414,7 @@ def write_launcher(
             launch_gate(),
             preflight(rom_path, emulator, install, core_path, title_id),
             log_capture(path),
+            ran_marker(),
         ]
         + run
         + [""]
