@@ -162,7 +162,12 @@ _STYLE = """
   li.waiting .size { color: var(--warn); font-weight: 600; }
   li.waiting .bar i { opacity: .55; }
   form { display: flex; flex-direction: column; gap: 12px; }
-  input[type=text] { font-size: 30px; width: 100%; padding: 12px;
+  /* The six digits, and only those. Written for the code page and left as
+     `input[type=text]`, it reached every text box on every page this stylesheet
+     serves -- so the cloud form's address and username came out 30px, centred
+     and letter-spaced like a PIN, beside a password field that had escaped it
+     for being `type=password`. A rule about one input is named after it. */
+  input[name=code] { font-size: 30px; width: 100%; padding: 12px;
                      text-align: center; letter-spacing: .28em;
                      border-radius: 10px; border: 1px solid var(--line);
                      background: var(--card); color: inherit; }
@@ -693,8 +698,8 @@ def cloud_page(backends, logins, token):
     a phone in the first place. So it is the same server, the same QR code and
     the same six digits, showing a different errand.
 
-    **Two kinds of storage, one page.** Some are a form -- a Nextcloud, an SFTP
-    box, an S3 bucket -- and some are a login. The second sort send their answer
+    **Two kinds of storage, one page.** Some are a form -- a WebDAV server, an
+    SFTP box, an S3 bucket -- and some are a login. The second sort send their answer
     to `localhost`, which from this page is the phone rather than the Deck, so
     the browser lands on a page that will not load. That page still has the code
     in its address, and the Deck can make the request rclone is waiting for, so
@@ -713,11 +718,13 @@ def cloud_page(backends, logins, token):
         '<div class="fields" data-kind="%s" hidden>%s</div>' % (
             html.escape(kind),
             "".join(
-                '<label>%s<input name="%s" type="%s" autocomplete="off" '
-                'autocapitalize="off" spellcheck="false"></label>' % (
+                '<label>%s<input name="%s" type="%s" placeholder="%s" '
+                'autocomplete="off" autocapitalize="off" '
+                'spellcheck="false"></label>' % (
                     html.escape(field.replace("_", " ")),
                     html.escape(field),
                     "password" if field in spec["secret"] else "text",
+                    html.escape((spec.get("hints") or {}).get(field, "")),
                 )
                 for field in spec["fields"]
             ),
@@ -762,9 +769,11 @@ only writes down how to reach it, and the password is kept on the Deck.</p>
 %(groups)s
 <div id="login" hidden>
   <p class="note">Sign in on this device. You will land on a page that will not
-  load -- that is expected. Copy its address and paste it below.</p>
+  load -- that is expected. Copy its address, come back here, and press the
+  button below.</p>
   <p><a id="link" class="get" href="#" rel="noopener">Sign in</a></p>
-  <label>Paste the address here<input id="pasted" autocomplete="off"
+  <button id="grab" type="button">Paste the address and finish</button>
+  <label>Or paste it here<input id="pasted" autocomplete="off"
     autocapitalize="off" spellcheck="false" placeholder="http://localhost:53682/?code=..."></label>
 </div>
 <button id="go">Save and test</button>
@@ -854,6 +863,60 @@ and backing up stays something you ask for on the Deck.</p>
   kind.addEventListener("change", ready);
   ready();
 
+  /* **The address, in one press instead of four.**
+
+     What the sign-in leaves on the phone is a dead page whose address carries
+     the code, so the last step was: copy it, come back, tap the field, paste,
+     then press Save. The clipboard is readable on a tap -- a gesture is exactly
+     what browsers require before handing it over -- so the tap that says "I
+     have it" can do the rest as well.
+
+     The field stays, and does the same thing on a paste. Between them they
+     cover the browsers that refuse the clipboard, which is why neither is the
+     only way in. */
+  var grab = document.getElementById("grab");
+
+  function carriesCode(text) {
+    return /[?&]code=/.test(text || "");
+  }
+
+  function finish(text) {
+    pasted.value = (text || "").trim();
+    go.click();
+  }
+
+  function complain(text) {
+    said.hidden = false;
+    said.className = "said bad";
+    said.textContent = text;
+  }
+
+  grab.addEventListener("click", function () {
+    if (!navigator.clipboard || !navigator.clipboard.readText) {
+      complain("This browser will not hand over the clipboard. Paste the address into the box instead.");
+      return;
+    }
+    navigator.clipboard.readText().then(function (text) {
+      if (!carriesCode(text)) {
+        complain("That is not the sign-in address. Copy the whole address of the page that would not load.");
+        return;
+      }
+      finish(text);
+    }).catch(function () {
+      complain("The browser would not share the clipboard. Paste the address into the box instead.");
+    });
+  });
+
+  /* Pasting into the field is somebody saying the same thing, so it means the
+     same thing: no second press to make it count. */
+  pasted.addEventListener("paste", function (event) {
+    var carried = event.clipboardData || window.clipboardData;
+    var text = carried ? carried.getData("text") : "";
+    if (!carriesCode(text)) return;
+    event.preventDefault();
+    finish(text);
+  });
+
   go.addEventListener("click", function () {
     var group = shown();
     var values = {};
@@ -869,17 +932,15 @@ and backing up stays something you ask for on the Deck.</p>
     said.textContent = "Checking...";
     go.disabled = true;
 
-    /* The service, read off the option somebody picked. Nothing is named or
-       asked to be named: rclone needs a key for its config file and that is
-       the Deck's business, not a question to put to a person on a phone. */
-    var service = kind.options[kind.selectedIndex].text;
-
     post(isLogin()
       ? { step: "finish", kind: kind.value, pasted: pasted.value }
       : { kind: kind.value, values: values }
     ).then(function (result) {
+      /* The next thing to do, which is nothing. It used to name the storage
+         and say it had answered -- both of which this page already shows, in
+         the box somebody picked it from -- so all it added was reading. */
       said.textContent = result.ok
-        ? "Ready. " + service + " answered, so saves can go there."
+        ? "Ready. You can close this."
         : (result.error || "That did not work.");
       said.className = result.ok ? "said" : "said bad";
       /* Cleared whichever way it went. A password left in a form on a phone

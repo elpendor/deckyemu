@@ -280,9 +280,10 @@ Two sorts of storage, on the same page.
 
 | | |
 | --- | --- |
-| **Nextcloud or WebDAV** | The address of the WebDAV endpoint, and the username and password you use for it |
-| **SFTP or SSH** | A hostname, a username and a password — a NAS or any box you can already log into |
-| **S3 storage** | The provider, the endpoint, and an access key pair |
+| **WebDAV** | The address of the WebDAV endpoint, and the username and password you use for it |
+| **SFTP or SSH** | A hostname, a username and a password — a NAS or any box you can already log into. The port is asked for and can be left empty, which means the usual one |
+| **FTP** | The same, for a server that speaks plain FTP. FTP servers offer no checksums, so copies there compare size and modification time instead — which is what rclone does by default and what catches a save that changed without changing size |
+| **S3 storage** | The endpoint and an access key pair — you are not asked which S3 it is, because the generic settings are what save files need |
 
 **Ones you sign in to** — Dropbox, OneDrive, Box and pCloud. Pick one and the
 page gives you a **Sign in** link. Log in as you normally would, and the browser
@@ -297,6 +298,24 @@ the Deck. Nothing is typed on the Deck either way.
 Google Drive is not offered. The shared credentials rclone uses for it are being
 retired during 2026, and the alternative is registering your own application in
 Google's developer console — more work than this feature is worth.
+
+For the storages you sign in to rather than type details for, the sign-in opens
+in its own tab and ends on a page that will not load — that is expected, and the
+address of that page is what carries the code. Copy it, come back to the setup
+tab, and press **Paste the address and finish**: one press reads the clipboard,
+hands the address to the Deck and completes the sign-in. Pasting it into the box
+underneath does the same thing without a second press, for a browser that will
+not share the clipboard.
+
+**WebDAV is taken as typed.** The address goes to the server exactly as you
+enter it, with nothing added and no assumptions about which software is behind
+it — so it is the full WebDAV endpoint, the one your server documents, rather
+than the address you would open in a browser. Copies there are compared by size
+and modification time, because a WebDAV server rarely offers a checksum — which
+is why the Deck asks it to store modification times, and why a server that
+cannot is one where a save that changed without changing size could be missed. Some servers publish how much room
+is left and some do not; where yours does not, the storage simply shows no
+figure.
 
 The page saves the settings and then **checks that the storage actually
 answers**, so a mistyped hostname is a sentence on the screen you are looking at
@@ -314,8 +333,19 @@ the service alone is often all there is to show.
 
 Open it again and every storage set up on this Deck is listed, with **In use**
 beside the one saves go to. Pick another to switch, or sign out of one to remove
-it and its credentials. Two accounts of the same service are numbered, because
-that is the one case where the service alone cannot tell two rows apart.
+it and its credentials. Signing out of the one saves currently go to hands that
+job to the next storage on the list rather than to nothing, and the question asks
+it that way — *Saves go to Dropbox after this* — because a Deck with three
+storages signed in and no destination would stop copying without saying so. Sign
+out of the last one and nothing is copied anywhere until you sign in again.
+**Add another** puts the code back on screen for a
+second account; it says it is waiting, and when the sign-in finishes on the
+phone the Deck returns to the list by itself with the new storage marked in
+use — the two screens take turns because the code and a list of storages do not
+both fit on a Deck. Two accounts of the same service are numbered — here and
+in **Restore save data**, so the storage you copy to and the storage you restore
+from are named the same way — because that is the one case where the service
+alone cannot tell two rows apart.
 
 **That part stays on the Deck.** The web page exists because signing in needs a
 browser and a keyboard; choosing between accounts needs neither, and it is a
@@ -327,13 +357,18 @@ Setting this up copies nothing. It only records where saves would go.
 
 **Back up save data** is where it happens, because it is the same decision — which
 emulators, and where to. Tick what you want and the dialog offers two
-destinations: **Build the backup** makes the .zip and hands it to a phone or PC as
+destinations: **Copy to a device** makes the .zip and hands it to a phone or PC as
 it always did, and **Copy to Dropbox** (or whichever storage is in use) sends the
-same saves straight up.
+same saves straight up. The two are named the same way on purpose — the same
+saves are going somewhere either way, and where is the only difference.
 
 What goes up is loose files, one folder per emulator, not a zip. That is what
 makes a second copy cheap: only what actually changed is sent, rather than a
-hundred megabytes to record a two-kilobyte change. You can open your own storage
+hundred megabytes to record a two-kilobyte change. They go up dozens at a time
+rather than one after another, because a save is a small file and almost all of
+the time is spent waiting for the storage to answer rather than sending
+anything: sixty of them measured 50 seconds to Dropbox one way and 11 the other,
+and 168 seconds to pCloud against 11. You can open your own storage
 in its website or app and look at it — it is laid out as
 `DeckyEmu/saves/<emulator>/` and you can delete an emulator's saves from there
 without any tool.
@@ -361,6 +396,12 @@ it contains before anything is put back, exactly like choosing a backup: under e
 14:51*, one per press that overwrote something, newest first. Choosing one shows
 the same per-emulator rows as anything else and puts those saves back the same
 way.
+
+The list scrolls, showing about three at a time — with several emulators there
+are more of these than of anything else on the screen, and the buttons have to
+stay reachable. Every list in these dialogs is that shape: the emulators to back
+up, the backups and storages to restore from, the storages themselves. Three
+rows and the rest scrolled, so no list can push the buttons off the bottom.
 
 Five are kept per emulator, and five are what you are offered — the same number
 on purpose, so nothing sits in your storage that you cannot reach from the Deck.
@@ -407,6 +448,14 @@ a game with an old save.
 **One case does ask, the way Steam asks it.** If a save exists both here and in
 your storage and the two are different, the game waits and you get a dialog.
 
+**It has its own switch**, above the other one under **Cloud storage** — *Check
+for newer saves when a game starts*. On by default, because it is the half that
+makes a second device work: without it saves only ever go up. Turn it off and a
+game starts straight away and uses whatever is on the Deck, while copies still go
+up when you stop playing. Worth doing on a slow connection, or if this Deck is
+the only place you play and the copies are there as a backup rather than to be
+read back.
+
 **It is about the emulator, not the one game.** Saves cannot reliably be traced
 to a single game — RetroArch names them after the ROM, but RPCS3 files by title
 id and a PS1 memory card holds a dozen games in one file — so a conflict covers
@@ -443,9 +492,21 @@ game starts with this Deck's saves, which writes nothing.
 
 **Restore save data** lists your signed-in storages beside the backup files on the
 Deck, because from that screen they are the same thing — somewhere a backup is.
+The one saves are being copied to comes first and is marked **In use**, the same
+words the setup dialog uses, because it is the one a restore usually means.
 Pick one and you get the same per-emulator rows and the same two buttons:
-**Restore missing** writes only what is not already here, and **Replace saves**
-overwrites, exactly as with a .zip.
+**Restore missing** writes only what is not already here, and **Restore all**
+writes the lot, overwriting, exactly as with a .zip. The two are named the same
+way on purpose — both put saves back, and how much of the backup they use is the
+only difference. That the second one overwrites and cannot be undone is said on
+the confirmation it asks for.
+
+The list appears before it is finished. The emulator names come back in about a
+second and each row then says what it holds as its own answer arrives, so the one
+you came for is usually readable while the rest are still counting — the line
+under the storage's name reads *Reading what it holds - 6 to go* until they have
+all answered. Both buttons wait for that, because until then the totals are not
+the totals.
 
 **Every account is offered, not just the one saves currently go to.** This is what
 makes changing storage cost nothing. If your saves are in Dropbox and you switch
@@ -472,12 +533,12 @@ arrives and filed under `~/deckyemu/backups/` instead, so it never appears in th
 ROM picker as something to add to Steam. Everything else you send — ROMs, BIOS
 files, definitions — stays exactly where it lands.
 
-The choice that matters is one switch:
+The choice that matters is which of the two buttons you press:
 
 | | |
 | --- | --- |
-| **Off** (default) | Writes only the saves that are **missing** here. Anything already on the Deck is left exactly as it is, so a game played since the backup cannot lose its progress |
-| **On** | The backup's copy wins and whatever is on the Deck now is gone. What you want after wiping a Deck, or when the saves here are the ones you are trying to get rid of |
+| **Restore missing** | Writes only the saves that are **missing** here. Anything already on the Deck is left exactly as it is, so a game played since the backup cannot lose its progress |
+| **Restore all** | The backup's copy wins and whatever is on the Deck now is gone. What you want after wiping a Deck, or when the saves here are the ones you are trying to get rid of. It asks first, and the question says how many files it would overwrite. Restoring everything from a storage also takes that storage's record of what it holds, so the next game to close does not copy the same saves straight back up |
 
 The screen says how many files are in the backup and how many of them are
 already on this Deck before you press anything, so which of the two you want is

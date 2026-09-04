@@ -106,7 +106,7 @@ class Transfers(plugin_base.PluginContext):
         writable ROM folder.
 
         On a phone rather than in the panel because of what it collects. A
-        Nextcloud address, a username and a password typed on the Deck's
+        WebDAV address, a username and a password typed on the Deck's
         on-screen keyboard is exactly the experience that put ROM transfers on
         another device in the first place.
 
@@ -162,7 +162,8 @@ class Transfers(plugin_base.PluginContext):
         ok, error = cloudsave.check_remote(name)
         if not ok:
             cloudsave.remove_remote(name)
-            return False, "Saved, but %s did not answer: %s" % (label, error)
+            return False, "Saved, but %s did not answer: %s" % (
+                label, cloudsave.said_plainly(error))
 
         store.set_settings({"cloud_remote": "%s:" % name})
         self._note_cloud_state()
@@ -192,7 +193,8 @@ class Transfers(plugin_base.PluginContext):
         ok, error = cloudsave.check_remote(name)
         if not ok:
             cloudsave.remove_remote(name)
-            return (False, "Signed in, but %s did not answer: %s" % (label, error), "")
+            return (False, "Signed in, but %s did not answer: %s" % (
+                label, cloudsave.said_plainly(error)), "")
 
         store.set_settings({"cloud_remote": "%s:" % name})
         self._note_cloud_state()
@@ -238,6 +240,8 @@ class Transfers(plugin_base.PluginContext):
             # An automatic thing that never says it happened cannot be told
             # from one that is broken.
             "after_play": bool(settings.get("cloud_after_play")),
+            # Whether a game starting looks for saves this Deck is missing.
+            "before_play": bool(settings.get("cloud_before_play", True)),
             "last_sync": int(settings.get("cloud_last_sync") or 0),
             # **These two are the only things here that touch the network**,
             # and they are for the setup dialog: who the storage says you are,
@@ -265,6 +269,14 @@ class Transfers(plugin_base.PluginContext):
         set up needs neither, and it is a decision about this device. Putting it
         on the page would mean going and finding another device to answer a
         question the panel is perfectly able to ask.
+
+        **The status it answers with is the cheap one.** Choosing is a settings
+        write and nothing else, but this used to end by asking the provider who
+        you are signed in as and how much room is left -- two network calls, a
+        second or more, with the row still showing the old storage as the one in
+        use. Pressing a button that decides something locally should not wait on
+        wifi to say it happened. The dialog polls for the rest and fills the
+        account and the free space in when they land.
         """
         if not await self._run(cloudsave.binary):
             return {"ok": False, "error": "The cloud transfer tool is missing."}
@@ -273,7 +285,7 @@ class Transfers(plugin_base.PluginContext):
         await self._run(store.set_settings,
                         {"cloud_remote": ("%s:" % name) if name else ""})
         await self._run(self._note_cloud_state)
-        return await self.cloud_status()
+        return await self.cloud_status(False)
 
     async def forget_cloud_remote(self, name: str):
         """Remove one storage and the credentials with it. Returns the status.
@@ -281,15 +293,27 @@ class Transfers(plugin_base.PluginContext):
         Also on the Deck, and for a second reason beyond the first: this is the
         destructive one, and a page reachable by anybody holding a six-digit
         code is the wrong place to put the button that deletes a sign-in.
+
+        **Signing out of the one in use moves saves to another, not to nowhere.**
+        Leaving no destination while three storages are still signed in stops
+        every copy silently: nothing says so except a panel row going back to
+        "Set up cloud storage" on a Deck that is set up. So the first storage
+        left takes over, and the dialog that asked says which one it will be
+        before anything is removed. With none left there is nothing to promote,
+        and then no destination is the truth.
         """
         ok, error = await self._run(cloudsave.remove_remote, name)
         if not ok:
             return {"ok": False, "error": error}
         settings = await self._run(store.get_settings)
         if (settings.get("cloud_remote") or "").rstrip(":") == name:
-            await self._run(store.set_settings, {"cloud_remote": ""})
+            left = await self._run(cloudsave.remotes)
+            await self._run(store.set_settings,
+                            {"cloud_remote": ("%s:" % left[0]) if left else ""})
         await self._run(self._note_cloud_state)
-        return await self.cloud_status()
+        # Cheap, for the reason `choose_cloud_remote` gives: the row has gone,
+        # and asking a provider about the one left is not what says so.
+        return await self.cloud_status(False)
 
     async def end_cloud_setup(self):
         """Take the form down, and stop the server if it was only serving that.
@@ -310,7 +334,8 @@ class Transfers(plugin_base.PluginContext):
         await self._run(fileserver.offer_cloud_setup, None, None, None, None)
         status = await self._run(fileserver.status)
         if status.get("running") and not (
-            status.get("uploading") or status.get("paused") or status.get("downloading")
+            status.get("uploading") or status.get("paused")
+            or status.get("downloading") or status.get("settling")
         ):
             return await self.stop_file_server()
         return {"ok": True, **await self._run(fileserver.status)}
@@ -372,14 +397,32 @@ class Transfers(plugin_base.PluginContext):
 
         One per emulator rather than one per save root: the record is what a
         launch reads, and a launch asks about an emulator.
+
+        All of them in one call, because this runs after the last step with the
+        bar at 100% -- see `cloudsync.record_pushes` for what a process each
+        was costing there.
+        """
+        ok, error = await self._run(
+            cloudsync.record_pushes, remote,
+            sorted({step["id"] for step in steps}))
+        if not ok and error:
+            decky.logger.warning("Could not record what went up: %s", error)
+
+    async def _adopt_records(self, remote, steps):
+        """Take the storage's record for every emulator a restore covered.
+
+        Byte-identical rather than freshly written, which is the whole point:
+        `compare` decides "is this our own upload?" by comparing the two, and a
+        new record of our own would read as a third device. See
+        `cloudsync.adopt_state`.
         """
         for source_id in sorted({step["id"] for step in steps}):
-            ok, error = await self._run(cloudsync.record_push, remote, source_id)
+            ok, error = await self._run(cloudsync.adopt_state, remote, source_id)
             if not ok and error:
                 decky.logger.warning(
-                    "Could not record what went up for %s: %s", source_id, error)
+                    "Could not take the storage's record for %s: %s", source_id, error)
 
-    async def _carry_saves(self, steps, done_event, tidy=""):
+    async def _carry_saves(self, steps, done_event, tidy="", adopt=""):
         """The detached half: run the steps and say how it went, once.
 
         `tidy` names the storage to prune afterwards, which only a copy *up*
@@ -395,6 +438,8 @@ class Transfers(plugin_base.PluginContext):
             ok, reason = await self._stream_cloud(steps)
             if ok and tidy:
                 await self._record_pushes(tidy, steps)
+            if ok and adopt:
+                await self._adopt_records(adopt, steps)
             await decky.emit(done_event, ok, reason, names if ok else [])
             if ok and tidy:
                 await self._run(cloudsync.prune, tidy)
@@ -420,6 +465,8 @@ class Transfers(plugin_base.PluginContext):
         remote = await self._run(self._chosen_remote)
         if not remote:
             return {"ok": False, "error": "No cloud storage is set up yet."}
+        # See `cloudsync.learn_compare`: asked once, and before planning.
+        await self._run(cloudsync.learn_compare, remote)
         steps, error = await self._run(cloudsync.push_steps, remote, ids)
         if error:
             return {"ok": False, "error": error}
@@ -460,8 +507,9 @@ class Transfers(plugin_base.PluginContext):
         direction costs a save.
         """
         settings = store.get_settings()
-        wanted = bool(settings.get("cloud_saves")) and bool(
-            (settings.get("cloud_remote") or "").strip())
+        wanted = (bool(settings.get("cloud_saves"))
+                  and bool(settings.get("cloud_before_play", True))
+                  and bool((settings.get("cloud_remote") or "").strip()))
         launchers.set_cloud_wanted(wanted)
 
     @staticmethod
@@ -522,6 +570,7 @@ class Transfers(plugin_base.PluginContext):
             decky.logger.info("Nothing changed for %s; nothing copied up", source)
             return {"ok": True, "skipped": "nothing changed"}
 
+        await self._run(cloudsync.learn_compare, remote)
         steps, error = await self._run(cloudsync.push_steps, remote, [source])
         if error:
             # Ordinary, not a failure: an emulator with no save directory yet
@@ -560,7 +609,12 @@ class Transfers(plugin_base.PluginContext):
         """
         settings = await self._run(store.get_settings)
         remote = (settings.get("cloud_remote") or "").rstrip(":")
-        if not settings.get("cloud_saves") or not remote:
+        # The switch says not to look, so nothing is looked at and the launch
+        # goes on. `_note_cloud_state` has already told the launcher not to wait
+        # at all, so this is the belt to that brace: a launcher written before
+        # the switch was turned off still holds, and still has to be released.
+        if (not settings.get("cloud_saves") or not remote
+                or not settings.get("cloud_before_play", True)):
             await self._run(launchers.wake_launch, app_id)
             return {"ok": True, "differing": [], "restored": 0}
         if not await self._run(cloudsave.binary):
@@ -568,6 +622,9 @@ class Transfers(plugin_base.PluginContext):
             return {"ok": True, "differing": [], "restored": 0}
 
         source = self._source_of(core_id)
+        # Before the comparison as well: a launch that has to fetch or set aside
+        # plans steps of its own.
+        await self._run(cloudsync.learn_compare, remote)
         try:
             found = await self._run(cloudsync.compare, remote, source)
             missing = found["missing"]
@@ -815,8 +872,8 @@ class Transfers(plugin_base.PluginContext):
         await self._run(launchers.wake_launch, app_id)
         return {"ok": True}
 
-    async def cloud_contents(self, name: str, stamp: str = ""):
-        """What one storage holds, per emulator, in the restore screen's shape.
+    async def cloud_emulators(self, name: str, stamp: str = ""):
+        """Which emulators one storage holds saves for. One cheap listing.
 
         Any storage signed into, not only the one in use. That is the whole of
         the answer to "my saves are in Dropbox and I am on pCloud now": nothing
@@ -824,25 +881,26 @@ class Transfers(plugin_base.PluginContext):
         rather than a migration.
 
         `stamp` reads what one copy replaced rather than the live saves.
+
+        The restore screen draws its rows from this and fills each in with
+        `cloud_describe`, because describing one is a tree walk and describing
+        fourteen is eleven seconds of nothing on screen.
         """
         if not await self._run(cloudsave.binary):
-            return {"ok": False, "error": "The cloud transfer tool is missing."}
+            return {"ok": False, "error": "The cloud transfer tool is missing.",
+                    "emulators": []}
+        if name not in await self._run(cloudsave.remotes):
+            return {"ok": False, "error": "That storage is not set up on this Deck.",
+                    "emulators": []}
+        listed, error = await self._run(cloudsync.listed_on, name, stamp)
+        return {"ok": not error, "error": error, "emulators": listed}
+
+    async def cloud_describe(self, name: str, emulator: str, stamp: str = ""):
+        """One emulator's row, asked for on its own so a screen can fill in."""
         if name not in await self._run(cloudsave.remotes):
             return {"ok": False, "error": "That storage is not set up on this Deck."}
-        held = await self._run(cloudsync.contents, name, stamp)
-        # After the answer, not before it: an emulator put up before records
-        # existed has to be listed to be described, and writing what that
-        # listing found is what stops the next read doing it again. It is not
-        # something to keep somebody waiting for.
-        if not stamp and held.get("ok"):
-            self._detach(
-                self._catch_up(name), "cloud_records_written", name, 0)
-        return held
-
-    async def _catch_up(self, remote):
-        """Give every emulator on `remote` a record, quietly, once."""
-        written = await self._run(cloudsync.backfill_records, remote)
-        await decky.emit("cloud_records_written", remote, written)
+        row = await self._run(cloudsync.describe_one, name, emulator, stamp)
+        return {"ok": True, "row": row or None}
 
     async def cloud_snapshots(self, name: str):
         """The states a copy replaced on one storage, newest first.
@@ -873,13 +931,32 @@ class Transfers(plugin_base.PluginContext):
             return {"ok": False, "error": "The cloud transfer tool is missing."}
         if name not in await self._run(cloudsave.remotes):
             return {"ok": False, "error": "That storage is not set up on this Deck."}
+        # Asked once, before anything is planned: what a storage can be
+        # compared by decides the flags every step carries, and planning is
+        # meant to run no subprocess. See `cloudsync.learn_compare`.
+        await self._run(cloudsync.learn_compare, name)
         steps, error = await self._run(
             cloudsync.pull_steps, name, ids, replace, stamp)
         if error:
             return {"ok": False, "error": error}
         self._detach(
-            self._carry_saves(steps, "cloud_sync_done"), "cloud_sync_done",
-            False, "", [],
+            # **Taking the storage's copies means taking its record with them.**
+            # Answering a launch conflict with "use the cloud's" has always done
+            # this; pressing Restore all is the same act with more deliberation
+            # behind it, and it was leaving the Deck holding the storage's files
+            # under a record describing its own last upload -- so the next game
+            # to close copied that emulator up again for nothing.
+            #
+            # Only for Restore all. Restore missing leaves this Deck's own
+            # versions of everything that differed, so it does *not* hold what
+            # the storage holds and must not claim to. And not for a snapshot:
+            # what was put back is what one copy replaced, which is older than
+            # the record sitting beside the live saves.
+            self._carry_saves(
+                steps, "cloud_sync_done",
+                adopt=name if (replace and not stamp) else "",
+            ),
+            "cloud_sync_done", False, "", [],
         )
         return {"ok": True, "started": True}
 

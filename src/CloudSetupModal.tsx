@@ -28,13 +28,40 @@ const POLL_MS = 2000;
  * the dialog -- the same reasoning, and the same numbers, as the transfer's
  * received list. A QR code pushed off the bottom of the screen is the one
  * failure a glance-and-scan dialog cannot afford.
+ *
+ * **Three rows, and the same three as everywhere else.** The backup dialog's
+ * list, the restore dialog's two, and this one are all the same shape now: a
+ * bounded box holding about three rows with the rest scrolled. It was flexed
+ * for a while, which was the right answer while the sign-in code block shared
+ * the screen with it -- that is a screen of its own since, so the number can go
+ * back to being the number every other list here uses.
+ *
+ * `minHeight` survives the flex column it sits in: without it a flex child
+ * refuses to shrink below its content, which is the failure this is here to
+ * stop.
  */
 const ACCOUNTS = {
   display: "flex",
   flexDirection: "column" as const,
   gap: "6px",
-  maxHeight: "22vh",
+  maxHeight: "38vh",
+  minHeight: 0,
   overflowY: "auto" as const,
+};
+
+/**
+ * The dialog's body, bounded by the screen.
+ *
+ * `ModalRoot` does not scroll its own content and Steam's wrapper around it is
+ * about 84% of the viewport, so this is that bound said in a way the layout can
+ * use: a column that never exceeds it, with one part inside allowed to flex.
+ */
+const BODY = {
+  display: "flex",
+  flexDirection: "column" as const,
+  gap: "8px",
+  maxHeight: "76vh",
+  minHeight: 0,
 };
 
 /**
@@ -78,13 +105,55 @@ export function CloudSetupModal({ closeModal }: Props) {
   const [status, setStatus] = useState<Partial<FileServerStatus> | null>(null);
   const [error, setError] = useState("");
   const [cloud, setCloud] = useState<CloudState | null>(null);
+  /* The storage being switched to, while that is happening. Two jobs: the row
+     says it was pressed, and the poll below stands off -- a status read that
+     started before the press lands after it and puts "In use" back on the
+     storage somebody has just moved away from, which reads as the press having
+     done nothing. */
+  const [switching, setSwitching] = useState("");
+  /* Whether the sign-in half is on screen. See where it is used: with storages
+     already set up it is the thing somebody came here for least often, and it
+     is half the height of the dialog. */
+  const [adding, setAdding] = useState(false);
+  const picking = useRef(false);
   // Whether there is a form of ours to withdraw on the way out. A ref, not
   // state: the cleanup below runs after the last render, where state would be
   // whatever it was when the effect was created. Same reason as ReportModal.
   const offered = useRef(false);
 
+  /*
+   * **The form is served for exactly as long as its screen is up.**
+   *
+   * This used to start with the dialog and stop with it, which was right while
+   * the dialog was one screen. It is two now, and the difference showed: a
+   * sign-in that finished brought the Deck back to the list by itself and left
+   * the page being served behind it -- a form that takes a provider password,
+   * still answering, on a screen nobody is looking at and did not ask for
+   * twice. Tied to the screen instead, it goes up on "Add another" and comes
+   * down on Back, on the sign-in landing, and on the way out of the dialog.
+   *
+   * `cloud !== null` waits for the storages to be known. Without it every open
+   * of this dialog would start a form for the split second before the list
+   * arrives and says one was not wanted.
+   */
+  const remotes = cloud?.remotes ?? [];
+  const showingCode = cloud !== null && (adding || remotes.length === 0);
+
   useEffect(() => {
     let live = true;
+
+    if (!showingCode) {
+      if (offered.current) {
+        offered.current = false;
+        setStatus(null);
+        void endCloudSetup().catch((endError) =>
+          logError("could not stop the cloud setup page", endError),
+        );
+      }
+      return () => {
+        live = false;
+      };
+    }
 
     // Switched on first, because that is what fetches rclone, and the setup
     // cannot run without it. The backend answers "still downloading" rather
@@ -109,25 +178,45 @@ export function CloudSetupModal({ closeModal }: Props) {
 
     return () => {
       live = false;
-      // Every way out, not just the Done button: B and the X dismiss a modal
-      // too, and a form that accepts a password must not outlive the dialog
-      // that offered it by any of the three.
+    };
+  }, [showingCode]);
+
+  // Every way out, not just the Done button: B and the X dismiss a modal too,
+  // and a form that accepts a password must not outlive the dialog that offered
+  // it by any of the three. Its own effect, because the one above now runs
+  // whenever the screen changes and this must run only on the way out.
+  useEffect(
+    () => () => {
       if (!offered.current) return;
       void endCloudSetup().catch((endError) =>
         logError("could not stop the cloud setup page", endError),
       );
-    };
-  }, []);
+    },
+    [],
+  );
 
   // The work happens on the other device, so this end learns it is done by
   // asking. Without it the Deck said nothing at all while the phone said the
   // storage was ready, which is indistinguishable from a setup that failed.
+  //
+  // **The cheap status, twice a second-and-a-half.** What this watches for is a
+  // storage appearing, which is a line in a local config file. The full status
+  // asks the provider how much room is left -- 1.3 seconds against Box,
+  // measured -- and asking that every two seconds for as long as somebody
+  // leaves the dialog open is a poll over their wifi to redraw a subtitle that
+  // does not change. The figures come from the effect below instead, once per
+  // storage, and are carried across ticks here.
   useEffect(() => {
     let live = true;
     const tick = () =>
-      void cloudStatus()
+      void cloudStatus(false)
         .then((result) => {
-          if (live) setCloud(result);
+          if (!live || picking.current) return;
+          setCloud((was) =>
+            was && was.remote === result.remote
+              ? { ...result, account: was.account, space: was.space }
+              : result,
+          );
         })
         .catch((pollError) => logError("could not read cloud status", pollError));
     tick();
@@ -138,8 +227,61 @@ export function CloudSetupModal({ closeModal }: Props) {
     };
   }, []);
 
+  /*
+   * Who the storage says you are, and how much room is left.
+   *
+   * Once per storage rather than on every tick, because that is how often the
+   * answer changes -- and the request is the slow one. Read here rather than
+   * left to the poll so that switching storages still fills the row in: the
+   * numbers are also the proof that the sign-in still works, which is the whole
+   * reason they are on screen.
+   */
+  const answered = useRef("");
+  const tries = useRef({ remote: "", count: 0 });
+  const [describing, setDescribing] = useState("");
+  useEffect(() => {
+    const remote = cloud?.remote ?? "";
+    if (!remote || answered.current === remote) return;
+    if (tries.current.remote !== remote) tries.current = { remote, count: 0 };
+    // **Three, and then it stops asking.** A read that fails is worth trying
+    // again -- a storage signed into a second ago may not answer the first
+    // time -- but a read that fails forever must not be retried forever, and
+    // the poll below would carry it round every two seconds.
+    if (tries.current.count >= 3) return;
+    tries.current.count += 1;
+    const first = tries.current.count === 1;
+
+    let live = true;
+    // Only the first attempt says so. Saying it again on each retry is what
+    // made the row flash between "Reading..." and nothing.
+    if (first) setDescribing(remote);
+    void cloudStatus(true)
+      .then((full) => {
+        if (!live || full.remote !== remote) return;
+        // **An answer is an answer, even an empty one.** Plain WebDAV publishes
+        // no quota -- `rclone about` on one returns `{}`, measured -- so a
+        // storage with no figures to give is not a storage that failed to give
+        // them, and asking it again gets the same nothing. What this exists to
+        // retry is a request that did not come back at all, below.
+        answered.current = remote;
+        setCloud((was) =>
+          was && was.remote === remote
+            ? { ...was, account: full.account, space: full.space }
+            : was,
+        );
+      })
+      .catch((readError) => logError("could not read the storage's figures", readError))
+      .finally(() => {
+        if (live) setDescribing("");
+      });
+    return () => {
+      live = false;
+    };
+    // The whole status, not just which storage it names: a tick that changes
+    // nothing is what carries a retry back round.
+  }, [cloud]);
+
   const url = status?.url ?? "";
-  const remotes = cloud?.remotes ?? [];
 
   /*
    * What to call each row.
@@ -151,15 +293,46 @@ export function CloudSetupModal({ closeModal }: Props) {
    * one is noise about a distinction that is not being made.
    */
   const seen = new Map<string, number>();
-  const named = remotes.map((one) => {
+  const numbered = remotes.map((one) => {
     const label = one.label || one.kind || one.name;
     const nth = (seen.get(label) ?? 0) + 1;
     seen.set(label, nth);
     return { one, label, nth };
   });
   const repeated = new Set(
-    named.filter(({ label }) => (seen.get(label) ?? 0) > 1).map(({ label }) => label),
+    numbered.filter(({ label }) => (seen.get(label) ?? 0) > 1).map(({ label }) => label),
   );
+  /*
+   * The one saves go to, first -- as the restore dialog lists them, because it
+   * is the same list answering the same question about the same storages.
+   *
+   * Numbered before it is sorted, and that order is the one the config file
+   * keeps. Numbering the sorted list instead would make "Dropbox (1)" mean
+   * whichever Dropbox happens to be in use, so choosing the second one would
+   * renumber both -- a name that moves is worse than no number at all.
+   */
+  const named = [...numbered].sort(
+    (a, b) =>
+      Number(b.one.name === cloud?.remote) - Number(a.one.name === cloud?.remote),
+  );
+
+  /*
+   * **The sign-in finishes on the phone, so the Deck has to notice.**
+   *
+   * Everything about this crossing happens on the other device, and until now
+   * the only thing that changed here was a row appearing on a screen somebody
+   * had to press Back to see. The poll above already learns about the new
+   * storage within a couple of seconds; this is what it is for. Coming back by
+   * itself is the answer to "did that work?" -- and the storage just signed
+   * into is the one saves go to, so the row it lands on says "In use".
+   */
+  const counted = useRef<number | null>(null);
+  useEffect(() => {
+    const now = remotes.length;
+    const was = counted.current;
+    counted.current = now;
+    if (was !== null && now > was && adding) setAdding(false);
+  }, [remotes.length, adding]);
 
   /**
    * Ask before removing an account.
@@ -169,6 +342,14 @@ export function CloudSetupModal({ closeModal }: Props) {
    * the PC again. Signing in is not hard, but it is not something to be nudged
    * into by a thumb landing on the wrong row.
    */
+  /** What saves would go to if `one` were signed out of, named for a person. */
+  const nextInLine = (one: CloudRemote) => {
+    const left = named.filter(({ one: other }) => other.name !== one.name);
+    if (left.length === 0) return "";
+    const first = left[0];
+    return repeated.has(first.label) ? `${first.label} (${first.nth})` : first.label;
+  };
+
   const confirmForget = (one: CloudRemote) =>
     openModal(
       <ConfirmModal
@@ -185,6 +366,14 @@ export function CloudSetupModal({ closeModal }: Props) {
             The Deck forgets how to reach {one.label || one.kind}. Nothing already
             copied there is touched, and coming back means signing in again from a
             phone or a PC.
+            {/* **What saves do afterwards, said before it happens.** Signing out
+                of the one in use is the only case here that changes where
+                things go, and the row does not say which one that is once it is
+                gone. */}
+            {one.name === cloud?.remote &&
+              (nextInLine(one)
+                ? ` Saves go to ${nextInLine(one)} after this.`
+                : " Nothing will be copied anywhere until you sign in to something.")}
           </div>
         }
       />,
@@ -208,21 +397,46 @@ export function CloudSetupModal({ closeModal }: Props) {
       <div style={{ fontSize: "20px", fontWeight: 600, marginBottom: "4px" }}>
         {remotes.length > 0 ? "Cloud storage" : "Set up cloud storage"}
       </div>
+      {/* About whatever the dialog is currently for. Two lines of setup
+          instructions over a list of four storages was answering a question
+          nobody with four storages is asking. */}
       <div style={{ ...MUTED, marginBottom: "12px" }}>
-        Open this on a phone or PC and sign in to where saves should go. The storage
-        is yours — the Deck only keeps how to reach it.
+        {remotes.length > 0 && !adding
+          ? "Saves go to the one marked in use. Switch between them, sign out, or add another."
+          : "Open this on a phone or PC and sign in to where saves should go. The storage is yours — the Deck only keeps how to reach it."}
       </div>
 
-      <Focusable style={COLUMN}>
+      <Focusable style={BODY}>
         {error && <div style={{ color: "#e35d5d", fontSize: "13px" }}>{error}</div>}
 
-        {!error && !url && (
+        {/* Only while the code itself is being got ready. It used to mean "no
+            url yet", which was the same thing while the dialog was one screen
+            and stopped being it the moment the sign-in half became something
+            asked for: on the list there is no page to wait for, so this sat
+            spinning above the storages over nothing. */}
+        {!error && showingCode && !url && (
           <div style={{ display: "flex", justifyContent: "center", padding: "24px" }}>
             <Spinner style={{ height: "32px" }} />
           </div>
         )}
 
-        {url && (
+        {/*
+          * **Not drawn until it is wanted.**
+          *
+          * The code block is a square QR, an address and six digits: measured on
+          * the device it is 206 of the dialog's 452 usable pixels, and stacked
+          * over a list of four storages the content came to 575 -- the last row
+          * and Done were off the screen. Shrinking it does not get there (41px
+          * of the 123 needed, because the address column sets that block's
+          * height) and putting the two side by side made both halves cramped
+          * enough to be worse than the overflow.
+          *
+          * So it waits for the press. With nothing signed in there is nothing
+          * else here and it shows immediately, which is the first run; with
+          * storages already set up, switching and signing out are what the
+          * dialog is for, and adding another is one press away.
+          */}
+        {url && (adding || remotes.length === 0) && (
           <HandoffCode
             url={url}
             shortUrl={status?.short_url}
@@ -235,14 +449,34 @@ export function CloudSetupModal({ closeModal }: Props) {
           </HandoffCode>
         )}
 
+        {/* The screen is doing something while nothing on it moves: it is
+            asking, twice a second-and-a-half, whether the other device has
+            finished. Said here because a dialog that will act on its own has to
+            admit that it is waiting, or the wait reads as a dead end. */}
+        {url && (adding || remotes.length === 0) && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "10px",
+              fontSize: "13px",
+              opacity: 0.7,
+              flex: "none",
+            }}
+          >
+            <Spinner style={{ height: "14px" }} />
+            Waiting for the sign-in to finish. This comes back on its own.
+          </div>
+        )}
+
         {/* Every storage set up on this Deck, and which one saves go to.
             The transfer's received list decides the shape: what it is on the
             left, the action beside it, the destructive one last -- gamepad
             focus enters a row from the left, so the first control is the one a
             thumb lands on without aiming. */}
-        {remotes.length > 0 && (
-          <div style={{ ...COLUMN, gap: "6px" }}>
-            <div style={{ fontWeight: 600 }}>Signed in ({remotes.length})</div>
+        {remotes.length > 0 && !adding && (
+          // Flexed, so the list inside it is what absorbs the leftover height.
+          <div style={{ ...COLUMN, gap: "6px", flex: "1 1 auto", minHeight: 0 }}>
             <Focusable style={ACCOUNTS}>
               {named.map(({ one, label, nth }) => {
                 const chosen = one.name === cloud?.remote;
@@ -250,12 +484,20 @@ export function CloudSetupModal({ closeModal }: Props) {
                 // chosen one because reading it is how the Deck checks the
                 // sign-in still works. Asking every remote every two seconds
                 // to fill in a subtitle is a poll over somebody's wifi.
-                const under = [
-                  chosen ? cloud?.account : "",
-                  chosen && cloud?.space?.free !== undefined
-                    ? `${gigabytes(cloud.space.free)} free`
-                    : "",
-                ].filter(Boolean);
+                // Said rather than left blank. Asking a provider how much room
+                // is left is 1.3 seconds against Box, and a row that goes quiet
+                // for that long after being pressed reads as one that did not
+                // take. It replaces the line it is waiting for, so nothing
+                // moves when the figures arrive.
+                const under =
+                  chosen && describing === one.name && cloud?.space?.free === undefined
+                    ? ["Reading how much room is left..."]
+                    : [
+                        chosen ? cloud?.account : "",
+                        chosen && cloud?.space?.free !== undefined
+                          ? `${gigabytes(cloud.space.free)} free`
+                          : "",
+                      ].filter(Boolean);
                 return (
                   <Focusable
                     key={one.name}
@@ -279,16 +521,23 @@ export function CloudSetupModal({ closeModal }: Props) {
                         worse than no button. */}
                     {!chosen && (
                       <DialogButton
+                        disabled={Boolean(switching)}
                         onClick={() => {
+                          picking.current = true;
+                          setSwitching(one.name);
                           void chooseCloudRemote(one.name)
                             .then(setCloud)
                             .catch((pickError) =>
                               logError("could not choose storage", pickError),
-                            );
+                            )
+                            .finally(() => {
+                              picking.current = false;
+                              setSwitching("");
+                            });
                         }}
                         style={ICON_BUTTON_WIDE}
                       >
-                        Use this
+                        {switching === one.name ? "Switching..." : "Use this"}
                       </DialogButton>
                     )}
 
@@ -311,7 +560,42 @@ export function CloudSetupModal({ closeModal }: Props) {
           </div>
         )}
 
-        <Focusable style={{ display: "flex", gap: "8px" }}>
+        {/* `flex: none` so the list above gives up its height and this never
+            does: a button pushed off the bottom of the screen is the failure
+            this whole column is shaped to prevent. */}
+        {/*
+          * **One or the other, never both.** Signing in and choosing between
+          * what is already signed in are two jobs, and stacked they are 575px
+          * of content in the 452 this dialog gets -- measured with four
+          * storages, with the last row and Done off the bottom of the screen.
+          * Neither half is the one to cut, and side by side both are cramped,
+          * so the dialog shows one at a time: 399px for the list, about 336 for
+          * the code. Nothing scrolls in either, which is the point.
+          */}
+        {/*
+          * **Every button this screen has, in one row.** Measured on the
+          * device: Steam's own dialog chrome costs about 100px, so a 452px box
+          * holds around 352 of ours -- and a second full-width row for one
+          * button was 48 of them. One row is what took the list from scrolling
+          * to fitting, and it is what the rest of these dialogs do anyway.
+          */}
+        <Focusable style={{ display: "flex", gap: "8px", flex: "none" }}>
+          {remotes.length > 0 && !adding && (
+            <DialogButton
+              onClick={() => setAdding(true)}
+              style={{ flex: 1, minWidth: "auto" }}
+            >
+              Add another
+            </DialogButton>
+          )}
+          {adding && remotes.length > 0 && (
+            <DialogButton
+              onClick={() => setAdding(false)}
+              style={{ flex: 1, minWidth: "auto" }}
+            >
+              Back
+            </DialogButton>
+          )}
           {/* Just closes. Withdrawing the form is the effect's cleanup above, so
               B and the X do it too. */}
           <DialogButton onClick={() => closeModal?.()} style={{ flex: 1, minWidth: "auto" }}>

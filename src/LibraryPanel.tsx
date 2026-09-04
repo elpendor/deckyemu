@@ -80,6 +80,7 @@ export function LibraryPanel({ onRefresh }: Props) {
   /* The automatic copy: whether it is on, and when it last ran. Read with the
      destination, since neither means anything without the other. */
   const [afterPlay, setAfterPlay] = useState(true);
+  const [beforePlay, setBeforePlay] = useState(true);
   const [lastSync, setLastSync] = useState(0);
 
   // Bound to the component rather than started with the clear: the backend
@@ -116,6 +117,7 @@ export function LibraryPanel({ onRefresh }: Props) {
     cloudStatus(false)
       .then((result) => {
         setAfterPlay(Boolean(result.after_play));
+        setBeforePlay(Boolean(result.before_play));
         setLastSync(Number(result.last_sync) || 0);
         return result;
       })
@@ -363,7 +365,7 @@ export function LibraryPanel({ onRefresh }: Props) {
         {/* Third rather than first: the two above work on their own and this
             one asks for an account somewhere else. Somebody reading down the
             section meets the thing that needs nothing before the thing that
-            needs a Nextcloud. */}
+            needs an account somewhere. */}
         <PanelSectionRow>
           <ButtonItem
             layout="below"
@@ -374,7 +376,7 @@ export function LibraryPanel({ onRefresh }: Props) {
                  anything. The name, never a credential — rclone holds those. */
               cloudRemote
                 ? `Saves go to ${cloudRemote}. Press to switch accounts, add another, or sign out.`
-                : "Chooses where saves get copied to — Dropbox, a Nextcloud, an SFTP box or an S3 bucket. Set up from a phone or PC, because it means signing in or typing an address."
+                : "Chooses where saves get copied to — Dropbox, a WebDAV server, an SFTP box or an S3 bucket. Set up from a phone or PC, because it means signing in or typing an address."
             }
           >
             {cloudRemote ? "Cloud storage" : "Set up cloud storage"}
@@ -390,6 +392,33 @@ export function LibraryPanel({ onRefresh }: Props) {
             behind one is a setting nobody finds a second time. It is also
             where the answer to "is this actually working?" belongs, and that
             answer is the date. */}
+        {cloudRemote && (
+          <PanelSectionRow>
+            {/* Before the one below, because it happens first and because the
+                two are a pair: this brings saves down when you start, that puts
+                them up when you stop, and a second device needs both. Its own
+                switch rather than one for "cloud saves" as a whole -- this is
+                the half that costs a launch a moment, waiting on a provider
+                before the game opens its saves, and that is a different thing
+                to want off. */}
+            <ToggleField
+              label="Check for newer saves when a game starts"
+              description="Brings down saves this Deck does not have, and asks which to use when both sides changed. Off means a game starts straight away and uses whatever is here."
+              checked={beforePlay}
+              onChange={(on) => {
+                setBeforePlay(on);
+                void setSettings({ cloud_before_play: on })
+                  .then(() => cloudStatus(false))
+                  .then((result) => setBeforePlay(Boolean(result.before_play)))
+                  .catch((error) => {
+                    logError("could not change the before-play check", error);
+                    setBeforePlay(!on);
+                  });
+              }}
+            />
+          </PanelSectionRow>
+        )}
+
         {cloudRemote && (
           <PanelSectionRow>
             <ToggleField

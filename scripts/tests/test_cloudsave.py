@@ -81,9 +81,120 @@ check("an undeclared key from the form never reaches rclone",
       [a for a in fake.argv if "refresh_token" in a or a == "--dump"],
       [])
 check("the backend's own fixed settings are applied",
-      "vendor=nextcloud" in fake.argv, True)
+      "vendor=owncloud" in fake.argv, True)
 check("the password is obscured rather than stored as typed",
       "--obscure" in fake.argv, True)
+
+section("a field with a sensible default is asked for, not insisted on")
+
+# A port is the example: 21 and 22 are what these run on almost everywhere and
+# rclone already knows it, but somebody running one elsewhere has nowhere else
+# to say so. Empty means "not passed", so rclone's own default stands.
+ported = FakeRun()
+with_run(ported, lambda: cloudsave.create_remote(
+    "myftp", "ftp", {"host": "nas.local", "port": "2121", "user": "u", "pass": "p"}))
+check("a port that was given is passed on",
+      [a for a in ported.argv if a.startswith(("host=", "port="))],
+      ["host=nas.local", "port=2121"])
+
+bare = FakeRun()
+ok, error = with_run(bare, lambda: cloudsave.create_remote(
+    "myftp", "ftp", {"host": "nas.local", "port": "", "user": "u", "pass": "p"}))
+check("and one that was not is left out rather than refused",
+      (ok, error, [a for a in bare.argv if a.startswith("port=")]),
+      (True, "", []))
+
+missing = FakeRun()
+check("a field that is not optional is still required",
+      with_run(missing, lambda: cloudsave.create_remote(
+          "myftp", "ftp", {"host": "", "port": "21", "user": "u", "pass": "p"})),
+      (False, "host is required."))
+
+section("nobody is asked which S3 this is")
+
+# rclone knows 53 named providers and treats any other answer as a warning it
+# carries on past. Measured on the device: a storage created with "asdasd" in
+# that field passed the check and worked, because the generic settings suited
+# the server behind it. A field that can be got wrong without saying so is a
+# field better not asked.
+made = FakeRun()
+with_run(made, lambda: cloudsave.create_remote(
+    "mys3", "s3", {"endpoint": "http://127.0.0.1:9000",
+                   "access_key_id": "AK", "secret_access_key": "SK"}))
+check("the form does not collect one",
+      "provider" in cloudsave.BACKENDS["s3"]["fields"], False)
+check("and the generic one is applied without asking",
+      "provider=Other" in made.argv, True)
+check("what is asked for is what a bucket needs to answer",
+      cloudsave.BACKENDS["s3"]["fields"],
+      ("endpoint", "access_key_id", "secret_access_key"))
+
+section("a WebDAV address is the one that was typed")
+
+# A vendor is not a label for the server somebody has: it turns on that vendor's
+# own upload strategy, and one of them then refuses any address that does not
+# match the shape it expects. Save files are kilobytes; the chunking that buys
+# is nothing against an address somebody cannot get accepted.
+plain = FakeRun()
+with_run(plain, lambda: cloudsave.create_remote(
+    "mynas", "webdav",
+    {"url": "https://example.com/dav", "user": "pendor", "pass": "hunter2"}))
+check("the address reaches rclone as it was typed",
+      [a for a in plain.argv if a.startswith("url=")],
+      ["url=https://example.com/dav"])
+# `owncloud` for what it can do, not as a claim about what anybody runs: it is
+# the dialect that stores a modification time, which is the only thing left to
+# compare on a server with no checksums. Measured on the device against both a
+# real server and a deliberately plain one -- under `other` a same-size change
+# was never copied; under `owncloud` it was, with no errors either way.
+check("the dialect that can store a timestamp is asked for",
+      [a for a in plain.argv if a.startswith("vendor=")], ["vendor=owncloud"])
+check("and it is not the one that dictates the address",
+      "vendor=nextcloud" in plain.argv, False)
+
+section("a storage that will not answer is asked once, not four times")
+
+# Measured on the device: an address that resolves and does not answer hung past
+# two minutes on rclone's defaults, because it retries three times over connect
+# timeouts of its own. Retries are what a transfer wants; this call exists to
+# find out whether the storage answers at all.
+probe = FakeRun(stdout="")
+with_run(probe, lambda: cloudsave.check_remote("mynas"))
+check("one attempt, and a short patience",
+      [a for a in probe.argv if a in ("--retries", "--low-level-retries",
+                                      "--contimeout", "--timeout")],
+      ["--retries", "--low-level-retries", "--contimeout", "--timeout"])
+check("and it is still the listing that asks the question",
+      probe.argv[3:5], ["lsd", "mynas:"])
+
+section("what a storage that cannot be reached is told to somebody")
+
+# The real one, off the device: one useful fact wrapped in four layers of where
+# it was noticed, plus a resolver address that is the Deck's own.
+check(
+    "a name that does not resolve says so, and names the name",
+    cloudsave.said_plainly(
+        'Failed to lsd with 2 errors: last error was: couldn\'t list files: '
+        'Propfind "https://webdav.home.example/": dial tcp: lookup '
+        "webdav.home.example on 127.0.0.53:53: no such host"),
+    "The Deck could not find webdav.home.example on this network. Check the "
+    "address, or use the server's IP.",
+)
+check("a refused connection points at the port rather than the address",
+      "refused the connection" in cloudsave.said_plainly(
+          "dial tcp 192.168.0.9:443: connect: connection refused"),
+      True)
+check("a rejected password is not described as a network problem",
+      cloudsave.said_plainly('Propfind "https://nas.local/dav": 401 Unauthorized'),
+      "That username or password was not accepted.")
+check("a host that resolves and does not answer is a different sentence",
+      cloudsave.said_plainly(
+          'request send failed, Get "https://s3.example.com/?x-id=ListBuckets": '
+          "dial tcp 10.1.1.1:443: i/o timeout"),
+      "s3.example.com did not answer. It resolves, so check the port and that "
+      "the server is reachable from the Deck.")
+check("and anything rclone explains better than we would is left alone",
+      cloudsave.said_plainly("directory not found"), "directory not found")
 
 section("every call is against our config, never the user's own")
 
@@ -309,7 +420,7 @@ try:
     check("a service has a name a person would recognise",
           cloudsave.label_for("dropbox"), "Dropbox")
     check("and one for the typed-in kinds too",
-          cloudsave.label_for("webdav"), "Nextcloud or WebDAV")
+          cloudsave.label_for("webdav"), "WebDAV")
     check("an unknown one falls back to the bare type rather than to nothing",
           cloudsave.label_for("swift"), "swift")
 finally:
@@ -390,5 +501,138 @@ try:
           True)
 finally:
     cloudsave.remotes = _real_remotes
+
+section("OneDrive needs to be told which drive, and nothing else asks")
+
+import urllib.request as _urlrequest  # noqa: E402
+
+
+class FakeAnswer:
+    """One HTTP response, as a context manager."""
+
+    def __init__(self, body):
+        self.body = body
+
+    def read(self):
+        return self.body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        return False
+
+
+def with_handover(action):
+    """Run `action` with the localhost hand-back of the login code stubbed."""
+    real = _urlrequest.urlopen
+    _urlrequest.urlopen = lambda request, timeout=None: FakeAnswer(b"")
+    try:
+        return action()
+    finally:
+        _urlrequest.urlopen = real
+
+
+def with_drive(reply, action, status=None):
+    """Run `action` with the Graph call answering `reply`. Records the headers.
+
+    Through `net`, which is the only way this can work on the device: the
+    interpreter decky bundles has a CA store too old for Microsoft's chain, and
+    `net` is where the retry against the system trust store lives.
+    """
+    real = cloudsave.net.get_json
+    asked = []
+
+    def fake(url, headers=None, failure=None):
+        asked.append((url, dict(headers or {})))
+        if status is not None and failure is not None:
+            failure["status"] = status
+        return reply
+
+    cloudsave.net.get_json = fake
+    try:
+        return action(), asked
+    finally:
+        cloudsave.net.get_json = real
+
+
+_TOKEN = '{"access_token":"EWA","refresh_token":"R"}'
+_DRIVE = {"id": "b!aB-c_1", "driveType": "business"}
+
+(settings, problem), asked = with_drive(
+    _DRIVE, lambda: cloudsave._drive_settings(_TOKEN))
+check("the drive is asked for once", len(asked), 1)
+check("of Microsoft rather than of rclone", asked[0][0], cloudsave._GRAPH_DRIVE)
+check("with the token that just arrived",
+      asked[0][1].get("Authorization"), "Bearer EWA")
+check("and both settings come back",
+      (settings, problem), (["drive_id=b!aB-c_1", "drive_type=business"], ""))
+
+# Everything here arrives from outside and is about to become a line in a
+# config file, so a value that is not a drive id is refused rather than written.
+for reply, why in (
+    ({"id": "b!ok", "driveType": "nonsense"}, "an unknown kind of drive"),
+    ({"id": "line\nbreak", "driveType": "personal"}, "an id with a newline in it"),
+    ({"driveType": "personal"}, "no id at all"),
+    ([], "an answer that is not an object"),
+):
+    (settings, problem), _ = with_drive(
+        reply, lambda: cloudsave._drive_settings(_TOKEN))
+    check("refused: %s" % why, (settings, bool(problem)), ([], True))
+
+(settings, problem), _ = with_drive(None, lambda: cloudsave._drive_settings(_TOKEN))
+check("a drive that could not be asked for is a sentence, not a crash",
+      (settings, "could not ask OneDrive" in problem), ([], True))
+# A refusal and an unreachable host are different problems and read differently.
+(settings, problem), _ = with_drive(
+    None, lambda: cloudsave._drive_settings(_TOKEN), status=401)
+check("a token the provider will not accept says so instead",
+      (settings, problem), ([], "OneDrive refused the sign-in (HTTP 401)"))
+check("and a token with nothing in it never asks at all",
+      cloudsave._drive_settings("not json")[0], [])
+
+
+class DoneProcess:
+    """An `rclone authorize` that has finished and printed its token."""
+
+    def __init__(self, output):
+        self.output = output
+        self.killed = False
+
+    def communicate(self, timeout=None):
+        return self.output, ""
+
+    def kill(self):
+        self.killed = True
+
+    def wait(self, timeout=None):
+        return 0
+
+
+def finishing_onedrive(fake_run):
+    """One whole OneDrive login, with only the network standing in."""
+    cloudsave._login.clear()
+    cloudsave._login.update({
+        "process": DoneProcess("---> %s <---" % _TOKEN),
+        "kind": "onedrive", "started": _time.time()})
+    return lambda: with_handover(lambda: with_run(
+        fake_run, lambda: cloudsave.login_finish(
+            "onedrive", "onedrive", "http://localhost/?code=A&state=B")))
+
+
+made = FakeRun()
+((ok, error), _) = with_drive(_DRIVE, finishing_onedrive(made))
+check("the login succeeds", (ok, error), (True, ""))
+check("and the remote is written with the drive on it, not just a token",
+      [a for a in made.argv if a.startswith(("token=", "drive_"))],
+      ["token=" + _TOKEN, "drive_id=b!aB-c_1", "drive_type=business"])
+
+# The regression: a section holding a token and no drive looks configured and
+# fails on everything with `unable to get drive_id and drive_type`.
+half = FakeRun()
+((ok, error), _) = with_drive(None, finishing_onedrive(half))
+check("a drive that cannot be read leaves no remote behind at all",
+      (ok, half.calls), (False, []))
+check("and the person is told to try the login again", "Try the login" in error, True)
 
 summary()

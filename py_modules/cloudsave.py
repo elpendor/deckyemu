@@ -36,6 +36,7 @@ import urllib.request
 import decky
 
 import emu_install
+import net
 
 #: Where rclone's configuration lives. Never `~/.config/rclone`.
 CONFIG_PATH = os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "rclone.conf")
@@ -63,24 +64,65 @@ _NAME = re.compile(r"^[A-Za-z0-9_.+@][A-Za-z0-9_.+@ -]{0,31}$")
 #: whose setup needs no browser, no OAuth and no second device.
 #:
 #: `secret` names the fields to render as passwords and to keep out of logs.
+#: `hints` are placeholders, and they are here rather than in the page because
+#: the shape of an address is a fact about the service rather than about the
+#: form.
+#:
+#: **WebDAV is plain WebDAV, and the address is whatever was typed.** `vendor`
+#: is not a label for the server somebody has -- it turns on that vendor's own
+#: dialect. One of them, `nextcloud`, then refuses any address that does not
+#: match the shape it expects, in a sentence telling the reader to go and run
+#: rclone on a command line they do not have.
+#:
+#: **But `other` cannot store a modification time, and that loses saves.**
+#: Measured twice on the device -- against a real server on the network and
+#: against a deliberately plain one (`rclone serve webdav`) -- a ten-byte file
+#: whose contents changed without changing size was never copied under `other`,
+#: because with no hash and no timestamp there is nothing left to compare but
+#: the size. A save is very often exactly the same size after a session.
+#:
+#: `owncloud` is the dialect that fixes it: it sets modification times, it puts
+#: no shape on the address, and against a server that has never heard of it the
+#: copy still succeeds with no errors -- both measured. It is chosen here for
+#: what it can do rather than as a claim about what anybody is running.
 BACKENDS = {
     "webdav": {
-        "label": "Nextcloud or WebDAV",
+        "label": "WebDAV",
         "fields": ("url", "user", "pass"),
         "secret": ("pass",),
-        "fixed": {"vendor": "nextcloud"},
+        "fixed": {"vendor": "owncloud"},
+        "hints": {"url": "https://example.com/dav"},
     },
     "sftp": {
         "label": "SFTP or SSH",
-        "fields": ("host", "user", "pass"),
+        "fields": ("host", "port", "user", "pass"),
         "secret": ("pass",),
         "fixed": {},
+        "optional": ("port",),
+        "hints": {"host": "nas.local", "port": "22"},
+    },
+    "ftp": {
+        "label": "FTP",
+        "fields": ("host", "port", "user", "pass"),
+        "secret": ("pass",),
+        "fixed": {},
+        "optional": ("port",),
+        "hints": {"host": "nas.local", "port": "21"},
     },
     "s3": {
         "label": "S3 storage",
-        "fields": ("provider", "endpoint", "access_key_id", "secret_access_key"),
+        "fields": ("endpoint", "access_key_id", "secret_access_key"),
         "secret": ("secret_access_key",),
-        "fixed": {},
+        # **Nobody is asked which S3 this is.** rclone knows 53 named providers
+        # and treats any other answer as a warning it carries on past -- so a
+        # field for it is a field where a typo makes a remote that looks
+        # configured, passes the check, and quietly behaves like a generic one
+        # anyway. `Other` is that generic one, asked for on purpose: it turns on
+        # no vendor's quirks, which is the same call as `vendor=other` on
+        # WebDAV and right for the same reason. Save files are small and
+        # ordinary, and what they need is a bucket that answers.
+        "fixed": {"provider": "Other"},
+        "hints": {"endpoint": "s3.eu-central-1.wasabisys.com"},
     },
 }
 
@@ -181,6 +223,53 @@ def _restrict(path):
         decky.logger.warning("Could not restrict %s: %s", path, error)
 
 
+#: The host out of a Go dial error: `lookup nas.local on 127.0.0.53:53`. The
+#: resolver's own address follows it and is never the one somebody typed.
+_LOOKED_UP = re.compile(r"lookup ([A-Za-z0-9.-]+)(?: on |:)")
+
+#: And out of the request it was making, for the failures that never got as far
+#: as a name lookup: `Get "https://s3.example.com/?x-id=ListBuckets"`.
+_ASKED_OF = re.compile(r'https?://([A-Za-z0-9.:-]+)')
+
+
+def said_plainly(error):
+    """What went wrong with reaching a storage, in a sentence for a dialog.
+
+    **rclone is describing a network to a programmer.** What comes back from a
+    storage that is not there is `Failed to lsd with 2 errors: last error was:
+    couldn't list files: Propfind "https://host/": dial tcp: lookup host on
+    127.0.0.53:53: no such host` -- one useful fact wrapped in four layers of
+    where it was noticed, and a resolver address that is the Deck's own and
+    nothing the reader chose.
+
+    Only the failures somebody can act on are translated, and the rest is passed
+    through: rclone is usually clearer about its own errors than a guess at what
+    it meant would be.
+    """
+    said = error or ""
+    lower = said.lower()
+    found = _LOOKED_UP.search(said) or _ASKED_OF.search(said)
+    host = found.group(1) if found else ""
+    if "no such host" in lower or "server misbehaving" in lower:
+        return ("The Deck could not find %s on this network. Check the address, "
+                "or use the server's IP." % (host or "that address"))
+    if "connection refused" in lower:
+        return ("%s refused the connection. Check the port, and that the server "
+                "is running." % (host or "That address"))
+    if "no route to host" in lower or "network is unreachable" in lower:
+        return "%s could not be reached from the Deck." % (host or "That address")
+    if ("i/o timeout" in lower or "deadline exceeded" in lower
+            or "did not answer in time" in lower or "statuscode: 0" in lower):
+        return ("%s did not answer. It resolves, so check the port and that the "
+                "server is reachable from the Deck." % (host or "That address"))
+    if "401" in said or "unauthorized" in lower or "403" in said:
+        return "That username or password was not accepted."
+    if "certificate" in lower or "x509" in lower:
+        return ("The Deck does not trust that server's certificate. A self-signed "
+                "one has to be trusted by the Deck first.")
+    return said
+
+
 def create_remote(name, kind, values):
     """Write one remote into our config. Returns (ok, error).
 
@@ -199,6 +288,13 @@ def create_remote(name, kind, values):
     for field in backend["fields"]:
         value = (values.get(field) or "").strip()
         if not value:
+            # **A field with a sensible default is asked for and not insisted
+            # on.** A port is the example: 21 and 22 are what these are on
+            # almost everywhere, and rclone already knows that -- but somebody
+            # running one on another port has nowhere else to say so. Left
+            # empty it is not passed at all, so rclone's own default stands.
+            if field in (backend.get("optional") or ()):
+                continue
             return False, "%s is required." % field.replace("_", " ")
         args.append("%s=%s" % (field, value))
     for field, value in backend["fixed"].items():
@@ -225,6 +321,24 @@ def remotes():
     return [line.rstrip(":") for line in output.splitlines() if line.strip()]
 
 
+#: One attempt, and short patience, for the one call whose whole job is to fail.
+#:
+#: **Measured on the device.** An address that does not resolve fails instantly,
+#: but one that resolves and does not answer -- a firewalled host, a port
+#: nothing is listening on -- hangs: rclone retries three times over connect
+#: timeouts of its own, and a deliberately unroutable S3 endpoint was still
+#: going at two minutes. Ours gave up at 45 seconds and said "rclone did not
+#: answer in time", so the page said "Checking..." for three quarters of a
+#: minute and then explained nothing.
+#:
+#: With these it comes back in about 16 seconds carrying the reason. Retries are
+#: what a transfer wants and the opposite of what a test wants: this call exists
+#: to find out whether the storage answers, and asking three times only makes a
+#: no take three times as long.
+_CHECK_FAST = ["--retries", "1", "--low-level-retries", "1",
+               "--contimeout", "8s", "--timeout", "15s"]
+
+
 def check_remote(name):
     """Ask the remote whether it is actually reachable. Returns (ok, error).
 
@@ -234,7 +348,8 @@ def check_remote(name):
     """
     if not valid_name(name):
         return False, "That name cannot be used."
-    ok, output = rclone(["lsd", "%s:" % name, "--max-depth", "1"], _CHECK_SECONDS)
+    ok, output = rclone(
+        ["lsd", "%s:" % name, "--max-depth", "1"] + _CHECK_FAST, _CHECK_SECONDS)
     return (True, "") if ok else (False, output)
 
 
@@ -454,6 +569,65 @@ def _query_from(pasted):
     return urllib.parse.urlencode(pairs)
 
 
+#: Where OneDrive says which drive an account has. Asked once, at sign-in.
+_GRAPH_DRIVE = "https://graph.microsoft.com/v1.0/me/drive"
+
+#: A drive id, before it becomes a line in a config file. Microsoft's own are
+#: hex for a personal account and `b!`-prefixed for a business one; anything
+#: outside this is not written rather than trusted because of where it came from.
+_DRIVE_ID = re.compile(r"^[A-Za-z0-9!._~-]{1,256}$")
+
+#: The kinds of drive rclone understands. Anything else is refused here rather
+#: than written and left to fail later against a remote that looks configured.
+_DRIVE_TYPES = ("personal", "business", "documentLibrary")
+
+
+def _drive_settings(token):
+    """OneDrive's `drive_id` and `drive_type`, as arguments. (settings, error).
+
+    **A OneDrive token on its own does not make a working remote.** rclone needs
+    to be told which drive the account means, and it refuses to do anything at
+    all without it -- the first listing fails with `unable to get drive_id and
+    drive_type`, which reads like a broken sign-in and is not one. `rclone
+    config` asks the question interactively, after the browser half is over;
+    nothing asks it here, so this answers it instead.
+
+    Microsoft is asked directly rather than through rclone: the backend cannot
+    be built without the very setting being looked for, so there is no remote to
+    put the question to. One request, with the token that has just arrived.
+
+    Through `net` rather than through `urllib` directly, and that is not
+    housekeeping. Decky runs plugins in a frozen interpreter whose bundled CA
+    store is older than the operating system's, so a plain `urlopen` to
+    Microsoft fails with `CERTIFICATE_VERIFY_FAILED ... unable to get local
+    issuer certificate` on a Deck whose own trust store has the root perfectly
+    well. `net._urlopen` retries against the system bundle, which is why every
+    other host this plugin talks to works.
+    """
+    try:
+        access = (json.loads(token) or {}).get("access_token") or ""
+    except (ValueError, AttributeError):
+        access = ""
+    if not access:
+        return [], "the sign-in did not come back with a usable token"
+    failure = {}
+    drive = net.get_json(_GRAPH_DRIVE,
+                         {"Authorization": "Bearer %s" % access},
+                         failure=failure)
+    if not isinstance(drive, dict):
+        # The status when there is one: a token the provider will not accept is
+        # a different thing from a Deck that could not reach it, and the two
+        # need different answers from whoever reads this.
+        status = failure.get("status")
+        return [], ("OneDrive refused the sign-in (HTTP %s)" % status if status
+                    else "the Deck could not ask OneDrive which drive this is")
+    drive_id = (drive.get("id") or "").strip()
+    drive_type = (drive.get("driveType") or "").strip()
+    if not _DRIVE_ID.match(drive_id) or drive_type not in _DRIVE_TYPES:
+        return [], "OneDrive did not say which drive this is"
+    return ["drive_id=%s" % drive_id, "drive_type=%s" % drive_type], ""
+
+
 def _kept_settings(kind, pasted):
     """Settings the provider's own redirect carried, as `key=value` arguments.
 
@@ -559,9 +733,18 @@ def login_finish(name, kind, pasted):
     # attempt failed with "address already in use". A fresh token does not
     # trigger it, which is exactly what makes it the kind of thing that works in
     # testing and hangs on somebody's device a month later.
+    settings = _kept_settings(kind, pasted)
+    if kind == "onedrive":
+        # Asked before the remote is written rather than after: a section with a
+        # token and no drive is one that looks set up and fails on everything.
+        drive, problem = _drive_settings(token)
+        if problem:
+            return False, "Almost -- %s. Try the login again." % problem
+        settings += drive
+
     ok, error = rclone(
         ["config", "create", name, kind, "token=" + token]
-        + _kept_settings(kind, pasted) + ["--non-interactive"],
+        + settings + ["--non-interactive"],
         _CREATE_SECONDS,
     )
     if not ok:

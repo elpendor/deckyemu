@@ -4,6 +4,7 @@ import type { SaveBackupContents, SaveSource } from "./backend";
 import {
   backupSummary,
   defaultSelection,
+  listNames,
   missingCount,
   missingIds,
   notInstalled,
@@ -64,13 +65,43 @@ describe("backupSummary", () => {
     expect(text).toBe("15 file(s), 418 KB, from RetroArch and RPCS3.");
   });
 
-  it("warns that a whole-directory emulator carries more than saves", () => {
+  // The row for such an emulator says so itself, which is where the decision to
+  // untick it gets made. Repeating it here made the summary the longest thing on
+  // the screen for no new information.
+  it("leaves the whole-directory warning to the row it belongs to", () => {
     const text = backupSummary(totals(sources, new Set(["plain"])), "9 MB");
-    expect(text).toContain("Everything DuckStation keeps is included, not only saves");
+    expect(text).toBe("40 file(s), 9 MB, from DuckStation.");
   });
 
   it("says nothing is selected rather than reporting an empty backup", () => {
     expect(backupSummary(totals(sources, new Set()), "0 KB")).toBe("Nothing selected.");
+  });
+
+  // A Deck with everything set up made this line a roll-call of fourteen
+  // emulators. The figures are the point; which ones is a courtesy that stops
+  // being one somewhere around the fourth name.
+  it("counts the rest rather than naming every emulator", () => {
+    const many = Array.from({ length: 14 }, (_, at) =>
+      source({ id: `e${at}`, name: `Emulator ${at}`, files: 1, bytes: 1000 }),
+    );
+    const text = backupSummary(totals(many, defaultSelection(many)), "14 KB");
+    expect(text).toBe(
+      "14 file(s), 14 KB, from Emulator 0, Emulator 1, Emulator 2 and 11 more.",
+    );
+  });
+});
+
+describe("listNames", () => {
+  it("reads as a sentence up to three", () => {
+    expect(listNames([])).toBe("");
+    expect(listNames(["A"])).toBe("A");
+    expect(listNames(["A", "B"])).toBe("A and B");
+    expect(listNames(["A", "B", "C"])).toBe("A, B and C");
+  });
+
+  it("counts the rest past that", () => {
+    expect(listNames(["A", "B", "C", "D"])).toBe("A, B, C and 1 more");
+    expect(listNames(["A", "B", "C", "D", "E"])).toBe("A, B, C and 2 more");
   });
 });
 
@@ -98,12 +129,19 @@ describe("restoreSummary", () => {
     );
   });
 
-  // The case that reads as a failure unless it is named: Restore what is missing
-  // is disabled here, and the sentence has to say why.
-  it("names the case where only replacing would do anything", () => {
+  // The case that reads as a failure unless it is named: Restore missing is
+  // disabled here, and the sentence has to say why.
+  it("names the case where only restoring all of it would do anything", () => {
     const text = restoreSummary([inBackup({ id: "a", files: 12, present: 12 })]);
     expect(text).toContain("all of them already on this Deck");
-    expect(text).toContain("Only replacing would change anything");
+    expect(text).toContain("so only restoring all of them would change anything");
+  });
+
+  // Nothing there is not the same as nothing usable, and saying the second when
+  // the first is true sends somebody looking for a fault on their own Deck.
+  it("says a storage is empty rather than blaming this Deck", () => {
+    expect(restoreSummary([], "storage")).toBe("This storage holds no saves yet.");
+    expect(restoreSummary([])).toBe("This backup holds no saves.");
   });
 
   // An uninstalled emulator contributes nothing and must not be counted, or the
@@ -165,7 +203,7 @@ describe("sourceLine", () => {
     // A row that said nothing was indistinguishable from one that failed to
     // load, and this is the case where the button beside it is disabled.
     expect(sourceLine(inBackup({ id: "a", files: 3, present: 3 }), "40 KB")).toEqual({
-      line: "All 3 already on this Deck - only replacing would change anything",
+      line: "All 3 already on this Deck",
       missing: 0,
     });
   });

@@ -21,7 +21,7 @@ import {
 import { logError } from "./logError";
 import { HandoffCode } from "./HandoffCode";
 import { MUTED } from "./dialogStyle";
-import { backupSummary, defaultSelection, totals } from "./saveBackup";
+import { backupSummary, defaultSelection, listNames, totals } from "./saveBackup";
 import { humanSize, ProgressBar } from "./TransferModal";
 
 /**
@@ -229,9 +229,13 @@ export function SaveBackupModal({ closeModal }: Props) {
         <div style={{ fontSize: "20px", fontWeight: 600, marginBottom: "4px" }}>
           Back up save data
         </div>
+        {/* One line, and only the part the buttons cannot say. Where the
+            saves go is written on the two buttons at the bottom; what was left
+            over is the thing somebody wants to know before pressing either, and
+            two lines of it pushed the dialog into scrolling as soon as the
+            progress bar appeared. */}
         <div style={{ ...MUTED, marginBottom: "12px" }}>
-          Builds one file holding your saves and offers it to another device on this
-          network. Nothing on the Deck is changed or removed.
+          Nothing on the Deck is changed or removed.
         </div>
 
         {error && <div style={{ color: "#e35d5d", fontSize: "13px" }}>{error}</div>}
@@ -275,18 +279,30 @@ export function SaveBackupModal({ closeModal }: Props) {
                       ? " - everything it keeps, since it does not say where its saves are"
                       : "")
                   }
+                  // **Read-only while a copy runs.** The plan was made when
+                  // the button was pressed, so a row unticked halfway through
+                  // changes nothing that is happening -- it just makes the
+                  // screen disagree with the copy it is watching.
+                  disabled={building || sending}
                   checked={selected.has(source.id)}
                   onChange={(on) => toggle(source.id, on)}
                 />
               ))}
             </Focusable>
-            <div style={{ ...MUTED, marginTop: "10px" }}>
-              {backupSummary(sums, humanSize(sums.bytes))}
-            </div>
             {/* A bar rather than a spinner, because the question while this
                 runs is not whether it is doing something but how much longer.
-                It takes the row the summary below would otherwise use, so
-                nothing moves when it appears. */}
+
+                **In the summary's place, which is what this always claimed to
+                do.** It was drawn underneath instead, so starting a copy added
+                a line and a bar to a dialog that already filled the screen and
+                sent it into scrolling. What the summary says -- what would go,
+                and how much -- is a sentence about a decision that has been
+                made by the time this appears. */}
+            {!carrying && (
+              <div style={{ ...MUTED, marginTop: "10px" }}>
+                {backupSummary(sums, humanSize(sums.bytes))}
+              </div>
+            )}
             {carrying && (
               <div style={{ marginTop: "10px" }}>
                 <div style={{ ...MUTED, marginBottom: "4px" }}>
@@ -303,7 +319,7 @@ export function SaveBackupModal({ closeModal }: Props) {
             {sent !== null && !carrying && (
               <div style={{ ...MUTED, marginTop: "10px" }}>
                 {sent.length > 0
-                  ? `Copied to ${cloud?.label}: ${sent.join(", ")}.`
+                  ? `Copied to ${cloud?.label}: ${listNames(sent)}.`
                   : "Nothing was copied."}
               </div>
             )}
@@ -319,7 +335,15 @@ export function SaveBackupModal({ closeModal }: Props) {
                 onClick={() => build()}
                 style={{ flex: 1, minWidth: "auto" }}
               >
-                {building ? "Building..." : "Build the backup"}
+                {/* **Both buttons are "copy these saves to somewhere".** This
+                    one said "Build the backup", which named the .zip it makes
+                    rather than what somebody wanted done, and read as a
+                    different kind of thing entirely from "Copy to Box" beside
+                    it. The destination is the only difference and it is now the
+                    only difference in the words. What it says while it works
+                    still differs, because it really is doing something else
+                    first: this one packs a file before anything leaves. */}
+                {building ? "Preparing..." : "Copy to a device"}
               </DialogButton>
               {/* Offered only once there is somewhere for it to go. A button
                   that opens the setup page would be a second route into it,

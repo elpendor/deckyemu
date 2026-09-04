@@ -51,9 +51,12 @@ export function CloudFetchModal({ title, onSkip }: Props) {
       <div style={{ fontSize: "20px", fontWeight: 600, marginBottom: "4px" }}>
 Getting your saves
       </div>
+      {/* The heading has already said what is happening, so this says the part
+          it cannot: that nothing else is needed. It read "Copying save data to
+          this Deck" first, which is "Getting your saves" again in longer
+          words. */}
       <div style={{ ...MUTED, marginBottom: "14px" }}>
-        Copying save data to this Deck. {title} starts on its own when this is
-        done.
+        {title} starts on its own when this is done.
       </div>
 
       <ProgressBar fraction={percent / 100} />

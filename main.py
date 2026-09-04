@@ -2198,6 +2198,11 @@ class Plugin(
             )
         ):
             await self.rebuild_launchers()
+        # Whether a launch waits for saves is a file the launcher reads rather
+        # than a question it asks, so the file has to be rewritten here or the
+        # switch would only take effect at the next start of the plugin.
+        if "cloud_before_play" in patch:
+            await self._run(self._note_cloud_state)
         # Switching cloud saves on is the request for the tool it needs, not a
         # prompt to go and install one. Failures are logged and left to startup
         # to retry, because nothing here is worth failing a settings write over.

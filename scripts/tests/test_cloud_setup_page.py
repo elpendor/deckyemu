@@ -29,8 +29,8 @@ sys.path.insert(0, os.path.join(
 import fileserver  # noqa: E402
 
 BACKENDS = {
-    "webdav": {"label": "Nextcloud or WebDAV", "fields": ("url", "user", "pass"),
-               "secret": ("pass",), "fixed": {"vendor": "nextcloud"}},
+    "webdav": {"label": "WebDAV", "fields": ("url", "user", "pass"),
+               "secret": ("pass",), "fixed": {"vendor": "other"}},
     "sftp": {"label": "SFTP or SSH", "fields": ("host", "user", "pass"),
              "secret": ("pass",), "fixed": {}},
 }
@@ -114,7 +114,7 @@ try:
     check("it offers each storage kind",
           all(('value="%s"' % kind) in page for kind in BACKENDS), True)
     check("and names them in words rather than by their rclone type",
-          "Nextcloud or WebDAV" in page, True)
+          "WebDAV" in page, True)
     check("a secret field is a password field",
           'name="pass" type="password"' in page, True)
     check("and one that is not, is not",
@@ -227,5 +227,32 @@ finally:
         os.rmdir(TARGET)
     except OSError:
         pass
+
+section("a form being acted on holds the server up")
+
+# Measured on the device: the S3 remote was created at 17:28:38 and the server
+# stopped at 17:28:39, because the panel's poll saw the new storage and decided
+# the errand was over -- while the page was still waiting to hear whether the
+# storage answered. It said "Checking..." into a socket that had gone.
+check("the status says whether a form is mid-answer",
+      "settling" in fileserver.status(), True)
+check("and nothing is settling when the server is not running",
+      fileserver.status()["settling"], 0)
+
+import tempfile as _tempfile  # noqa: E402
+
+_served = _tempfile.mkdtemp()
+fileserver.start(_served)
+try:
+    check("the server is up to be tested against", fileserver.status()["running"], True)
+    fileserver._cloud_busy = 1
+    check("a form in flight leaves it up, exactly as an upload does",
+          fileserver.stop_if_idle()["running"], True)
+    fileserver._cloud_busy = 0
+    check("and with nothing in flight it stops",
+          fileserver.stop_if_idle()["running"], False)
+finally:
+    fileserver._cloud_busy = 0
+    fileserver.stop()
 
 summary()

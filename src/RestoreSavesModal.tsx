@@ -11,7 +11,8 @@ import { FaHistory, FaTrash } from "react-icons/fa";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
-  cloudContents,
+  cloudDescribe,
+  cloudEmulators,
   cloudRestore,
   cloudSnapshots,
   cloudStatus,
@@ -83,9 +84,38 @@ type Picked =
   /** Not a source: the list of what one storage's copies have replaced. */
   | { kind: "earlier"; remote: string; label: string };
 
+/** What a row does when it is pressed: nothing. See the emulator list. */
+const noop = () => {};
+
+/**
+ * What to call one storage on screen.
+ *
+ * The service, because that is what a person calls this -- the config key
+ * rclone needs is the Deck's business and is never shown. Two accounts of the
+ * same service are the one case where the service alone is not enough to tell
+ * two rows apart, so they take a number, and only then: numbering a list of one
+ * is noise about a distinction that is not being made.
+ *
+ * The same rule and the same wording as the setup dialog, which is where a
+ * second account gets added and where these have carried numbers all along.
+ * Without it here you could pick the right Dropbox to copy to and then have no
+ * way to tell which one you were restoring from -- and neither Dropbox nor
+ * pCloud will say who they are signed in as, so there is no address to show
+ * instead: both answer `doesn't support UserInfo`.
+ */
+function nameOf(one: CloudRemote, all: CloudRemote[]) {
+  const service = (which: CloudRemote) => which.label || which.kind || which.name;
+  const mine = service(one);
+  const same = all.filter((other) => service(other) === mine);
+  if (same.length < 2) return mine;
+  return `${mine} (${same.findIndex((other) => other.name === one.name) + 1})`;
+}
+
 export function RestoreSavesModal({ closeModal }: Props) {
   const [files, setFiles] = useState<SaveBackupFile[] | null>(null);
   const [accounts, setAccounts] = useState<CloudRemote[]>([]);
+  /** Which storage saves are being copied to, of the ones signed into. */
+  const [inUse, setInUse] = useState("");
   /* Per account, the states its copies replaced. Read alongside the accounts
      themselves so the chooser is drawn once rather than growing rows under
      somebody's thumb. */
@@ -98,6 +128,8 @@ export function RestoreSavesModal({ closeModal }: Props) {
   const asked = useRef(new Set<string>());
 
   const [contents, setContents] = useState<SaveBackupContents[] | null>(null);
+  /** Emulators whose figures have not arrived yet. */
+  const [pending, setPending] = useState(0);
   const [working, setWorking] = useState(false);
   /* How far through a cloud restore is. A .zip is read off local disk and is
      done before a bar could draw; coming down from a remote is wifi, and a
@@ -154,32 +186,58 @@ export function RestoreSavesModal({ closeModal }: Props) {
     }
   }, []);
 
-  /* The same three steps against a remote, and the answer comes back in the
-     same shape -- see `cloudsync.contents`, which builds it that way on
-     purpose so one list and one pair of buttons serve both. */
+  /*
+   * A storage, opened in two stages.
+   *
+   * **The rows appear, then say what they hold.** Describing one emulator is a
+   * tree walk on the storage -- 4.7 seconds against Dropbox, the same however
+   * the question is put -- and the provider throttles them when they run at
+   * once, so fourteen of them is eleven and a half seconds. All of it used to
+   * happen behind a spinner before anything appeared. The names are one cheap
+   * listing, about a second, and each row fills itself in when its own answer
+   * lands: the emulator somebody came for is usually readable long before the
+   * rest have finished.
+   */
   const openCloud = useCallback(async (
     one: CloudRemote, snapshot?: CloudSnapshot, from?: Picked,
   ) => {
-    const service = one.label || one.kind || one.name;
+    const service = nameOf(one, accounts);
     const label = snapshot ? `${service} — ${snapshot.label}` : service;
+    const stamp = snapshot?.stamp ?? "";
     setError("");
     setCameFrom(from ?? null);
-    setChosen({ kind: "cloud", remote: one.name, label, stamp: snapshot?.stamp ?? "" });
+    setChosen({ kind: "cloud", remote: one.name, label, stamp });
     setContents(null);
+    setPending(0);
     try {
-      const held = await cloudContents(one.name, snapshot?.stamp ?? "");
-      if (!held.ok) {
-        setError(held.error ?? "That storage could not be read.");
+      const listed = await cloudEmulators(one.name, stamp);
+      if (!listed.ok) {
+        setError(listed.error ?? "That storage could not be read.");
         setChosen(null);
         return;
       }
-      setContents(held.sources ?? []);
+      // Nothing up there is a finished answer, not an empty screen waiting.
+      setContents([]);
+      setPending(listed.emulators.length);
+      listed.emulators.forEach((emulator) => {
+        void cloudDescribe(one.name, emulator, stamp)
+          .then((said) => {
+            if (said.row) {
+              setContents((was) => [...(was ?? []), said.row!]
+                .sort((a, b) => a.name.localeCompare(b.name)));
+            }
+          })
+          .catch((describeError) =>
+            logError("could not read one emulator's cloud saves", describeError),
+          )
+          .finally(() => setPending((was) => Math.max(0, was - 1)));
+      });
     } catch (readError) {
       logError("could not read cloud saves", readError);
       setError("That storage could not be read.");
       setChosen(null);
     }
-  }, []);
+  }, [accounts]);
 
   useEffect(() => {
     let live = true;
@@ -237,7 +295,12 @@ export function RestoreSavesModal({ closeModal }: Props) {
       })
       .then(async (cloud) => {
         if (!live) return;
+        /* Kept in the order the config file has them, and sorted where it
+           is drawn -- see the list itself. What numbers a repeated label is
+           position in this array, so sorting here would make the number depend
+           on which storage was in use. */
         signedIn = cloud?.remotes ?? [];
+        setInUse(cloud?.remote ?? "");
         setAccounts(signedIn);
         decide();
         // Not asked for here. What a storage has set aside is a listing of
@@ -376,7 +439,7 @@ export function RestoreSavesModal({ closeModal }: Props) {
             ? "Nothing here would be overwritten - no save in this backup is already on the Deck."
             : `${overwritten} save file(s) on this Deck will be overwritten with the backup's copies. Whatever they hold now is gone, and there is no undo.`
         }
-        strOKButtonText="Replace saves"
+        strOKButtonText="Restore all"
         bDestructiveWarning
         onOK={() => run(true)}
       />,
@@ -533,6 +596,14 @@ export function RestoreSavesModal({ closeModal }: Props) {
         />
       )}
 
+      {/* **One scroller over both kinds**, sized the way every list in these
+          dialogs is sized: about three rows, and the rest reached by scrolling
+          rather than by running off the bottom of the screen. Files and
+          storages share it because from here they are the same thing --
+          somewhere a backup is -- and two scrollers over one list of sources
+          would be two places to look for the same answer. */}
+      {choosing && (files?.length || accounts.length > 0) ? (
+      <Focusable style={{ maxHeight: "38vh", overflowY: "auto" }}>
       {/* Which backup, when there is a choice -- more than one file on the
           Deck, or a storage signed into. A lone file with nowhere else to read
           from is opened for you, so this does not appear. */}
@@ -557,10 +628,25 @@ export function RestoreSavesModal({ closeModal }: Props) {
           tab: from here they are the same thing -- somewhere a backup is. Shown
           whatever else is on the Deck, and shown while one file is already open
           only when nothing has been picked yet. */}
-      {choosing && accounts.map((one) => (
+      {/* **The one saves go to, first and said so.** It is the storage
+          somebody is nearly always here for -- what a restore usually means is
+          "put back what this Deck has been copying up" -- and the list gave it
+          no more prominence than an account signed into once a year. The word
+          is the setup dialog's word, because a storage that reads "In use"
+          there and nothing here is two names for one fact. */}
+      {choosing && [...accounts]
+        .sort((a, b) => Number(b.name === inUse) - Number(a.name === inUse))
+        .map((one) => (
         <Focusable key={one.name}>
           <Field
-            label={one.label || one.kind || one.name}
+            label={
+              <>
+                {nameOf(one, accounts)}
+                {one.name === inUse && (
+                  <span style={{ opacity: 0.7, fontWeight: 400 }}> — In use</span>
+                )}
+              </>
+            }
             description="Signed in on this Deck"
             childrenContainerWidth="min"
           >
@@ -570,15 +656,26 @@ export function RestoreSavesModal({ closeModal }: Props) {
           </Field>
         </Focusable>
       ))}
+      </Focusable>
+      ) : null}
 
       {/* The second level, and the only one: a snapshot picked here is read
           exactly as a storage is, so everything below this point is shared. */}
       {earlier && (
         <>
-          <Field
-            label={`${earlier.label} — earlier copies`}
-            description="Each is what one copy to this storage replaced. Choosing one shows what it holds before anything is put back."
-          />
+          {/* Plain text and spaced away from the list, exactly as the header
+              over the emulator rows is and for the same reason: as a `Field` it
+              was the same grey block at the same size as the rows under it, so
+              it read as the first earlier copy rather than as what they are. */}
+          <div style={{ marginBottom: "14px" }}>
+            <div style={{ fontSize: "14px", fontWeight: 600 }}>
+              {`${earlier.label} — earlier copies`}
+            </div>
+            <div style={{ fontSize: "12px", opacity: 0.7, marginTop: "3px" }}>
+              Each is what one copy to this storage replaced. Choosing one shows
+              what it holds before anything is put back.
+            </div>
+          </div>
           {replaced[earlier.remote] === undefined && (
             <div style={{ display: "flex", justifyContent: "center", padding: "24px" }}>
               <Spinner style={{ height: "32px" }} />
@@ -590,11 +687,19 @@ export function RestoreSavesModal({ closeModal }: Props) {
               description="A copy to this storage has never had to overwrite anything, so there is nothing to go back to."
             />
           )}
+          {/* Scrolled, and sized the same way the emulator list below is: about
+              three rows. `KEEP` is per emulator, so a Deck with several of them
+              offers far more than five here and the rows ran off the bottom of
+              the screen with the buttons never rendering -- which is the exact
+              thing that container was added downstairs to stop. */}
+          <Focusable style={{ maxHeight: "38vh", overflowY: "auto" }}>
           {(replaced[earlier.remote] ?? []).map((snapshot) => (
             <Field
               key={snapshot.stamp}
               label={snapshot.label}
-              description="Replaced by a copy to this storage"
+              // No description: it was the same sentence on every row, and the
+              // header above the list says it once for all of them. The date is
+              // what tells one of these from another.
               childrenContainerWidth="min"
             >
               <DialogButton
@@ -611,6 +716,7 @@ export function RestoreSavesModal({ closeModal }: Props) {
               </DialogButton>
             </Field>
           ))}
+          </Focusable>
         </>
       )}
 
@@ -655,9 +761,23 @@ export function RestoreSavesModal({ closeModal }: Props) {
                 )}
               </div>
               <div style={{ fontSize: "12px", opacity: 0.7, marginTop: "3px" }}>
-                {chosen!.kind === "file"
-                  ? `${humanSize(chosen!.file.bytes)} - ${restoreSummary(contents!)}`
-                  : restoreSummary(contents!)}
+                {/* The tally is not the tally until every row has answered,
+                    and half of one reads as a smaller storage rather than an
+                    unfinished sentence. */}
+                {chosen!.kind === "file" ? (
+                  `${humanSize(chosen!.file.bytes)} - ${restoreSummary(contents!)}`
+                ) : pending > 0 ? (
+                  // The count belongs on the line that is already saying this is
+                  // not finished. Under the list it was a second sentence about
+                  // the same thing, in the space the rows and the buttons are
+                  // fighting over.
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}>
+                    <Spinner style={{ height: "12px" }} />
+                    {`Reading what it holds - ${pending} to go`}
+                  </span>
+                ) : (
+                  restoreSummary(contents!, "storage")
+                )}
               </div>
             </div>
             {/* **A corner, not a row.** What a storage set aside is a way out
@@ -717,7 +837,19 @@ export function RestoreSavesModal({ closeModal }: Props) {
               // container is. This is why the list read as "not scrollable"
               // while the backup dialog, whose rows are ToggleFields, scrolled
               // fine.
-              <Focusable key={entry.id} focusWithinClassName="gpfocuswithin">
+              //
+              // **The wrapper is not enough on its own.** Steam passes over a
+              // `Focusable` that has no `onActivate`, no `onClick` and no
+              // focusable child, so wrapping the rows changed nothing: the list
+              // still moved under a finger and not at all under the sticks.
+              // There is nothing to do to an emulator here -- the row is a
+              // statement of what the storage holds -- so activating one does
+              // nothing on purpose. The handler is what makes the row reachable.
+              <Focusable
+                key={entry.id}
+                focusWithinClassName="gpfocuswithin"
+                onActivate={noop}
+              >
                 {/* Dimmed when there is nothing to restore from it.
                     Emphasis by contrast rather than by decoration: what a
                     person is looking for here is the row that will change, and
@@ -773,18 +905,28 @@ export function RestoreSavesModal({ closeModal }: Props) {
         {ready ? (
           <>
             <DialogButton
-              disabled={working || missingCount(contents ?? []) === 0}
+              // While rows are still arriving the count is not yet the answer,
+              // and a restore is about all of them.
+              disabled={working || pending > 0 || missingCount(contents ?? []) === 0}
               onClick={() => run(false)}
               style={{ flex: 1, minWidth: "auto" }}
             >
+              {/* **The pair differs in one thing, so the names differ in one
+                  thing.** Against "Replace saves" this read as a different kind
+                  of operation rather than the same one at a different scope --
+                  the same fault the backup dialog's buttons had. Both restore;
+                  one restores what is absent and the other restores the lot.
+                  The word that matters, that this overwrites and cannot be
+                  undone, belongs on the confirmation rather than on a button
+                  somebody presses to find out what it means. */}
               {working ? "Working..." : "Restore missing"}
             </DialogButton>
             <DialogButton
-              disabled={working}
+              disabled={working || pending > 0}
               onClick={() => confirmReplace()}
               style={{ flex: 1, minWidth: "auto" }}
             >
-              Replace saves
+              Restore all
             </DialogButton>
           </>
         ) : (

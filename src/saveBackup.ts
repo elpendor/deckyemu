@@ -53,18 +53,33 @@ export function defaultSelection(sources: SaveSource[]): Set<string> {
  */
 export function backupSummary(totals: BackupTotals, size: string): string {
   if (totals.names.length === 0) return "Nothing selected.";
-  const scope =
-    totals.whole.length === 0
-      ? ""
-      : ` Everything ${listNames(totals.whole)} keeps is included, not only saves,` +
-        " because it does not say where its saves are.";
-  return `${totals.files} file(s), ${size}, from ${listNames(totals.names)}.${scope}`;
+  // **The figures, and nothing the rows have already said.** This carried a
+  // second sentence naming the emulators that contribute their whole directory
+  // rather than a save folder -- which every one of those rows says on itself,
+  // where somebody deciding whether to untick it is already looking. Repeated
+  // underneath, it was the longest thing on the screen and told nobody
+  // anything they had not just read.
+  return `${totals.files} file(s), ${size}, from ${listNames(totals.names)}.`;
 }
 
-/** "A", "A and B", "A, B and C" -- the plugin writes lists this way everywhere. */
-function listNames(names: string[]): string {
+/** How many get named before a sentence turns into a list of the whole Deck. */
+const NAMED = 3;
+
+/**
+ * "A", "A and B", "A, B and C", "A, B, C and 11 more".
+ *
+ * The plugin writes lists this way everywhere, and stops at three for the same
+ * reason the differences dialog stops at five: a Deck with fourteen emulators
+ * set up turned every one of these sentences into a roll-call of all of them,
+ * which is a report rather than a summary, and it is the one thing nobody is
+ * reading the line for. The count still says how many there are.
+ */
+export function listNames(names: string[]): string {
   if (names.length <= 1) return names[0] ?? "";
-  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+  if (names.length <= NAMED) {
+    return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+  }
+  return `${names.slice(0, NAMED).join(", ")} and ${names.length - NAMED} more`;
 }
 
 /**
@@ -76,7 +91,20 @@ function listNames(names: string[]): string {
  * tall for the device. Two buttons say the same thing in the place somebody is
  * already looking.
  */
-export function restoreSummary(contents: SaveBackupContents[]): string {
+export function restoreSummary(
+  contents: SaveBackupContents[],
+  from: "backup" | "storage" = "backup",
+): string {
+  // **Nothing there and nothing usable are different things.** Both used to say
+  // "None of these emulators are installed on this Deck", which is a sentence
+  // about this Deck -- so a storage nothing had ever been copied to read as a
+  // Deck missing every emulator it holds, and sent somebody looking for the
+  // fault in the wrong place.
+  if (contents.length === 0) {
+    return from === "storage"
+      ? "This storage holds no saves yet."
+      : "This backup holds no saves.";
+  }
   const usable = contents.filter((entry) => entry.installed);
   if (usable.length === 0) return "None of these emulators are installed on this Deck.";
 
@@ -86,7 +114,7 @@ export function restoreSummary(contents: SaveBackupContents[]): string {
   if (present === files) {
     // The case that reads as a failure unless it is named: every file is here,
     // so restoring what is missing does nothing and its button is disabled.
-    return `${files} file(s), all of them already on this Deck. Only replacing would change anything.`;
+    return `${files} file(s), all of them already on this Deck, so only restoring all of them would change anything.`;
   }
   return `${files} file(s), ${present} of them already on this Deck.`;
 }
@@ -116,7 +144,10 @@ export function sourceLine(
   const missing = Math.max(0, entry.files - entry.present);
   if (missing === 0) {
     return {
-      line: `All ${entry.files} already on this Deck - only replacing would change anything`,
+      // What to do about it is the summary's line, once, rather than this
+      // row's -- on a Deck holding everything already it was the same clause
+      // fourteen times over the same advice.
+      line: `All ${entry.files} already on this Deck`,
       missing: 0,
     };
   }

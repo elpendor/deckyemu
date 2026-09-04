@@ -131,6 +131,17 @@ DEFAULT_SETTINGS = {
     # ends, which is the argument for the switch -- it is not the argument for
     # the default, since only the saves that actually changed are sent.
     "cloud_after_play": True,
+    # Whether a game starting looks for saves this Deck does not have, and asks
+    # when both sides changed.
+    #
+    # On, and the pair to the switch above: one puts saves up when you stop
+    # playing and this one brings them down before you start, which is the half
+    # that makes a second device work at all. It is a switch because it is the
+    # one that costs a launch a moment -- the Deck waits on an answer from a
+    # provider before the game opens its saves -- and somebody on a slow
+    # connection, or with one Deck and no interest in the rest, should be able
+    # to say no to that without giving up the copies going up.
+    "cloud_before_play": True,
     # When saves last went up, as unix seconds. Written by the copy, read by the
     # panel: an automatic thing that never says it happened is indistinguishable
     # from one that is broken.

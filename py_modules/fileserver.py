@@ -178,6 +178,20 @@ _durable = False
 # way: the worst case is a server left to stop on its own idle timeout rather than
 # a transfer cut off.
 _in_flight: dict = {}
+
+#: How many settings forms are being acted on right now.
+#:
+#: **Making a remote takes seconds, and the Deck learns it happened halfway
+#: through.** Creating one is a write; checking that it answers is a network
+#: call to a provider, and only when that comes back does the page hear
+#: anything. Meanwhile the panel's poll sees the new storage, decides the errand
+#: is over and takes the form down -- which, measured on the device, stopped the
+#: server 0.4 seconds after the S3 remote was created and left the phone saying
+#: "Checking..." into a socket that was already gone.
+#:
+#: So a form being acted on counts as something in flight, exactly as an upload
+#: does, and the server outlives it.
+_cloud_busy = 0
 _upload_seq = 0
 
 #: Partial paths the user cancelled, so the sender cannot simply start again.
@@ -680,6 +694,9 @@ class _Handler(BaseHTTPRequestHandler):
         values = asked.get("values")
         step = str(asked.get("step") or "")
         url = ""
+        global _cloud_busy
+        with _state_lock:
+            _cloud_busy += 1
         try:
             if step:
                 with _state_lock:
@@ -702,6 +719,12 @@ class _Handler(BaseHTTPRequestHandler):
             # page would sit on "Checking..." forever.
             decky.logger.exception("Cloud setup failed: %s", problem)
             ok, error, url = False, "The Deck could not finish that.", ""
+        finally:
+            # Released whichever way it went, and before the answer is written:
+            # what this holds the server up for is the work, and the write is
+            # what the holding was for.
+            with _state_lock:
+                _cloud_busy = max(0, _cloud_busy - 1)
 
         self._send(
             200,
@@ -1237,6 +1260,9 @@ def status():
             else "",
             # Non-zero means stopping now would cut a download off, exactly as
             # `uploading` does for the other direction.
+            # Non-zero means a settings form is mid-answer: the remote may
+            # already exist while the page waits to be told whether it works.
+            "settling": _cloud_busy if running else 0,
             "downloading": _downloading if running else 0,
             "download_name": _download.get("name", "") if running else "",
             "download_bytes": _download.get("bytes", 0) if running else 0,
@@ -1440,12 +1466,17 @@ def stop_if_idle():
         running = _server is not None
         arriving = len(_in_flight)
         leaving = _downloading
+        # A settings form mid-answer counts too: the remote can already exist
+        # while the page still waits to hear whether it works, and stopping
+        # there answers nobody. See `_cloud_busy`.
+        settling = _cloud_busy
     if not running:
         return status()
-    if arriving or paused or leaving:
+    if arriving or paused or leaving or settling:
         decky.logger.info(
-            "Leaving the file server up: %d arriving, %d paused, %d downloading",
-            arriving, paused, leaving,
+            "Leaving the file server up: %d arriving, %d paused, %d downloading,"
+            " %d settling",
+            arriving, paused, leaving, settling,
         )
         return status()
     return stop()

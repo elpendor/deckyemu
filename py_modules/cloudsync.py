@@ -43,6 +43,7 @@ import concurrent.futures
 import json
 import os
 import re
+import shutil
 import time
 
 import decky
@@ -54,6 +55,26 @@ import savedata
 #: Named rather than dumped at the top level: this is somebody's Dropbox, and a
 #: plugin that scatters directories across it is a plugin they uninstall.
 ROOT = "DeckyEmu/saves"
+
+#: The same folder, spelled the only way a bucket may be spelled.
+#:
+#: **On S3 the first segment of a path is a bucket, and bucket names are
+#: lowercase.** `DeckyEmu` is not a legal one, and what comes back when a copy
+#: tries is `Failed to create file system for "s3:DeckyEmu/saves/retroarch/
+#: saves": is a file not a directory` -- measured against a MinIO on the device,
+#: where the same copy to `deckyemu/...` succeeds. Nothing in that sentence says
+#: "bucket" or "lowercase", which is why this is written down here.
+#:
+#: One folder for every other provider and this one for the bucketed ones,
+#: rather than lowercase everywhere: `DeckyEmu` is already the folder holding
+#: saves in the storages people have been copying to, and renaming it would
+#: strand them.
+_BUCKET_ROOT = "deckyemu/saves"
+
+#: Backends whose first path segment is a bucket rather than a folder. Only the
+#: one this plugin offers; b2, GCS and Swift are the same shape if they are ever
+#: added.
+_BUCKETED = ("s3",)
 
 #: Where a file that was about to be overwritten goes instead, in a folder named
 #: for the moment it happened.
@@ -84,6 +105,21 @@ ROOT = "DeckyEmu/saves"
 #: read the other, and the restore screen offers them as what they are: the
 #: state a copy replaced.
 REPLACED = "DeckyEmu/replaced"
+
+#: And its bucketed spelling, for the reason `_BUCKET_ROOT` gives.
+_BUCKET_REPLACED = "deckyemu/replaced"
+
+
+def root_of(remote):
+    """Where `remote` keeps the live saves."""
+    return (_BUCKET_ROOT if cloudsave.remote_kinds().get(remote) in _BUCKETED
+            else ROOT)
+
+
+def replaced_of(remote):
+    """Where `remote` keeps what a copy set aside."""
+    return (_BUCKET_REPLACED
+            if cloudsave.remote_kinds().get(remote) in _BUCKETED else REPLACED)
 
 #: Long enough to send a large emulator's save directory over a phone's wifi,
 #: short enough that a remote that has stopped answering does not hold the
@@ -192,6 +228,104 @@ def _excludes(source):
 #: record beside the saves -- see `compare`.
 _BY_CONTENT = ["--checksum", "--no-update-modtime"]
 
+#: What each storage can be compared by, once it has been asked. Hash support is
+#: a fact about a backend and does not change under a running plugin.
+_COMPARES = {}
+
+#: Backends whose reported hashes are a property of the dialect rather than of
+#: the server behind it, so the report cannot be taken at face value.
+_CLAIMED_HASHES = ("webdav",)
+
+
+def _by_content(remote):
+    """How a copy to `remote` should decide that a file has changed.
+
+    **`--checksum` on a storage with no checksums is worse than not asking for
+    it.** rclone says so and then does it: *"--checksum is in use but the source
+    and destination have no hashes in common; falling back to --size-only"*. A
+    save file is very often the same size after a session -- a memory card is
+    fixed size, an `.srm` is fixed size -- so size-only means a changed save is
+    read as unchanged and never copied. Measured against an FTP server on the
+    device: the same ten-byte file, contents replaced, came back "Unchanged
+    skipping" and the old copy stayed up there. With rclone's own defaults the
+    same case reads "Modification times differ" and is copied.
+
+    So the flags are asked for only where they mean something. Where a storage
+    hashes, `--checksum` is still what makes Dropbox bearable -- see
+    `_BY_CONTENT`. Where it does not, size and modification time is both what
+    rclone falls back to anyway and what actually catches the change.
+
+    An unanswered question is treated as "cannot hash", because of which way the
+    two mistakes fall: comparing by time on a storage that could have hashed
+    costs an upload that was not needed, and comparing by size on one that
+    cannot hash costs the save.
+    """
+    if remote not in _COMPARES:
+        learn_compare(remote)
+    return _COMPARES.get(remote) or []
+
+
+def learn_compare(remote):
+    """Ask `remote` what it can be compared by, and remember the answer.
+
+    Apart from `_by_content` and called before a copy is planned, because
+    planning runs no subprocess -- that is what makes a plan something a test
+    can read, and it is worth keeping. Hash support is a fact about a backend,
+    so one answer serves every copy for the life of the plugin.
+    """
+    if remote in _COMPARES:
+        return _COMPARES[remote]
+    ok, output = cloudsave.rclone(
+        ["backend", "features", "%s:" % remote], LIST_SECONDS)
+    hashes = []
+    if ok:
+        try:
+            hashes = (json.loads(output) or {}).get("Hashes") or []
+        except ValueError:
+            hashes = []
+    # **What WebDAV answers here is what its dialect claims, not what its server
+    # does.** Under `owncloud` rclone reports md5 and sha1 because that dialect
+    # can carry them; a server that does not send the headers has none, and
+    # `--checksum` with no hash on either side falls back to comparing size --
+    # which is the failure this whole function exists to avoid. Measured on the
+    # device: the same file, contents replaced, "Unchanged skipping". Size and
+    # modification time is what actually catches it there, and `owncloud` is
+    # chosen precisely because it makes the timestamp available.
+    if hashes and cloudsave.remote_kinds().get(remote) in _CLAIMED_HASHES:
+        hashes = []
+    if not hashes:
+        decky.logger.info(
+            "%s offers no checksums; copies there compare size and time", remote)
+    _COMPARES[remote] = list(_BY_CONTENT) if hashes else []
+    return _COMPARES[remote]
+
+#: How many files are in the air at once. The same trade as `_AT_ONCE` below,
+#: which overlaps record reads for the same reason and lands on a similar
+#: number: a provider handed fifty simultaneous requests starts refusing them.
+#:
+#: **Save data is hundreds of small files, and a small file is almost all
+#: waiting.** Measured on the Deck against both storages, uploading sixty files
+#: of 50 KiB -- the size the logs show real saves to be:
+#:
+#: ===============  ==========  ==========
+#: transfers        Dropbox     pCloud
+#: ===============  ==========  ==========
+#: 4 (rclone's own)  50s         168s
+#: 16                19s         --
+#: 32                11s         11s
+#: ===============  ==========  ==========
+#:
+#: The link was never the limit: one 40 MiB file went up in 12 seconds on the
+#: same connection, which is 3.5 MiB/s, while sixty small ones managed 60 KiB/s
+#: between them at the default. The time was spent on round trips, and round
+#: trips overlap. Nothing was rate-limited at 32 on either provider.
+#:
+#: Not `--dropbox-batch-mode async`, which measured about the same as this and
+#: reports a failed commit late or not at all. A copy that says it worked and
+#: did not is the one outcome this whole feature exists to prevent, and the flag
+#: would only ever help one of the four providers.
+_FILES_AT_ONCE = ["--transfers", "32", "--checkers", "32"]
+
 #: Asked of rclone so a copy can be watched rather than waited on. One line a
 #: second on stderr, at a level that is logged, reading::
 #:
@@ -299,10 +433,10 @@ def push_steps(remote, ids=None):
                     "Cloud push skipped %s: not a usable folder name", source["id"])
                 continue
             command = cloudsave.argv(
-                ["copy", path, "%s:%s/%s" % (remote, ROOT, target),
+                ["copy", path, "%s:%s/%s" % (remote, root_of(remote), target),
                  "--backup-dir", "%s:%s/%s-%s/%s" % (
-                     remote, REPLACED, source["id"], when, segment)]
-                + _excludes(source) + _BY_CONTENT + _STATS
+                     remote, replaced_of(remote), source["id"], when, segment)]
+                + _excludes(source) + _by_content(remote) + _FILES_AT_ONCE + _STATS
             )
             if not command:
                 return [], "The cloud transfer tool is missing."
@@ -319,9 +453,15 @@ def _split_stamp(name):
     an emulator id may have a `-` in it -- `xenia-canary` does.
     """
     pieces = name.rsplit("-", 2)
-    if len(pieces) != 3:
+    if len(pieces) == 2:
+        # Kept before the folders carried an emulator name: the whole name is
+        # the date. Still read, so the row says "3 Sep, 21:24" rather than
+        # showing somebody a raw stamp. Which emulator it holds is inside it.
+        emulator, day, clock = "", pieces[0], pieces[1]
+    elif len(pieces) == 3:
+        emulator, day, clock = pieces
+    else:
         return "", name
-    emulator, day, clock = pieces
     try:
         when = time.strptime("%s-%s" % (day, clock), "%Y%m%d-%H%M%S")
     except ValueError:
@@ -338,7 +478,8 @@ def snapshots(remote, keep=KEEP):
     if not cloudsave.valid_name(remote):
         return [], "That storage cannot be used."
     ok, output = cloudsave.rclone(
-        ["lsjson", "%s:%s" % (remote, REPLACED), "--dirs-only"], LIST_SECONDS,
+        ["lsjson", "%s:%s" % (remote, replaced_of(remote)), "--dirs-only"],
+        LIST_SECONDS,
     )
     if not ok:
         # Nothing has ever been replaced. Not an error: it is the ordinary
@@ -400,7 +541,8 @@ def prune(remote, keep=KEEP):
     gone = 0
     for old in [one for one in listed if one["stamp"] not in kept]:
         ok, output = cloudsave.rclone(
-            ["purge", "%s:%s/%s" % (remote, REPLACED, old["stamp"])], LIST_SECONDS)
+            ["purge", "%s:%s/%s" % (remote, replaced_of(remote), old["stamp"])],
+            LIST_SECONDS)
         if ok:
             gone += 1
         else:
@@ -411,13 +553,13 @@ def prune(remote, keep=KEEP):
     return gone
 
 
-def _root_for(stamp=""):
+def _root_for(remote, stamp=""):
     """Which tree to read: the live saves, or the state one copy replaced."""
     if not stamp:
-        return ROOT
+        return root_of(remote)
     if not _SEGMENT.match(stamp):
         return ""
-    return "%s/%s" % (REPLACED, stamp)
+    return "%s/%s" % (replaced_of(remote), stamp)
 
 
 def _index(remote, stamp="", under=""):
@@ -435,7 +577,7 @@ def _index(remote, stamp="", under=""):
     means one shape for every caller instead of three of them remembering which
     kind of listing they asked for.
     """
-    root = _root_for(stamp)
+    root = _root_for(remote, stamp)
     if not root:
         return False, [], "That is not a copy this can read."
     # What the listing will leave off the front of every path.
@@ -486,7 +628,7 @@ def _emulators_up_there(remote, seconds):
     listing every file underneath is 14.2.
     """
     ok, output = cloudsave.rclone(
-        ["lsjson", "%s:%s" % (remote, ROOT), "--dirs-only"], seconds)
+        ["lsjson", "%s:%s" % (remote, root_of(remote)), "--dirs-only"], seconds)
     if not ok:
         if "not found" in output.lower():
             return [], ""
@@ -497,6 +639,72 @@ def _emulators_up_there(remote, seconds):
         return [], "The storage answered with something unreadable."
     return [e.get("Name") or "" for e in entries
             if _SEGMENT.match(e.get("Name") or "")], ""
+
+
+def listed_on(remote, stamp=""):
+    """Which emulators have saves on `remote`, named for a person. One listing.
+
+    **The rows come first and their figures follow.** Describing one emulator
+    is a tree walk -- 4.7 seconds against Dropbox, the same whether it is asked
+    as `lsjson`, `size`, or with `--fast-list`, and the provider throttles them
+    when they run at once, so fourteen of them is eleven and a half seconds. All
+    of that used to happen before anything appeared. The names alone are one
+    cheap listing, which is 1.1 seconds, and each row can then say what it holds
+    when its own answer arrives.
+    """
+    if not cloudsave.valid_name(remote):
+        return [], "That storage cannot be used."
+    if stamp:
+        emulator = _split_stamp(stamp)[0]
+        if emulator:
+            return [emulator], ""
+        # A copy kept before the folders were named carries the emulator in its
+        # paths instead of in its name, and may hold more than one. Reading it
+        # costs a request, which is why the named ones do not pay for it -- but
+        # a snapshot is one press worth of saves, so it is a cheap one.
+        ok, entries, error = _index(remote, stamp)
+        if not ok:
+            return [], error or "The storage did not answer."
+        found = []
+        for entry in entries:
+            name, _, rest = (entry.get("Path") or "").partition("/")
+            if rest and name not in found:
+                found.append(name)
+        return found, ""
+    return _emulators_up_there(remote, LIST_SECONDS)
+
+
+def describe_one(remote, source_id, stamp=""):
+    """One emulator's row: what is up there, and how much of it is here.
+
+    The record beside its saves answers this without a walk. An emulator put up
+    before records existed has none, so it is listed -- which is the slow case
+    and the reason a caller should ask for these one at a time rather than
+    waiting on all of them.
+    """
+    if not cloudsave.valid_name(remote) or not _SEGMENT.match(source_id or ""):
+        return {}
+    files = {}
+    if stamp:
+        ok, entries, _ = _index(remote, stamp)
+        for entry in (entries if ok else []):
+            emulator, _, rest = (entry.get("Path") or "").partition("/")
+            if rest and emulator == source_id:
+                files[rest] = entry.get("Size") or 0
+    else:
+        state, problem = _remote_state(remote, source_id, LIST_SECONDS)
+        if state and not problem:
+            files = {name: (said or {}).get("size") or 0
+                     for name, said in (state.get("files") or {}).items()}
+        else:
+            ok, entries, _ = _index(remote, "", source_id)
+            files = {
+                (entry.get("Path") or "").partition("/")[2]: entry.get("Size") or 0
+                for entry in (entries if ok else [])
+                if "/" in (entry.get("Path") or "")
+            }
+    rows = _rows_from({source_id: files})
+    return rows[0] if rows else {}
 
 
 def _rows_from(files_by_emulator):
@@ -533,70 +741,6 @@ def _rows_from(files_by_emulator):
         if row["files"]:
             found.append(row)
     return sorted(found, key=lambda row: row["name"])
-
-
-def contents(remote, stamp=""):
-    """What is on `remote`, per emulator, in the shape the restore screen reads.
-
-    `stamp` reads one of the folders under `REPLACED` instead of the live saves.
-    Same shape, so the screen needs no second kind of row.
-
-    Deliberately the same shape `savedata.describe` returns for a zip, down to
-    `installed` and `present`, so one list of rows and one pair of buttons serve
-    both. A restore that means something different depending on where the saves
-    came from is two features wearing one word.
-
-    **The live saves are read from the records, not by walking the tree.** Every
-    copy up leaves a record listing what it wrote, which is exactly what this
-    needs -- so one cheap directory listing says which emulators are there and
-    the records answer the rest, read all at once. Measured on the device
-    against Dropbox with fourteen emulators: 14.2 seconds walking the tree
-    against 1.1 + 3.6 this way. An emulator whose record predates them falls
-    back to a listing of its own subtree, so nothing is missing from the answer.
-    """
-    if not cloudsave.valid_name(remote):
-        return {"ok": False, "error": "That storage cannot be used."}
-
-    if stamp:
-        # A snapshot is one emulator's and small; walking it is one request.
-        ok, entries, error = _index(remote, stamp)
-        if not ok:
-            return {"ok": False, "error": error or "The storage did not answer."}
-        files = {}
-        for entry in entries:
-            emulator, _, rest = (entry.get("Path") or "").partition("/")
-            if rest:
-                files.setdefault(emulator, {})[rest] = entry.get("Size") or 0
-        return {"ok": True, "sources": _rows_from(files)}
-
-    emulators, error = _emulators_up_there(remote, LIST_SECONDS)
-    if error:
-        return {"ok": False, "error": error}
-    if not emulators:
-        return {"ok": True, "sources": []}
-
-    def one(emulator):
-        state, problem = _remote_state(remote, emulator, LIST_SECONDS)
-        if problem or not state:
-            # No record, or written before they were kept. Ask for this
-            # emulator's files rather than leaving it out of the answer.
-            ok, entries, _ = _index(remote, "", emulator)
-            files = {
-                (entry.get("Path") or "").partition("/")[2]: entry.get("Size") or 0
-                for entry in (entries if ok else [])
-                if "/" in (entry.get("Path") or "")
-            }
-            return emulator, files
-        return emulator, {
-            name: (said or {}).get("size") or 0
-            for name, said in (state.get("files") or {}).items()
-        }
-
-    files_by_emulator = {}
-    with concurrent.futures.ThreadPoolExecutor(max_workers=_AT_ONCE) as pool:
-        for emulator, files in pool.map(one, emulators):
-            files_by_emulator[emulator] = files
-    return {"ok": True, "sources": _rows_from(files_by_emulator)}
 
 
 #: What every copy up leaves beside the saves, and what every launch reads.
@@ -734,54 +878,6 @@ def changed_since_push(source_id):
     return False
 
 
-def backfill_records(remote):
-    """Write a record for every emulator up there that has none. Returns how many.
-
-    **Measured on the device**: twelve emulators put up before records existed
-    made the restore screen 11.5 seconds, because each of them had to be listed;
-    with records it is 3.5. So the first read of a storage pays that once, and
-    this runs afterwards so the next one does not -- rather than inside the
-    read, which made the first open 17 seconds instead of 11.
-    """
-    if not cloudsave.valid_name(remote):
-        return 0
-    emulators, error = _emulators_up_there(remote, LIST_SECONDS)
-    if error:
-        return 0
-
-    def one(emulator):
-        state, problem = _remote_state(remote, emulator, LIST_SECONDS)
-        if state or problem:
-            return 0
-        ok, entries, _ = _index(remote, "", emulator)
-        files = {
-            (entry.get("Path") or "").partition("/")[2]: entry.get("Size") or 0
-            for entry in (entries if ok else [])
-            if "/" in (entry.get("Path") or "")
-        }
-        if not files:
-            return 0
-        # Nothing is claimed about who wrote it: the device is named as unknown
-        # and the time is zero. A Deck with no record of its own asks no
-        # questions anyway -- see `compare` -- so this cannot become a conflict
-        # that was not already there.
-        written, _ = _write_record(remote, emulator, {
-            "device": "before-records",
-            "at": 0,
-            "files": {name: {"size": size, "mtime": 0}
-                      for name, size in files.items()},
-        })
-        return 1 if written else 0
-
-    with concurrent.futures.ThreadPoolExecutor(max_workers=_AT_ONCE) as pool:
-        done = sum(pool.map(one, emulators))
-    if done:
-        decky.logger.info(
-            "Wrote %d missing record(s) on %s; reading it is quick from now on",
-            done, remote)
-    return done
-
-
 def _write_record(remote, source_id, state):
     """Put `state` beside one emulator's saves. Returns (ok, error)."""
     staged = os.path.join(STATE_DIR, "%s.uploading" % source_id)
@@ -792,7 +888,8 @@ def _write_record(remote, source_id, state):
     except OSError as error:
         return False, str(error)
     ok, output = cloudsave.rclone(
-        ["copyto", staged, "%s:%s/%s/%s" % (remote, ROOT, source_id, STATE_FILE)],
+        ["copyto", staged,
+         "%s:%s/%s/%s" % (remote, root_of(remote), source_id, STATE_FILE)],
         LIST_SECONDS,
     )
     try:
@@ -821,6 +918,65 @@ def record_push(remote, source_id):
     if ok:
         _keep_mine(source_id, state)
     return ok, error
+
+
+def record_pushes(remote, source_ids):
+    """The same, for every emulator one copy covered. One rclone run.
+
+    **Measured, and it was a minute spent with the bar already at 100%.** The
+    records go up after the last save does, so whatever they cost is paid at the
+    end of a copy that looks finished. One `copyto` each is one process, one
+    sign-in and one round trip each: fourteen of them took 70 seconds against
+    Box. Staged into a tree and sent as a single `copy`, the same fourteen
+    records took 22.
+
+    One emulator is the ordinary case -- a copy after a game covers the
+    emulator that was played -- and it stays on `record_push`, which is the same
+    thing without the staging directory.
+
+    All or nothing on this Deck's side: a partial write is a record claiming an
+    upload happened, and the next launch believes it. If the copy fails, nothing
+    is kept and the next one writes them all again.
+    """
+    wanted = [one for one in dict.fromkeys(source_ids or []) if _SEGMENT.match(one or "")]
+    if not wanted:
+        return True, ""
+    if len(wanted) == 1:
+        return record_push(remote, wanted[0])
+    if not cloudsave.valid_name(remote):
+        return False, "That storage cannot be used."
+
+    known = {one["id"]: one for one in savedata._all_sources()}
+    staging = os.path.join(STATE_DIR, "uploading")
+    states = {}
+    shutil.rmtree(staging, ignore_errors=True)
+    try:
+        for source_id in wanted:
+            source = known.get(source_id)
+            if source is None:
+                continue
+            state = _state_of(source)
+            folder = os.path.join(staging, source_id)
+            os.makedirs(folder, exist_ok=True)
+            with open(os.path.join(folder, STATE_FILE), "w", encoding="utf-8") as handle:
+                handle.write(json.dumps(state, sort_keys=True))
+            states[source_id] = state
+    except OSError as error:
+        shutil.rmtree(staging, ignore_errors=True)
+        return False, str(error)
+    if not states:
+        shutil.rmtree(staging, ignore_errors=True)
+        return True, ""
+
+    ok, output = cloudsave.rclone(
+        ["copy", staging, "%s:%s" % (remote, root_of(remote))] + _FILES_AT_ONCE,
+        TRANSFER_SECONDS,
+    )
+    shutil.rmtree(staging, ignore_errors=True)
+    if ok:
+        for source_id, state in states.items():
+            _keep_mine(source_id, state)
+    return ok, "" if ok else output
 
 
 def _identity(state):
@@ -894,7 +1050,7 @@ def preserve_local(remote, source_id, names):
             return False, str(error)
         ok, output = cloudsave.rclone(
             ["copy", roots[segment], "%s/%s" % (aside, segment),
-             "--files-from", listing] + _BY_CONTENT,
+             "--files-from", listing] + _by_content(remote) + _FILES_AT_ONCE,
             TRANSFER_SECONDS,
         )
         try:
@@ -932,7 +1088,8 @@ def _remote_state(remote, source_id, seconds):
     would be a second round trip on the front of a launch.
     """
     ok, output = cloudsave.rclone(
-        ["cat", "%s:%s/%s/%s" % (remote, ROOT, source_id, STATE_FILE)], seconds)
+        ["cat", "%s:%s/%s/%s" % (remote, root_of(remote), source_id, STATE_FILE)],
+        seconds)
     if not ok:
         # Never copied up, or copied up by a version that did not keep records.
         # Both mean there is nothing here to compare against.
@@ -1100,7 +1257,7 @@ def pull_steps(remote, ids=None, replace=False, stamp="", known=None):
     if not cloudsave.valid_name(remote):
         return [], "That storage cannot be used."
 
-    root = _root_for(stamp)
+    root = _root_for(remote, stamp)
     if not root:
         return [], "That is not a copy this can read."
 
@@ -1148,7 +1305,8 @@ def pull_steps(remote, ids=None, replace=False, stamp="", known=None):
             args = ["copy", "%s:%s/%s" % (remote, root, where), path]
             if not replace:
                 args.append("--ignore-existing")
-            command = cloudsave.argv(args + _BY_CONTENT + _STATS)
+            command = cloudsave.argv(
+                args + _by_content(remote) + _FILES_AT_ONCE + _STATS)
             if not command:
                 return [], "The cloud transfer tool is missing."
             steps.append({"id": source["id"], "name": source["name"], "argv": command})

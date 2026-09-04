@@ -323,7 +323,7 @@ export const endReport = callable<
  * a username and a password, which is exactly what the Deck's on-screen
  * keyboard is worst at.
  *
- * Only the storage that needs no browser login is offered — Nextcloud, SFTP,
+ * Only the storage that needs no browser login is offered — WebDAV, SFTP,
  * S3. The OAuth providers answer to `localhost`, which from a phone is the
  * phone, so they take the Deck's own browser instead.
  */
@@ -364,6 +364,8 @@ export interface CloudState {
   space: { total?: number; used?: number; free?: number };
   /** Whether a game ending copies that emulator's saves up on its own. */
   after_play: boolean;
+  /** Whether a game starting looks for saves this Deck does not have. */
+  before_play: boolean;
   /** When saves last went up, unix seconds. 0 when they never have. */
   last_sync: number;
   remotes: CloudRemote[];
@@ -533,10 +535,23 @@ export const cloudBackupNow = callable<
  * from are still there and still readable, which is the whole reason switching
  * costs nothing.
  */
-export const cloudContents = callable<
+/**
+ * Which emulators a storage holds saves for. One cheap listing.
+ *
+ * The restore screen draws its rows from this and fills each one in with
+ * `cloudDescribe`. Describing an emulator is a tree walk — 4.7 seconds against
+ * Dropbox, whatever form the question takes — and fourteen of them was eleven
+ * seconds with nothing on screen.
+ */
+export const cloudEmulators = callable<
   [name: string, stamp: string],
-  { ok: boolean; error?: string; sources?: SaveBackupContents[] }
->("cloud_contents");
+  { ok: boolean; error?: string; emulators: string[] }
+>("cloud_emulators");
+/** One emulator's row, asked for on its own so the screen can fill in. */
+export const cloudDescribe = callable<
+  [name: string, emulator: string, stamp: string],
+  { ok: boolean; error?: string; row?: SaveBackupContents | null }
+>("cloud_describe");
 /** One state a copy replaced, kept in the storage rather than thrown away. */
 export interface CloudSnapshot {
   /** The folder it lives in. Passed back to read or restore from it. */
