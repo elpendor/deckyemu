@@ -28,6 +28,7 @@ import { SaveBackupModal } from "./SaveBackupModal";
 import { RestoreSavesModal } from "./RestoreSavesModal";
 import { callWithRetry } from "./timeout";
 import { humanSize } from "./TransferModal";
+import { ago } from "./ago";
 import { logError } from "./logError";
 import { openModal } from "./modalStack";
 
@@ -76,6 +77,10 @@ export function LibraryPanel({ onRefresh }: Props) {
    */
   const [tabs, setTabs] = useState<boolean | null>(null);
   const [cloudRemote, setCloudRemote] = useState("");
+  /* The automatic copy: whether it is on, and when it last ran. Read with the
+     destination, since neither means anything without the other. */
+  const [afterPlay, setAfterPlay] = useState(true);
+  const [lastSync, setLastSync] = useState(0);
 
   // Bound to the component rather than started with the clear: the backend
   // emits from the moment the call lands, and a listener attached inside the
@@ -107,6 +112,11 @@ export function LibraryPanel({ onRefresh }: Props) {
   // claiming a destination that is gone is worse than one that claims nothing.
   useEffect(() => {
     cloudStatus()
+      .then((result) => {
+        setAfterPlay(Boolean(result.after_play));
+        setLastSync(Number(result.last_sync) || 0);
+        return result;
+      })
       .then((result) =>
         // The service, and the account when the service will say. Never the
         // rclone name: that is a config key the Deck picked for itself, and a
@@ -368,6 +378,45 @@ export function LibraryPanel({ onRefresh }: Props) {
             {cloudRemote ? "Cloud storage" : "Set up cloud storage"}
           </ButtonItem>
         </PanelSectionRow>
+
+        {/* Under the row that says where things go, because it is about that
+            row. Offered only once there is somewhere to put things: a switch
+            governing a destination nobody has chosen is a switch about nothing.
+
+            On the panel rather than in the dialog above. That dialog is a
+            thing somebody opens to sign in and then dismisses; a setting kept
+            behind one is a setting nobody finds a second time. It is also
+            where the answer to "is this actually working?" belongs, and that
+            answer is the date. */}
+        {cloudRemote && (
+          <PanelSectionRow>
+            <ToggleField
+              label="Copy saves when a game closes"
+              description={
+                lastSync
+                  ? `Only the saves that changed, for the emulator you were playing. Last copied ${ago(lastSync)}.`
+                  : "Only the saves that changed, for the emulator you were playing. Nothing has been copied yet."
+              }
+              checked={afterPlay}
+              onChange={(on) => {
+                // The switch moves at once and the date is re-read after, so a
+                // failed write shows as the switch going back rather than as a
+                // panel that disagrees with the Deck.
+                setAfterPlay(on);
+                void setSettings({ cloud_after_play: on })
+                  .then(() => cloudStatus())
+                  .then((result) => {
+                    setAfterPlay(Boolean(result.after_play));
+                    setLastSync(Number(result.last_sync) || 0);
+                  })
+                  .catch((error) => {
+                    logError("could not change the after-play copy", error);
+                    setAfterPlay(!on);
+                  });
+              }}
+            />
+          </PanelSectionRow>
+        )}
       </PanelSection>
 
       <PanelSection title="Starting over">

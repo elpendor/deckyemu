@@ -362,6 +362,10 @@ export interface CloudState {
   account: string;
   /** Live figures, so their presence is itself proof the sign-in still works. */
   space: { total?: number; used?: number; free?: number };
+  /** Whether a game ending copies that emulator's saves up on its own. */
+  after_play: boolean;
+  /** When saves last went up, unix seconds. 0 when they never have. */
+  last_sync: number;
   remotes: CloudRemote[];
 }
 
@@ -555,6 +559,21 @@ export const cloudRestore = callable<
   [name: string, ids: string[] | null, replace: boolean, stamp: string],
   { ok: boolean; error?: string; started?: boolean }
 >("cloud_restore");
+/**
+ * Copy one emulator's saves up, after a game using it has closed.
+ *
+ * Takes the game's `core_id`; the backend turns that into a save source, since
+ * every libretro core keeps its saves in RetroArch's directories rather than
+ * its own.
+ *
+ * Answers `{ok: true, skipped}` when cloud saves are off, no storage is chosen
+ * or the emulator has nothing to send. None of those is a failure worth
+ * surfacing at the moment a game ends.
+ */
+export const cloudBackupAfterPlay = callable<
+  [core_id: string],
+  { ok: boolean; error?: string; skipped?: string }
+>("cloud_backup_after_play");
 export const stopFileServer = callable<
   [],
   { ok: boolean } & Partial<FileServerStatus>

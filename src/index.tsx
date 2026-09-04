@@ -44,6 +44,7 @@ import { TransferStatusPanel } from "./TransferStatusPanel";
 import { ManagePage, MANAGE_ROUTE, openManagePage } from "./ManagePage";
 import { patchGameContextMenu } from "./steam/contextMenu";
 import { watchLaunches } from "./launchGate";
+import { watchPlaying } from "./playWatch";
 import { OVER_THE_NETWORK, callWithRetry } from "./timeout";
 import { openModal } from "./modalStack";
 
@@ -496,6 +497,16 @@ export default definePlugin(() => {
   const stopWatchingLaunches = watchLaunches();
 
   /*
+   * And the other end of a game: copying its saves up once it is closed.
+   *
+   * Here rather than in the launcher script, which is where it looks like it
+   * belongs. Steam's reaper waits for every descendant of what it started, so
+   * an upload in the launcher's exit trap holds the library tile on "Running"
+   * until the network is finished. See playWatch.ts.
+   */
+  const stopWatchingPlaying = watchPlaying();
+
+  /*
    * Games added before their emulator asked for a layout do not have it, and
    * for Vita3K that means a gyro the Deck never powers on. Repaired here rather
    * than asked of the user, because the symptom is invisible: motion simply
@@ -580,6 +591,7 @@ export default definePlugin(() => {
       // Same reason: Steam keeps the registration, and a plugin update would
       // otherwise leave the old copy toasting alongside the new one.
       stopWatchingLaunches();
+      stopWatchingPlaying();
     },
   };
 });

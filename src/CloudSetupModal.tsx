@@ -56,6 +56,12 @@ const ACCOUNTS = {
  * and which ones to be rid of -- is the Deck half, because choosing between
  * accounts already set up needs neither a browser nor a keyboard, and it is a
  * decision about this device.
+ *
+ * **What is not here is the settings.** Whether a game closing copies on its
+ * own, and when it last did, are a switch and a status, and this is a dialog
+ * somebody opens for a minute to sign in and then dismisses. A setting behind a
+ * modal is a setting nobody finds twice, so it lives on the panel row instead --
+ * the same reasoning `TransferModal` gives for being a modal at all.
  */
 
 /** Free space, rounded the way a person would say it. */

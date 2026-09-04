@@ -24,6 +24,7 @@ code lives somewhere findable. Nothing here may be instantiated alone.
 
 import asyncio
 import os
+import time
 
 import decky
 
@@ -34,6 +35,7 @@ import cloudsync
 import diagnostics
 import emu_install
 import emulator_catalog
+import emulators
 import fileserver
 import procout
 import savedata
@@ -229,6 +231,11 @@ class Transfers(plugin_base.PluginContext):
             # Empty for services that will not say, which is most of them --
             # Dropbox answers "doesn't support UserInfo". Not an error, and the
             # panel says the service without claiming to know the account.
+            # Whether a game ending copies on its own, and when it last did.
+            # An automatic thing that never says it happened cannot be told
+            # from one that is broken.
+            "after_play": bool(settings.get("cloud_after_play")),
+            "last_sync": int(settings.get("cloud_last_sync") or 0),
             "account": await self._run(cloudsave.account_for, remote) if remote else "",
             # Numbers can only come back from a service that answered, so this
             # doubles as proof the sign-in still works.
@@ -394,6 +401,65 @@ class Transfers(plugin_base.PluginContext):
             False, "", [],
         )
         return {"ok": True, "started": True}
+
+    @staticmethod
+    def _source_of(core_id):
+        """Which save source a game's core belongs to.
+
+        A catalog emulator carries its own id behind a prefix; anything else is
+        a libretro core, and every one of those keeps its saves in RetroArch's
+        directories rather than its own.
+        """
+        if emulators.is_emulator_id(core_id):
+            return emulators.emulator_id(core_id)
+        return "retroarch"
+
+    async def cloud_backup_after_play(self, core_id: str):
+        """Copy one emulator's saves up, after a game using it has closed.
+
+        **Not run from the launcher.** Steam's reaper waits for every descendant
+        of the script it started, so an upload in an exit trap holds the library
+        tile on "Running" until the network is done -- for a big save directory
+        over hotel wifi, minutes of a game that has already quit. This runs in
+        decky's own process instead, which the reaper knows nothing about, and
+        the panel calls it when it sees the game leave `RunningApps`.
+
+        One emulator, not all of them: that is the whole reason the layout is
+        per emulator and the copy is loose files. Closing a Mega Drive game
+        sends a handful of kilobytes.
+
+        Silent by design, and it reports only to the log and to
+        `cloud_last_sync`. A toast after every game is a notification somebody
+        turns off, and the thing it would be announcing is that nothing went
+        wrong.
+        """
+        settings = await self._run(store.get_settings)
+        if not settings.get("cloud_saves") or not settings.get("cloud_after_play"):
+            return {"ok": True, "skipped": "off"}
+        remote = (settings.get("cloud_remote") or "").rstrip(":")
+        if not remote:
+            return {"ok": True, "skipped": "nowhere to put it"}
+        if not await self._run(cloudsave.binary):
+            return {"ok": True, "skipped": "no rclone"}
+
+        source = self._source_of(core_id)
+        steps, error = await self._run(cloudsync.push_steps, remote, [source])
+        if error:
+            # Ordinary, not a failure: an emulator with no save directory yet
+            # has nothing to send, and a game closing is a bad moment to be told
+            # about it either way.
+            decky.logger.info("Nothing to copy up for %s: %s", source, error)
+            return {"ok": True, "skipped": error}
+
+        ok, reason = await self._stream_cloud(steps)
+        if not ok:
+            decky.logger.warning("Could not copy %s up after play: %s", source, reason)
+            return {"ok": False, "error": reason}
+
+        await self._run(store.set_settings, {"cloud_last_sync": int(time.time())})
+        await self._run(cloudsync.prune, remote)
+        decky.logger.info("Copied %s up after play", source)
+        return {"ok": True}
 
     async def cloud_contents(self, name: str, stamp: str = ""):
         """What one storage holds, per emulator, in the restore screen's shape.

@@ -359,6 +359,21 @@ being left somewhere you would need a web browser and another device to reach.
 Your saves themselves are never deleted by any of this; only these safety copies
 age out.
 
+## Copying when a game closes
+
+Once a storage is set up this happens on its own: close a game, and that
+emulator's saves are copied up. Only that emulator, and only the files that
+changed — closing a Mega Drive game sends a few kilobytes.
+
+There is nothing to press and nothing appears on screen. If you want to know it
+is working, the switch under **Cloud storage** — *Copy saves when a game closes*
+— says when saves last went up. Turning it off is worth doing if you are on a
+hotspot and would rather choose when to spend the connection.
+
+It does not run from the launcher, which is why your library tile goes back to
+"Stopped" the moment you quit rather than waiting for the network. The plugin
+notices the game has ended and does the copying itself.
+
 ## Restoring from the cloud
 
 **Restore save data** lists your signed-in storages beside the backup files on the

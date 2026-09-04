@@ -124,6 +124,17 @@ DEFAULT_SETTINGS = {
     # secret and not a credential: the credentials live in rclone's own config,
     # which this never reads and the frontend never sees.
     "cloud_remote": "",
+    # Whether a game closing copies that emulator's saves up on its own.
+    #
+    # On, because a cloud save nobody remembers to press is a manual backup with
+    # extra steps. It costs a little of somebody's connection every time a game
+    # ends, which is the argument for the switch -- it is not the argument for
+    # the default, since only the saves that actually changed are sent.
+    "cloud_after_play": True,
+    # When saves last went up, as unix seconds. Written by the copy, read by the
+    # panel: an automatic thing that never says it happened is indistinguishable
+    # from one that is broken.
+    "cloud_last_sync": 0,
     # Which launchers.FORMAT_VERSION the scripts on disk were written in, so a
     # fix to how they are generated reaches games that already exist. Written by
     # startup rather than by anyone, and declared here because this dict is what
