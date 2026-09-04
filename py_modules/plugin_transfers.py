@@ -198,7 +198,7 @@ class Transfers(plugin_base.PluginContext):
         self._note_cloud_state()
         return (True, "", "")
 
-    async def cloud_status(self):
+    async def cloud_status(self, details: bool = True):
         """Whether saves have somewhere to go, and where. Never a credential.
 
         The panel had no way to say any of this, which made a successful setup
@@ -239,10 +239,18 @@ class Transfers(plugin_base.PluginContext):
             # from one that is broken.
             "after_play": bool(settings.get("cloud_after_play")),
             "last_sync": int(settings.get("cloud_last_sync") or 0),
-            "account": await self._run(cloudsave.account_for, remote) if remote else "",
+            # **These two are the only things here that touch the network**,
+            # and they are for the setup dialog: who the storage says you are,
+            # and how much room is left. Every other caller wants the list of
+            # accounts, which is a local file -- and paying four seconds of
+            # Dropbox to open a screen that shows neither is what made the
+            # restore dialog feel broken.
+            "account": (await self._run(cloudsave.account_for, remote)
+                        if (remote and details) else ""),
             # Numbers can only come back from a service that answered, so this
             # doubles as proof the sign-in still works.
-            "space": await self._run(cloudsave.remote_space, remote) if remote else {},
+            "space": (await self._run(cloudsave.remote_space, remote)
+                      if (remote and details) else {}),
             "remotes": [{"name": name, "kind": kinds.get(name, ""),
                          "label": await self._run(cloudsave.label_for,
                                                   kinds.get(name, ""))}
@@ -821,7 +829,20 @@ class Transfers(plugin_base.PluginContext):
             return {"ok": False, "error": "The cloud transfer tool is missing."}
         if name not in await self._run(cloudsave.remotes):
             return {"ok": False, "error": "That storage is not set up on this Deck."}
-        return await self._run(cloudsync.contents, name, stamp)
+        held = await self._run(cloudsync.contents, name, stamp)
+        # After the answer, not before it: an emulator put up before records
+        # existed has to be listed to be described, and writing what that
+        # listing found is what stops the next read doing it again. It is not
+        # something to keep somebody waiting for.
+        if not stamp and held.get("ok"):
+            self._detach(
+                self._catch_up(name), "cloud_records_written", name, 0)
+        return held
+
+    async def _catch_up(self, remote):
+        """Give every emulator on `remote` a record, quietly, once."""
+        written = await self._run(cloudsync.backfill_records, remote)
+        await decky.emit("cloud_records_written", remote, written)
 
     async def cloud_snapshots(self, name: str):
         """The states a copy replaced on one storage, newest first.

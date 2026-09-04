@@ -369,7 +369,14 @@ export interface CloudState {
   remotes: CloudRemote[];
 }
 
-export const cloudStatus = callable<[], CloudState>("cloud_status");
+/**
+ * Where saves go, and which storages are signed in.
+ *
+ * `details` asks the storage who you are and how much room is left, which is
+ * two network round trips and only the setup dialog shows either. Everything
+ * else passes false and is answered from local files.
+ */
+export const cloudStatus = callable<[details?: boolean], CloudState>("cloud_status");
 /**
  * Choose which configured storage saves go to. Empty name clears the choice.
  *
@@ -534,8 +541,12 @@ export const cloudContents = callable<
 export interface CloudSnapshot {
   /** The folder it lives in. Passed back to read or restore from it. */
   stamp: string;
-  /** That moment as somebody would say it. */
+  /** Which saves it holds and when they were set aside — "RetroArch — 3 Sep, 22:10". */
   label: string;
+  /** The emulator whose saves these are. */
+  emulator: string;
+  /** Just the moment, for a list already grouped by storage. */
+  when: string;
 }
 /**
  * The states a copy replaced, newest first and capped at a few.

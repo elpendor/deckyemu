@@ -71,7 +71,9 @@ export function SaveBackupModal({ closeModal }: Props) {
 
   useEffect(() => {
     let live = true;
-    void cloudStatus()
+    // Only the name of the storage is shown on the button, so this asks the
+    // provider nothing.
+    void cloudStatus(false)
       .then((result) => {
         if (live && result.remote) {
           setCloud({ remote: result.remote, label: result.label || result.kind });

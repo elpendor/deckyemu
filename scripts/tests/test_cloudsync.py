@@ -36,7 +36,9 @@ emulator id is not user input, but it is the last thing a string passes through
 before it becomes a folder in somebody's Dropbox.
 """
 
+import json as _json
 import os
+import re
 import subprocess
 import sys
 
@@ -76,6 +78,26 @@ SOURCES = [
     {"id": "duckstation", "name": "DuckStation", "whole": True,
      "roots": [("duckstation", "/home/deck/.var/app/duckstation")]},
 ]
+
+
+class FakeByCall:
+    """Answers each rclone call from a rule, because one answer is not enough.
+
+    Reading what a storage holds is a directory listing and then one record per
+    emulator, and a stub returning the same bytes to both makes a test that
+    passes whatever the code does.
+    """
+
+    def __init__(self, answer):
+        self.answer = answer
+        self.calls = []
+        self.returncode = 0
+
+    def __call__(self, argv, **kwargs):
+        self.calls.append(list(argv))
+        out = self.answer(argv)
+        return subprocess.CompletedProcess(
+            argv, 0 if out is not None else 1, out or "", "" if out else "not found")
 
 
 def with_run(fake, action, sources=SOURCES):
@@ -159,11 +181,14 @@ aside = [argv[argv.index("--backup-dir") + 1] for argv in sent
          if "--backup-dir" in argv]
 check("every copy names somewhere to put what it would have overwritten",
       len(aside), len(sent))
-check("one dated folder for the whole press, so 'what did that copy replace' "
-      "has one answer rather than thirteen",
-      len({one.rsplit("/", 2)[0] for one in aside}), 1)
-check("it keeps the path the file had, so the old copy can be found by name",
-      aside[0].endswith("/retroarch/saves"), True)
+check("one folder per emulator, which is one folder for a copy after a game "
+      "closes -- that only ever covers the emulator that was played",
+      len({one.rsplit("/", 1)[0] for one in aside}), 2)
+# Named for the emulator and the moment, which is what lets the restore screen
+# say "RetroArch - 3 Sep, 22:10" from one directory listing rather than one
+# network round trip per snapshot to look inside.
+check("it is named after the emulator and when it happened",
+      bool(re.match(r".*/retroarch-\d{8}-\d{6}/saves$", aside[0])), True)
 
 # rclone refuses a backup directory that sits inside the destination, and it
 # would otherwise be read straight back as saves by `contents`.
@@ -250,11 +275,31 @@ check("and it says so rather than reporting a success that moved nothing",
 
 section("reading what a storage holds")
 
-fake = FakeRun(stdout=(
-    '[{"Path":"retroarch/saves/a.srm","Size":10},'
-    ' {"Path":"retroarch/saves/b.srm","Size":20},'
-    ' {"Path":"vita3k/savedata/c.bin","Size":40}]'
-))
+# **Read from the records, not by walking the tree.** Every copy up leaves one
+# listing what it wrote, which is exactly what this screen needs -- so it is a
+# cheap directory listing plus one record per emulator, read at once. Measured
+# on the device against Dropbox with fourteen emulators: 14.2 seconds walking
+# the tree against 1.1 + 3.6 this way.
+_records = {
+    "retroarch": _json.dumps({"device": "d", "at": 1, "files": {
+        "saves/a.srm": {"size": 10, "mtime": 1},
+        "saves/b.srm": {"size": 20, "mtime": 1}}}),
+    "vita3k": _json.dumps({"device": "d", "at": 1, "files": {
+        "savedata/c.bin": {"size": 40, "mtime": 1}}}),
+}
+
+
+def _answer(argv):
+    if "--dirs-only" in argv:
+        return _json.dumps([{"Name": name} for name in _records])
+    if "cat" in argv:
+        for name, body in _records.items():
+            if any(("/%s/" % name) in a for a in argv):
+                return body
+    return None
+
+
+fake = FakeByCall(_answer)
 held = with_run(fake, lambda: cloudsync.contents("dropbox"))
 rows = {row["id"]: row for row in held["sources"]}
 check("it counts files and bytes per emulator",
@@ -263,6 +308,8 @@ check("an emulator this Deck does not have is listed and marked, not dropped -- 
       "that is how somebody learns their saves are safe on a Deck without it",
       (rows["vita3k"]["installed"], rows["vita3k"]["files"]), (False, 1))
 check("and one it does have is offered", rows["retroarch"]["installed"], True)
+check("nothing walks the whole storage to answer this",
+      any("--recursive" in argv for argv in fake.calls), False)
 
 # The shape the restore screen reads, whichever source it is reading from.
 check("every row carries what a backup's own listing carries",
@@ -270,8 +317,40 @@ check("every row carries what a backup's own listing carries",
           for row in held["sources"]),
       True)
 
-fake = FakeRun(returncode=1, stderr="2026/09/03 12:00:00 ERROR : directory not found")
-check("a folder that was never written to is empty, not an error",
+# An emulator whose record predates them is still answered for, by listing its
+# own subtree -- one emulator, not the whole storage.
+_no_record = {"retroarch": None}
+
+
+def _older(argv):
+    if "--dirs-only" in argv:
+        return _json.dumps([{"Name": "retroarch"}])
+    if "cat" in argv:
+        return None
+    return '[{"Path":"saves/a.srm","Size":10}]'
+
+
+fake = FakeByCall(_older)
+held = with_run(fake, lambda: cloudsync.contents("dropbox"))
+check("one copied up before records were kept is not missing from the answer",
+      [(row["id"], row["files"]) for row in held["sources"]], [("retroarch", 1)])
+
+# **A read does not write.** An emulator put up before records existed has to be
+# listed to be described, and writing what that listing found is what stops the
+# next read doing it again -- but doing it inside the read made the first open
+# 17 seconds where the listing alone is 11.
+fake = FakeByCall(_older)
+with_run(fake, lambda: cloudsync.contents("dropbox"))
+check("reading a storage writes nothing to it",
+      any("copyto" in argv for argv in fake.calls), False)
+
+fake = FakeByCall(_older)
+done = with_run(fake, lambda: cloudsync.backfill_records("dropbox"))
+check("and catching up afterwards is what leaves the record",
+      (done, any("copyto" in argv for argv in fake.calls)), (1, True))
+
+fake = FakeByCall(lambda argv: None)
+check("a storage with nothing on it is empty, not an error",
       with_run(fake, lambda: cloudsync.contents("dropbox")),
       {"ok": True, "sources": []})
 
@@ -329,18 +408,23 @@ check("and it cannot leave the range a bar can draw",
 section("reading back what a copy replaced")
 
 fake = FakeRun(stdout=(
-    '[{"Path":"20260903-145100","Name":"20260903-145100","IsDir":true},'
-    ' {"Path":"20260901-090000","Name":"20260901-090000","IsDir":true}]'
+    '[{"Path":"retroarch-20260903-145100","Name":"retroarch-20260903-145100","IsDir":true},'
+    ' {"Path":"retroarch-20260901-090000","Name":"retroarch-20260901-090000","IsDir":true}]'
 ))
 kept, error = with_run(fake, lambda: cloudsync.snapshots("dropbox"))
 check("newest first, because the one being undone is the last one",
       (error, [one["stamp"] for one in kept]),
-      ("", ["20260903-145100", "20260901-090000"]))
-check("and said as somebody would say it, not as a folder name",
-      kept[0]["label"], "3 Sep, 14:51")
+      ("", ["retroarch-20260903-145100", "retroarch-20260901-090000"]))
+# The row reads as what it holds, and both halves come from the folder name --
+# opening each one to find out would be a network round trip per snapshot.
+check("and it says which saves and when, not a folder name",
+      kept[0]["label"], "RetroArch - 3 Sep, 14:51")
 
-check("a folder that is not a stamp is left alone rather than guessed at",
-      cloudsync._stamp_label("something-else"), "something-else")
+check("an emulator id with a dash in it survives the split",
+      cloudsync._split_stamp("xenia-canary-20260903-145100"),
+      ("xenia-canary", "3 Sep, 14:51"))
+check("and a folder that is not one of ours is left alone rather than guessed at",
+      cloudsync._split_stamp("something else"), ("", "something else"))
 
 fake = FakeRun(returncode=1, stderr="ERROR : directory not found")
 check("a storage nothing has ever been overwritten on has none, which is not "
@@ -349,25 +433,38 @@ check("a storage nothing has ever been overwritten on has none, which is not "
 
 # The point of keeping them: reading one is reading the same tree one level
 # along, so the restore screen needs no second kind of row.
-fake = FakeRun(stdout='[{"Path":"retroarch/saves/game.srm","Size":128}]')
+# A snapshot's own folder holds `<root>/<file>`: the emulator is its name.
+fake = FakeRun(stdout='[{"Path":"saves/game.srm","Size":128}]')
 steps, error = with_run(
-    fake, lambda: cloudsync.pull_steps("dropbox", None, False, "20260903-145100"))
+    fake,
+    lambda: cloudsync.pull_steps("dropbox", None, False, "retroarch-20260903-145100"))
 check("restoring from one reads the folder it was kept in",
       moved(steps[0]["argv"])[0],
-      "dropbox:DeckyEmu/replaced/20260903-145100/retroarch/saves")
+      "dropbox:DeckyEmu/replaced/retroarch-20260903-145100/saves")
 check("and lands in the same place on the Deck as the live saves would",
       moved(steps[0]["argv"])[1], "/home/deck/ra/saves")
 
-fake = FakeRun(stdout='[{"Path":"retroarch/saves/game.srm","Size":128}]')
+fake = FakeRun(stdout='[{"Path":"saves/game.srm","Size":128}]')
 held = with_run(
-    fake, lambda: cloudsync.contents("dropbox", "20260903-145100"))
+    fake, lambda: cloudsync.contents("dropbox", "retroarch-20260903-145100"))
 check("and it can be looked at first, in the same shape as everything else",
       [row["id"] for row in held["sources"]], ["retroarch"])
 
+# Snapshots made before the folders carried an emulator name are the other
+# shape -- `<stamp>/<emulator>/<root>/` -- and still readable. The name is what
+# says which, so nothing has to be migrated and nothing already kept is lost.
+fake = FakeRun(stdout='[{"Path":"retroarch/saves/game.srm","Size":128}]')
+older, _ = with_run(
+    fake, lambda: cloudsync.pull_steps("dropbox", None, False, "20260903-145100"))
+check("one kept before the folders were named still restores from the right place",
+      moved(older[0]["argv"])[0],
+      "dropbox:DeckyEmu/replaced/20260903-145100/retroarch/saves")
+
 check("a stamp that is not one never becomes a path",
       (cloudsync._root_for("../.."), cloudsync._root_for("a/b"),
-       cloudsync._root_for(""), cloudsync._root_for("20260903-145100")),
-      ("", "", cloudsync.ROOT, "DeckyEmu/replaced/20260903-145100"))
+       cloudsync._root_for(""),
+       cloudsync._root_for("retroarch-20260903-145100")),
+      ("", "", cloudsync.ROOT, "DeckyEmu/replaced/retroarch-20260903-145100"))
 
 section("what is kept is what is offered")
 
@@ -375,23 +472,38 @@ section("what is kept is what is offered")
 # screen lists would leave the rest reachable only through the provider's own
 # website, which is the thing this plugin exists to do without.
 made = "".join(
-    '{"Path":"2026090%d-120000","Name":"2026090%d-120000","IsDir":true},' % (n, n)
+    '{"Path":"retroarch-2026090%d-120000","Name":"retroarch-2026090%d-120000",'
+    '"IsDir":true},' % (n, n)
     for n in range(1, 8)
 ).rstrip(",")
 fake = FakeRun(stdout="[" + made + "]")
 kept, _ = with_run(fake, lambda: cloudsync.snapshots("dropbox"))
 check("only the newest few are offered", len(kept), cloudsync.KEEP)
-check("and they are the newest", kept[0]["stamp"], "20260907-120000")
+check("and they are the newest", kept[0]["stamp"], "retroarch-20260907-120000")
+
+# **Kept per emulator.** Playing one game five times must not evict the safety
+# copy for another: how far back somebody can go is a question per emulator.
+_mixed = ("[" + "".join(
+    '{"Path":"%s-2026090%d-120000","Name":"%s-2026090%d-120000","IsDir":true},'
+    % (who, n, who, n)
+    for who in ("retroarch", "xenia") for n in range(1, 8)
+).rstrip(",") + "]")
+fake = FakeRun(stdout=_mixed)
+kept, _ = with_run(fake, lambda: cloudsync.snapshots("dropbox"))
+check("a busy emulator does not push another one out",
+      sorted({one["emulator"] for one in kept}), ["retroarch", "xenia"])
+check("and each keeps its own few", len(kept), cloudsync.KEEP * 2)
 
 fake = FakeRun(stdout="[" + made + "]")
 gone = with_run(fake, lambda: cloudsync.prune("dropbox"))
 purged = [argv[argv.index("purge") + 1] for argv in fake.calls if "purge" in argv]
 check("everything past the cap is removed, so nothing is kept out of reach",
-      (gone, purged),
-      (2, ["dropbox:DeckyEmu/replaced/20260902-120000",
-           "dropbox:DeckyEmu/replaced/20260901-120000"]))
+      (gone, sorted(purged)),
+      (2, ["dropbox:DeckyEmu/replaced/retroarch-20260901-120000",
+           "dropbox:DeckyEmu/replaced/retroarch-20260902-120000"]))
 
-fake = FakeRun(stdout='[{"Path":"20260903-120000","Name":"20260903-120000","IsDir":true}]')
+fake = FakeRun(stdout='[{"Path":"retroarch-20260903-120000",'
+                       '"Name":"retroarch-20260903-120000","IsDir":true}]')
 with_run(fake, lambda: cloudsync.prune("dropbox"))
 check("and nothing is removed while there is room",
       [argv for argv in fake.calls if "purge" in argv], [])
@@ -399,14 +511,15 @@ check("and nothing is removed while there is room",
 # The one thing here that deletes from somebody's storage, so what it can reach
 # is worth pinning: folders this plugin made, under the folder it made them in.
 fake = FakeRun(stdout=(
-    '[{"Path":"20260903-120000","Name":"20260903-120000","IsDir":true},'
+    '[{"Path":"retroarch-20260903-120000","Name":"retroarch-20260903-120000",'
+    '"IsDir":true},'
     ' {"Path":"../..","Name":"../..","IsDir":true},'
     ' {"Path":"holiday photos","Name":"holiday photos","IsDir":true}]'
 ))
 listed, _ = with_run(fake, lambda: cloudsync.snapshots("dropbox", keep=0))
 check("a folder that is not one of ours is not a replaced copy, so it is never "
       "listed and never deleted",
-      [one["stamp"] for one in listed], ["20260903-120000"])
+      [one["stamp"] for one in listed], ["retroarch-20260903-120000"])
 
 section("what a failure says in a dialog")
 
@@ -442,7 +555,6 @@ section("the check on the front of a launch")
 # says so in the log -- pCloud has the same limitation, S3 keeps it as metadata
 # a copy rewrites, and SFTP just works. A comparison resting on those is a
 # feature that behaves differently on every service somebody might pick.
-import json as _json  # noqa: E402
 import tempfile as _tempfile  # noqa: E402
 
 _home = _tempfile.mkdtemp()
@@ -523,6 +635,17 @@ fake = FakeRun(stdout=_json.dumps(_record("deck-bbb", 3000, _theirs)))
 found = with_run(fake, lambda: cloudsync.compare("dropbox", "retroarch"), sources=ONE)
 check("and a later upload from that device asks again",
       found["differing"], ["saves/here.srm"])
+
+# 4c. **A Deck with no record of its own has nothing to disagree about.** Saying
+# "both sides changed it since we uploaded" needs an upload to have happened;
+# without one, every shared file read as changed and an emulator put up before
+# records existed raised a conflict over every file it has. Missing files still
+# come down -- there is simply nothing to argue about.
+cloudsync._keep_mine("retroarch", {})
+fake = FakeRun(stdout=_json.dumps(_record("deck-bbb", 2000, _theirs)))
+found = with_run(fake, lambda: cloudsync.compare("dropbox", "retroarch"), sources=ONE)
+check("with nothing ever uploaded from here, nothing is a conflict",
+      found["differing"], [])
 
 # 5. A file up there that is not here at all. Exact, and it needs no permission.
 _extra = dict(_as_uploaded)

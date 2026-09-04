@@ -39,6 +39,7 @@ the restore screen. Every comparable project holds one remote and answers this
 by making you start again.
 """
 
+import concurrent.futures
 import json
 import os
 import re
@@ -67,8 +68,14 @@ ROOT = "DeckyEmu/saves"
 #: So nothing is overwritten in place. rclone moves the old file here first,
 #: keeping its path, and both comparable plugins reach the same rule by a
 #: different route: the loser of a conflict is renamed, never destroyed. It has
-#: to sit outside `ROOT` or rclone refuses it, which also keeps it out of what
-#: `contents` reads back.
+#: A folder here is named `<emulator>-<when>`, which is the whole reason the
+#: restore screen can say "RetroArch - 3 Sep, 22:10" rather than a bare
+#: timestamp: one directory listing answers both questions. Reading the emulator
+#: out of the folder's *contents* instead would be one network round trip per
+#: snapshot -- five seconds each against Dropbox, measured -- to draw a list.
+#:
+#: It has to sit outside `ROOT` or rclone refuses it, which also keeps it out of
+#: what `contents` reads back.
 #:
 #: **And it is read back from the Deck, not from a website.** A safety copy
 #: somebody can only reach by opening Dropbox on a laptop is the escape hatch
@@ -273,10 +280,11 @@ def push_steps(remote, ids=None):
     if not cloudsave.valid_name(remote):
         return [], "That storage cannot be used."
 
-    # One folder for the press, not one per emulator: what somebody wants back
-    # is "whatever that copy replaced", and thirteen timestamps a second apart
-    # is a worse answer to that than one.
-    aside = "%s:%s/%s" % (remote, REPLACED, time.strftime("%Y%m%d-%H%M%S"))
+    # One folder per emulator, named after it. A copy after a game closes only
+    # ever covers one emulator anyway -- it is the emulator that was played --
+    # so this costs nothing there, and it is what lets the restore screen say
+    # which saves a snapshot holds without opening it.
+    when = time.strftime("%Y%m%d-%H%M%S")
 
     listed = _sources(ids)
     if not listed:
@@ -292,7 +300,8 @@ def push_steps(remote, ids=None):
                 continue
             command = cloudsave.argv(
                 ["copy", path, "%s:%s/%s" % (remote, ROOT, target),
-                 "--backup-dir", "%s/%s" % (aside, target)]
+                 "--backup-dir", "%s:%s/%s-%s/%s" % (
+                     remote, REPLACED, source["id"], when, segment)]
                 + _excludes(source) + _BY_CONTENT + _STATS
             )
             if not command:
@@ -303,13 +312,21 @@ def push_steps(remote, ids=None):
     return steps, ""
 
 
-def _stamp_label(name):
-    """`20260903-145100` as somebody would say it, or the name if it is not one."""
+def _split_stamp(name):
+    """`retroarch-20260903-145100` as (emulator, "3 Sep, 22:10").
+
+    The date half is read from the last two pieces rather than the first, since
+    an emulator id may have a `-` in it -- `xenia-canary` does.
+    """
+    pieces = name.rsplit("-", 2)
+    if len(pieces) != 3:
+        return "", name
+    emulator, day, clock = pieces
     try:
-        when = time.strptime(name, "%Y%m%d-%H%M%S")
+        when = time.strptime("%s-%s" % (day, clock), "%Y%m%d-%H%M%S")
     except ValueError:
-        return name
-    return time.strftime("%d %b, %H:%M", when).lstrip("0")
+        return "", name
+    return emulator, time.strftime("%d %b, %H:%M", when).lstrip("0")
 
 
 def snapshots(remote, keep=KEEP):
@@ -339,9 +356,27 @@ def snapshots(remote, keep=KEEP):
         name = entry.get("Name") or ""
         if not _SEGMENT.match(name):
             continue
-        listed.append({"stamp": name, "label": _stamp_label(name)})
-    listed.sort(key=lambda one: one["stamp"], reverse=True)
-    return listed[:keep] if keep else listed, ""
+        emulator, when = _split_stamp(name)
+        listed.append({
+            "stamp": name,
+            "emulator": emulator,
+            # What the row reads: which saves, and when they were set aside.
+            "label": "%s - %s" % (name_of(emulator), when) if emulator else when,
+            "when": when,
+        })
+    listed.sort(key=lambda one: one["stamp"].rsplit("-", 2)[-2:], reverse=True)
+    if not keep:
+        return listed, ""
+    # Kept per emulator, not overall. Playing one game five times must not evict
+    # the safety copy for another -- the number is about how far back somebody
+    # can go, and that is a question per emulator.
+    seen = {}
+    within = []
+    for one in listed:
+        seen[one["emulator"]] = seen.get(one["emulator"], 0) + 1
+        if seen[one["emulator"]] <= keep:
+            within.append(one)
+    return within, ""
 
 
 def prune(remote, keep=KEEP):
@@ -360,8 +395,10 @@ def prune(remote, keep=KEEP):
     listed, error = snapshots(remote, keep=0)
     if error:
         return 0
+    within, _ = snapshots(remote, keep=keep)
+    kept = {one["stamp"] for one in within}
     gone = 0
-    for old in listed[keep:]:
+    for old in [one for one in listed if one["stamp"] not in kept]:
         ok, output = cloudsave.rclone(
             ["purge", "%s:%s/%s" % (remote, REPLACED, old["stamp"])], LIST_SECONDS)
         if ok:
@@ -391,14 +428,25 @@ def _index(remote, stamp="", under=""):
     14.5 seconds and one emulator's subtree is 5. `--fast-list` changes neither
     -- the cost is per-directory API latency, not the listing strategy -- so the
     only way to spend less is to ask for less.
+
+    **Every path comes back as `<emulator>/<root>/<file>`, whatever was asked
+    for.** A scoped listing leaves the emulator off, and a snapshot under
+    `REPLACED` never had it -- it is in the folder name. Putting it back here
+    means one shape for every caller instead of three of them remembering which
+    kind of listing they asked for.
     """
     root = _root_for(stamp)
     if not root:
         return False, [], "That is not a copy this can read."
+    # What the listing will leave off the front of every path.
+    missing_level = ""
+    if stamp:
+        missing_level = _split_stamp(stamp)[0]
     if under:
         if not _SEGMENT.match(under):
             return False, [], "That is not a copy this can read."
         root = "%s/%s" % (root, under)
+        missing_level = under
     ok, output = cloudsave.rclone(
         ["lsjson", "%s:%s" % (remote, root), "--recursive", "--files-only"],
         LIST_SECONDS,
@@ -413,64 +461,142 @@ def _index(remote, stamp="", under=""):
         entries = json.loads(output or "[]")
     except ValueError:
         return False, [], "The storage answered with something unreadable."
-    return True, entries if isinstance(entries, list) else [], ""
+    if not isinstance(entries, list):
+        return True, [], ""
+    if missing_level:
+        for entry in entries:
+            entry["Path"] = "%s/%s" % (missing_level, entry.get("Path") or "")
+    return True, entries, ""
 
 
-def contents(remote, stamp=""):
-    """What is on `remote`, per emulator, in the shape the restore screen reads.
+#: How many records to read at once.
+#:
+#: They are separate files on a storage that answers each in about two seconds,
+#: so this is latency to overlap rather than work to divide. Measured on the
+#: device: fourteen emulators one after another is half a minute, and all at
+#: once is 3.6 seconds. Bounded anyway -- a provider given fifty simultaneous
+#: requests starts refusing them, and fourteen at once has been fine here.
+_AT_ONCE = 16
 
-    `stamp` reads one of the folders under `REPLACED` instead of the live saves.
-    Same tree, same shape, so the screen needs no second kind of row.
 
-    Deliberately the same shape `savedata.describe` returns for a zip, down to
-    `installed` and `present`, so one list of rows and one pair of buttons serve
-    both. A restore that means something different depending on where the saves
-    came from is two features wearing one word.
+def _emulators_up_there(remote, seconds):
+    """Which emulators have a folder on `remote`. One cheap listing.
+
+    Names only, not contents: measured at 1.1 seconds against Dropbox where
+    listing every file underneath is 14.2.
     """
-    if not cloudsave.valid_name(remote):
-        return {"ok": False, "error": "That storage cannot be used."}
-
-    ok, entries, error = _index(remote, stamp)
+    ok, output = cloudsave.rclone(
+        ["lsjson", "%s:%s" % (remote, ROOT), "--dirs-only"], seconds)
     if not ok:
-        return {"ok": False, "error": error or "The storage did not answer."}
+        if "not found" in output.lower():
+            return [], ""
+        return [], output
+    try:
+        entries = json.loads(output or "[]")
+    except ValueError:
+        return [], "The storage answered with something unreadable."
+    return [e.get("Name") or "" for e in entries
+            if _SEGMENT.match(e.get("Name") or "")], ""
 
+
+def _rows_from(files_by_emulator):
+    """Turn `{emulator: {name: size}}` into the rows the restore screen reads."""
     here = {source["id"]: source for source in savedata._all_sources()}
     landing = {}
     for source in here.values():
         for segment, path in _roots_of(source):
             landing[(source["id"], segment)] = path
 
-    found = {}
-    for entry in entries:
-        parts = (entry.get("Path") or "").split("/")
-        if len(parts) < 3:
-            # <emulator>/<root>/<file> is the shallowest thing that means
-            # anything. Anything else was not written by this.
-            continue
-        emulator, segment = parts[0], parts[1]
+    found = []
+    for emulator, files in files_by_emulator.items():
         source = here.get(emulator)
-        row = found.setdefault(emulator, {
+        row = {
             "id": emulator,
             # An emulator this Deck does not have still gets a row, saying so,
-            # rather than being dropped -- the same rule the archive's own
-            # listing follows, and it is how somebody learns their Vita saves
-            # are safe on a Deck that has no Vita3K on it right now.
+            # rather than being dropped -- it is how somebody learns their Vita
+            # saves are safe on a Deck that has no Vita3K on it right now.
             "name": source["name"] if source else emulator,
             "installed": source is not None,
             "files": 0,
             "bytes": 0,
             "present": 0,
-        })
-        row["files"] += 1
-        try:
-            row["bytes"] += int(entry.get("Size") or 0)
-        except (TypeError, ValueError):
-            pass
-        local = landing.get((emulator, segment))
-        if local and os.path.exists(os.path.join(local, *parts[2:])):
-            row["present"] += 1
+        }
+        for name, size in files.items():
+            parts = name.split("/")
+            if len(parts) < 2:
+                continue
+            row["files"] += 1
+            row["bytes"] += int(size or 0)
+            local = landing.get((emulator, parts[0]))
+            if local and os.path.exists(os.path.join(local, *parts[1:])):
+                row["present"] += 1
+        if row["files"]:
+            found.append(row)
+    return sorted(found, key=lambda row: row["name"])
 
-    return {"ok": True, "sources": sorted(found.values(), key=lambda row: row["name"])}
+
+def contents(remote, stamp=""):
+    """What is on `remote`, per emulator, in the shape the restore screen reads.
+
+    `stamp` reads one of the folders under `REPLACED` instead of the live saves.
+    Same shape, so the screen needs no second kind of row.
+
+    Deliberately the same shape `savedata.describe` returns for a zip, down to
+    `installed` and `present`, so one list of rows and one pair of buttons serve
+    both. A restore that means something different depending on where the saves
+    came from is two features wearing one word.
+
+    **The live saves are read from the records, not by walking the tree.** Every
+    copy up leaves a record listing what it wrote, which is exactly what this
+    needs -- so one cheap directory listing says which emulators are there and
+    the records answer the rest, read all at once. Measured on the device
+    against Dropbox with fourteen emulators: 14.2 seconds walking the tree
+    against 1.1 + 3.6 this way. An emulator whose record predates them falls
+    back to a listing of its own subtree, so nothing is missing from the answer.
+    """
+    if not cloudsave.valid_name(remote):
+        return {"ok": False, "error": "That storage cannot be used."}
+
+    if stamp:
+        # A snapshot is one emulator's and small; walking it is one request.
+        ok, entries, error = _index(remote, stamp)
+        if not ok:
+            return {"ok": False, "error": error or "The storage did not answer."}
+        files = {}
+        for entry in entries:
+            emulator, _, rest = (entry.get("Path") or "").partition("/")
+            if rest:
+                files.setdefault(emulator, {})[rest] = entry.get("Size") or 0
+        return {"ok": True, "sources": _rows_from(files)}
+
+    emulators, error = _emulators_up_there(remote, LIST_SECONDS)
+    if error:
+        return {"ok": False, "error": error}
+    if not emulators:
+        return {"ok": True, "sources": []}
+
+    def one(emulator):
+        state, problem = _remote_state(remote, emulator, LIST_SECONDS)
+        if problem or not state:
+            # No record, or written before they were kept. Ask for this
+            # emulator's files rather than leaving it out of the answer.
+            ok, entries, _ = _index(remote, "", emulator)
+            files = {
+                (entry.get("Path") or "").partition("/")[2]: entry.get("Size") or 0
+                for entry in (entries if ok else [])
+                if "/" in (entry.get("Path") or "")
+            }
+            return emulator, files
+        return emulator, {
+            name: (said or {}).get("size") or 0
+            for name, said in (state.get("files") or {}).items()
+        }
+
+    files_by_emulator = {}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=_AT_ONCE) as pool:
+        for emulator, files in pool.map(one, emulators):
+            files_by_emulator[emulator] = files
+    return {"ok": True, "sources": _rows_from(files_by_emulator)}
 
 
 #: What every copy up leaves beside the saves, and what every launch reads.
@@ -608,6 +734,74 @@ def changed_since_push(source_id):
     return False
 
 
+def backfill_records(remote):
+    """Write a record for every emulator up there that has none. Returns how many.
+
+    **Measured on the device**: twelve emulators put up before records existed
+    made the restore screen 11.5 seconds, because each of them had to be listed;
+    with records it is 3.5. So the first read of a storage pays that once, and
+    this runs afterwards so the next one does not -- rather than inside the
+    read, which made the first open 17 seconds instead of 11.
+    """
+    if not cloudsave.valid_name(remote):
+        return 0
+    emulators, error = _emulators_up_there(remote, LIST_SECONDS)
+    if error:
+        return 0
+
+    def one(emulator):
+        state, problem = _remote_state(remote, emulator, LIST_SECONDS)
+        if state or problem:
+            return 0
+        ok, entries, _ = _index(remote, "", emulator)
+        files = {
+            (entry.get("Path") or "").partition("/")[2]: entry.get("Size") or 0
+            for entry in (entries if ok else [])
+            if "/" in (entry.get("Path") or "")
+        }
+        if not files:
+            return 0
+        # Nothing is claimed about who wrote it: the device is named as unknown
+        # and the time is zero. A Deck with no record of its own asks no
+        # questions anyway -- see `compare` -- so this cannot become a conflict
+        # that was not already there.
+        written, _ = _write_record(remote, emulator, {
+            "device": "before-records",
+            "at": 0,
+            "files": {name: {"size": size, "mtime": 0}
+                      for name, size in files.items()},
+        })
+        return 1 if written else 0
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=_AT_ONCE) as pool:
+        done = sum(pool.map(one, emulators))
+    if done:
+        decky.logger.info(
+            "Wrote %d missing record(s) on %s; reading it is quick from now on",
+            done, remote)
+    return done
+
+
+def _write_record(remote, source_id, state):
+    """Put `state` beside one emulator's saves. Returns (ok, error)."""
+    staged = os.path.join(STATE_DIR, "%s.uploading" % source_id)
+    try:
+        os.makedirs(STATE_DIR, exist_ok=True)
+        with open(staged, "w", encoding="utf-8") as handle:
+            handle.write(json.dumps(state, sort_keys=True))
+    except OSError as error:
+        return False, str(error)
+    ok, output = cloudsave.rclone(
+        ["copyto", staged, "%s:%s/%s/%s" % (remote, ROOT, source_id, STATE_FILE)],
+        LIST_SECONDS,
+    )
+    try:
+        os.remove(staged)
+    except OSError:
+        pass
+    return ok, "" if ok else output
+
+
 def record_push(remote, source_id):
     """Write the record of what was just uploaded, both sides. (ok, error).
 
@@ -623,26 +817,10 @@ def record_push(remote, source_id):
         return False, ""
 
     state = _state_of(source)
-    body = json.dumps(state, sort_keys=True)
-    staged = os.path.join(STATE_DIR, "%s.uploading" % source_id)
-    try:
-        os.makedirs(STATE_DIR, exist_ok=True)
-        with open(staged, "w", encoding="utf-8") as handle:
-            handle.write(body)
-    except OSError as error:
-        return False, str(error)
-
-    ok, output = cloudsave.rclone(
-        ["copyto", staged, "%s:%s/%s/%s" % (remote, ROOT, source_id, STATE_FILE)],
-        LIST_SECONDS,
-    )
-    try:
-        os.remove(staged)
-    except OSError:
-        pass
+    ok, error = _write_record(remote, source_id, state)
     if ok:
         _keep_mine(source_id, state)
-    return ok, "" if ok else output
+    return ok, error
 
 
 def _identity(state):
@@ -696,8 +874,8 @@ def preserve_local(remote, source_id, names):
     if source is None or not _SEGMENT.match(source_id) or not names:
         return True, ""
 
-    aside = "%s:%s/%s/%s" % (
-        remote, REPLACED, time.strftime("%Y%m%d-%H%M%S"), source_id)
+    aside = "%s:%s/%s-%s" % (
+        remote, REPLACED, source_id, time.strftime("%Y%m%d-%H%M%S"))
     roots = {segment: path for segment, path in _roots_of(source)}
 
     wanted = {}
@@ -833,6 +1011,14 @@ def compare(remote, source_id, seconds=BEFORE_PLAY_SECONDS):
     # the whole record rather than a timestamp: two Decks writing in the same
     # second is unlikely and a clock going backwards is not.
     ours = bool(mine) and _identity(mine) == _identity(theirs)
+    # **No record here means no basis for a disagreement.** "Both sides changed
+    # it since this Deck last uploaded" cannot be asked when this Deck has never
+    # uploaded: every shared file read as changed, so an emulator whose saves
+    # were put up before records existed would raise a conflict over every file
+    # it has. Missing files still come down; there is simply nothing to argue
+    # about.
+    if not mine:
+        ours = True
     # Or somebody has already looked at this exact upload and kept their own.
     # Not "stop asking": another device writing again is a new state, and a new
     # question. See `remember_answer`.
@@ -924,18 +1110,17 @@ def pull_steps(remote, ids=None, replace=False, stamp="", known=None):
         # One emulator asked for is one emulator listed. The whole tree costs
         # three times as long against Dropbox, and a restore of one emulator
         # has no use for the rest of it.
-        only = ids[0] if (ids and len(ids) == 1) else ""
+        # A snapshot is already one emulator's, so narrowing it again would
+        # ask for a folder that is not there.
+        only = "" if stamp else (ids[0] if (ids and len(ids) == 1) else "")
         ok, entries, error = _index(remote, stamp, only)
         if not ok:
             return [], error or "The storage did not answer."
         # The pairs that actually exist up there. `<emulator>/<root>/<file>` is
         # the shallowest path that means anything; anything shorter is not ours.
-        # A scoped listing drops the emulator from the path, so it is put back.
         up_there = set()
         for entry in entries:
             parts = (entry.get("Path") or "").split("/")
-            if only:
-                parts = [only] + parts
             if len(parts) >= 3:
                 up_there.add((parts[0], parts[1]))
 
@@ -952,7 +1137,15 @@ def pull_steps(remote, ids=None, replace=False, stamp="", known=None):
             target = _safe(source["id"], segment)
             if not target:
                 continue
-            args = ["copy", "%s:%s/%s" % (remote, root, target), path]
+            # A snapshot's folder holds `<root>/<file>`: the emulator is in
+            # its name, so it is not in the path as well. Snapshots made before
+            # the folders carried a name are the other shape and still readable
+            # -- the name is what says which, and `_split_stamp` answers "" for
+            # the old ones, exactly as `_index` uses it to decide the same
+            # thing.
+            named = bool(stamp) and bool(_split_stamp(stamp)[0])
+            where = target.split("/", 1)[1] if named else target
+            args = ["copy", "%s:%s/%s" % (remote, root, where), path]
             if not replace:
                 args.append("--ignore-existing")
             command = cloudsave.argv(args + _BY_CONTENT + _STATS)

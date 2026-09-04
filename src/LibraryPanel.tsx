@@ -111,7 +111,9 @@ export function LibraryPanel({ onRefresh }: Props) {
   // remembered: the remote can be removed from the setup page, and a row still
   // claiming a destination that is gone is worse than one that claims nothing.
   useEffect(() => {
-    cloudStatus()
+    // The row names the service, which is local. Asking the provider who you
+    // are would be two round trips on every open of the Library tab.
+    cloudStatus(false)
       .then((result) => {
         setAfterPlay(Boolean(result.after_play));
         setLastSync(Number(result.last_sync) || 0);
@@ -404,7 +406,7 @@ export function LibraryPanel({ onRefresh }: Props) {
                 // panel that disagrees with the Deck.
                 setAfterPlay(on);
                 void setSettings({ cloud_after_play: on })
-                  .then(() => cloudStatus())
+                  .then(() => cloudStatus(false))
                   .then((result) => {
                     setAfterPlay(Boolean(result.after_play));
                     setLastSync(Number(result.last_sync) || 0);

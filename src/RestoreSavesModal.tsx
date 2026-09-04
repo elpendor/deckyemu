@@ -7,8 +7,8 @@ import {
   Spinner,
 } from "@decky/ui";
 import { addEventListener, removeEventListener, toaster } from "@decky/api";
-import { FaTrash } from "react-icons/fa";
-import { useCallback, useEffect, useState } from "react";
+import { FaHistory, FaTrash } from "react-icons/fa";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   cloudContents,
@@ -79,7 +79,9 @@ interface Props {
 type Picked =
   | { kind: "file"; file: SaveBackupFile }
   /** `stamp` empty is the live saves; set, it is what one copy replaced. */
-  | { kind: "cloud"; remote: string; label: string; stamp: string };
+  | { kind: "cloud"; remote: string; label: string; stamp: string }
+  /** Not a source: the list of what one storage's copies have replaced. */
+  | { kind: "earlier"; remote: string; label: string };
 
 export function RestoreSavesModal({ closeModal }: Props) {
   const [files, setFiles] = useState<SaveBackupFile[] | null>(null);
@@ -89,6 +91,12 @@ export function RestoreSavesModal({ closeModal }: Props) {
      somebody's thumb. */
   const [replaced, setReplaced] = useState<Record<string, CloudSnapshot[]>>({});
   const [chosen, setChosen] = useState<Picked | null>(null);
+  /* The list to go back to, when a pick came from one. Two levels deep is as
+     deep as this goes, so this is a breadcrumb rather than a stack. */
+  const [cameFrom, setCameFrom] = useState<Picked | null>(null);
+  /** Storages whose earlier copies have been asked for, so each is asked once. */
+  const asked = useRef(new Set<string>());
+
   const [contents, setContents] = useState<SaveBackupContents[] | null>(null);
   const [working, setWorking] = useState(false);
   /* How far through a cloud restore is. A .zip is read off local disk and is
@@ -101,8 +109,34 @@ export function RestoreSavesModal({ closeModal }: Props) {
   // Where a backup belongs, so the transfer server can be pointed at it.
   const [backupDir, setBackupDir] = useState("");
 
+  /**
+   * What one storage has set aside, fetched when somebody asks to see it.
+   *
+   * **Nothing about it happens on the way into a storage.** It was fetched
+   * there so the button could carry a count, and a count is decoration: it
+   * bought a number on a button and cost a request -- a second or two of
+   * Dropbox -- on every open of a screen people come to for the current saves.
+   * Opening a storage now asks for exactly what that screen shows.
+   */
+  const showEarlier = useCallback((from: Picked & { kind: "cloud" }) => {
+    setContents(null);
+    setCameFrom(from);
+    setChosen({ kind: "earlier", remote: from.remote, label: from.label });
+    if (asked.current.has(from.remote)) return;
+    asked.current.add(from.remote);
+    void cloudSnapshots(from.remote)
+      .then((held) =>
+        setReplaced((was) => ({ ...was, [from.remote]: held.snapshots ?? [] })),
+      )
+      .catch((error) => {
+        logError("could not list earlier copies", error);
+        setReplaced((was) => ({ ...was, [from.remote]: [] }));
+      });
+  }, []);
+
   const open = useCallback(async (file: SaveBackupFile) => {
     setError("");
+    setCameFrom(null);
     setChosen({ kind: "file", file });
     setContents(null);
     try {
@@ -123,10 +157,13 @@ export function RestoreSavesModal({ closeModal }: Props) {
   /* The same three steps against a remote, and the answer comes back in the
      same shape -- see `cloudsync.contents`, which builds it that way on
      purpose so one list and one pair of buttons serve both. */
-  const openCloud = useCallback(async (one: CloudRemote, snapshot?: CloudSnapshot) => {
+  const openCloud = useCallback(async (
+    one: CloudRemote, snapshot?: CloudSnapshot, from?: Picked,
+  ) => {
     const service = one.label || one.kind || one.name;
-    const label = snapshot ? `${service} — replaced ${snapshot.label}` : service;
+    const label = snapshot ? `${service} — ${snapshot.label}` : service;
     setError("");
+    setCameFrom(from ?? null);
     setChosen({ kind: "cloud", remote: one.name, label, stamp: snapshot?.stamp ?? "" });
     setContents(null);
     try {
@@ -189,7 +226,11 @@ export function RestoreSavesModal({ closeModal }: Props) {
     /* Cloud failing is not an error on this screen: it is optional, and a Deck
        with none set up must not be told something went wrong with a dialog
        about the files it does have. */
-    void cloudStatus()
+    // `false`: this screen wants the list of storages, which is a local file.
+    // The two figures the setup dialog shows -- the account name and the free
+    // space -- are a network round trip each, and were being paid for on the
+    // way into every restore.
+    void cloudStatus(false)
       .catch((cloudError) => {
         logError("could not list cloud storage", cloudError);
         return null;
@@ -199,16 +240,11 @@ export function RestoreSavesModal({ closeModal }: Props) {
         signedIn = cloud?.remotes ?? [];
         setAccounts(signedIn);
         decide();
-        // Asked per account and folded in as one object, so the rows under a
-        // storage appear together rather than one at a time.
-        const kept = await Promise.all(
-          signedIn.map((one) =>
-            cloudSnapshots(one.name)
-              .then((held) => [one.name, held.snapshots ?? []] as const)
-              .catch(() => [one.name, [] as CloudSnapshot[]] as const),
-          ),
-        );
-        if (live) setReplaced(Object.fromEntries(kept));
+        // Not asked for here. What a storage has set aside is a listing of
+        // its own, and every account paid for one on the way into a screen
+        // most people open to restore the current saves. It is fetched when a
+        // storage is opened instead -- one account, alongside the read that is
+        // happening anyway.
       });
     return () => {
       live = false;
@@ -290,6 +326,12 @@ export function RestoreSavesModal({ closeModal }: Props) {
         return;
       }
 
+      // A list of earlier copies is not a source: nothing is restored from it
+      // until one of them is chosen, which replaces this with a cloud pick.
+      if (chosen.kind !== "file") {
+        setWorking(false);
+        return;
+      }
       const file = chosen.file;
       void restoreSaveBackup(file.path, scope, replace)
         .then((result) => {
@@ -430,7 +472,38 @@ export function RestoreSavesModal({ closeModal }: Props) {
     })();
   }, [closeModal, backupDir]);
 
-  const ready = Boolean(chosen) && contents !== null;
+  const ready = chosen !== null && chosen.kind !== "earlier" && contents !== null;
+  /** Showing one storage's replaced copies rather than the sources themselves. */
+  const earlier = chosen?.kind === "earlier" ? chosen : null;
+  /**
+   * A source is being read, which against a storage is fifteen seconds.
+   *
+   * The chooser goes away while it happens. It used to stay, with a spinner
+   * underneath it and every Choose button still live -- so a second press
+   * started a second read of a different source, and whichever answered last
+   * won. A wait that leaves its own cause on screen and pressable is an
+   * invitation to make it worse.
+   */
+  const reading = chosen !== null && !earlier && contents === null && !error;
+  const choosing = !ready && !earlier && !reading;
+
+  /** Back to whatever this was picked from: a list of copies, or the sources. */
+  const goBack = () => {
+    setError("");
+    setContents(null);
+    const to = cameFrom;
+    setCameFrom(null);
+    if (to?.kind === "cloud") {
+      // A storage has to be read again to be shown again. Going back to the
+      // chooser instead would be cheaper and wrong: it is not where this was.
+      const account = accounts.find((one) => one.name === to.remote);
+      if (account) {
+        void openCloud(account, to.stamp ? { stamp: to.stamp } as CloudSnapshot : undefined);
+        return;
+      }
+    }
+    setChosen(to);
+  };
 
   return (
     <ModalRoot closeModal={closeModal} bAllowFullSize>
@@ -463,7 +536,7 @@ export function RestoreSavesModal({ closeModal }: Props) {
       {/* Which backup, when there is a choice -- more than one file on the
           Deck, or a storage signed into. A lone file with nowhere else to read
           from is opened for you, so this does not appear. */}
-      {files !== null && !ready && (files.length > 1 || accounts.length > 0)
+      {files !== null && choosing && (files.length > 1 || accounts.length > 0)
         && files.map((file) => (
         <Field
           key={file.path}
@@ -484,7 +557,7 @@ export function RestoreSavesModal({ closeModal }: Props) {
           tab: from here they are the same thing -- somewhere a backup is. Shown
           whatever else is on the Deck, and shown while one file is already open
           only when nothing has been picked yet. */}
-      {!ready && accounts.map((one) => (
+      {choosing && accounts.map((one) => (
         <Focusable key={one.name}>
           <Field
             label={one.label || one.kind || one.name}
@@ -495,33 +568,68 @@ export function RestoreSavesModal({ closeModal }: Props) {
               Choose
             </DialogButton>
           </Field>
-          {/* Copying always sends this Deck's version, so it can put an older
-              save over a newer one -- press it after restoring an old backup
-              and that is exactly what happens. Whatever it replaced is kept,
-              and this is where it is got back from. Reaching it through the
-              storage provider's own website would be the second device this
-              plugin exists to do without. */}
-          {(replaced[one.name] ?? []).map((snapshot) => (
+        </Focusable>
+      ))}
+
+      {/* The second level, and the only one: a snapshot picked here is read
+          exactly as a storage is, so everything below this point is shared. */}
+      {earlier && (
+        <>
+          <Field
+            label={`${earlier.label} — earlier copies`}
+            description="Each is what one copy to this storage replaced. Choosing one shows what it holds before anything is put back."
+          />
+          {replaced[earlier.remote] === undefined && (
+            <div style={{ display: "flex", justifyContent: "center", padding: "24px" }}>
+              <Spinner style={{ height: "32px" }} />
+            </div>
+          )}
+          {replaced[earlier.remote]?.length === 0 && (
+            <Field
+              label="Nothing has been replaced"
+              description="A copy to this storage has never had to overwrite anything, so there is nothing to go back to."
+            />
+          )}
+          {(replaced[earlier.remote] ?? []).map((snapshot) => (
             <Field
               key={snapshot.stamp}
-              label={`Replaced ${snapshot.label}`}
-              description="What a copy to this storage overwrote"
+              label={snapshot.label}
+              description="Replaced by a copy to this storage"
               childrenContainerWidth="min"
             >
               <DialogButton
-                onClick={() => void openCloud(one, snapshot)}
+                onClick={() => {
+                  const account = accounts.find((one) => one.name === earlier.remote);
+                  // Back from one of these goes to this list, and back from
+                  // this list goes to the storage it belongs to -- which is
+                  // where the way in is.
+                  if (account) void openCloud(account, snapshot, earlier);
+                }}
                 style={ICON_BUTTON_WIDE}
               >
                 Choose
               </DialogButton>
             </Field>
           ))}
-        </Focusable>
-      ))}
+        </>
+      )}
 
-      {chosen && contents === null && !error && (
-        <div style={{ display: "flex", justifyContent: "center", padding: "24px" }}>
+      {reading && (
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: "10px",
+            padding: "24px",
+          }}
+        >
           <Spinner style={{ height: "32px" }} />
+          {/* Named, because reading a storage is fifteen seconds and a bare
+              spinner for that long says only that something is stuck. */}
+          <div style={{ fontSize: "13px", opacity: 0.7 }}>
+            Reading {chosen!.kind === "cloud" ? chosen!.label : "the backup"}...
+          </div>
         </div>
       )}
 
@@ -552,6 +660,23 @@ export function RestoreSavesModal({ closeModal }: Props) {
                   : restoreSummary(contents!)}
               </div>
             </div>
+            {/* **A corner, not a row.** What a storage set aside is a way out
+                of a mistake, not one of the things it holds -- as a full-width
+                row at the bottom of the list it read as another emulator. The
+                count is the whole label: five means there is something to go
+                back to, and nothing means the button is not there at all. */}
+            {chosen!.kind === "cloud" && !chosen!.stamp && (
+              <DialogButton
+                disabled={working}
+                onClick={() =>
+                  showEarlier(chosen as Picked & { kind: "cloud" })
+                }
+                style={{ ...ICON_BUTTON, flex: "none" }}
+              >
+                <FaHistory />
+              </DialogButton>
+            )}
+
             {/* Restoring consumes the archive, so this is the other case: a
                 backup finished with, sent by mistake, or simply the old one.
                 Without it the only way to remove 75MB is to restore from it.
@@ -607,6 +732,7 @@ export function RestoreSavesModal({ closeModal }: Props) {
             );
           })}
           </Focusable>
+
         </>
       )}
 
@@ -624,31 +750,68 @@ export function RestoreSavesModal({ closeModal }: Props) {
           `minWidth` and `flexWrap` never managed: those made the buttons either
           run off the side of the screen or take a full row each. */}
       <Focusable style={{ display: "flex", gap: "8px", marginTop: "12px" }}>
+        {/* **Back, not just Close.** Picking a source used to be one-way: the
+            only button out closed the dialog, so looking at what a storage
+            holds and then wanting the one next to it meant starting again --
+            fifteen seconds of listing included. It leads the row because it is
+            the one that undoes the last thing pressed. */}
+        {(ready || earlier) && (
+          <DialogButton
+            disabled={working}
+            onClick={goBack}
+            // An equal share, like everything else in this row. `flex: "none"`
+            // was tried and is what the docstring above is about: a
+            // DialogButton left to size itself claims Steam's own default
+            // width, which pushed this row wider than the screen and took the
+            // dialog off both edges with it. Measured on the device, twice --
+            // the backup dialog's Cancel button did the same thing.
+            style={{ flex: 1, minWidth: "auto" }}
+          >
+            Back
+          </DialogButton>
+        )}
         {ready ? (
           <>
             <DialogButton
               disabled={working || missingCount(contents ?? []) === 0}
               onClick={() => run(false)}
-              style={{ flex: 1 }}
+              style={{ flex: 1, minWidth: "auto" }}
             >
               {working ? "Working..." : "Restore missing"}
             </DialogButton>
             <DialogButton
               disabled={working}
               onClick={() => confirmReplace()}
-              style={{ flex: 1 }}
+              style={{ flex: 1, minWidth: "auto" }}
             >
               Replace saves
             </DialogButton>
           </>
         ) : (
-          <DialogButton onClick={() => sendOne()} style={{ flex: 2 }}>
-            Send a backup to this Deck
+          // Not while looking at a list of earlier copies: sending a backup is
+          // about getting a new one here, which is not what that screen is for.
+          choosing && (
+            <DialogButton
+              onClick={() => sendOne()}
+              style={{ flex: 2, minWidth: "auto" }}
+            >
+              Send a backup to this Deck
+            </DialogButton>
+          )
+        )}
+        {/* Three at most, which is what fits: with Back present a fourth wrapped
+            "Restore missing" onto two lines and ran the row off the edge. B
+            dismisses the dialog, and the footer says so, so the explicit Close
+            is the one that can go. */}
+        {!ready && (
+          <DialogButton
+            disabled={working}
+            onClick={() => closeModal?.()}
+            style={{ flex: 1, minWidth: "auto" }}
+          >
+            Close
           </DialogButton>
         )}
-        <DialogButton disabled={working} onClick={() => closeModal?.()} style={{ flex: 1 }}>
-          Close
-        </DialogButton>
       </Focusable>
     </ModalRoot>
   );

@@ -354,13 +354,18 @@ you play for five minutes, quit, and the automatic copy sends that state to the
 cloud on top of the good save. Without this it would be gone from both places.
 
 Whatever a copy replaced is kept — in either direction, so taking the cloud's
-copies keeps yours too — and **Restore save data** lists it: under each storage you will see rows like *Replaced 3 Sep,
+copies keeps yours too — and **Restore save data** has it behind a row reading
+*Dropbox — earlier copies (3)*. Open that and each one says which saves it holds
+and when they were set aside: *RetroArch — 3 Sep, 22:10*. Choosing one shows what
+it contains before anything is put back, exactly like choosing a backup: under each storage you will see rows like *Replaced 3 Sep,
 14:51*, one per press that overwrote something, newest first. Choosing one shows
 the same per-emulator rows as anything else and puts those saves back the same
 way.
 
-The five most recent are kept, and the five most recent are what you are offered
-— the same number on purpose. Older ones are removed after each copy, rather than
+Five are kept per emulator, and five are what you are offered — the same number
+on purpose, so nothing sits in your storage that you cannot reach from the Deck.
+Per emulator rather than overall, so playing one game a lot does not push out the
+safety copy for another. Older ones are removed after each copy, rather than
 being left somewhere you would need a web browser and another device to reach.
 Your saves themselves are never deleted by any of this; only these safety copies
 age out.
