@@ -198,7 +198,10 @@ LAUNCH_GATE_DIR = os.path.join(decky.DECKY_PLUGIN_RUNTIME_DIR, "launch")
 #  30  and refusing a launch wakes it to exit rather than killing it. Steam is
 #      waiting on that process: killed, the loading screen stayed up and the
 #      launch never finished.
-FORMAT_VERSION = 30
+#  31  the wait believes `cloud-on` only while it is fresh, so a dialog can
+#      wait for a person instead of for a clock. 30 gave somebody 30 seconds to
+#      read it and then started the game anyway.
+FORMAT_VERSION = 31
 
 # One file per OSD mode rather than one shared file. Games can override the
 # global setting individually, and a single file would mean the last game
@@ -806,16 +809,27 @@ fi
 
 #: The most a launch will wait to be woken, in seconds.
 #:
-#: **A watchdog, not a schedule.** Nothing waits this long in practice: the
+#: **A watchdog, not a schedule.** Nothing normally waits any of this: the
 #: plugin resumes the launch the moment it is done, and a stopped process costs
-#: nothing while it waits. This is only what happens when nothing answers at
-#: all -- decky reloading, the plugin removed -- and it is generous because the
-#: cost of it being generous is zero unless that has happened.
+#: nothing while it waits.
 #:
-#: The version before this had *two* numbers here, a quiet timeout and a cap,
-#: because polling could not tell "gone" from "slow". Stopping can: a process is
-#: woken or it is not.
-CLOUD_MAX_SECONDS = 45
+#: Generous, because the thing it used to cut short was a person reading a
+#: dialog. Waiting is not the failure -- a game that never starts is -- and the
+#: case where nobody is coming is now answered by `cloud-on` going stale rather
+#: than by this number being small.
+CLOUD_MAX_SECONDS = 600
+
+#: How often the plugin says it is alive by touching `cloud-on`, and how old
+#: that file may be before a launch stops believing it.
+#:
+#: **This is what tells "nobody has answered yet" from "nobody is there".** The
+#: two used to be one number and it had to be short, because a Deck with decky
+#: reloading must still start its games -- so a dialog somebody was reading got
+#: thirty seconds and then the game ran anyway. A file with a recent timestamp
+#: on it answers the second question on its own, and leaves the first one to the
+#: person.
+CLOUD_ALIVE_SECONDS = 30
+CLOUD_STALE_SECONDS = 120
 
 #: Written while cloud saves have somewhere to go, and removed when they do not.
 #:
@@ -848,7 +862,12 @@ _CLOUD_GATE = r"""# Saves coming down before the game opens them. See launchers.
 # from the other end, suspending the game once it has started; stopping before
 # the emulator runs is the same idea without the window where it could already
 # have read a save.
-if [ -n "$_dke_self" ] && [ -f "$_dke_gate/{onfile}" ]; then
+# `-newermt` rather than a plain `-f`: the file says cloud saves are on, and
+# its timestamp says the plugin is still there to answer. Without the second
+# half, a Deck with decky reloading would stop every launch and wait out the
+# whole watchdog.
+if [ -n "$_dke_self" ] && [ -n "$(find "$_dke_gate/{onfile}" \
+      -newermt '-{stale} seconds' 2>/dev/null)" ]; then
   mkdir -p "$_dke_gate" 2>/dev/null
   _dke_me=$$
   # What this wait did, overwritten each launch. The gate runs before the launch
@@ -945,6 +964,7 @@ def launch_gate():
     return (_LAUNCH_GATE.replace("{gate}", LAUNCH_GATE_DIR)
             + _CLOUD_GATE
             .replace("{onfile}", CLOUD_ON_FILE)
+            .replace("{stale}", str(CLOUD_STALE_SECONDS))
             .replace("{cap}", str(CLOUD_MAX_SECONDS)))
 
 
@@ -1217,6 +1237,23 @@ def launches_waiting():
 _SIGCONT = 18
 
 
+def say_alive():
+    """Touch `cloud-on`, which is how a launch knows anyone is listening.
+
+    Called on a timer while the plugin runs. A launch reads the timestamp, not
+    just the name: the file existing says cloud saves are on, and it being
+    recent says there is something there to answer -- which is what lets a
+    dialog wait for a person rather than for a clock. See
+    `CLOUD_STALE_SECONDS`.
+    """
+    path = os.path.join(LAUNCH_GATE_DIR, CLOUD_ON_FILE)
+    try:
+        if os.path.exists(path):
+            os.utime(path, None)
+    except OSError:
+        pass
+
+
 def _waiting(app_id):
     """The stopped launch for `app_id` as (pid, script), or (0, "").
 
@@ -1281,6 +1318,17 @@ def forget_launch(app_id):
         os.remove(_gate_file("launching", app_id))
     except OSError:
         pass
+
+
+def which_launch(app_id):
+    """The pid currently waiting for `app_id`, or 0.
+
+    Public so a wait can tell *its own* launch from a later one: there is one
+    file per game, so relaunching replaces it, and a question still standing
+    over the previous launch has nobody to answer it.
+    """
+    pid, script = _waiting(app_id)
+    return pid if _is_ours(pid, script) else 0
 
 
 def gone(app_id):

@@ -91,6 +91,12 @@ check("the wait is in the launcher",
 # lost, and the game started while the save was still coming down.
 check("and none of it happens without somewhere for saves to go",
       _body.index(launchers.CLOUD_ON_FILE) < _body.index("launching-"), True)
+# **"Nobody has answered yet" and "nobody is there" are different questions.**
+# They used to be one number and it had to be short, because a Deck with decky
+# reloading must still start its games -- so a dialog somebody was reading got
+# thirty seconds and then the game ran anyway.
+check("a launch believes that file only while it is fresh",
+      "-newermt" in _body and str(launchers.CLOUD_STALE_SECONDS) in _body, True)
 check("and it is bounded, so a launch cannot be held forever",
       str(launchers.CLOUD_MAX_SECONDS) in _body, True)
 # **The wait is a stopped process, not a conversation.** Every timing bug in
@@ -231,6 +237,17 @@ else:
 
     launchers.set_cloud_wanted(True)
 
+    # A file that says cloud saves are on but has not been touched in minutes
+    # means the plugin is not running. Nothing waits for it.
+    _stale = os.path.join(_dir, launchers.CLOUD_ON_FILE)
+    os.utime(_stale, (time.time() - 600, time.time() - 600))
+    _took, _said = _elapsed(321)
+    check("with the plugin not saying anything for minutes, a launch does not "
+          "stop at all",
+          ("LAUNCHED" in _said, _took < 1, launchers.launches_waiting()),
+          (True, True, []))
+    launchers.say_alive()
+
     # **The whole protocol is a pid in a file.** Two earlier versions had the
     # script poll for an answer and both lost a race with Steam; a third gave up
     # 0.2s before the answer arrived. A stopped process has no timing to get
@@ -283,10 +300,25 @@ else:
     with io.open(os.path.join(_dir, "launching-321"), "w", encoding="utf-8") as _h:
         _h.write(os.linesep.join(["999999", "/gone/for/good.sh"]))
     check("a file whose process is gone is recognised and cleared, not answered",
-          launchers.gone(321), True)
+          (launchers.gone(321), launchers.which_launch(321)), (True, 0))
     launchers.forget_launch(321)
     check("and clearing it is what leaves nothing to answer",
           launchers.launches_waiting(), [])
+
+    # **A question belongs to one launch.** There is one file per game, so
+    # relaunching replaces it -- and a wait still standing over the previous
+    # launch keeps that game marked in flight, which silently skips every later
+    # launch of it. That is how a conflict dialog stopped appearing after one
+    # was left unanswered.
+    with io.open(os.path.join(_dir, "launching-321"), "w", encoding="utf-8") as _h:
+        _h.write(os.linesep.join([str(os.getpid()), sys.argv[0]]))
+    _first = launchers.which_launch(321)
+    check("a wait can tell which launch it belongs to", _first > 0, True)
+    with io.open(os.path.join(_dir, "launching-321"), "w", encoding="utf-8") as _h:
+        _h.write(os.linesep.join(["999999", "/gone/for/good.sh"]))
+    check("and a launch that replaced it does not read as the same one",
+          launchers.which_launch(321) == _first, False)
+    launchers.forget_launch(321)
 
     # Nobody answers at all -- decky reloading, the plugin gone. The script
     # wakes itself. Rebuilt with a short watchdog so the suite does not sit

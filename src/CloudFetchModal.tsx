@@ -9,15 +9,14 @@ import { ProgressBar } from "./TransferModal";
 /**
  * What is happening while a game is held at the starting line.
  *
- * **Shown late on purpose.** Almost every launch has nothing to fetch and the
- * check is over in well under a second; a dialog for that would be a flash of
- * something nobody could read, on every single launch, forever. So the caller
- * waits before opening this at all, and the ordinary launch never sees it.
- *
- * What it is for is the other launch: the one on hotel wifi with a save to
- * bring down, where the alternative is several seconds of a black screen that
- * looks exactly like a game that has failed to start. That is the moment worth
- * explaining, and it is the only one this appears in.
+ * **Shown when files are moving, and never otherwise.** This used to open on a
+ * timer -- if a launch was still held after N milliseconds, explain -- and N
+ * was wrong twice, because what it was racing is a network round trip with no
+ * settled duration: 1.2s flashed the dialog for twenty-six milliseconds on an
+ * ordinary launch, and the next launch measured on the device took 2.39s. A
+ * percentage only ever arrives from a transfer, so the first one is the signal,
+ * and a launch that finds nothing to do puts nothing on screen however long it
+ * takes.
  *
  * There is no close button and B does not dismiss it, because dismissing it
  * would not release the launch -- the two are not the same thing and a dialog
@@ -50,11 +49,11 @@ export function CloudFetchModal({ title, onSkip }: Props) {
     // screen. The caller closes this when the fetch is done.
     <ModalRoot>
       <div style={{ fontSize: "20px", fontWeight: 600, marginBottom: "4px" }}>
-        Getting your saves
+Getting your saves
       </div>
       <div style={{ ...MUTED, marginBottom: "14px" }}>
-        {title} is waiting for save data from your cloud storage. It starts on its
-        own when this is done.
+        Copying save data to this Deck. {title} starts on its own when this is
+        done.
       </div>
 
       <ProgressBar fraction={percent / 100} />

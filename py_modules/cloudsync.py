@@ -168,6 +168,23 @@ def _excludes(source):
     return args
 
 
+#: How rclone decides whether two files are the same, and what it does not
+#: bother to keep in step.
+#:
+#: **Measured on the device, and it was costing every push its whole payload.**
+#: rclone's default is size-and-modification-time, and Dropbox cannot set a
+#: modification time at all -- so it re-uploaded every file to stamp one, and
+#: said so in the log: "Forced to upload files to set modification times on this
+#: backend". Forty kilobytes of unchanged saves, on somebody's data plan, every
+#: time a game closed.
+#:
+#: `--checksum` compares content instead, which every provider here can answer
+#: without being sent anything, and `--no-update-modtime` says not to reach for
+#: the timestamp when the content already matches. Nothing needs those
+#: timestamps: what tells this Deck's uploads from another device's is the
+#: record beside the saves -- see `compare`.
+_BY_CONTENT = ["--checksum", "--no-update-modtime"]
+
 #: Asked of rclone so a copy can be watched rather than waited on. One line a
 #: second on stderr, at a level that is logged, reading::
 #:
@@ -276,7 +293,7 @@ def push_steps(remote, ids=None):
             command = cloudsave.argv(
                 ["copy", path, "%s:%s/%s" % (remote, ROOT, target),
                  "--backup-dir", "%s/%s" % (aside, target)]
-                + _excludes(source) + _STATS
+                + _excludes(source) + _BY_CONTENT + _STATS
             )
             if not command:
                 return [], "The cloud transfer tool is missing."
@@ -366,15 +383,22 @@ def _root_for(stamp=""):
     return "%s/%s" % (REPLACED, stamp)
 
 
-def _index(remote, stamp=""):
+def _index(remote, stamp="", under=""):
     """Every file under one of our folders on `remote`, as rclone reports them.
 
-    One listing for the whole tree rather than one per emulator: this is a
-    network round trip and the panel asks for it to draw a list.
+    `under` narrows it to one emulator, and doing so is worth real time:
+    measured on the device against Dropbox, listing the whole saves tree is
+    14.5 seconds and one emulator's subtree is 5. `--fast-list` changes neither
+    -- the cost is per-directory API latency, not the listing strategy -- so the
+    only way to spend less is to ask for less.
     """
     root = _root_for(stamp)
     if not root:
         return False, [], "That is not a copy this can read."
+    if under:
+        if not _SEGMENT.match(under):
+            return False, [], "That is not a copy this can read."
+        root = "%s/%s" % (root, under)
     ok, output = cloudsave.rclone(
         ["lsjson", "%s:%s" % (remote, root), "--recursive", "--files-only"],
         LIST_SECONDS,
@@ -621,6 +645,92 @@ def record_push(remote, source_id):
     return ok, "" if ok else output
 
 
+def _identity(state):
+    """Which upload a record is, as the pair that names it."""
+    return {"device": (state or {}).get("device") or "",
+            "at": int((state or {}).get("at") or 0)}
+
+
+def remember_answer(source_id, theirs):
+    """Record that a save conflict against `theirs` has been settled.
+
+    **"Keep this Deck's" has to be remembered or it is not an answer.** Nothing
+    about the files changes when somebody chooses their own copy -- so the next
+    launch compares the same two records, finds the same disagreement, and asks
+    the same question. A decision that has to be made again every time is not a
+    decision, it is a nag.
+
+    What is remembered is which upload was declined, not "stop asking": another
+    device writing again is a new state and a new question. The record is
+    dropped the moment this Deck uploads, because that upload settles it for
+    real.
+    """
+    mine = read_mine(source_id)
+    if not mine:
+        return
+    mine["answered"] = _identity(theirs)
+    _keep_mine(source_id, mine)
+
+
+def preserve_local(remote, source_id, names):
+    """Put this Deck's copies of `names` beside the other replaced ones. (ok, error).
+
+    **The other half of a promise that was only half kept.** A copy *up* moves
+    whatever it would overwrite into `REPLACED` first, so nothing this plugin
+    does automatically can destroy a save in the cloud. Taking the cloud's copy
+    at a conflict overwrites files here instead -- and those are, by definition,
+    the versions the cloud does *not* have. Without this they were the one thing
+    the feature could destroy, under a dialog saying neither answer loses
+    anything.
+
+    They go to the same folder everything else preserved goes to, so the restore
+    screen lists them with no new idea and no new screen: they are simply
+    another "Replaced <date>" row.
+
+    One call per save root rather than one per file, with the names handed to
+    rclone in a file -- a conflict over twenty memory cards should not be twenty
+    round trips in front of a game that is waiting.
+    """
+    source = next(
+        (one for one in savedata._all_sources() if one["id"] == source_id), None)
+    if source is None or not _SEGMENT.match(source_id) or not names:
+        return True, ""
+
+    aside = "%s:%s/%s/%s" % (
+        remote, REPLACED, time.strftime("%Y%m%d-%H%M%S"), source_id)
+    roots = {segment: path for segment, path in _roots_of(source)}
+
+    wanted = {}
+    for name in names:
+        segment, _, relative = name.partition("/")
+        if relative and segment in roots:
+            wanted.setdefault(segment, []).append(relative)
+
+    for segment, relatives in wanted.items():
+        listing = os.path.join(STATE_DIR, "%s.keeping" % source_id)
+        try:
+            os.makedirs(STATE_DIR, exist_ok=True)
+            with open(listing, "w", encoding="utf-8") as handle:
+                handle.write("\n".join(relatives))
+        except OSError as error:
+            return False, str(error)
+        ok, output = cloudsave.rclone(
+            ["copy", roots[segment], "%s/%s" % (aside, segment),
+             "--files-from", listing] + _BY_CONTENT,
+            TRANSFER_SECONDS,
+        )
+        try:
+            os.remove(listing)
+        except OSError:
+            pass
+        if not ok:
+            return False, output
+    decky.logger.info(
+        "Kept this Deck's copy of %d file(s) for %s before replacing them",
+        len(names), source_id)
+    return True, ""
+
+
 def adopt_state(remote, source_id):
     """Take the storage's record as this Deck's own. (ok, error).
 
@@ -658,10 +768,22 @@ def _remote_state(remote, source_id, seconds):
     return (found if isinstance(found, dict) else {}), ""
 
 
+def name_of(source_id):
+    """What to call one save source on screen, or its id if it is not here.
+
+    Needed because a conflict is about an *emulator*, not a game: the question
+    names what the answer covers, and "RetroArch" is that. See the module
+    docstring for why the scope is what it is.
+    """
+    source = next(
+        (one for one in savedata._all_sources() if one["id"] == source_id), None)
+    return (source or {}).get("name") or source_id
+
+
 def _nothing(error):
     """The shape `compare` answers with when there is nothing to say."""
     return {"missing": 0, "differing": [], "roots": [], "here": 0, "there": 0,
-            "error": error}
+            "theirs": {"device": "", "at": 0}, "error": error}
 
 
 def compare(remote, source_id, seconds=BEFORE_PLAY_SECONDS):
@@ -710,9 +832,12 @@ def compare(remote, source_id, seconds=BEFORE_PLAY_SECONDS):
     # Whether the record up there is this Deck's own last upload. Compared on
     # the whole record rather than a timestamp: two Decks writing in the same
     # second is unlikely and a clock going backwards is not.
-    ours = bool(mine) and (
-        mine.get("device") == theirs.get("device")
-        and mine.get("at") == theirs.get("at"))
+    ours = bool(mine) and _identity(mine) == _identity(theirs)
+    # Or somebody has already looked at this exact upload and kept their own.
+    # Not "stop asking": another device writing again is a new state, and a new
+    # question. See `remember_answer`.
+    settled = ours or (bool(mine)
+                       and mine.get("answered") == _identity(theirs))
 
     missing = 0
     differing = []
@@ -725,9 +850,10 @@ def compare(remote, source_id, seconds=BEFORE_PLAY_SECONDS):
         if name not in here_now:
             missing += 1
             continue
-        if ours:
-            # Our own upload. Whatever differs is what this Deck has done
-            # since, which is not a question for anybody.
+        if settled:
+            # Our own upload, or one somebody has already decided about.
+            # Whatever differs is what this Deck has done since, which is not a
+            # question for anybody.
             continue
         was = (mine.get("files") or {}).get(name)
         size, mtime = here_now[name]
@@ -735,7 +861,10 @@ def compare(remote, source_id, seconds=BEFORE_PLAY_SECONDS):
             was.get("size") != size or was.get("mtime") != mtime)
         changed_there = said.get("size") != size or said.get("mtime") != mtime
         if changed_here and changed_there:
-            differing.append(name.rsplit("/", 1)[-1])
+            # The whole name, not the basename: this list is what decides
+            # which files get preserved before they are overwritten, and a
+            # basename does not say which save root it came from.
+            differing.append(name)
 
     return {
         "missing": missing,
@@ -745,6 +874,8 @@ def compare(remote, source_id, seconds=BEFORE_PLAY_SECONDS):
         # never compared with each other -- see the module docstring.
         "here": int(mine.get("at") or 0),
         "there": int(theirs.get("at") or 0),
+        # Which upload is up there, so an answer about it can be remembered.
+        "theirs": _identity(theirs),
         "error": "",
     }
 
@@ -790,14 +921,21 @@ def pull_steps(remote, ids=None, replace=False, stamp="", known=None):
     if known is not None:
         up_there = set(known)
     else:
-        ok, entries, error = _index(remote, stamp)
+        # One emulator asked for is one emulator listed. The whole tree costs
+        # three times as long against Dropbox, and a restore of one emulator
+        # has no use for the rest of it.
+        only = ids[0] if (ids and len(ids) == 1) else ""
+        ok, entries, error = _index(remote, stamp, only)
         if not ok:
             return [], error or "The storage did not answer."
         # The pairs that actually exist up there. `<emulator>/<root>/<file>` is
         # the shallowest path that means anything; anything shorter is not ours.
+        # A scoped listing drops the emulator from the path, so it is put back.
         up_there = set()
         for entry in entries:
             parts = (entry.get("Path") or "").split("/")
+            if only:
+                parts = [only] + parts
             if len(parts) >= 3:
                 up_there.add((parts[0], parts[1]))
 
@@ -817,7 +955,7 @@ def pull_steps(remote, ids=None, replace=False, stamp="", known=None):
             args = ["copy", "%s:%s/%s" % (remote, root, target), path]
             if not replace:
                 args.append("--ignore-existing")
-            command = cloudsave.argv(args + _STATS)
+            command = cloudsave.argv(args + _BY_CONTENT + _STATS)
             if not command:
                 return [], "The cloud transfer tool is missing."
             steps.append({"id": source["id"], "name": source["name"], "argv": command})

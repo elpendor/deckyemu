@@ -432,12 +432,15 @@ class Transfers(plugin_base.PluginContext):
     #: How long a conflict dialog holds a game before deciding for itself.
     #:
     #: It decides the safe way -- keep what is on this Deck -- because that
-    #: overwrites nothing and the storage keeps what it had. The game is a
-    #: stopped process while this runs, costing nothing, so the number is about
-    #: a dialog nobody is in front of rather than about the game: under the
-    #: launcher's own watchdog, so the answer is this rather than the script
-    #: waking itself.
-    _ASK_SECONDS = 30
+    #: overwrites nothing and the storage keeps what it had.
+    #:
+    #: **Nine minutes, not thirty seconds.** The short version answered for
+    #: people who were still reading, which is the one thing a question must not
+    #: do. The game is a stopped process the whole time and costs nothing, and
+    #: the case this number used to cover -- nobody there at all -- is answered
+    #: by `cloud-on` going stale instead. Under the launcher's own watchdog, so
+    #: what ends the wait is this rather than the script waking itself.
+    _ASK_SECONDS = 540
 
     def _note_cloud_state(self):
         """Tell the launcher whether waiting for saves is worth it.
@@ -572,13 +575,25 @@ class Transfers(plugin_base.PluginContext):
                 return {"ok": True, "differing": [], "restored": 0}
 
             restored = 0
+            answered = False
             if differing:
                 # **The game waits while the question is on screen**, which is
                 # what Steam's own cloud conflict does and the reason the
                 # heartbeat above exists. Answering is what releases it.
+                # The emulator's name goes with it: the question is about
+                # everything that emulator keeps, not about the game being
+                # started, and a dialog that names only the game reads as a
+                # narrower promise than the answer delivers.
                 await decky.emit(
-                    "cloud_conflict", app_id, differing, here_at, there_at)
+                    "cloud_conflict", app_id, differing, here_at, there_at,
+                    await self._run(cloudsync.name_of, source))
                 chosen = await self._wait_for_answer(app_id)
+                if chosen == "went":
+                    # The launch this was about has gone. Say so, so the dialog
+                    # standing over a game that is no longer starting comes
+                    # down with it.
+                    await decky.emit("cloud_fetch_done", app_id, [])
+                    return {"ok": True, "differing": [], "restored": 0}
                 if chosen == "stop":
                     # Ends the stopped process rather than leaving a note for it
                     # to find. A note written a moment too late used to refuse
@@ -587,8 +602,27 @@ class Transfers(plugin_base.PluginContext):
                     return {"ok": True, "differing": differing, "restored": 0,
                             "stopped": True}
                 if chosen == "cloud":
+                    # **Kept before they are overwritten.** These are the local
+                    # versions, which by definition the storage does not have --
+                    # so without this they are the one thing this feature could
+                    # destroy, under a dialog promising neither answer loses
+                    # anything. They land beside every other replaced copy, so
+                    # the restore screen lists them already.
+                    kept, keep_error = await self._run(
+                        cloudsync.preserve_local, remote, source, differing)
+                    if not kept:
+                        decky.logger.warning(
+                            "Could not keep this Deck's copies for %s: %s",
+                            source, keep_error)
+                    # The roots `compare` already found, rather than a second
+                    # listing. Measured on the device: listing the whole saves
+                    # tree on Dropbox is 14.5 seconds, and it was happening
+                    # here between somebody pressing the button and any file
+                    # moving -- twenty seconds of a bar that could not say
+                    # anything.
+                    known = {(source, root) for root in roots}
                     steps, plan_error = await self._run(
-                        cloudsync.pull_steps, remote, [source], True)
+                        cloudsync.pull_steps, remote, [source], True, "", known)
                     if not plan_error:
                         await self._stream_cloud(steps)
                     # This Deck now holds what the storage holds, so the record
@@ -596,9 +630,16 @@ class Transfers(plugin_base.PluginContext):
                     # next launch would ask the same question again.
                     await self._run(cloudsync.adopt_state, remote, source)
                     return {"ok": True, "differing": [], "restored": len(differing)}
-                # Keeping this Deck's: nothing is written, and the next copy up
-                # puts them in the storage -- where what they replace is kept.
-                return {"ok": True, "differing": [], "restored": 0}
+                # Keeping this Deck's. None of the disagreeing files is
+                # touched -- and the answer is remembered, or the next launch
+                # would compare the same two records, find the same
+                # disagreement, and ask again. The next copy up puts these
+                # saves in the storage, where what they replace is kept.
+                await self._run(cloudsync.remember_answer, source, found["theirs"])
+                answered = True
+                # Falls through rather than returning: a save that is only up
+                # there was never part of the disagreement, and refusing to
+                # fetch it would make "keep mine" mean more than it says.
 
             if missing:
                 # The pairs `compare` already found, rather than a second
@@ -616,7 +657,10 @@ class Transfers(plugin_base.PluginContext):
                     else:
                         decky.logger.warning(
                             "Could not bring %s down before play: %s", source, reason)
-            return {"ok": True, "differing": differing, "restored": restored}
+            # `differing` is emptied once it has been answered: whatever the
+            # answer was, there is no question left standing for the panel.
+            return {"ok": True, "differing": [] if answered else differing,
+                    "restored": restored}
         finally:
             # Every way out, including a throw. A launch left stopped by a check
             # that died is a game that never starts, which is worse than every
@@ -649,6 +693,14 @@ class Transfers(plugin_base.PluginContext):
         while True:
             try:
                 await asyncio.sleep(self._WATCH_SECONDS)
+                # Said on the way past, because this loop is the one thing that
+                # runs for as long as the plugin does. A launch reads the
+                # timestamp to tell "nobody has answered yet" from "nobody is
+                # there" -- see `launchers.CLOUD_STALE_SECONDS`.
+                self._beat = getattr(self, "_beat", 0) + 1
+                if self._beat * self._WATCH_SECONDS >= launchers.CLOUD_ALIVE_SECONDS:
+                    self._beat = 0
+                    await self._run(launchers.say_alive)
                 waiting = await self._run(launchers.launches_waiting)
                 for app_id in waiting:
                     if app_id in self._fetching:
@@ -690,19 +742,42 @@ class Transfers(plugin_base.PluginContext):
             self._fetching.discard(app_id)
 
     async def _wait_for_answer(self, app_id):
-        """Hold until somebody settles a save conflict, or decide for them.
+        """Hold until somebody settles a save conflict, or the launch goes away.
 
         Nothing has to be told this is still going: the launch is a stopped
         process and stays stopped until it is woken, so a dialog somebody is
         reading costs exactly nothing.
+
+        **It ends when the launch does, not only when the clock says so.** The
+        question exists for one launch; if that process is gone -- backed out
+        of, cancelled by Steam, ended some other way -- there is nobody left to
+        answer and nothing left to answer about. Waiting on regardless is worse
+        than useless: this app id counts as in flight the whole time, so every
+        *later* launch of the same game is skipped without a word. That is
+        exactly how a conflict dialog stopped appearing after one was left
+        unanswered.
         """
         self._asked[app_id] = ""
+        # Which launch this question belongs to. There is one file per game, so
+        # relaunching replaces it -- and a question still standing over the
+        # previous launch has nobody left to answer it.
+        mine = await self._run(launchers.which_launch, app_id)
         waited = 0.0
         while waited < self._ASK_SECONDS:
             await asyncio.sleep(0.2)
             waited += 0.2
             if self._asked.get(app_id):
                 return self._asked.pop(app_id)
+            # Once a second: two `os.stat` calls, against the alternative of
+            # the whole feature going quiet.
+            if waited % 1 < 0.2:
+                now = await self._run(launchers.which_launch, app_id)
+                if now != mine:
+                    self._asked.pop(app_id, None)
+                    decky.logger.info(
+                        "The launch asking about %s is gone; nothing to answer",
+                        app_id)
+                    return "went"
         self._asked.pop(app_id, None)
         # Nobody there. Keep what is on the Deck, which writes nothing and
         # loses nothing -- the storage still holds its copy.

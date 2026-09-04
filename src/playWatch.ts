@@ -60,20 +60,6 @@ const LOOK_MS = 4000;
  */
 const GIVE_UP_MS = 8 * 60 * 60 * 1000;
 
-/**
- * How long a launch may be held before it is worth explaining.
- *
- * Under this, nothing appears at all. The ordinary launch has nothing to fetch
- * and is answered in a fraction of a second, and a dialog for that is a flash
- * on every launch of every game -- worse than silence, and impossible to read.
- *
- * Over it, the alternative is several seconds of a black screen that looks
- * exactly like a game which has failed to start, which is the one moment this
- * is worth interrupting for. 1.2s is past the fast path with room to spare and
- * short enough that the dialog arrives before somebody starts wondering.
- */
-const EXPLAIN_AFTER_MS = 1200;
-
 /** The games being watched, so a relaunch does not start a second interval. */
 const watching = new Set<number>();
 
@@ -157,53 +143,89 @@ export function watchPlaying(): () => void {
    * flash on every launch of every game.
    */
   let waiting: number | null = null;
+  let named = "Your game";
   let close: (() => void) | null = null;
-  let explain: number | null = null;
 
   const done = () => {
-    if (explain !== null) window.clearTimeout(explain);
-    explain = null;
     close?.();
     close = null;
     waiting = null;
   };
 
+  /*
+   * **A dialog when something is happening, not when something is slow.**
+   *
+   * This used to open on a timer -- if the launch was still held after N
+   * milliseconds, explain. N was wrong twice: at 1.2s an ordinary launch
+   * flashed the dialog for twenty-six milliseconds, and at 2.5s the next
+   * measured launch came in at 2.39s, which is the same mistake with a
+   * different number. The round trip is a network and does not have a settled
+   * duration to sit clear of.
+   *
+   * So there is no timer. A percentage only ever arrives from a transfer, so
+   * the first one is proof that files are moving -- which is the only thing
+   * worth interrupting a launch to show. A check that finds nothing to do puts
+   * nothing on screen, however long it takes; Steam is already showing that the
+   * game is starting, and the check is bounded by `BEFORE_PLAY_SECONDS`.
+   */
   const started = addEventListener<[appId: number, title: string]>(
     "cloud_fetch_started",
     (appId, title) => {
       done();
       waiting = appId;
-      explain = window.setTimeout(() => {
-        if (waiting !== appId) return;
-        close = showCloudFetch(title || "Your game", () => {
-          done();
-          // The game goes now. What is still coming down keeps coming.
-          void cloudReleaseLaunch(appId).catch((error) =>
-            logError("could not release a held launch", error),
-          );
-        });
-      }, EXPLAIN_AFTER_MS);
+      named = title || "Your game";
+    },
+  );
+
+  const moving = addEventListener<[name: string, percent: number]>(
+    "cloud_sync_progress",
+    () => {
+      if (waiting === null || close) return;
+      const appId = waiting;
+      close = showCloudFetch(named, () => {
+        done();
+        // The game goes now. What is still coming down keeps coming.
+        void cloudReleaseLaunch(appId).catch((error) =>
+          logError("could not release a held launch", error),
+        );
+      });
     },
   );
 
   /*
    * A save that differs on both sides, which is the one thing here nobody but
-   * the person can settle. The game is still held while this is up -- the
-   * backend keeps its heartbeat going until the answer comes back -- so this
-   * closes the "getting your saves" dialog first and asks in its place.
+   * the person can settle. The game is still held while this is up -- it is a
+   * stopped process, so it waits for as long as somebody takes -- and this
+   * closes anything already on screen and asks in its place.
    */
   const conflicted = addEventListener<
-    [appId: number, names: string[], here: number, there: number]
-  >("cloud_conflict", (appId, names, here, there) => {
+    [appId: number, names: string[], here: number, there: number, emulator: string]
+  >("cloud_conflict", (appId, names, here, there, emulator) => {
     done();
     if (!names?.length) return;
     const game = addedGame(appId);
-    showCloudDiffer({
+    const named = game?.title ?? "this game";
+    // Kept so `done()` can take it down: the launch it belongs to can end
+    // without anybody answering, and the backend says so on `cloud_fetch_done`.
+    close = showCloudDiffer({
       appId,
-      title: game?.title ?? "this game",
+      title: named,
+      emulator: emulator || "these",
       names,
       here,
       there,
+      onAnswer: (choice) => {
+        // Only this answer has work behind it. The game is a stopped process
+        // until the files are down, so without this the screen is Steam's own
+        // loading spinner for however long the copy takes, saying nothing.
+        if (choice !== "cloud") return;
+        close = showCloudFetch(named, () => {
+          done();
+          void cloudReleaseLaunch(appId).catch((error) =>
+            logError("could not release a held launch", error),
+          );
+        });
+      },
     });
   });
 
@@ -216,6 +238,7 @@ export function watchPlaying(): () => void {
     stopLaunches();
     done();
     removeEventListener("cloud_fetch_started", started);
+    removeEventListener("cloud_sync_progress", moving);
     removeEventListener("cloud_fetch_done", finished);
     removeEventListener("cloud_conflict", conflicted);
   };

@@ -347,8 +347,14 @@ your backup with it.
 different gets the Deck's copy — so if you restore an old save and then press
 copy, the cloud now holds the old one.
 
-Nothing is destroyed by that. Whatever a copy replaced is kept, and **Restore
-save data** lists it: under each storage you will see rows like *Replaced 3 Sep,
+**Nothing this plugin does automatically can destroy a save.** That is what the
+replaced copies are for, and the case they exist for is an ordinary one: a save
+gets corrupted, or you restore an old one, or a game overwrites a slot — then
+you play for five minutes, quit, and the automatic copy sends that state to the
+cloud on top of the good save. Without this it would be gone from both places.
+
+Whatever a copy replaced is kept — in either direction, so taking the cloud's
+copies keeps yours too — and **Restore save data** lists it: under each storage you will see rows like *Replaced 3 Sep,
 14:51*, one per press that overwrote something, newest first. Choosing one shows
 the same per-emulator rows as anything else and puts those saves back the same
 way.
@@ -394,8 +400,16 @@ game with the saves already on the Deck. A game that will not start is worse tha
 a game with an old save.
 
 **One case does ask, the way Steam asks it.** If a save exists both here and in
-your storage and the two are different, the game waits and you get a dialog with
-a date for each side — *This Deck: changed 2 hours ago* / *Cloud storage: changed
+your storage and the two are different, the game waits and you get a dialog.
+
+**It is about the emulator, not the one game.** Saves cannot reliably be traced
+to a single game — RetroArch names them after the ROM, but RPCS3 files by title
+id and a PS1 memory card holds a dozen games in one file — so a conflict covers
+everything that emulator keeps, and the dialog says so. Starting a RetroArch
+game can therefore raise a question about a save belonging to a different one,
+and whichever button you press applies to all of them.
+
+The dialog gives you a date for each side — *This Deck: changed 2 hours ago* / *Cloud storage: changed
 20 minutes ago* — the files that differ, and three answers:
 
 | | |
@@ -412,8 +426,13 @@ is the one this Deck wrote. That works the same on every service — Dropbox and
 pCloud cannot even store a file's modification time without re-uploading it,
 which is exactly the kind of difference this avoids depending on.
 
-If nobody answers within about forty seconds the game starts with this Deck's
-saves, which writes nothing.
+**You are only asked once.** Whichever you choose is remembered, so the same
+disagreement is not put to you again next time you play. If that other device
+writes again, that is a new situation and you will be asked about that one.
+
+The dialog waits for you — the game is paused, not loading, and pausing costs
+nothing. If it is left long enough that something has clearly gone wrong, the
+game starts with this Deck's saves, which writes nothing.
 
 ## Restoring from the cloud
 

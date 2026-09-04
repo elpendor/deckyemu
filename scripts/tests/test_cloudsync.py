@@ -129,6 +129,13 @@ check("a second root of the same emulator lands beside the first",
 check("and each emulator has a folder of its own, named as the catalog names it",
       moved(sent[2])[1], "dropbox:DeckyEmu/saves/duckstation/duckstation")
 
+# **Content, not timestamps.** rclone's default is size-and-modtime, and Dropbox
+# cannot set a modtime -- so it re-uploaded every file to stamp one, saying so
+# in the log, and every push cost its whole payload however little had changed.
+check("a copy compares content and leaves timestamps alone",
+      all("--checksum" in argv and "--no-update-modtime" in argv for argv in sent),
+      True)
+
 # Every call carries it, for the reason `test_cloudsave` exists: a Deck that
 # already runs rclone has a configuration this plugin must not edit.
 check("every call still names our own config file",
@@ -169,7 +176,7 @@ section("what a whole-directory emulator does not send")
 
 check("the flatpak cache is excluded, because the emulator rebuilds it and it "
       "is the largest thing in the tree",
-      sent[2][-7:-5], ["--exclude", "cache/**"])
+      ["--exclude", "cache/**"] == sent[2][-9:-7], True)
 check("and an emulator that declared its save directory needs no exclusion",
       any("--exclude" in argv for argv in sent[:2]), False)
 
@@ -209,11 +216,18 @@ replacing, _ = with_run(fake, lambda: cloudsync.pull_steps("dropbox", None, True
 check("replacing is the one that overwrites, and only when asked",
       any("--ignore-existing" in argv for argv in copies(replacing)), False)
 
-fake = FakeRun(stdout=listing)
+# **One emulator asked for is one emulator listed**, and a scoped listing comes
+# back relative to it. Measured against Dropbox: the whole saves tree is 14.5
+# seconds and one emulator's subtree is 5, with `--fast-list` changing neither.
+scoped = '[{"Path":"saves/game.srm","Size":128}]'
+fake = FakeRun(stdout=scoped)
 narrowed, _ = with_run(fake, lambda: cloudsync.pull_steps("dropbox", ["retroarch"]))
 check("one emulator can be asked for on its own",
       [moved(argv)[1] for argv in copies(narrowed)],
       ["/home/deck/ra/saves"])
+check("and only that emulator is listed, not the whole storage",
+      [a for a in fake.calls[0] if a.startswith("dropbox:")],
+      ["dropbox:DeckyEmu/saves/retroarch"])
 
 section("a save root with nothing up there is not asked for")
 
@@ -487,9 +501,28 @@ cloudsync._keep_mine("retroarch", _record("deck-aaa", 1000, _played))
 fake = FakeRun(stdout=_json.dumps(_record("deck-bbb", 2000, _theirs)))
 found = with_run(fake, lambda: cloudsync.compare("dropbox", "retroarch"), sources=ONE)
 check("two devices having changed the same save is the one thing that asks",
-      found["differing"], ["here.srm"])
+      found["differing"], ["saves/here.srm"])
 check("and each side's own time comes back, for the dialog to show",
       (found["here"], found["there"]), (1000, 2000))
+
+# 4b. **An answer has to be remembered or it is not an answer.** Keeping this
+# Deck's copy changes none of the files, so without this the next launch
+# compares the same two records, finds the same disagreement, and asks again --
+# a decision that has to be made every session is a nag, not a decision.
+cloudsync._keep_mine("retroarch", _record("deck-aaa", 1000, _played))
+fake = FakeRun(stdout=_json.dumps(_record("deck-bbb", 2000, _theirs)))
+found = with_run(fake, lambda: cloudsync.compare("dropbox", "retroarch"), sources=ONE)
+cloudsync.remember_answer("retroarch", found["theirs"])
+fake = FakeRun(stdout=_json.dumps(_record("deck-bbb", 2000, _theirs)))
+found = with_run(fake, lambda: cloudsync.compare("dropbox", "retroarch"), sources=ONE)
+check("the same disagreement is not asked about twice", found["differing"], [])
+
+# But it is an answer about *that* upload, not "stop asking". Another device
+# writing again is a new state and a new question.
+fake = FakeRun(stdout=_json.dumps(_record("deck-bbb", 3000, _theirs)))
+found = with_run(fake, lambda: cloudsync.compare("dropbox", "retroarch"), sources=ONE)
+check("and a later upload from that device asks again",
+      found["differing"], ["saves/here.srm"])
 
 # 5. A file up there that is not here at all. Exact, and it needs no permission.
 _extra = dict(_as_uploaded)
@@ -505,7 +538,7 @@ fake = FakeRun(returncode=1, stderr="ERROR : directory not found")
 check("an emulator never copied up has nothing to compare and nothing to say",
       with_run(fake, lambda: cloudsync.compare("dropbox", "retroarch"), sources=ONE),
       {"missing": 0, "differing": [], "roots": [], "here": 0, "there": 0,
-       "error": ""})
+       "theirs": {"device": "", "at": 0}, "error": ""})
 
 check("the record is asked for with a deadline, so a launch cannot hang on it",
       cloudsync.BEFORE_PLAY_SECONDS <= 10, True)
@@ -548,6 +581,31 @@ try:
           True)
 finally:
     cloudsync.read_mine = _real
+
+section("this Deck's copy is kept before the cloud's replaces it")
+
+# **The other half of a promise that was only half kept.** A copy up moves what
+# it would overwrite into `replaced/`; taking the cloud's copy overwrites files
+# *here*, and those are by definition the versions the storage does not have.
+# Without this they were the one thing the feature could destroy, under a dialog
+# saying neither answer loses anything.
+fake = FakeRun()
+ok, error = with_run(
+    fake, lambda: cloudsync.preserve_local("dropbox", "retroarch", ["saves/here.srm"]),
+    sources=ONE)
+check("it copies them somewhere before anything is overwritten", (ok, error), (True, ""))
+sent = fake.calls[-1]
+check("and that somewhere is where every other replaced copy goes, so the "
+      "restore screen already lists it",
+      cloudsync.REPLACED in sent[sent.index("copy") + 2], True)
+check("named by the file rather than by copying the whole root",
+      "--files-from" in sent, True)
+check("one call per save root, not one per file",
+      len([a for a in fake.calls if "copy" in a]), 1)
+check("and nothing to keep is not an error",
+      with_run(fake, lambda: cloudsync.preserve_local("dropbox", "retroarch", []),
+               sources=ONE),
+      (True, ""))
 
 section("what a copy up leaves behind")
 
