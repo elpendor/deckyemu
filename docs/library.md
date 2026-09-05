@@ -373,6 +373,13 @@ in its website or app and look at it — it is laid out as
 `DeckyEmu/saves/<emulator>/` and you can delete an emulator's saves from there
 without any tool.
 
+**Everything that removes or replaces something is written down.** Safety copies
+ageing out, saves moved aside by a copy, a restore that overwrote what was here,
+a storage signed out of — each is one line in `destructive.log`, beside the
+settings, with what it was and when. The ordinary log keeps only the last few
+runs and rotates the rest away, which is fine for progress lines and useless for
+the question "what removed this?" a week later. That file is never rotated.
+
 **Nothing is ever deleted from your storage by this plugin.** A save removed from
 the Deck stays in the cloud, and uninstalling an emulator does not empty its
 folder there. That is deliberate: the alternative is one uninstall quietly taking

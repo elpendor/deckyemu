@@ -30,6 +30,7 @@ import decky
 
 import plugin_base
 
+import audit
 import cloudsave
 import cloudsync
 import diagnostics
@@ -358,6 +359,13 @@ class Transfers(plugin_base.PluginContext):
         total = max(1, len(steps))
         env = self._subprocess_env()
         for index, step in enumerate(steps):
+            # A copy carrying `--backup-dir` is one that may move somebody's
+            # files out from under them -- into the folder named on the same
+            # line, which is what makes it recoverable and what makes it worth
+            # writing down.
+            if "--backup-dir" in step["argv"]:
+                aside = step["argv"][step["argv"].index("--backup-dir") + 1]
+                audit.record("copy", emulator=step["id"], moving_aside_into=aside)
             output = procout.Output()
             try:
                 process = await asyncio.create_subprocess_exec(
@@ -976,6 +984,13 @@ class Transfers(plugin_base.PluginContext):
         # One `when` for the press rather than one per emulator, so what it
         # keeps is a single dated row under earlier copies -- the same folder,
         # shape and screen as everything else this plugin sets aside.
+        # Every replace, kept copy or not: this is the one press that
+        # overwrites saves on the Deck itself.
+        if replace:
+            audit.record("replacing", remote=name, stamp=stamp or "live",
+                         emulators=sorted({step["id"] for step in steps}),
+                         keeping_a_copy=bool(keep))
+
         if replace and keep:
             when = time.strftime("%Y%m%d-%H%M%S")
             keeping = []

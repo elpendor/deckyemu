@@ -845,6 +845,34 @@ check("and nothing to keep is not an error",
                sources=ONE),
       (True, ""))
 
+section("what removed something is written down and not rotated away")
+
+import tempfile as _tf  # noqa: E402
+
+import audit as _audit  # noqa: E402
+
+_audit.PATH = os.path.join(_tf.mkdtemp(), "destructive.log")
+_audit.record("purge", remote="dropbox", path="dropbox:DeckyEmu/replaced/x",
+              ok=True, why="older than the 5 kept")
+_audit.record("replacing", remote="dropbox", emulators=["retroarch"],
+              keeping_a_copy=True)
+_written = _audit.entries()
+check("each act is one line, in the order they happened",
+      [one["what"] for one in _written], ["purge", "replacing"])
+check("with what a reader needs a month later",
+      (_written[0]["path"], _written[1]["keeping_a_copy"]),
+      ("dropbox:DeckyEmu/replaced/x", True))
+check("and every line says when",
+      all(one.get("at") for one in _written), True)
+
+# It must never take down the copy it was describing. A file standing where a
+# directory would have to be is the portable way to make writing impossible.
+_blocked = os.path.join(_tf.mkdtemp(), "in-the-way")
+open(_blocked, "w").close()
+_audit.PATH = os.path.join(_blocked, "destructive.log")
+_audit.record("purge", remote="dropbox")
+check("a note that cannot be written is not an error", _audit.entries(), [])
+
 section("the copy taken before a replace is planned, not run")
 
 # Run inline it was a dialog sitting still for the length of an upload of every

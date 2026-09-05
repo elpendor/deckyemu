@@ -35,6 +35,7 @@ import urllib.request
 
 import decky
 
+import audit
 import emu_install
 import net
 
@@ -358,6 +359,9 @@ def remove_remote(name):
     if not valid_name(name):
         return False, "That name cannot be used."
     ok, output = rclone(["config", "delete", name], _CREATE_SECONDS)
+    # Nothing on the storage is touched, but the way back to it is gone -- which
+    # is the sort of thing somebody asks about a month later.
+    audit.record("forgot", remote=name, ok=bool(ok))
     return (ok, "" if ok else output)
 
 

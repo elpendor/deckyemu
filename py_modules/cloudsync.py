@@ -48,6 +48,7 @@ import time
 
 import decky
 
+import audit
 import cloudsave
 import savedata
 
@@ -540,9 +541,11 @@ def prune(remote, keep=KEEP):
     kept = {one["stamp"] for one in within}
     gone = 0
     for old in [one for one in listed if one["stamp"] not in kept]:
-        ok, output = cloudsave.rclone(
-            ["purge", "%s:%s/%s" % (remote, replaced_of(remote), old["stamp"])],
-            LIST_SECONDS)
+        where = "%s:%s/%s" % (remote, replaced_of(remote), old["stamp"])
+        ok, output = cloudsave.rclone(["purge", where], LIST_SECONDS)
+        # The only thing in this plugin that deletes anything on a storage.
+        audit.record("purge", remote=remote, path=where, ok=bool(ok),
+                     why="older than the %d kept" % keep)
         if ok:
             gone += 1
         else:
@@ -1046,6 +1049,9 @@ def preserve_steps(remote, source_id, names, when=""):
         segment, _, relative = name.partition("/")
         if relative and segment in roots:
             wanted.setdefault(segment, []).append(relative)
+
+    audit.record("keeping", remote=remote, emulator=source_id,
+                 files=len(names), into=aside, how="before a replace")
 
     steps = []
     for segment, relatives in sorted(wanted.items()):
