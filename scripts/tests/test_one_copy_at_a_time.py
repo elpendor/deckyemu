@@ -27,6 +27,7 @@ sys.path.insert(0, os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "py_modules"))
 
 import cloudsave  # noqa: E402
+import fileserver  # noqa: E402
 import cloudsync  # noqa: E402
 import decky  # noqa: E402
 import store  # noqa: E402
@@ -140,6 +141,83 @@ _order = [event for event, _ in _seen
           if event in ("record_pushes", "cloud_copying", "cloud_sync_done")]
 check("the copy is announced as over only once its record is written",
       _order, ["record_pushes", "cloud_copying", "cloud_sync_done"])
+
+
+section("signing out of the last storage is the feature's off switch")
+
+# `cloud_saves` was turned on by opening the setup screen and turned off by
+# nothing at all. Sign the last storage out and the Deck went on fetching and
+# keeping rclone at every startup for a feature with nowhere to put anything,
+# and the tools row went on saying the binary was wanted. There is no separate
+# master switch and there should not be one: the storages are the fact, and
+# this is what makes the flag follow them.
+_written = []
+#: What `remotes()` answers *after* the one being forgotten has gone.
+_remaining = ["pcloud"]
+
+with Swap((store, "get_settings", lambda: {"cloud_saves": True, "cloud_remote": "dropbox:"}),
+          (store, "set_settings", lambda values: _written.append(values)),
+          (cloudsave, "remove_remote", lambda name: (True, "")),
+          (cloudsave, "remotes", lambda: list(_remaining)),
+          (cloudsave, "remote_kinds", lambda: {"pcloud": "pcloud"}),
+          (cloudsave, "binary", lambda: "/tools/rclone"),
+          (cloudsave, "label_for", lambda kind: "pCloud")):
+    run(plugin.forget_cloud_remote("dropbox"))
+
+check("with a storage left, saves move to it and the feature stays on",
+      [values for values in _written if "cloud_saves" in values], [])
+check("and the one left takes over as the destination",
+      [values.get("cloud_remote") for values in _written if "cloud_remote" in values],
+      ["pcloud:"])
+
+del _written[:]
+_remaining = []
+with Swap((store, "get_settings", lambda: {"cloud_saves": True, "cloud_remote": "pcloud:"}),
+          (store, "set_settings", lambda values: _written.append(values)),
+          (cloudsave, "remove_remote", lambda name: (True, "")),
+          (cloudsave, "remotes", lambda: []),
+          (cloudsave, "remote_kinds", lambda: {}),
+          (cloudsave, "binary", lambda: "/tools/rclone"),
+          (cloudsave, "label_for", lambda kind: "")):
+    run(plugin.forget_cloud_remote("pcloud"))
+
+check("signing out of the last one leaves no destination",
+      [values.get("cloud_remote") for values in _written if "cloud_remote" in values],
+      [""])
+check("and turns the feature off, so nothing is kept for it",
+      [values.get("cloud_saves") for values in _written if "cloud_saves" in values],
+      [False])
+
+
+# **And the screen that turns it on turns it off again.** The switch is what
+# fetches rclone, so opening the setup screen sets it before anything can be
+# configured -- which meant a Deck with every storage signed out went back to
+# claiming cloud saves was on the moment somebody looked at that screen. Seen
+# on the device: no rclone.conf at all, no destination, and the flag true.
+del _written[:]
+with Swap((store, "get_settings", lambda: {"cloud_saves": True, "cloud_remote": ""}),
+          (store, "set_settings", lambda values: _written.append(values)),
+          (cloudsave, "login_cancel", lambda: None),
+          (cloudsave, "remotes", lambda: []),
+          (fileserver, "offer_cloud_setup", lambda *args: None),
+          (fileserver, "status", lambda: {"running": False})):
+    run(plugin.end_cloud_setup())
+
+check("closing the setup screen with nothing set up turns the feature off",
+      [values.get("cloud_saves") for values in _written if "cloud_saves" in values],
+      [False])
+
+del _written[:]
+with Swap((store, "get_settings", lambda: {"cloud_saves": True, "cloud_remote": "dropbox:"}),
+          (store, "set_settings", lambda values: _written.append(values)),
+          (cloudsave, "login_cancel", lambda: None),
+          (cloudsave, "remotes", lambda: ["dropbox"]),
+          (fileserver, "offer_cloud_setup", lambda *args: None),
+          (fileserver, "status", lambda: {"running": False})):
+    run(plugin.end_cloud_setup())
+
+check("while closing it with a storage set up leaves it alone",
+      [values for values in _written if "cloud_saves" in values], [])
 
 
 if __name__ == "__main__":

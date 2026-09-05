@@ -319,10 +319,18 @@ class Transfers(plugin_base.PluginContext):
         if not ok:
             return {"ok": False, "error": error}
         settings = await self._run(store.get_settings)
+        left = await self._run(cloudsave.remotes)
         if (settings.get("cloud_remote") or "").rstrip(":") == name:
-            left = await self._run(cloudsave.remotes)
             await self._run(store.set_settings,
                             {"cloud_remote": ("%s:" % left[0]) if left else ""})
+        # **The switch follows the storages, because it is a statement about
+        # them.** It was turned on by opening the setup screen and never turned
+        # off by anything: sign the last storage out and the Deck went on
+        # fetching and keeping rclone at every startup for a feature with
+        # nowhere to put anything, while the tools row said the binary was
+        # wanted. Signing out is the honest off, and this is what makes it one.
+        if not left:
+            await self._run(store.set_settings, {"cloud_saves": False})
         await self._run(self._note_cloud_state)
         # Cheap, for the reason `choose_cloud_remote` gives: the row has gone,
         # and asking a provider about the one left is not what says so.
@@ -345,6 +353,16 @@ class Transfers(plugin_base.PluginContext):
         """
         await self._run(cloudsave.login_cancel)
         await self._run(fileserver.offer_cloud_setup, None, None, None, None)
+        # **Opening this screen turns the feature on, so closing it with nothing
+        # set up has to turn it off again.** The switch is what fetches rclone,
+        # which is why it goes on before the form can be shown -- and that left
+        # a Deck with every storage signed out claiming cloud saves was on,
+        # because looking at the setup screen afterwards was enough to set it.
+        # The flag means "there is somewhere to put saves", and this is the
+        # other moment that can stop being true. Signing out is the first --
+        # see `forget_cloud_remote`.
+        if not await self._run(cloudsave.remotes):
+            await self._run(store.set_settings, {"cloud_saves": False})
         status = await self._run(fileserver.status)
         if status.get("running") and not (
             status.get("uploading") or status.get("paused")

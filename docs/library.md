@@ -337,7 +337,10 @@ it and its credentials. Signing out of the one saves currently go to hands that
 job to the next storage on the list rather than to nothing, and the question asks
 it that way — *Saves go to Dropbox after this* — because a Deck with three
 storages signed in and no destination would stop copying without saying so. Sign
-out of the last one and nothing is copied anywhere until you sign in again.
+out of the last one and cloud saves is off: nothing is copied anywhere, and the
+transfer tool stops being kept for it, until you set a storage up again. There
+is no separate switch for that — the storages are what the feature is, and one
+more toggle saying the same thing is one more thing to disagree with itself.
 **Add another** puts the code back on screen for a
 second account; it says it is waiting, and when the sign-in finishes on the
 phone the Deck returns to the list by itself with the new storage marked in
