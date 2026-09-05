@@ -264,6 +264,14 @@ It is a copy of your saves, and leaving one lying in the plugin's working
 directory is a copy nobody asked to keep. It also goes when the transfer server
 times out, as everything else there does.
 
+**A save folder that is a link is not included, and says so.** Moving an
+emulator's saves to the SD card and linking them back is a common trick, and
+nothing here follows such a link — not the .zip and not the copy to a storage.
+Rather than quietly leaving those saves out, the emulator's row on **Back up
+save data** names the folders it skipped, and so does the diagnostic report.
+Move the files themselves back under the emulator's own directory if you want
+them carried.
+
 ## Setting up cloud storage
 
 **Set up cloud storage**, under **Save data**, chooses somewhere off the Deck

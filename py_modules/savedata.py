@@ -127,6 +127,40 @@ def _walk(root, skip_top=()):
     return found
 
 
+def links_skipped(root, skip_top=()):
+    """Symlinks under `root` that a backup walks straight past.
+
+    **Skipping is the old behaviour; being quiet about it is the bug.** A
+    directory reached through a symlink is not descended into -- `os.walk` does
+    not follow links and rclone does not either without `--copy-links` -- so an
+    emulator whose save folder was moved to the SD card and linked back has its
+    saves in neither the archive nor the storage, and nothing said so. Both
+    halves agree, which is why it never looked broken: the record shows what the
+    copy shows, and both show nothing.
+
+    Following them instead is a real decision with a real cost -- a link
+    pointing at a ROM library would put the ROM library in somebody's Dropbox --
+    so what this does is name them. Deciding is then somebody's to make with
+    the facts in front of them.
+    """
+    found = []
+    root = os.path.normpath(root)
+    for current, directories, _files in os.walk(root, followlinks=False):
+        relative = os.path.relpath(current, root)
+        if relative == ".":
+            directories[:] = [name for name in directories if name not in skip_top]
+            relative = ""
+        for name in sorted(directories):
+            path = os.path.join(current, name)
+            if not os.path.islink(path):
+                continue
+            found.append({
+                "at": posixpath.join(*relative.split(os.sep), name) if relative else name,
+                "target": os.path.realpath(path),
+            })
+    return found
+
+
 def _measure(root, skip_top=()):
     files = _walk(root, skip_top)
     total = 0
@@ -221,6 +255,11 @@ def sources():
             count, size = _measure(path, skip)
             files += count
             total += size
+        # Named beside the count, because the count is what somebody reads as
+        # "this is everything" -- and it is not, when a folder here is a link.
+        links = []
+        for _, path in source["roots"]:
+            links += links_skipped(path, skip)
         listed.append({
             "id": source["id"],
             "name": source["name"],
@@ -228,6 +267,7 @@ def sources():
             "paths": [path for _, path in source["roots"]],
             "files": files,
             "bytes": total,
+            "links": links,
         })
     return listed
 

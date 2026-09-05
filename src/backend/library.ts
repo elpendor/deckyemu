@@ -280,6 +280,14 @@ export interface SaveSource {
    */
   whole: boolean;
   paths: string[];
+  /**
+   * Save folders that are symlinks, which nothing backs up: neither the archive
+   * nor the copy to a storage follows one. Both agree, which is why it never
+   * looked broken — the count and the copy show the same thing, and both show
+   * nothing. Named so the row cannot read as "this is everything" when it is
+   * not.
+   */
+  links?: { at: string; target: string }[];
   files: number;
   bytes: number;
 }

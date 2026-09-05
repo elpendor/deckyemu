@@ -289,6 +289,16 @@ export function SaveBackupModal({ closeModal }: Props) {
                     // somebody decides to untick it.
                     (source.whole
                       ? " - everything it keeps, since it does not say where its saves are"
+                      : "") +
+                    // **The count is not the whole story when a folder is a
+                    // link.** Nothing follows one -- not the archive, not the
+                    // copy to a storage -- so a save folder moved to the SD
+                    // card and linked back is in neither, and this row is
+                    // where somebody would otherwise read the opposite.
+                    ((source.links?.length ?? 0) > 0
+                      ? ` - ${source.links!.length} folder(s) here are links and are not included: ${source
+                          .links!.map((link) => link.at)
+                          .join(", ")}`
                       : "")
                   }
                   // **Read-only while a copy runs.** The plan was made when

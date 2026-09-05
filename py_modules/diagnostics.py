@@ -309,7 +309,7 @@ def _section(title, body):
 
 
 def build(version, install, emulators_registered, library, catalog_installed=(),
-          live_secrets=(), inbox="", cloud=""):
+          live_secrets=(), inbox="", cloud="", links=""):
     """The report, as text.
 
     Everything it needs is passed in: this module reads settings and the log,
@@ -463,6 +463,12 @@ def build(version, install, emulators_registered, library, catalog_installed=(),
         # which. Passed in rather than read here: it means running the binary,
         # and this module asks nothing of the outside.
         _section("Cloud saves", cloud or "not set up"),
+        # **Only when there are any**, because an empty section here would read
+        # as a category of problem rather than the absence of one. A save folder
+        # that is a link is walked straight past by the archive and by the copy
+        # alike, and this is the only place that says so.
+        _section("Save folders that are links, and so not backed up", links)
+        if links else "",
         _section("Log (last %d lines)" % LOG_LINES, _log_tail()),
         _section("Last launch", _last_launch()),
     ]

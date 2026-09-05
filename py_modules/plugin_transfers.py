@@ -90,6 +90,7 @@ class Transfers(plugin_base.PluginContext):
             [serving.get("url", "").rstrip("/").rsplit("/", 1)[-1]],
             await self._run(fileserver.default_dir, False),
             await self._cloud_summary(),
+            await self._run(self._links_skipped),
         )
 
         if not serving.get("running"):
@@ -541,6 +542,21 @@ class Transfers(plugin_base.PluginContext):
         except OSError as error:
             await self._copy_settled()
             await decky.emit(done_event, False, str(error), [], kind)
+
+    @staticmethod
+    def _links_skipped():
+        """Save folders that are links, which no backup follows. As text.
+
+        In the report because it is the answer to "my saves are not in the
+        backup" and nothing else on the Deck says it -- see
+        `savedata.links_skipped`.
+        """
+        lines = []
+        for source in savedata.sources():
+            for link in source.get("links") or []:
+                lines.append("%-22s %s -> %s"
+                             % (source["name"], link["at"], link["target"]))
+        return "\n".join(lines)
 
     async def _cloud_summary(self):
         """What the diagnostic report says about cloud saves.
