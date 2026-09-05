@@ -244,6 +244,23 @@ finally:
     cloudsync._COMPARES.pop("mywd", None)
     cloudsync._COMPARES.pop("mydrop", None)
 
+# **A question that could not be asked has no answer to remember.** The answer
+# is kept for the life of the plugin, because what a backend can hash does not
+# change under a running one -- but a lookup made while the network is down
+# returns nothing for a reason that has nothing to do with the backend, and
+# storing it left a storage comparing size and time until decky restarted.
+_real_rclone = cloudsave.rclone
+cloudsave.rclone = lambda args, seconds: (False, "connection refused")
+try:
+    cloudsync._COMPARES.pop("mygone", None)
+    check("a storage that cannot be reached compares size and time for now",
+          cloudsync.learn_compare("mygone"), [])
+    check("and is asked again rather than written off",
+          "mygone" in cloudsync._COMPARES, False)
+finally:
+    cloudsave.rclone = _real_rclone
+    cloudsync._COMPARES.pop("mygone", None)
+
 section("what a whole-directory emulator does not send")
 
 

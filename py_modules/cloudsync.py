@@ -284,12 +284,23 @@ def learn_compare(remote):
         return _COMPARES[remote]
     ok, output = cloudsave.rclone(
         ["backend", "features", "%s:" % remote], LIST_SECONDS)
+    # **A lookup that could not run is not an answer, so it is not remembered.**
+    # One launch made with the network down would otherwise pin the storage to
+    # size-and-time comparison for the life of the plugin -- long after the
+    # network came back, and with nothing on screen to say why. Size and time
+    # is the right thing to fall back to for the copy in hand, since it is the
+    # comparison that catches what `--checksum` misses where there are no
+    # hashes; it is the wrong thing to conclude about the backend.
+    if not ok:
+        decky.logger.info(
+            "Could not ask %s what it can be compared by; this copy compares "
+            "size and time, and the question is asked again next time", remote)
+        return []
     hashes = []
-    if ok:
-        try:
-            hashes = (json.loads(output) or {}).get("Hashes") or []
-        except ValueError:
-            hashes = []
+    try:
+        hashes = (json.loads(output) or {}).get("Hashes") or []
+    except ValueError:
+        hashes = []
     # **What WebDAV answers here is what its dialect claims, not what its server
     # does.** Under `owncloud` rclone reports md5 and sha1 because that dialect
     # can carry them; a server that does not send the headers has none, and
@@ -777,6 +788,24 @@ STATE_DIR = os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "cloudstate")
 #: arrives in well under one.
 BEFORE_PLAY_SECONDS = 6
 
+#: What the launch check adds to its one request, so that having no network
+#: costs a moment instead of the whole budget above.
+#:
+#: **Offline, rclone does not fail -- it waits.** Measured on the device with
+#: wifi off: the check spent all six seconds and ended on "rclone did not answer
+#: in time", because the defaults retry three times over a sixty-second connect
+#: timeout, so nothing had given up by the time the deadline arrived. Every
+#: launch made away from a network paid that. With these it answers in well
+#: under a second and the game starts.
+#:
+#: Only the launch check, and only because the fallback here is "play with the
+#: saves on this Deck" -- an outcome nobody minds. Reading the same record for
+#: the restore screen keeps rclone's own retries: there a spurious failure is a
+#: dialog saying it could not read the storage, and one retry is cheaper than
+#: that.
+_LAUNCH_FAST = ["--retries", "1", "--low-level-retries", "1",
+                "--contimeout", "3s", "--timeout", "5s"]
+
 
 def _device():
     """Which Deck this is, as far as a storage needs to know.
@@ -1155,20 +1184,31 @@ def adopt_state(remote, source_id):
     return True, ""
 
 
-def _remote_state(remote, source_id, seconds):
+def _remote_state(remote, source_id, seconds, quick=False):
     """The record sitting beside one emulator's saves. (state, error).
 
     One request, and a small one: the record lists every file, so this answers
     what is up there as well as who put it there. Listing the folder as well
     would be a second round trip on the front of a launch.
+
+    `quick` is for the check in front of a game -- see `_LAUNCH_FAST`.
     """
     ok, output = cloudsave.rclone(
-        ["cat", "%s:%s/%s/%s" % (remote, root_of(remote), source_id, STATE_FILE)],
+        ["cat", "%s:%s/%s/%s" % (remote, root_of(remote), source_id, STATE_FILE)]
+        + (_LAUNCH_FAST if quick else []),
         seconds)
     if not ok:
         # Never copied up, or copied up by a version that did not keep records.
         # Both mean there is nothing here to compare against.
-        if "not found" in output.lower() or "no such" in output.lower():
+        #
+        # "no such file", not "no such": rclone reports a name that will not
+        # resolve as "no such host", so the shorter test read a Deck with no
+        # network as a storage with nothing on it -- which is the one answer
+        # this function must never invent. Nothing was overwritten by it (every
+        # caller treats an empty record as "do not touch"), but the launch that
+        # could not reach the storage said so nowhere.
+        missing = output.lower()
+        if "not found" in missing or "no such file" in missing:
             return {}, ""
         return {}, output
     try:
@@ -1227,7 +1267,7 @@ def compare(remote, source_id, seconds=BEFORE_PLAY_SECONDS):
     if source is None or not _SEGMENT.match(source_id):
         return _nothing("")
 
-    theirs, error = _remote_state(remote, source_id, seconds)
+    theirs, error = _remote_state(remote, source_id, seconds, quick=True)
     if error:
         return _nothing(error)
     if not theirs:
