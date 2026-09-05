@@ -993,6 +993,34 @@ def changed_since_push(source_id):
     return False
 
 
+def waiting_to_go(ids=None):
+    """Emulators holding saves newer than the last copy this Deck sent up.
+
+    **The gap this closes.** A copy after a game covers the emulator that was
+    played, and nothing else ever retries: a copy that failed while the Deck was
+    offline is sent by the next game *of that emulator* to close, so playing
+    something else for a fortnight leaves the save nowhere but here. Turning the
+    automatic copy off does the same thing deliberately. Neither said so
+    anywhere, and the only cure -- pressing the copy button -- is one nobody
+    presses without a reason to.
+
+    The same comparison the copy after a game makes, for the same reason: local
+    `os.stat` against the record kept here, so this costs no network and can be
+    asked whenever a screen wants it.
+
+    An emulator that has never been copied counts only if it has saves. Without
+    that, every emulator installed and never played is listed as waiting, which
+    is a list of things there is nothing to do about.
+    """
+    found = []
+    for source in _sources(ids):
+        if not _local_files(source):
+            continue
+        if changed_since_push(source["id"]):
+            found.append({"id": source["id"], "name": source["name"]})
+    return found
+
+
 def _write_record(remote, source_id, state):
     """Put `state` beside one emulator's saves. Returns (ok, error)."""
     staged = os.path.join(STATE_DIR, "%s.uploading" % source_id)

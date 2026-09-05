@@ -368,6 +368,12 @@ export interface CloudState {
   before_play: boolean;
   /** When saves last went up, unix seconds. 0 when they never have. */
   last_sync: number;
+  /**
+   * Which copy is running: "after-play", "launch", "backup", "restore", or ""
+   * when nothing is. The first two start on their own, so this is the only way
+   * a screen can know saves are moving without having started them.
+   */
+  copying: string;
   remotes: CloudRemote[];
 }
 
@@ -524,6 +530,17 @@ export const restoreSaveBackup = callable<
  * finish on `cloud_sync_done` (ok, error, emulators) — one pair of events,
  * since only one of them can be running and both screens draw one bar.
  */
+/**
+ * Which emulators hold saves newer than the last copy that went up.
+ *
+ * Walks every save directory to answer, so it is asked by a screen that has
+ * already drawn rather than as part of the cloud status. No network: the
+ * comparison is against the record this Deck keeps of its own last copy.
+ */
+export const cloudWaiting = callable<
+  [],
+  { ok: boolean; waiting: { id: string; name: string }[] }
+>("cloud_waiting");
 export const cloudBackupNow = callable<
   [ids: string[] | null],
   { ok: boolean; error?: string; started?: boolean }

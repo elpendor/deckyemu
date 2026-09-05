@@ -36,9 +36,14 @@ export function CloudFetchModal({ title, onSkip }: Props) {
   const [percent, setPercent] = useState(-1);
 
   useEffect(() => {
-    const progress = addEventListener<[name: string, done: number]>(
+    const progress = addEventListener<
+      [name: string, done: number, phase: string, kind: string]
+    >(
       "cloud_sync_progress",
-      (_name, done) => setPercent(done),
+      (_name, done, _phase, kind) => {
+        if (kind !== "launch") return;
+        setPercent(done);
+      },
     );
     return () => removeEventListener("cloud_sync_progress", progress);
   }, []);

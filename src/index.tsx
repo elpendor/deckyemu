@@ -40,6 +40,7 @@ import { ErrorBoundary } from "./ErrorBoundary";
 import { closeModalsOnPanelOpen } from "./modalStack";
 import { OrphanModal } from "./OrphanModal";
 import { shortcutNudge, type ShortcutCounts } from "./shortcutNudge";
+import { CloudStatusPanel } from "./CloudStatusPanel";
 import { TransferStatusPanel } from "./TransferStatusPanel";
 import { ManagePage, MANAGE_ROUTE, openManagePage } from "./ManagePage";
 import { patchGameContextMenu } from "./steam/contextMenu";
@@ -325,6 +326,12 @@ function Content() {
           panel to check on. Renders nothing at all when no transfer is running,
           so it costs the usual case no space. */}
       <TransferStatusPanel />
+
+      {/* Under the transfer row and above everything else, for the same reason
+          that one is where it is: both are "something is happening right now",
+          and neither is why the panel was opened. Renders nothing when no copy
+          is running, which is nearly always. */}
+      <CloudStatusPanel />
 
       <PanelSection>
         <PanelSectionRow>

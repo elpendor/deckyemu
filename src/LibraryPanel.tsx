@@ -10,13 +10,17 @@ import { useCallback, useEffect, useState } from "react";
 
 import {
   clearLibrary,
+  cloudBackupNow,
   cloudStatus,
+  cloudWaiting,
   getSettings,
   listAdded,
   setSettings,
   type AddedGame,
 } from "./backend";
 import { removeShortcut } from "./steam";
+import { ProgressBar } from "./TransferModal";
+import { useCopyPercent } from "./useCopyPercent";
 import { sweepEmptyCollections, unfileGames } from "./collections";
 import { AddedGamesModal } from "./AddedGamesModal";
 import { clearWarning, shouldConfirmClear } from "./clearWarning";
@@ -53,6 +57,14 @@ const BACKEND_SHARE = 0.9;
  * Nothing here is a setting, which is why it is no longer called one -- both
  * controls act on the library immediately.
  */
+/** "RetroArch", "RetroArch and Dolphin", "RetroArch, Dolphin and 2 others". */
+function namesOf(waiting: { name: string }[]) {
+  const names = waiting.map((one) => one.name);
+  if (names.length <= 2) return names.join(" and ");
+  if (names.length === 3) return `${names[0]}, ${names[1]} and ${names[2]}`;
+  return `${names[0]}, ${names[1]} and ${names.length - 2} others`;
+}
+
 export function LibraryPanel({ onRefresh }: Props) {
   const [clearing, setClearing] = useState(false);
   /*
@@ -82,6 +94,14 @@ export function LibraryPanel({ onRefresh }: Props) {
   const [afterPlay, setAfterPlay] = useState(true);
   const [beforePlay, setBeforePlay] = useState(true);
   const [lastSync, setLastSync] = useState(0);
+  // Which copy is running, or "" -- see `cloud_copying`. Two of the four start
+  // on their own and say nothing, and an automatic thing that never shows
+  // itself is reported as a plugin that is not working.
+  const [copying, setCopying] = useState("");
+  // Emulators whose saves are newer than the last copy that went up. Read after
+  // the tab has drawn: answering walks every save directory on the Deck.
+  const [waiting, setWaiting] = useState<{ id: string; name: string }[]>([]);
+  const percent = useCopyPercent(copying);
 
   // Bound to the component rather than started with the clear: the backend
   // emits from the moment the call lands, and a listener attached inside the
@@ -108,9 +128,35 @@ export function LibraryPanel({ onRefresh }: Props) {
       .catch((error) => logError("could not read the added-games layout", error));
   }, []);
 
-  // Where saves would go, so the row can say so. Read on every open rather than
-  // remembered: the remote can be removed from the setup page, and a row still
-  // claiming a destination that is gone is worse than one that claims nothing.
+  // What has not been copied up yet. Its own call because answering walks every
+  // save directory on the Deck, and this asks after the tab has drawn.
+  const loadWaiting = useCallback(() => {
+    cloudWaiting()
+      .then((result) => setWaiting(result.waiting || []))
+      .catch((error) => logError("could not read what is waiting to be copied", error));
+  }, []);
+
+  useEffect(() => loadWaiting(), [loadWaiting]);
+
+  // A copy can start while this panel is open -- closing a game is how most of
+  // them start -- and the backend says so rather than being asked on a timer.
+  useEffect(() => {
+    const moving = addEventListener<[kind: string]>(
+      "cloud_copying",
+      (kind) => {
+        setCopying(kind || "");
+        if (kind) return;
+        // Finishing is what empties the waiting list and moves "last copied",
+        // and this panel is showing both.
+        loadWaiting();
+        void cloudStatus(false)
+          .then((result) => setLastSync(Number(result.last_sync) || 0))
+          .catch((error) => logError("could not re-read the cloud status", error));
+      },
+    );
+    return () => removeEventListener("cloud_copying", moving);
+  }, [loadWaiting]);
+
   useEffect(() => {
     // The row names the service, which is local. Asking the provider who you
     // are would be two round trips on every open of the Library tab.
@@ -119,6 +165,7 @@ export function LibraryPanel({ onRefresh }: Props) {
         setAfterPlay(Boolean(result.after_play));
         setBeforePlay(Boolean(result.before_play));
         setLastSync(Number(result.last_sync) || 0);
+        setCopying(String(result.copying || ""));
         return result;
       })
       .then((result) =>
@@ -379,7 +426,7 @@ export function LibraryPanel({ onRefresh }: Props) {
                 : "Chooses where saves get copied to — Dropbox, a WebDAV server, an SFTP box or an S3 bucket. Set up from a phone or PC, because it means signing in or typing an address."
             }
           >
-            {cloudRemote ? "Cloud storage" : "Set up cloud storage"}
+            {cloudRemote ? "Change where saves go" : "Set up cloud storage"}
           </ButtonItem>
         </PanelSectionRow>
 
@@ -424,9 +471,11 @@ export function LibraryPanel({ onRefresh }: Props) {
             <ToggleField
               label="Copy saves when a game closes"
               description={
-                lastSync
-                  ? `Only the saves that changed, for the emulator you were playing. Last copied ${ago(lastSync)}.`
-                  : "Only the saves that changed, for the emulator you were playing. Nothing has been copied yet."
+                copying
+                  ? "Copying saves now."
+                  : lastSync
+                    ? `Only the saves that changed, for the emulator you were playing. Last copied ${ago(lastSync)}.`
+                    : "Only the saves that changed, for the emulator you were playing. Nothing has been copied yet."
               }
               checked={afterPlay}
               onChange={(on) => {
@@ -446,6 +495,55 @@ export function LibraryPanel({ onRefresh }: Props) {
                   });
               }}
             />
+          </PanelSectionRow>
+        )}
+
+        {/* **Last, and a button rather than a sentence.** A copy after a game
+            covers the emulator that was played and nothing retries the others,
+            so one that failed offline waits for the next game of *that*
+            emulator -- which may be never. Told as a static line between the
+            two switches it read as a footnote to them; at the end of the
+            section, focusable, it is the one thing here that is asking to be
+            pressed. The same shape the panel's library nudge uses, for the same
+            reason: a problem nobody can see, with the cure one press away. */}
+        {cloudRemote && waiting.length > 0 && (
+          <PanelSectionRow>
+            <ButtonItem
+              layout="below"
+              label="Saves not copied yet"
+              description={`${namesOf(waiting)} ${
+                waiting.length === 1 ? "has" : "have"
+              } saves newer than your storage.`}
+              disabled={Boolean(copying)}
+              onClick={() => {
+                // The emulators named, not everything: the row is about these,
+                // and a button that quietly does more than it says is worse
+                // than one that makes you press it twice.
+                void cloudBackupNow(waiting.map((one) => one.id))
+                  .then((result) => {
+                    if (!result.ok) {
+                      toaster.toast({
+                        title: "Could not copy the saves",
+                        body: result.error ?? "",
+                      });
+                    }
+                  })
+                  .catch((error) => logError("could not start the copy", error));
+              }}
+            >
+              {copying ? "Copying..." : "Copy them now"}
+            </ButtonItem>
+          </PanelSectionRow>
+        )}
+
+        {/* Under the button that starts it, and shown for any copy rather than
+            only this one's: while saves are moving, that is what this row is
+            about, whichever screen or game set it going. */}
+        {cloudRemote && waiting.length > 0 && copying && (
+          <PanelSectionRow>
+            <div style={{ paddingBottom: "8px" }}>
+              <ProgressBar fraction={percent < 0 ? -1 : percent / 100} />
+            </div>
           </PanelSectionRow>
         )}
       </PanelSection>

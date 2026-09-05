@@ -370,19 +370,26 @@ export function RestoreSavesModal({ closeModal }: Props) {
    */
   useEffect(() => {
     const progress = addEventListener<
-      [name: string, percent: number, phase?: string]
+      [name: string, percent: number, phase: string, kind: string]
     >(
       "cloud_sync_progress",
       /* The third argument says which half of a keep-and-replace this line
          belongs to. Every other screen ignores it; here it is the difference
          between "your saves are going up" and "the storage's are coming down",
-         which are opposite directions under one bar. */
-      (name, percent, phase) =>
-        setCarrying({ name, percent, keeping: phase === "keeping" }),
+         which are opposite directions under one bar. The fourth says which copy
+         it belongs to at all: a game closing starts one that says nothing, and
+         this screen used to close itself over it, toasting "Saves restored". */
+      (name, percent, phase, kind) => {
+        if (kind !== "restore") return;
+        setCarrying({ name, percent, keeping: phase === "keeping" });
+      },
     );
-    const done = addEventListener<[ok: boolean, error: string, names: string[]]>(
+    const done = addEventListener<
+      [ok: boolean, error: string, names: string[], kind: string]
+    >(
       "cloud_sync_done",
-      (ok, failure, names) => {
+      (ok, failure, names, kind) => {
+        if (kind !== "restore") return;
         setWorking(false);
         setCarrying(null);
         if (!ok) {

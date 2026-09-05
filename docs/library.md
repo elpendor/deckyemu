@@ -326,8 +326,8 @@ kept.
 the page and on the Deck. Something under the hood does need a name for its
 config file, so one is picked for you and never shown.
 
-Once a storage is set up, the row says so: it reads **Cloud storage** and names
-the service — "Saves go to Dropbox". Where the service will say who you are
+Once a storage is set up, the row says so: it reads **Change where saves go**
+and names the service — "Saves go to Dropbox". Where the service will say who you are
 signed in as, that is shown too; most will not, and Dropbox is one of them, so
 the service alone is often all there is to show.
 
@@ -424,10 +424,23 @@ Once a storage is set up this happens on its own: close a game, and that
 emulator's saves are copied up. Only that emulator, and only the files that
 changed — closing a Mega Drive game sends a few kilobytes.
 
-There is nothing to press and nothing appears on screen. If you want to know it
-is working, the switch under **Cloud storage** — *Copy saves when a game closes*
-— says when saves last went up. Turning it off is worth doing if you are on a
-hotspot and would rather choose when to spend the connection.
+There is nothing to press and no dialog appears. If you want to know it is
+working, the switch under **Change where saves go** — *Copy saves when a game
+closes* —
+says when saves last went up, and reads *Copying saves now* while one is
+actually running. Turning it off is worth doing if you are on a hotspot and
+would rather choose when to spend the connection.
+
+When something has not made it up yet, the last row of the **Save data**
+section says so — *Saves not copied yet: RetroArch and DuckStation have saves
+newer than your storage* — and pressing **Copy them now** sends those emulators
+up there and then, with a bar under the button while it does. It is worth having because the copy after a game only covers the emulator
+you were playing, so one that failed while you were offline waits for the next
+time you play *that* emulator, which might be never.
+
+Only one copy runs at a time. Press **Copy now** or start a restore while that
+one is still going and you are asked to try again in a moment, rather than
+having two of them writing the same saves in opposite directions.
 
 It does not run from the launcher, which is why your library tile goes back to
 "Stopped" the moment you quit rather than waiting for the network. The plugin
@@ -455,7 +468,7 @@ a game with an old save.
 **One case does ask, the way Steam asks it.** If a save exists both here and in
 your storage and the two are different, the game waits and you get a dialog.
 
-**It has its own switch**, above the other one under **Cloud storage** — *Check
+**It has its own switch**, above the other one — *Check
 for newer saves when a game starts*. On by default, because it is the half that
 makes a second device work: without it saves only ever go up. Turn it off and a
 game starts straight away and uses whatever is on the Deck, while copies still go

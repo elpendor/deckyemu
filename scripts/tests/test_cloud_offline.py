@@ -165,11 +165,11 @@ _recorded = []
 _saved = []
 
 
-async def _failed_stream(steps):
+async def _failed_stream(steps, kind=""):
     return False, "connection refused"
 
 
-async def _worked_stream(steps):
+async def _worked_stream(steps, kind=""):
     return True, ""
 
 

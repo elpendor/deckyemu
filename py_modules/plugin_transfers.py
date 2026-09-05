@@ -30,6 +30,12 @@ import decky
 
 import plugin_base
 
+#: Said to somebody who pressed a button while saves were already moving. Which
+#: copy is running is deliberately not named: from where they are standing the
+#: answer is "wait a moment", and the other copy is usually the one their own
+#: last game started on the way out.
+_ALREADY = "Saves are being copied right now. Try that again in a moment."
+
 import audit
 import cloudsave
 import cloudsync
@@ -245,6 +251,11 @@ class Transfers(plugin_base.PluginContext):
             # Whether a game starting looks for saves this Deck is missing.
             "before_play": bool(settings.get("cloud_before_play", True)),
             "last_sync": int(settings.get("cloud_last_sync") or 0),
+            # What is moving right now, if anything: "after-play", "launch",
+            # "backup" or "restore". The panel shows the two silent ones,
+            # because a copy nothing says a word about is the one somebody
+            # reports as the plugin having done nothing.
+            "copying": self._copying,
             # **These two are the only things here that touch the network**,
             # and they are for the setup dialog: who the storage says you are,
             # and how much room is left. Every other caller wants the list of
@@ -346,7 +357,15 @@ class Transfers(plugin_base.PluginContext):
         """Which storage saves go to, without its trailing colon, or ""."""
         return (store.get_settings().get("cloud_remote") or "").rstrip(":")
 
-    async def _stream_cloud(self, steps):
+    #: Which copy is running, or "" when none is. Saves move for four
+    #: different reasons -- a game closing, a game starting, the copy button and
+    #: a restore -- and only the first two are allowed to surprise somebody, so
+    #: the other two ask this before they start. It is also what every progress
+    #: line is stamped with, because two of those four are silent and a screen
+    #: that draws whatever arrives will draw a copy nobody on it asked for.
+    _copying: str = ""
+
+    async def _stream_cloud(self, steps, kind=""):
         """Run each copy, reporting how far along it is. Returns (ok, reason).
 
         Watched rather than waited on, because the thing being copied is
@@ -359,6 +378,21 @@ class Transfers(plugin_base.PluginContext):
         """
         total = max(1, len(steps))
         env = self._subprocess_env()
+        self._copying = kind
+        # Said rather than polled: the panel wants to show that saves are
+        # moving, and the two copies worth showing are the two nobody presses a
+        # button to start -- so there is no moment the panel could know to ask.
+        await decky.emit("cloud_copying", kind)
+        try:
+            return await self._each_copy(steps, total, env, kind)
+        finally:
+            # The marker goes now, so a second copy is no longer refused. Saying
+            # so is `_copy_settled`, which the caller does once its records are
+            # written -- see there.
+            self._copying = ""
+
+    async def _each_copy(self, steps, total, env, kind):
+        """The copies themselves. Split out so the marker above cannot leak."""
         for index, step in enumerate(steps):
             # A copy carrying `--backup-dir` is one that may move somebody's
             # files out from under them -- into the folder named on the same
@@ -391,6 +425,7 @@ class Transfers(plugin_base.PluginContext):
                     # screen but the restore dialog, which says so rather than
                     # showing the copy down's words over the copy up's work.
                     "keeping" if step.get("keeping") else "",
+                    kind,
                 )
 
             code = await process.wait()
@@ -402,8 +437,21 @@ class Transfers(plugin_base.PluginContext):
                 return False, "%s: %s" % (
                     step["name"], cloudsync.readable(output.reason))
             await decky.emit(
-                "cloud_sync_progress", step["name"], int((index + 1) * 100 / total))
+                "cloud_sync_progress", step["name"],
+                int((index + 1) * 100 / total), "", kind)
         return True, ""
+
+    async def _copy_settled(self):
+        """Tell the panel a copy is over, once what it changed is written down.
+
+        **After the bookkeeping, not at the end of the copy.** Whether an
+        emulator is waiting to be copied is decided by the record of what was
+        last sent, and that record is written after the last byte moves -- so a
+        panel told at the end of the copy re-read the list a moment early and
+        found everything still waiting. Reported on the device as a row that
+        would not go away.
+        """
+        await decky.emit("cloud_copying", "")
 
     async def _record_pushes(self, remote, steps):
         """Write the record for every emulator a copy just covered.
@@ -435,7 +483,7 @@ class Transfers(plugin_base.PluginContext):
                 decky.logger.warning(
                     "Could not take the storage's record for %s: %s", source_id, error)
 
-    async def _carry_saves(self, steps, done_event, tidy="", adopt=""):
+    async def _carry_saves(self, steps, done_event, tidy="", adopt="", kind=""):
         """The detached half: run the steps and say how it went, once.
 
         `tidy` names the storage to prune afterwards, which only a copy *up*
@@ -448,7 +496,7 @@ class Transfers(plugin_base.PluginContext):
             if step["name"] not in names:
                 names.append(step["name"])
         try:
-            ok, reason = await self._stream_cloud(steps)
+            ok, reason = await self._stream_cloud(steps, kind)
             if ok and tidy:
                 await self._record_pushes(tidy, steps)
                 # **The same stamp a game closing writes.** The panel shows it
@@ -458,14 +506,28 @@ class Transfers(plugin_base.PluginContext):
                                 {"cloud_last_sync": int(time.time())})
             if ok and adopt:
                 await self._adopt_records(adopt, steps)
-            await decky.emit(done_event, ok, reason, names if ok else [])
+            await self._copy_settled()
+            await decky.emit(done_event, ok, reason, names if ok else [], kind)
             if ok and tidy:
                 await self._run(cloudsync.prune, tidy)
         # Not CancelledError: this runs detached, and `_detach` re-raises a
         # cancellation rather than swallowing it into an emit over a socket that
         # is closing.
         except OSError as error:
-            await decky.emit(done_event, False, str(error), [])
+            await self._copy_settled()
+            await decky.emit(done_event, False, str(error), [], kind)
+
+    async def cloud_waiting(self):
+        """Which emulators have saves that have not been copied up yet.
+
+        Its own call rather than part of `cloud_status`, because it walks every
+        save directory on the Deck and the status row is on the path of every
+        panel open. The screen that shows this asks for it after it has drawn.
+        """
+        settings = await self._run(store.get_settings)
+        if not settings.get("cloud_saves") or not (settings.get("cloud_remote") or ""):
+            return {"ok": True, "waiting": []}
+        return {"ok": True, "waiting": await self._run(cloudsync.waiting_to_go)}
 
     async def cloud_backup_now(self, ids=None):
         """Start copying saves up to the storage in use. Returns once it starts.
@@ -483,13 +545,16 @@ class Transfers(plugin_base.PluginContext):
         remote = await self._run(self._chosen_remote)
         if not remote:
             return {"ok": False, "error": "No cloud storage is set up yet."}
+        if self._copying:
+            return {"ok": False, "error": _ALREADY}
         # See `cloudsync.learn_compare`: asked once, and before planning.
         await self._run(cloudsync.learn_compare, remote)
         steps, error = await self._run(cloudsync.push_steps, remote, ids)
         if error:
             return {"ok": False, "error": error}
         self._detach(
-            self._carry_saves(steps, "cloud_sync_done", remote), "cloud_sync_done",
+            self._carry_saves(steps, "cloud_sync_done", remote, kind="backup"),
+            "cloud_sync_done",
             False, "", [],
         )
         return {"ok": True, "started": True}
@@ -597,8 +662,9 @@ class Transfers(plugin_base.PluginContext):
             decky.logger.info("Nothing to copy up for %s: %s", source, error)
             return {"ok": True, "skipped": error}
 
-        ok, reason = await self._stream_cloud(steps)
+        ok, reason = await self._stream_cloud(steps, "after-play")
         if not ok:
+            await self._copy_settled()
             decky.logger.warning("Could not copy %s up after play: %s", source, reason)
             return {"ok": False, "error": reason}
 
@@ -607,6 +673,7 @@ class Transfers(plugin_base.PluginContext):
         # untouched -- see `cloudsync.compare`.
         await self._run(cloudsync.record_push, remote, source)
         await self._run(store.set_settings, {"cloud_last_sync": int(time.time())})
+        await self._copy_settled()
         await self._run(cloudsync.prune, remote)
         decky.logger.info("Copied %s up after play", source)
         return {"ok": True}
@@ -725,7 +792,7 @@ class Transfers(plugin_base.PluginContext):
                     steps, plan_error = await self._run(
                         cloudsync.pull_steps, remote, [source], True, "", known)
                     if not plan_error:
-                        await self._stream_cloud(steps)
+                        await self._stream_cloud(steps, "launch")
                     # This Deck now holds what the storage holds, so the record
                     # of "what we last put there" is theirs. Without this the
                     # next launch would ask the same question again.
@@ -750,7 +817,7 @@ class Transfers(plugin_base.PluginContext):
                 steps, plan_error = await self._run(
                     cloudsync.pull_steps, remote, [source], False, "", known)
                 if not plan_error:
-                    ok, reason = await self._stream_cloud(steps)
+                    ok, reason = await self._stream_cloud(steps, "launch")
                     if ok:
                         restored = missing
                         decky.logger.info(
@@ -768,6 +835,7 @@ class Transfers(plugin_base.PluginContext):
             # problem this method exists to prevent. Harmless after a refusal:
             # the process is gone and `wake_launch` checks before it signals.
             await self._run(launchers.wake_launch, app_id)
+            await self._copy_settled()
 
     #: How often to look for a launcher that is waiting.
     #:
@@ -967,6 +1035,13 @@ class Transfers(plugin_base.PluginContext):
             return {"ok": False, "error": "The cloud transfer tool is missing."}
         if name not in await self._run(cloudsave.remotes):
             return {"ok": False, "error": "That storage is not set up on this Deck."}
+        # **Not while something else is moving the same files.** Quitting a game
+        # starts a copy up nobody sees, and this is two presses away from the
+        # panel that follows it -- so a restore could be writing an emulator's
+        # saves while that copy reads them, and both would write a record
+        # afterwards describing a state neither half was in.
+        if self._copying:
+            return {"ok": False, "error": _ALREADY}
         # Asked once, before anything is planned: what a storage can be
         # compared by decides the flags every step carries, and planning is
         # meant to run no subprocess. See `cloudsync.learn_compare`.
@@ -1038,6 +1113,7 @@ class Transfers(plugin_base.PluginContext):
             self._carry_saves(
                 steps, "cloud_sync_done",
                 adopt=name if (replace and not stamp) else "",
+                kind="restore",
             ),
             "cloud_sync_done", False, "", [],
         )

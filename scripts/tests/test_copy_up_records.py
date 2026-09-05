@@ -20,7 +20,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from harness import check, section, summary  # noqa: E402  -- installs the decky stub
+from harness import TMP, check, section, summary  # noqa: E402  -- installs the stub
 
 sys.path.insert(0, os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "py_modules"))
@@ -43,11 +43,11 @@ recorded = []
 pruned = []
 
 
-async def worked(steps):
+async def worked(steps, kind=""):
     return True, ""
 
 
-async def failed(steps):
+async def failed(steps, kind=""):
     return False, "connection refused"
 
 
@@ -100,6 +100,47 @@ check("a whole-directory copy leaves both of them behind",
 # nothing to exclude and nothing to explain in the command line.
 check("while an emulator that names its save folders excludes nothing",
       cloudsync._excludes(_parts), [])
+
+
+section("saves nothing has sent yet are something the panel can name")
+
+# The gap: a copy after a game covers the emulator that was played, so one that
+# failed while the Deck was offline waits for the next game of *that* emulator.
+# Playing something else leaves the save nowhere but here, and nothing said so.
+_WAITING = os.path.join(TMP, "waiting", "saves")
+os.makedirs(_WAITING, exist_ok=True)
+with open(os.path.join(_WAITING, "kept.srm"), "wb") as _handle:
+    _handle.write(b"x" * 40)
+
+_SOURCES = [
+    {"id": "retroarch", "name": "RetroArch", "whole": False,
+     "roots": [("saves", _WAITING)]},
+    # Installed, never played: no files, so nothing to say about it.
+    {"id": "azahar", "name": "Azahar", "whole": False,
+     "roots": [("saves", os.path.join(TMP, "waiting", "empty"))]},
+]
+os.makedirs(os.path.join(TMP, "waiting", "empty"), exist_ok=True)
+
+_real_sources = savedata._all_sources
+_real_mine = cloudsync.read_mine
+savedata._all_sources = lambda: list(_SOURCES)
+try:
+    cloudsync.read_mine = lambda source_id: {}
+    check("an emulator with saves and no copy behind it is waiting",
+          [one["name"] for one in cloudsync.waiting_to_go()], ["RetroArch"])
+
+    # The record the last copy left, matching the file exactly.
+    _size = os.path.getsize(os.path.join(_WAITING, "kept.srm"))
+    _mtime = int(os.path.getmtime(os.path.join(_WAITING, "kept.srm")))
+    cloudsync.read_mine = lambda source_id: {
+        "device": "deck", "at": 1,
+        "files": {"saves/kept.srm": {"size": _size, "mtime": _mtime}},
+    }
+    check("and one whose files match what went up is not",
+          cloudsync.waiting_to_go(), [])
+finally:
+    savedata._all_sources = _real_sources
+    cloudsync.read_mine = _real_mine
 
 
 if __name__ == "__main__":

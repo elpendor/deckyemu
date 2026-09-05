@@ -115,13 +115,25 @@ export function SaveBackupModal({ closeModal }: Props) {
   // the same reason: a percentage that arrives when it changes beats one asked
   // for on a timer.
   useEffect(() => {
-    const progress = addEventListener<[name: string, percent: number]>(
+    // **Only this dialog's own copy.** Saves also move when a game closes and
+    // when one starts, and both are silent by design -- but they emit the same
+    // events, so without the last argument this bar drew somebody else's copy
+    // and then announced it as the one that was asked for here.
+    const progress = addEventListener<
+      [name: string, percent: number, phase: string, kind: string]
+    >(
       "cloud_sync_progress",
-      (name, percent) => setCarrying({ name, percent }),
+      (name, percent, _phase, kind) => {
+        if (kind !== "backup") return;
+        setCarrying({ name, percent });
+      },
     );
-    const done = addEventListener<[ok: boolean, error: string, names: string[]]>(
+    const done = addEventListener<
+      [ok: boolean, error: string, names: string[], kind: string]
+    >(
       "cloud_sync_done",
-      (ok, failure, names) => {
+      (ok, failure, names, kind) => {
+        if (kind !== "backup") return;
         setSending(false);
         setCarrying(null);
         if (!ok) {
