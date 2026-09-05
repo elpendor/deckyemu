@@ -224,7 +224,7 @@ class Transfers(plugin_base.PluginContext):
         tool = bool(await self._run(cloudsave.binary))
         settings = await self._run(store.get_settings)
         configured = await self._run(cloudsave.remotes) if tool else []
-        chosen = (settings.get("cloud_remote") or "").rstrip(":")
+        chosen = self._chosen_remote()
         # Only a remote that still exists counts. A settings key naming one
         # somebody deleted is a destination that is not there, and saying
         # "ready" about it would be the same lie the panel told by saying
@@ -320,9 +320,8 @@ class Transfers(plugin_base.PluginContext):
         ok, error = await self._run(cloudsave.remove_remote, name)
         if not ok:
             return {"ok": False, "error": error}
-        settings = await self._run(store.get_settings)
         left = await self._run(cloudsave.remotes)
-        if (settings.get("cloud_remote") or "").rstrip(":") == name:
+        if await self._run(self._chosen_remote) == name:
             await self._run(store.set_settings,
                             {"cloud_remote": ("%s:" % left[0]) if left else ""})
         # **The switch follows the storages, because it is a statement about
@@ -764,6 +763,94 @@ class Transfers(plugin_base.PluginContext):
         decky.logger.info("Copied %s up after play", source)
         return {"ok": True}
 
+    async def _settle_conflict(self, app_id, remote, source, found):
+        """Put a save disagreement to somebody and act on the answer.
+
+        Lifted out of `cloud_before_play`, which was 157 lines holding four
+        separate decisions -- whether to look, the comparison, this, and the
+        fetch -- with the `finally` that releases the launch 130 lines below the
+        `try` that needs it. This is the half where a wrong edit costs a save,
+        so it is the half worth reading on its own.
+
+        Returns what the caller should return, or `None` for "keep this Deck's":
+        that answer is not an ending, and the caller goes on to fetch what is
+        only up there.
+        """
+        differing = found["differing"]
+        # **The game waits while the question is on screen**, which is what
+        # Steam's own cloud conflict does and the reason the heartbeat exists.
+        # Answering is what releases it. The emulator's name goes with it: the
+        # question is about everything that emulator keeps, not about the game
+        # being started, and a dialog that names only the game reads as a
+        # narrower promise than the answer delivers.
+        await decky.emit(
+            "cloud_conflict", app_id, differing, found["here"], found["there"],
+            await self._run(cloudsync.name_of, source))
+        chosen = await self._wait_for_answer(app_id)
+
+        if chosen == "went":
+            # The launch this was about has gone. Say so, so the dialog standing
+            # over a game that is no longer starting comes down with it.
+            await decky.emit("cloud_fetch_done", app_id, [])
+            return {"ok": True, "differing": [], "restored": 0}
+
+        if chosen == "stop":
+            # Ends the stopped process rather than leaving a note for it to
+            # find. A note written a moment too late used to refuse the *next*
+            # launch instead of this one.
+            await self._run(launchers.refuse_launch, app_id)
+            return {"ok": True, "differing": differing, "restored": 0,
+                    "stopped": True}
+
+        if chosen == "cloud":
+            # **Kept before they are overwritten.** These are the local
+            # versions, which by definition the storage does not have -- so
+            # without this they are the one thing this feature could destroy,
+            # under a dialog promising neither answer loses anything. They land
+            # beside every other replaced copy, so the restore screen lists them
+            # already.
+            kept, keep_error = await self._run(
+                cloudsync.preserve_local, remote, source, differing)
+            if not kept:
+                # **Nothing is overwritten when the net failed.** This used to
+                # log and carry on, which is the one path in this feature that
+                # can destroy the only copy of a save: the local versions are by
+                # definition the ones the storage does not have. A dialog that
+                # says neither answer loses anything has to mean it even when a
+                # storage is having a bad minute, so the answer is refused
+                # rather than half-done, and the Deck keeps what it has -- which
+                # is the outcome that can still be changed afterwards.
+                decky.logger.error(
+                    "Not overwriting %s: could not keep this Deck's copies "
+                    "first (%s)", source, keep_error)
+                await self._run(cloudsync.remember_answer, source, found["theirs"])
+                await self._run(launchers.wake_launch, app_id)
+                return {"ok": False, "differing": [], "restored": 0,
+                        "error": "Your saves could not be kept before being "
+                                 "replaced, so nothing was changed. The game "
+                                 "starts with the saves on this Deck."}
+            # The roots `compare` already found, rather than a second listing.
+            # Measured on the device: listing the whole saves tree on Dropbox is
+            # 14.5 seconds, and it was happening between somebody pressing the
+            # button and any file moving.
+            known = {(source, root) for root in found["roots"]}
+            steps, plan_error = await self._run(
+                cloudsync.pull_steps, remote, [source], True, "", known)
+            if not plan_error:
+                await self._stream_cloud(steps, "launch")
+            # This Deck now holds what the storage holds, so the record of "what
+            # we last put there" is theirs. Without this the next launch would
+            # ask the same question again.
+            await self._run(cloudsync.adopt_state, remote, source)
+            return {"ok": True, "differing": [], "restored": len(differing)}
+
+        # Keeping this Deck's. None of the disagreeing files is touched, and the
+        # answer is remembered, or the next launch would compare the same two
+        # records, find the same disagreement, and ask again. The next copy up
+        # puts these saves in the storage, where what they replace is kept.
+        await self._run(cloudsync.remember_answer, source, found["theirs"])
+        return None
+
     async def cloud_before_play(self, app_id: int, core_id: str):
         """Bring down what this Deck is missing before a game opens its saves.
 
@@ -813,87 +900,14 @@ class Transfers(plugin_base.PluginContext):
             restored = 0
             answered = False
             if differing:
-                # **The game waits while the question is on screen**, which is
-                # what Steam's own cloud conflict does and the reason the
-                # heartbeat above exists. Answering is what releases it.
-                # The emulator's name goes with it: the question is about
-                # everything that emulator keeps, not about the game being
-                # started, and a dialog that names only the game reads as a
-                # narrower promise than the answer delivers.
-                await decky.emit(
-                    "cloud_conflict", app_id, differing, here_at, there_at,
-                    await self._run(cloudsync.name_of, source))
-                chosen = await self._wait_for_answer(app_id)
-                if chosen == "went":
-                    # The launch this was about has gone. Say so, so the dialog
-                    # standing over a game that is no longer starting comes
-                    # down with it.
-                    await decky.emit("cloud_fetch_done", app_id, [])
-                    return {"ok": True, "differing": [], "restored": 0}
-                if chosen == "stop":
-                    # Ends the stopped process rather than leaving a note for it
-                    # to find. A note written a moment too late used to refuse
-                    # the *next* launch instead of this one.
-                    await self._run(launchers.refuse_launch, app_id)
-                    return {"ok": True, "differing": differing, "restored": 0,
-                            "stopped": True}
-                if chosen == "cloud":
-                    # **Kept before they are overwritten.** These are the local
-                    # versions, which by definition the storage does not have --
-                    # so without this they are the one thing this feature could
-                    # destroy, under a dialog promising neither answer loses
-                    # anything. They land beside every other replaced copy, so
-                    # the restore screen lists them already.
-                    kept, keep_error = await self._run(
-                        cloudsync.preserve_local, remote, source, differing)
-                    if not kept:
-                        # **Nothing is overwritten when the net failed.** This
-                        # used to log and carry on, which is the one path in
-                        # this feature that can destroy the only copy of a save:
-                        # the local versions are by definition the ones the
-                        # storage does not have. A dialog that says neither
-                        # answer loses anything has to mean it even when a
-                        # storage is having a bad minute, so the answer is
-                        # refused rather than half-done, and the Deck keeps what
-                        # it has -- which is the outcome that can still be
-                        # changed afterwards.
-                        decky.logger.error(
-                            "Not overwriting %s: could not keep this Deck's "
-                            "copies first (%s)", source, keep_error)
-                        await self._run(cloudsync.remember_answer, source,
-                                        found["theirs"])
-                        await self._run(launchers.wake_launch, app_id)
-                        return {"ok": False, "differing": [], "restored": 0,
-                                "error": "Your saves could not be kept before "
-                                         "being replaced, so nothing was "
-                                         "changed. The game starts with the "
-                                         "saves on this Deck."}
-                    # The roots `compare` already found, rather than a second
-                    # listing. Measured on the device: listing the whole saves
-                    # tree on Dropbox is 14.5 seconds, and it was happening
-                    # here between somebody pressing the button and any file
-                    # moving -- twenty seconds of a bar that could not say
-                    # anything.
-                    known = {(source, root) for root in roots}
-                    steps, plan_error = await self._run(
-                        cloudsync.pull_steps, remote, [source], True, "", known)
-                    if not plan_error:
-                        await self._stream_cloud(steps, "launch")
-                    # This Deck now holds what the storage holds, so the record
-                    # of "what we last put there" is theirs. Without this the
-                    # next launch would ask the same question again.
-                    await self._run(cloudsync.adopt_state, remote, source)
-                    return {"ok": True, "differing": [], "restored": len(differing)}
-                # Keeping this Deck's. None of the disagreeing files is
-                # touched -- and the answer is remembered, or the next launch
-                # would compare the same two records, find the same
-                # disagreement, and ask again. The next copy up puts these
-                # saves in the storage, where what they replace is kept.
-                await self._run(cloudsync.remember_answer, source, found["theirs"])
+                settled = await self._settle_conflict(app_id, remote, source, found)
+                if settled is not None:
+                    return settled
+                # Nothing returned means "keep this Deck's", which is not an
+                # ending: a save that is only up there was never part of the
+                # disagreement, so the fetch below still runs. Refusing it would
+                # make that answer mean more than it says.
                 answered = True
-                # Falls through rather than returning: a save that is only up
-                # there was never part of the disagreement, and refusing to
-                # fetch it would make "keep mine" mean more than it says.
 
             if missing:
                 # The pairs `compare` already found, rather than a second
