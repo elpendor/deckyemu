@@ -527,7 +527,9 @@ class Transfers(plugin_base.PluginContext):
         settings = await self._run(store.get_settings)
         if not settings.get("cloud_saves") or not (settings.get("cloud_remote") or ""):
             return {"ok": True, "waiting": []}
-        return {"ok": True, "waiting": await self._run(cloudsync.waiting_to_go)}
+        return {"ok": True, "waiting": await self._run(
+            cloudsync.waiting_to_go, None,
+            (settings.get("cloud_remote") or "").rstrip(":"))}
 
     async def cloud_backup_now(self, ids=None):
         """Start copying saves up to the storage in use. Returns once it starts.
@@ -649,7 +651,7 @@ class Transfers(plugin_base.PluginContext):
         # anyway is not merely wasteful: it rewrites the record beside the
         # saves, which is how "Don't start" at a save conflict ended up doing
         # the thing it was pressed to avoid. See `changed_since_push`.
-        if not await self._run(cloudsync.changed_since_push, source):
+        if not await self._run(cloudsync.changed_since_push, source, remote):
             decky.logger.info("Nothing changed for %s; nothing copied up", source)
             return {"ok": True, "skipped": "nothing changed"}
 

@@ -179,7 +179,7 @@ _common = (
     (cloudsave, "binary", lambda: "/tools/rclone"),
     (savedata, "_all_sources", lambda: list(SOURCES)),
     (launchers, "took_off", lambda app_id: True),
-    (cloudsync, "changed_since_push", lambda source: True),
+    (cloudsync, "changed_since_push", lambda source, remote="": True),
     (cloudsync, "learn_compare", lambda remote: []),
     (cloudsync, "push_steps", lambda remote, ids: ([{"name": "saves", "argv": []}], "")),
     (cloudsync, "record_push", lambda remote, source: _recorded.append(source)),

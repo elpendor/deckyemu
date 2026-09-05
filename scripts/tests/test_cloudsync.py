@@ -952,13 +952,22 @@ _mine = cloudsync.read_mine("retroarch")
 check("the same record is kept here, which is what makes the comparison work",
       (_mine["files"], bool(_mine["device"])), (_as_uploaded, True))
 
-# Byte-identical on both sides, because `compare` decides "is this our own
-# upload?" by comparing them. A freshly written one would look like a third
-# device.
+# The device and the moment are taken as they stand, because `compare` decides
+# "is this our own upload?" from those two. A freshly written record would look
+# like a third device.
 fake = FakeRun(stdout=_json.dumps(_record("deck-bbb", 2000, _theirs)))
 with_run(fake, lambda: cloudsync.adopt_state("dropbox", "retroarch"), sources=ONE)
+_adopted = cloudsync.read_mine("retroarch")
 check("taking the storage's copy adopts its record rather than writing a new one",
-      cloudsync.read_mine("retroarch"), _record("deck-bbb", 2000, _theirs))
+      {name: value for name, value in _adopted.items() if name != "remote"},
+      _record("deck-bbb", 2000, _theirs))
+check("and the comparison still reads it as the upload that is up there",
+      cloudsync._identity(_adopted),
+      cloudsync._identity(_record("deck-bbb", 2000, _theirs)))
+# Which storage it came from is this Deck's own note, and only on this side --
+# the copy up there is what another device reads, and an rclone name means
+# nothing on another device.
+check("with the storage it came from noted here", _adopted.get("remote"), "dropbox")
 
 section("the records for a whole copy, in one run rather than fourteen")
 

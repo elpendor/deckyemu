@@ -138,6 +138,30 @@ try:
     }
     check("and one whose files match what went up is not",
           cloudsync.waiting_to_go(), [])
+
+    # **Switching storages is not the same as having copied to it.** Without
+    # the name in the record, choosing another storage -- or a second account
+    # of the same service -- left the Deck sure its saves were already up
+    # there: the copy after a game found nothing changed and skipped, and the
+    # panel said nothing was waiting while that storage sat empty.
+    _sent = {"device": "deck", "at": 1, "remote": "dropbox",
+             "files": {"saves/kept.srm": {"size": _size, "mtime": _mtime}}}
+    cloudsync.read_mine = lambda source_id: dict(_sent)
+    check("what went to one storage has not gone to another",
+          [one["name"] for one in cloudsync.waiting_to_go(None, "pcloud")],
+          ["RetroArch"])
+    check("while the storage it did go to has nothing waiting",
+          cloudsync.waiting_to_go(None, "dropbox"), [])
+
+    # A record written before the name was kept says nothing about where it
+    # went, and re-uploading every save on the Deck the first time somebody
+    # updates is a worse answer than trusting it.
+    cloudsync.read_mine = lambda source_id: {
+        "device": "deck", "at": 1,
+        "files": {"saves/kept.srm": {"size": _size, "mtime": _mtime}},
+    }
+    check("and a record from before the name was kept is left alone",
+          cloudsync.waiting_to_go(None, "pcloud"), [])
 finally:
     savedata._all_sources = _real_sources
     cloudsync.read_mine = _real_mine

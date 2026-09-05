@@ -950,7 +950,18 @@ def read_mine(source_id):
         return {}
 
 
-def _keep_mine(source_id, state):
+def _keep_mine(source_id, state, remote=""):
+    """Keep this Deck's copy of a record, noting which storage it went to.
+
+    **The storage is part of "have we sent this".** Without it, choosing a
+    different storage -- or a second account of the same service -- left the
+    Deck believing its saves were already up there: the copy after a game found
+    nothing changed and skipped, and nothing said the new storage was empty.
+    The name is kept only on this side; what goes up is unchanged, because the
+    name is this Deck's own rclone label and means nothing on another device.
+    """
+    if remote:
+        state = dict(state, remote=remote)
     try:
         os.makedirs(STATE_DIR, exist_ok=True)
         with open(_mine_path(source_id), "w", encoding="utf-8") as handle:
@@ -959,7 +970,7 @@ def _keep_mine(source_id, state):
         decky.logger.warning("Could not keep the cloud record: %s", error)
 
 
-def changed_since_push(source_id):
+def changed_since_push(source_id, remote=""):
     """Whether this emulator's saves differ from what was last put up.
 
     **A game closing is not evidence that anything was written.** Steam counts
@@ -982,6 +993,12 @@ def changed_since_push(source_id):
     # Never uploaded. Everything is new by definition.
     if not mine:
         return True
+    # Uploaded, but not to the storage being asked about -- so as far as that
+    # one is concerned this is the same as never. Only when the record says
+    # which: one written before records carried the name is left alone rather
+    # than re-uploading everything on this Deck the first time it updates.
+    if remote and mine.get("remote") and mine["remote"] != remote:
+        return True
     was = mine.get("files") or {}
     now = _local_files(source)
     if set(was) != set(now):
@@ -993,7 +1010,7 @@ def changed_since_push(source_id):
     return False
 
 
-def waiting_to_go(ids=None):
+def waiting_to_go(ids=None, remote=""):
     """Emulators holding saves newer than the last copy this Deck sent up.
 
     **The gap this closes.** A copy after a game covers the emulator that was
@@ -1016,7 +1033,7 @@ def waiting_to_go(ids=None):
     for source in _sources(ids):
         if not _local_files(source):
             continue
-        if changed_since_push(source["id"]):
+        if changed_since_push(source["id"], remote):
             found.append({"id": source["id"], "name": source["name"]})
     return found
 
@@ -1059,7 +1076,7 @@ def record_push(remote, source_id):
     state = _state_of(source)
     ok, error = _write_record(remote, source_id, state)
     if ok:
-        _keep_mine(source_id, state)
+        _keep_mine(source_id, state, remote)
     return ok, error
 
 
@@ -1287,7 +1304,7 @@ def adopt_state(remote, source_id):
     theirs, error = _remote_state(remote, source_id, LIST_SECONDS)
     if error or not theirs:
         return False, error
-    _keep_mine(source_id, theirs)
+    _keep_mine(source_id, theirs, remote)
     return True, ""
 
 
