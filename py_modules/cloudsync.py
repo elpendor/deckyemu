@@ -237,7 +237,7 @@ _BY_CONTENT = ["--checksum", "--no-update-modtime"]
 
 #: What each storage can be compared by, once it has been asked. Hash support is
 #: a fact about a backend and does not change under a running plugin.
-_COMPARES = {}
+_COMPARES: dict = {}
 
 #: Backends whose reported hashes are a property of the dialect rather than of
 #: the server behind it, so the report cannot be taken at face value.

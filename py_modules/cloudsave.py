@@ -741,9 +741,9 @@ def login_finish(name, kind, pasted):
     if kind == "onedrive":
         # Asked before the remote is written rather than after: a section with a
         # token and no drive is one that looks set up and fails on everything.
-        drive, problem = _drive_settings(token)
-        if problem:
-            return False, "Almost -- %s. Try the login again." % problem
+        drive, missing = _drive_settings(token)
+        if missing:
+            return False, "Almost -- %s. Try the login again." % missing
         settings += drive
 
     ok, error = rclone(
