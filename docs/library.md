@@ -410,10 +410,10 @@ stay reachable. Every list in these dialogs is that shape: the emulators to back
 up, the backups and storages to restore from, the storages themselves. Three
 rows and the rest scrolled, so no list can push the buttons off the bottom.
 
-Five are kept per emulator, and five are what you are offered — the same number
-on purpose, so nothing sits in your storage that you cannot reach from the Deck.
-Per emulator rather than overall, so playing one game a lot does not push out the
-safety copy for another. Older ones are removed after each copy, rather than
+Ten are kept, and ten are what you are offered — the same number on purpose, so
+nothing sits in your storage that you cannot reach from the Deck. One press is
+one of those ten, whether it covered one emulator or fourteen: a copy is a thing
+that happened, so it is one row rather than fourteen rows sharing a timestamp. Older ones are removed after each copy, rather than
 being left somewhere you would need a web browser and another device to reach.
 Your saves themselves are never deleted by any of this; only these safety copies
 age out.

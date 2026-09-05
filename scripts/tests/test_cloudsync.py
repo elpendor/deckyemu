@@ -186,14 +186,16 @@ aside = [argv[argv.index("--backup-dir") + 1] for argv in sent
          if "--backup-dir" in argv]
 check("every copy names somewhere to put what it would have overwritten",
       len(aside), len(sent))
-check("one folder per emulator, which is one folder for a copy after a game "
-      "closes -- that only ever covers the emulator that was played",
-      len({one.rsplit("/", 1)[0] for one in aside}), 2)
-# Named for the emulator and the moment, which is what lets the restore screen
-# say "RetroArch - 3 Sep, 22:10" from one directory listing rather than one
-# network round trip per snapshot to look inside.
-check("it is named after the emulator and when it happened",
-      bool(re.match(r".*/retroarch-\d{8}-\d{6}/saves$", aside[0])), True)
+# **One folder per press, with the emulators inside it.** A press is one thing
+# that happened, so it is one row on the restore screen -- naming folders for the
+# emulator meant a copy covering fourteen of them left fourteen rows, all with
+# the same timestamp, under a heading calling each one "what one copy replaced".
+check("one folder for the press, whatever it covers",
+      len({one.split("/replaced/")[1].split("/")[0] for one in aside}), 1)
+check("with the emulator inside it rather than in its name",
+      all("/replaced/" in one and one.count("/") >= 4 for one in aside), True)
+check("it is named for when it happened",
+      bool(re.match(r".*/replaced/\d{8}-\d{6}/retroarch/saves$", aside[0])), True)
 
 # rclone refuses a backup directory that sits inside the destination, and it
 # would otherwise be read straight back as saves by `contents`.
@@ -587,35 +589,37 @@ section("what is kept is what is offered")
 # screen lists would leave the rest reachable only through the provider's own
 # website, which is the thing this plugin exists to do without.
 made = "".join(
-    '{"Path":"retroarch-2026090%d-120000","Name":"retroarch-2026090%d-120000",'
-    '"IsDir":true},' % (n, n)
-    for n in range(1, 8)
+    '{"Path":"202609%02d-120000","Name":"202609%02d-120000","IsDir":true},' % (n, n)
+    for n in range(1, 13)
 ).rstrip(",")
 fake = FakeRun(stdout="[" + made + "]")
 kept, _ = with_run(fake, lambda: cloudsync.snapshots("dropbox"))
 check("only the newest few are offered", len(kept), cloudsync.KEEP)
-check("and they are the newest", kept[0]["stamp"], "retroarch-20260907-120000")
+check("and they are the newest", kept[0]["stamp"], "20260912-120000")
 
-# **Kept per emulator.** Playing one game five times must not evict the safety
-# copy for another: how far back somebody can go is a question per emulator.
+# **Folders from before a press was the unit are still read.** They carry the
+# emulator in their name; nothing has to be migrated, and they age out on the
+# same count as everything else.
 _mixed = ("[" + "".join(
-    '{"Path":"%s-2026090%d-120000","Name":"%s-2026090%d-120000","IsDir":true},'
-    % (who, n, who, n)
-    for who in ("retroarch", "xenia") for n in range(1, 8)
+    '{"Path":"%s","Name":"%s","IsDir":true},' % (who, who)
+    for who in ("retroarch-20260901-120000", "20260902-120000",
+                "xenia-20260903-120000")
 ).rstrip(",") + "]")
 fake = FakeRun(stdout=_mixed)
 kept, _ = with_run(fake, lambda: cloudsync.snapshots("dropbox"))
-check("a busy emulator does not push another one out",
-      sorted({one["emulator"] for one in kept}), ["retroarch", "xenia"])
-check("and each keeps its own few", len(kept), cloudsync.KEEP * 2)
+check("both shapes are listed together, newest first",
+      [one["stamp"] for one in kept],
+      ["xenia-20260903-120000", "20260902-120000", "retroarch-20260901-120000"])
+check("and an older one still says which emulator it holds",
+      kept[0]["emulator"], "xenia")
 
 fake = FakeRun(stdout="[" + made + "]")
 gone = with_run(fake, lambda: cloudsync.prune("dropbox"))
 purged = [argv[argv.index("purge") + 1] for argv in fake.calls if "purge" in argv]
 check("everything past the cap is removed, so nothing is kept out of reach",
       (gone, sorted(purged)),
-      (2, ["dropbox:DeckyEmu/replaced/retroarch-20260901-120000",
-           "dropbox:DeckyEmu/replaced/retroarch-20260902-120000"]))
+      (2, ["dropbox:DeckyEmu/replaced/20260901-120000",
+           "dropbox:DeckyEmu/replaced/20260902-120000"]))
 
 fake = FakeRun(stdout='[{"Path":"retroarch-20260903-120000",'
                        '"Name":"retroarch-20260903-120000","IsDir":true}]')
@@ -885,7 +889,7 @@ check("it plans a step per save root", (len(plan), plan_error), (1, ""))
 check("each one says it is the keeping half",
       all(step.get("keeping") for step in plan), True)
 check("and they all land in one dated folder, not one folder each",
-      all("retroarch-20260904-200000" in " ".join(step["argv"]) for step in plan),
+      all("/20260904-200000/retroarch" in " ".join(step["argv"]) for step in plan),
       True)
 check("named for the emulator, because that is what the bar says",
       plan[0]["name"], "RetroArch")

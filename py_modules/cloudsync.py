@@ -137,9 +137,15 @@ LIST_SECONDS = 90
 #: The two have to be the same number. Keeping more than the restore screen
 #: offers would leave the rest reachable only through the storage provider's own
 #: website, which is the second device this plugin exists to do without -- so
-#: what is not listed is not kept. Five is enough to reach the mistake somebody
-#: is undoing, and the chooser these rows go in does not scroll.
-KEEP = 5
+#: what is not listed is not kept.
+#:
+#: **Ten, because one of these is now a press rather than an emulator.** It was
+#: five per emulator while a folder was named for one; a folder is a press now
+#: -- see `snapshots` -- so the same five would have been five presses, and an
+#: evening of playing three games would have pushed the first out. Ten presses
+#: reaches back further than five did for anybody who plays one or two things,
+#: and the rows scroll three at a time like every other list here.
+KEEP = 10
 
 #: What a path segment may be once it names a folder on somebody's cloud storage.
 #: Emulator ids and root labels both come from the catalog rather than from
@@ -435,8 +441,8 @@ def push_steps(remote, ids=None):
                 continue
             command = cloudsave.argv(
                 ["copy", path, "%s:%s/%s" % (remote, root_of(remote), target),
-                 "--backup-dir", "%s:%s/%s-%s/%s" % (
-                     remote, replaced_of(remote), source["id"], when, segment)]
+                 "--backup-dir", "%s:%s/%s/%s" % (
+                     remote, replaced_of(remote), when, target)]
                 + _excludes(source) + _by_content(remote) + _FILES_AT_ONCE + _STATS
             )
             if not command:
@@ -509,16 +515,14 @@ def snapshots(remote, keep=KEEP):
     listed.sort(key=lambda one: one["stamp"].rsplit("-", 2)[-2:], reverse=True)
     if not keep:
         return listed, ""
-    # Kept per emulator, not overall. Playing one game five times must not evict
-    # the safety copy for another -- the number is about how far back somebody
-    # can go, and that is a question per emulator.
-    seen = {}
-    within = []
-    for one in listed:
-        seen[one["emulator"]] = seen.get(one["emulator"], 0) + 1
-        if seen[one["emulator"]] <= keep:
-            within.append(one)
-    return within, ""
+    # Counted per press, because a press is what a folder is now. It used
+    # to be counted per emulator, which the folder names carried and which
+    # is why one press left fourteen rows. `KEEP` is larger to pay for it:
+    # further back than before for anybody who plays one or two things,
+    # less for somebody alternating between many. The alternative was
+    # reading every folder to find out what it held, once per copy, which
+    # is the sort of cost that turns a copy after a game into a wait.
+    return listed[:keep], ""
 
 
 def prune(remote, keep=KEEP):
@@ -1039,9 +1043,9 @@ def preserve_steps(remote, source_id, names, when=""):
     if not cloudsave.valid_name(remote):
         return [], "That storage cannot be used."
 
-    aside = "%s:%s/%s-%s" % (
-        remote, replaced_of(remote), source_id,
-        when or time.strftime("%Y%m%d-%H%M%S"))
+    aside = "%s:%s/%s/%s" % (
+        remote, replaced_of(remote), when or time.strftime("%Y%m%d-%H%M%S"),
+        source_id)
     roots = {segment: path for segment, path in _roots_of(source)}
 
     wanted = {}
@@ -1101,8 +1105,8 @@ def preserve_local(remote, source_id, names):
     # a bucket the constant is not a legal name, so this copy fails -- and this
     # copy is the only thing standing between somebody's saves and the overwrite
     # that follows it. It was the constant until an audit went looking.
-    aside = "%s:%s/%s-%s" % (
-        remote, replaced_of(remote), source_id, time.strftime("%Y%m%d-%H%M%S"))
+    aside = "%s:%s/%s/%s" % (
+        remote, replaced_of(remote), time.strftime("%Y%m%d-%H%M%S"), source_id)
     roots = {segment: path for segment, path in _roots_of(source)}
 
     wanted = {}
