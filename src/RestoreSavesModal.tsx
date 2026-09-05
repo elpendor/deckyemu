@@ -126,6 +126,24 @@ export function RestoreSavesModal({ closeModal }: Props) {
   const [cameFrom, setCameFrom] = useState<Picked | null>(null);
   /** Storages whose earlier copies have been asked for, so each is asked once. */
   const asked = useRef(new Set<string>());
+  /*
+   * **Which screen the answers still in the air belong to.**
+   *
+   * Opening a storage is one listing and then one request per emulator, and
+   * they land seconds apart. Pressing Back before they do used to leave every
+   * one of them still holding a `setContents`: rows for a storage nobody is
+   * looking at appeared over the chooser, the outstanding count ran on under a
+   * screen with no list, and opening something else raced its own answers
+   * against the last screen's.
+   *
+   * Every screen takes a number on the way in, and every answer checks that its
+   * number is still the current one before it writes anything. Going back bumps
+   * it, which is what makes an abandoned screen's answers land nowhere.
+   *
+   * The requests themselves are already with the provider and cannot be called
+   * back -- what this stops is them arriving somewhere they no longer belong.
+   */
+  const showing = useRef(0);
 
   const [contents, setContents] = useState<SaveBackupContents[] | null>(null);
   /** Emulators whose figures have not arrived yet. */
@@ -157,23 +175,33 @@ export function RestoreSavesModal({ closeModal }: Props) {
    * Dropbox -- on every open of a screen people come to for the current saves.
    * Opening a storage now asks for exactly what that screen shows.
    */
+  // Closing the dialog is leaving every screen at once, so nothing still on its
+  // way should write to a component that has gone. Same counter, same rule.
+  useEffect(() => () => {
+    showing.current += 1;
+  }, []);
+
   const showEarlier = useCallback((from: Picked & { kind: "cloud" }) => {
+    const mine = (showing.current += 1);
     setContents(null);
     setCameFrom(from);
     setChosen({ kind: "earlier", remote: from.remote, label: from.label });
     if (asked.current.has(from.remote)) return;
     asked.current.add(from.remote);
     void cloudSnapshots(from.remote)
-      .then((held) =>
-        setReplaced((was) => ({ ...was, [from.remote]: held.snapshots ?? [] })),
-      )
+      .then((held) => {
+        if (showing.current !== mine) return;
+        setReplaced((was) => ({ ...was, [from.remote]: held.snapshots ?? [] }));
+      })
       .catch((error) => {
         logError("could not list earlier copies", error);
+        if (showing.current !== mine) return;
         setReplaced((was) => ({ ...was, [from.remote]: [] }));
       });
   }, []);
 
   const open = useCallback(async (file: SaveBackupFile) => {
+    const mine = (showing.current += 1);
     setError("");
     setCameFrom(null);
     setChosen({ kind: "file", file });
@@ -185,6 +213,7 @@ export function RestoreSavesModal({ closeModal }: Props) {
         setChosen(null);
         return;
       }
+      if (showing.current !== mine) return;
       setContents(described.sources ?? []);
     } catch (describeError) {
       logError("could not read a save backup", describeError);
@@ -208,6 +237,7 @@ export function RestoreSavesModal({ closeModal }: Props) {
   const openCloud = useCallback(async (
     one: CloudRemote, snapshot?: CloudSnapshot, from?: Picked,
   ) => {
+    const mine = (showing.current += 1);
     const service = nameOf(one, accounts);
     const label = snapshot ? `${service} — ${snapshot.label}` : service;
     const stamp = snapshot?.stamp ?? "";
@@ -218,6 +248,7 @@ export function RestoreSavesModal({ closeModal }: Props) {
     setPending(0);
     try {
       const listed = await cloudEmulators(one.name, stamp);
+      if (showing.current !== mine) return;
       if (!listed.ok) {
         setError(listed.error ?? "That storage could not be read.");
         setChosen(null);
@@ -229,6 +260,7 @@ export function RestoreSavesModal({ closeModal }: Props) {
       listed.emulators.forEach((emulator) => {
         void cloudDescribe(one.name, emulator, stamp)
           .then((said) => {
+            if (showing.current !== mine) return;
             if (said.row) {
               setContents((was) => [...(was ?? []), said.row!]
                 .sort((a, b) => a.name.localeCompare(b.name)));
@@ -237,10 +269,14 @@ export function RestoreSavesModal({ closeModal }: Props) {
           .catch((describeError) =>
             logError("could not read one emulator's cloud saves", describeError),
           )
-          .finally(() => setPending((was) => Math.max(0, was - 1)));
+          .finally(() => {
+            if (showing.current !== mine) return;
+            setPending((was) => Math.max(0, was - 1));
+          });
       });
     } catch (readError) {
       logError("could not read cloud saves", readError);
+      if (showing.current !== mine) return;
       setError("That storage could not be read.");
       setChosen(null);
     }
@@ -586,8 +622,11 @@ export function RestoreSavesModal({ closeModal }: Props) {
 
   /** Back to whatever this was picked from: a list of copies, or the sources. */
   const goBack = () => {
+    // Whatever is still on its way belongs to the screen being left.
+    showing.current += 1;
     setError("");
     setContents(null);
+    setPending(0);
     const to = cameFrom;
     setCameFrom(null);
     if (to?.kind === "cloud") {
@@ -904,7 +943,25 @@ export function RestoreSavesModal({ closeModal }: Props) {
 
       {carrying && (
         <div style={{ marginTop: "10px" }}>
-          <div style={{ fontSize: "13px", opacity: 0.7, marginBottom: "4px" }}>
+          {/* **A bar once there is something to measure, and until then a
+              spinner beside the words.** Before the first stats line lands
+              there is no fraction to draw, and a bar sitting at zero reads as
+              one that has stuck. The spinner belongs on the same line as the
+              sentence it is about -- centred on a row of its own it read as a
+              second thing happening, and it is the same thing the row above
+              said, still happening. Same shape as the outstanding-rows line
+              further up this dialog. */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "10px",
+              fontSize: "13px",
+              opacity: 0.7,
+              marginBottom: carrying.percent < 0 ? 0 : "4px",
+            }}
+          >
+            {carrying.percent < 0 && <Spinner style={{ height: "14px" }} />}
             {carrying.keeping
               ? carrying.name
                 ? `Keeping a copy of ${carrying.name}...`
@@ -913,16 +970,7 @@ export function RestoreSavesModal({ closeModal }: Props) {
                 ? `Bringing back ${carrying.name}...`
                 : "Bringing saves back..."}
           </div>
-          {/* A bar once there is something to measure. Before the first
-              stats line lands there is no fraction to draw, and a bar sitting
-              at zero for the length of a listing reads as one that has stuck --
-              which is exactly what the copy up looked like before it was
-              streamed. */}
-          {carrying.percent < 0 ? (
-            <div style={{ display: "flex", justifyContent: "center", padding: "6px" }}>
-              <Spinner style={{ height: "16px" }} />
-            </div>
-          ) : (
+          {carrying.percent < 0 ? null : (
             <ProgressBar fraction={carrying.percent / 100} />
           )}
         </div>

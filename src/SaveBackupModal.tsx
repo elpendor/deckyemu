@@ -305,12 +305,29 @@ export function SaveBackupModal({ closeModal }: Props) {
             )}
             {carrying && (
               <div style={{ marginTop: "10px" }}>
-                <div style={{ ...MUTED, marginBottom: "4px" }}>
+                {/* A spinner beside the words until there is a fraction to
+                    draw, then the bar. rclone lists before it transfers, and a
+                    bar sitting at zero through that reads as one that has
+                    stuck. Beside the sentence rather than under it: it is the
+                    same thing that sentence is about, still happening. The
+                    restore dialog says it this way too. */}
+                <div
+                  style={{
+                    ...MUTED,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "10px",
+                    marginBottom: carrying.percent < 0 ? 0 : "4px",
+                  }}
+                >
+                  {carrying.percent < 0 && <Spinner style={{ height: "14px" }} />}
                   {carrying.name
                     ? `Copying ${carrying.name} to ${cloud?.label}...`
                     : `Copying to ${cloud?.label}...`}
                 </div>
-                <ProgressBar fraction={carrying.percent / 100} />
+                {carrying.percent < 0 ? null : (
+                  <ProgressBar fraction={carrying.percent / 100} />
+                )}
               </div>
             )}
 
