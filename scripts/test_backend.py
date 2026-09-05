@@ -5427,6 +5427,39 @@ try:
     check("and is not rebuilt again at the next startup", _rebuilt, [])
 finally:
     plugin.rebuild_launchers = _real_rebuild
+
+# **A rewrite that did not happen must not be recorded as one.** The stamp went
+# in before the rebuild, so an update interrupted here -- a Deck asleep during
+# startup, a decky reload, a rebuild that threw -- left the setting claiming the
+# new format over scripts still on the old one, and nothing tried again. Since
+# format 22 a launcher carries the wait for cloud saves, so those games would
+# quietly never look for their saves before starting.
+store.set_settings({"launcher_format": 1})
+store.remember_game(
+    504,
+    {
+        "app_id": 504,
+        "title": "Rebuild Fails",
+        "rom_path": _fmt_rom,
+        "core_id": "bsnes",
+        "core_path": core,
+        "launcher_path": launchers.write_launcher(install, "Rebuild Fails", core, _fmt_rom),
+    },
+)
+
+
+async def _failed_rebuild():
+    return {"ok": False, "error": "no emulator for one of them"}
+
+
+plugin.rebuild_launchers = _failed_rebuild
+try:
+    run(plugin._upgrade_launchers())
+    check("a rebuild that failed leaves the format stale, so the next start retries",
+          store.get_settings().get("launcher_format"), 1)
+finally:
+    plugin.rebuild_launchers = _real_rebuild
+store.forget_game(504)
 store.forget_game(503)
 os.remove(_fmt_rom)
 

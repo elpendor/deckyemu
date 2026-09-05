@@ -608,18 +608,37 @@ class Startup(plugin_base.PluginContext):
         if not stale:
             return
 
-        await self._run(store.set_settings, {
-            "launcher_format": launchers.FORMAT_VERSION,
-            "motion_emulators": fingerprint,
-        })
         if not await self._run(store.get_library):
+            # Nothing to rewrite, so the format on disk is whatever this version
+            # writes by definition.
+            await self._run(store.set_settings, {
+                "launcher_format": launchers.FORMAT_VERSION,
+                "motion_emulators": fingerprint,
+            })
             return
 
         decky.logger.info(
             "Rewriting launchers for format %d (motion: %s)",
             launchers.FORMAT_VERSION, fingerprint or "none"
         )
-        await self.rebuild_launchers()
+        done = await self.rebuild_launchers()
+
+        # **Stamped afterwards, and only if it worked.** Written first, an
+        # update interrupted here -- a Deck put to sleep mid-startup, a decky
+        # reload, a rebuild that threw -- left the setting claiming the new
+        # format while the scripts on disk were still the old one, and nothing
+        # ever tried again. Harmless when a launcher version only carried a log
+        # flag; since version 22 it carries the wait for cloud saves, so those
+        # games would quietly never look for their saves before starting.
+        if not (done or {}).get("ok"):
+            decky.logger.warning(
+                "Launchers were not rewritten; leaving the format stale so the "
+                "next start tries again")
+            return
+        await self._run(store.set_settings, {
+            "launcher_format": launchers.FORMAT_VERSION,
+            "motion_emulators": fingerprint,
+        })
 
     async def _forget_removed_settings(self):
         """Clear settings that have been taken out of the plugin.
