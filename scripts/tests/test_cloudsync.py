@@ -845,6 +845,51 @@ check("and nothing to keep is not an error",
                sources=ONE),
       (True, ""))
 
+section("the copy taken before a replace is planned, not run")
+
+# Run inline it was a dialog sitting still for the length of an upload of every
+# save on the Deck. Planned, it goes through the same runner every other copy
+# does, so the bar moves and names what is going up.
+plan, plan_error = with_run(FakeRun(), lambda: cloudsync.preserve_steps(
+    "dropbox", "retroarch", ["saves/game.srm", "states/game.state"], "20260904-200000"),
+    sources=ONE)
+check("it plans a step per save root", (len(plan), plan_error), (1, ""))
+check("each one says it is the keeping half",
+      all(step.get("keeping") for step in plan), True)
+check("and they all land in one dated folder, not one folder each",
+      all("retroarch-20260904-200000" in " ".join(step["argv"]) for step in plan),
+      True)
+check("named for the emulator, because that is what the bar says",
+      plan[0]["name"], "RetroArch")
+check("nothing to keep is not an error",
+      with_run(FakeRun(), lambda: cloudsync.preserve_steps("dropbox", "retroarch", []),
+               sources=ONE),
+      ([], ""))
+
+section("the net under a conflict is on the storage it is copying to")
+
+# The local versions are by definition the ones the storage does not have, so
+# this copy is the only thing between them and the overwrite that follows. It
+# named the folder with the constant, which on a storage whose first segment is
+# a bucket is not a legal name -- the copy would have failed there, and the
+# overwrite would have gone ahead anyway.
+_real_kinds = cloudsave.remote_kinds
+cloudsave.remote_kinds = lambda: {"mys3": "s3"}
+cloudsync._COMPARES["mys3"] = []
+try:
+    aside = FakeRun()
+    with_run(aside, lambda: cloudsync.preserve_local(
+        "mys3", "retroarch", ["saves/game.srm"]), sources=ONE)
+    check("what is kept goes where the bucketed storage keeps things",
+          any("mys3:deckyemu/replaced/" in a
+              for call in aside.calls for a in call), True)
+    check("and never under a name a bucket cannot have",
+          any("mys3:DeckyEmu/" in a
+              for call in aside.calls for a in call), False)
+finally:
+    cloudsave.remote_kinds = _real_kinds
+    cloudsync._COMPARES.pop("mys3", None)
+
 section("what a copy up leaves behind")
 
 fake = FakeRun()

@@ -1006,6 +1006,67 @@ def remember_answer(source_id, theirs):
     _keep_mine(source_id, mine)
 
 
+def everything_local(source_id):
+    """Every file this Deck holds for one emulator, as `preserve_local` names them.
+
+    For the copy taken before a restore replaces the lot: what that overwrites
+    is not a list somebody handed us, it is whatever is here.
+    """
+    source = next(
+        (one for one in savedata._all_sources() if one["id"] == source_id), None)
+    return sorted(_local_files(source)) if source else []
+
+
+def preserve_steps(remote, source_id, names, when=""):
+    """The copy that keeps `names` aside, planned rather than run. (steps, error).
+
+    The same call `preserve_local` makes, in the shape `_stream_cloud` runs --
+    so a copy taken before a restore replaces things reports itself file by
+    file, like every other copy. Blocking through `preserve_local` was a bar
+    that could not move for as long as the upload took, which on a full restore
+    is every save on the Deck.
+
+    `when` names the folder, and is passed in so that one press produces one
+    dated row however many emulators it covers.
+    """
+    source = next(
+        (one for one in savedata._all_sources() if one["id"] == source_id), None)
+    if source is None or not _SEGMENT.match(source_id) or not names:
+        return [], ""
+    if not cloudsave.valid_name(remote):
+        return [], "That storage cannot be used."
+
+    aside = "%s:%s/%s-%s" % (
+        remote, replaced_of(remote), source_id,
+        when or time.strftime("%Y%m%d-%H%M%S"))
+    roots = {segment: path for segment, path in _roots_of(source)}
+
+    wanted = {}
+    for name in names:
+        segment, _, relative = name.partition("/")
+        if relative and segment in roots:
+            wanted.setdefault(segment, []).append(relative)
+
+    steps = []
+    for segment, relatives in sorted(wanted.items()):
+        listing = os.path.join(STATE_DIR, "%s-%s.keeping" % (source_id, segment))
+        try:
+            os.makedirs(STATE_DIR, exist_ok=True)
+            with open(listing, "w", encoding="utf-8") as handle:
+                handle.write("\n".join(relatives))
+        except OSError as error:
+            return [], str(error)
+        command = cloudsave.argv(
+            ["copy", roots[segment], "%s/%s" % (aside, segment),
+             "--files-from", listing]
+            + _by_content(remote) + _FILES_AT_ONCE + _STATS)
+        if not command:
+            return [], "The cloud transfer tool is missing."
+        steps.append({"id": source_id, "name": source["name"], "argv": command,
+                      "keeping": True, "listing": listing})
+    return steps, ""
+
+
 def preserve_local(remote, source_id, names):
     """Put this Deck's copies of `names` beside the other replaced ones. (ok, error).
 
@@ -1030,8 +1091,12 @@ def preserve_local(remote, source_id, names):
     if source is None or not _SEGMENT.match(source_id) or not names:
         return True, ""
 
+    # `replaced_of`, not the constant: on a storage whose first path segment is
+    # a bucket the constant is not a legal name, so this copy fails -- and this
+    # copy is the only thing standing between somebody's saves and the overwrite
+    # that follows it. It was the constant until an audit went looking.
     aside = "%s:%s/%s-%s" % (
-        remote, REPLACED, source_id, time.strftime("%Y%m%d-%H%M%S"))
+        remote, replaced_of(remote), source_id, time.strftime("%Y%m%d-%H%M%S"))
     roots = {segment: path for segment, path in _roots_of(source)}
 
     wanted = {}

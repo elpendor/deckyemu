@@ -134,7 +134,14 @@ export function RestoreSavesModal({ closeModal }: Props) {
   /* How far through a cloud restore is. A .zip is read off local disk and is
      done before a bar could draw; coming down from a remote is wifi, and a
      dialog that says nothing for ninety seconds reads as one that has hung. */
-  const [carrying, setCarrying] = useState<{ name: string; percent: number } | null>(
+  /* `keeping` is the first half of a replace that was asked to keep a copy:
+     the saves going *up* before anything comes down. It says so, because the
+     other half's words over this half's work read as the restore having started
+     and then stalled. The first progress line from the copy down clears it --
+     that line cannot arrive until the upload is over. */
+  const [carrying, setCarrying] = useState<
+    { name: string; percent: number; keeping?: boolean } | null
+  >(
     null,
   );
   const [error, setError] = useState("");
@@ -326,9 +333,16 @@ export function RestoreSavesModal({ closeModal }: Props) {
    * asked for happen".
    */
   useEffect(() => {
-    const progress = addEventListener<[name: string, percent: number]>(
+    const progress = addEventListener<
+      [name: string, percent: number, phase?: string]
+    >(
       "cloud_sync_progress",
-      (name, percent) => setCarrying({ name, percent }),
+      /* The third argument says which half of a keep-and-replace this line
+         belongs to. Every other screen ignores it; here it is the difference
+         between "your saves are going up" and "the storage's are coming down",
+         which are opposite directions under one bar. */
+      (name, percent, phase) =>
+        setCarrying({ name, percent, keeping: phase === "keeping" }),
     );
     const done = addEventListener<[ok: boolean, error: string, names: string[]]>(
       "cloud_sync_done",
@@ -353,7 +367,7 @@ export function RestoreSavesModal({ closeModal }: Props) {
   }, [closeModal]);
 
   const run = useCallback(
-    (replace: boolean) => {
+    (replace: boolean, keep = false) => {
       if (!chosen) return;
       setWorking(true);
       setError("");
@@ -370,9 +384,9 @@ export function RestoreSavesModal({ closeModal }: Props) {
       const scope = replace ? null : missingIds(contents ?? []);
 
       if (chosen.kind === "cloud") {
-        setCarrying({ name: "", percent: -1 });
+        setCarrying({ name: "", percent: -1, keeping: keep });
         // Only starts it; the listener above closes the dialog when it lands.
-        void cloudRestore(chosen.remote, scope, replace, chosen.stamp)
+        void cloudRestore(chosen.remote, scope, replace, chosen.stamp, keep)
           .then((result) => {
             if (!result.ok) {
               setError(result.error ?? "The saves could not be restored.");
@@ -437,14 +451,34 @@ export function RestoreSavesModal({ closeModal }: Props) {
         strDescription={
           overwritten === 0
             ? "Nothing here would be overwritten - no save in this backup is already on the Deck."
-            : `${overwritten} save file(s) on this Deck will be overwritten with the backup's copies. Whatever they hold now is gone, and there is no undo.`
+            : `${overwritten} save file(s) on this Deck will be overwritten. ` +
+              (chosen?.kind === "cloud"
+                ? "Keeping a copy first puts them in your storage under earlier copies, where you can get them back. Replacing without one cannot be undone."
+                : "Whatever they hold now is gone, and there is no undo.")
         }
-        strOKButtonText="Restore all"
+        {...(chosen?.kind === "cloud"
+          ? {
+              /* **Offered, not imposed.** Replacing is the one thing here that
+                 destroys a save with nothing set aside, and it is two presses
+                 from a list of storages -- so the way out is put in front of
+                 whoever is about to need it. It is not made compulsory because
+                 somebody restoring onto a wiped Deck has nothing worth keeping
+                 and no reason to wait for it to upload.
+
+                 The safe one is the primary button, and the one that cannot be
+                 undone sits beside Cancel: the same shape Steam's own
+                 three-button dialogs use, and the same order this plugin uses
+                 wherever an answer should not be landed on by a thumb. */
+              strOKButtonText: "Keep a copy first",
+              onOK: () => run(true, true),
+              strMiddleButtonText: "Replace without keeping",
+              onMiddleButton: () => run(true),
+            }
+          : { strOKButtonText: "Restore all", onOK: () => run(true) })}
         bDestructiveWarning
-        onOK={() => run(true)}
       />,
     );
-  }, [contents, run]);
+  }, [chosen?.kind, contents, run]);
 
   const confirmDiscard = useCallback(() => {
     // Files only. Nothing here deletes from somebody's cloud storage: that is
@@ -871,9 +905,26 @@ export function RestoreSavesModal({ closeModal }: Props) {
       {carrying && (
         <div style={{ marginTop: "10px" }}>
           <div style={{ fontSize: "13px", opacity: 0.7, marginBottom: "4px" }}>
-            {carrying.name ? `Bringing back ${carrying.name}...` : "Bringing saves back..."}
+            {carrying.keeping
+              ? carrying.name
+                ? `Keeping a copy of ${carrying.name}...`
+                : "Keeping a copy of your saves first..."
+              : carrying.name
+                ? `Bringing back ${carrying.name}...`
+                : "Bringing saves back..."}
           </div>
-          <ProgressBar fraction={carrying.percent / 100} />
+          {/* A bar once there is something to measure. Before the first
+              stats line lands there is no fraction to draw, and a bar sitting
+              at zero for the length of a listing reads as one that has stuck --
+              which is exactly what the copy up looked like before it was
+              streamed. */}
+          {carrying.percent < 0 ? (
+            <div style={{ display: "flex", justifyContent: "center", padding: "6px" }}>
+              <Spinner style={{ height: "16px" }} />
+            </div>
+          ) : (
+            <ProgressBar fraction={carrying.percent / 100} />
+          )}
         </div>
       )}
 

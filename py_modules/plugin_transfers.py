@@ -378,6 +378,10 @@ class Transfers(plugin_base.PluginContext):
                     "cloud_sync_progress",
                     step["name"],
                     int((index * 100 + within) / total),
+                    # Which half of a keep-and-replace this is. Ignored by every
+                    # screen but the restore dialog, which says so rather than
+                    # showing the copy down's words over the copy up's work.
+                    "keeping" if step.get("keeping") else "",
                 )
 
             code = await process.wait()
@@ -676,9 +680,27 @@ class Transfers(plugin_base.PluginContext):
                     kept, keep_error = await self._run(
                         cloudsync.preserve_local, remote, source, differing)
                     if not kept:
-                        decky.logger.warning(
-                            "Could not keep this Deck's copies for %s: %s",
-                            source, keep_error)
+                        # **Nothing is overwritten when the net failed.** This
+                        # used to log and carry on, which is the one path in
+                        # this feature that can destroy the only copy of a save:
+                        # the local versions are by definition the ones the
+                        # storage does not have. A dialog that says neither
+                        # answer loses anything has to mean it even when a
+                        # storage is having a bad minute, so the answer is
+                        # refused rather than half-done, and the Deck keeps what
+                        # it has -- which is the outcome that can still be
+                        # changed afterwards.
+                        decky.logger.error(
+                            "Not overwriting %s: could not keep this Deck's "
+                            "copies first (%s)", source, keep_error)
+                        await self._run(cloudsync.remember_answer, source,
+                                        found["theirs"])
+                        await self._run(launchers.wake_launch, app_id)
+                        return {"ok": False, "differing": [], "restored": 0,
+                                "error": "Your saves could not be kept before "
+                                         "being replaced, so nothing was "
+                                         "changed. The game starts with the "
+                                         "saves on this Deck."}
                     # The roots `compare` already found, rather than a second
                     # listing. Measured on the device: listing the whole saves
                     # tree on Dropbox is 14.5 seconds, and it was happening
@@ -919,7 +941,7 @@ class Transfers(plugin_base.PluginContext):
         return {"ok": not error, "error": error, "snapshots": listed}
 
     async def cloud_restore(self, name: str, ids=None, replace: bool = False,
-                            stamp: str = ""):
+                            stamp: str = "", keep: bool = False):
         """Start bringing saves down from one storage. `replace` overwrites.
 
         The same two words the local restore uses, meaning the same two things,
@@ -935,10 +957,42 @@ class Transfers(plugin_base.PluginContext):
         # compared by decides the flags every step carries, and planning is
         # meant to run no subprocess. See `cloudsync.learn_compare`.
         await self._run(cloudsync.learn_compare, name)
+
         steps, error = await self._run(
             cloudsync.pull_steps, name, ids, replace, stamp)
         if error:
             return {"ok": False, "error": error}
+        # **What this is about to overwrite, kept first -- when asked.**
+        # Replacing is the one thing here that destroys a save with nothing put
+        # aside, and it is two presses from a list of storages. So the
+        # confirmation offers it, rather than a setting deciding for everybody:
+        # somebody restoring onto a wiped Deck has nothing worth keeping and no
+        # reason to wait for an upload of it.
+        #
+        # **Planned, not run**, and put in front of the restore's own steps so
+        # one bar covers both halves. Run inline it was a dialog sitting still
+        # for the length of an upload of every save on the Deck.
+        #
+        # One `when` for the press rather than one per emulator, so what it
+        # keeps is a single dated row under earlier copies -- the same folder,
+        # shape and screen as everything else this plugin sets aside.
+        if replace and keep:
+            when = time.strftime("%Y%m%d-%H%M%S")
+            keeping = []
+            for source_id in sorted({step["id"] for step in steps}):
+                names = await self._run(cloudsync.everything_local, source_id)
+                if not names:
+                    continue
+                planned, plan_error = await self._run(
+                    cloudsync.preserve_steps, name, source_id, names, when)
+                if plan_error:
+                    # Refused rather than half-done, for the reason the conflict
+                    # path gives: the copy is the whole point of asking.
+                    return {"ok": False,
+                            "error": "Your saves could not be kept first, so "
+                                     "nothing was replaced. %s" % plan_error}
+                keeping += planned
+            steps = keeping + steps
         self._detach(
             # **Taking the storage's copies means taking its record with them.**
             # Answering a launch conflict with "use the cloud's" has always done

@@ -582,7 +582,8 @@ export const cloudSnapshots = callable<
  * on the same two events as `cloudBackupNow`.
  */
 export const cloudRestore = callable<
-  [name: string, ids: string[] | null, replace: boolean, stamp: string],
+  [name: string, ids: string[] | null, replace: boolean, stamp: string,
+   keep?: boolean],
   { ok: boolean; error?: string; started?: boolean }
 >("cloud_restore");
 /**

@@ -540,6 +540,14 @@ The choice that matters is which of the two buttons you press:
 | **Restore missing** | Writes only the saves that are **missing** here. Anything already on the Deck is left exactly as it is, so a game played since the backup cannot lose its progress |
 | **Restore all** | The backup's copy wins and whatever is on the Deck now is gone. What you want after wiping a Deck, or when the saves here are the ones you are trying to get rid of. It asks first, and the question says how many files it would overwrite. Restoring everything from a storage also takes that storage's record of what it holds, so the next game to close does not copy the same saves straight back up |
 
+Restoring everything **from a storage** offers a way back: **Keep a copy first**
+uploads the saves it is about to overwrite, and they appear under earlier copies
+as one more dated row — so a restore pressed by mistake is one more restore away
+from being undone. **Replace without keeping** is the other button, for a Deck
+with nothing on it worth keeping and no reason to wait for an upload. Restoring
+from a .zip on the Deck has nowhere to put such a copy, so it asks the way it
+always did.
+
 The screen says how many files are in the backup and how many of them are
 already on this Deck before you press anything, so which of the two you want is
 a decision rather than a guess. **There is no undo for replacing** — take a
