@@ -136,8 +136,9 @@ class Transfers(plugin_base.PluginContext):
                     "error": "A file transfer is open. Finish that first."}
 
         await self._run(
-            fileserver.offer_cloud_setup, cloudsave.BACKENDS, self._cloud_setup,
-            cloudsave.OAUTH_BACKENDS, self._cloud_login
+            fileserver.offer_cloud_setup,
+            cloudsave.offered(cloudsave.BACKENDS), self._cloud_setup,
+            cloudsave.offered(cloudsave.OAUTH_BACKENDS), self._cloud_login
         )
         decky.logger.info("Cloud storage setup ready")
         return {"ok": True, **await self._run(fileserver.status)}

@@ -635,4 +635,22 @@ check("a drive that cannot be read leaves no remote behind at all",
       (ok, half.calls), (False, []))
 check("and the person is told to try the login again", "Try the login" in error, True)
 
+
+section("a storage can be withdrawn without breaking the ones already set up")
+
+# Box is withdrawn: 585 files went missing from a Box account during testing,
+# with nothing in any log to say what removed them. What is withdrawn is the
+# offer -- somebody who already signed in keeps a working storage, and it has to
+# go on naming itself on screen or their saves appear to be going nowhere.
+check("the setup page is not offered a retired storage",
+      sorted(cloudsave.offered(cloudsave.OAUTH_BACKENDS)),
+      ["dropbox", "onedrive", "pcloud"])
+check("and a login for one is refused rather than started",
+      cloudsave.login_start("box"), ("", "Unknown storage type."))
+check("while a storage already configured still knows its name",
+      cloudsave.label_for("box"), "Box")
+check("and the storages typed in by hand are all still offered",
+      sorted(cloudsave.offered(cloudsave.BACKENDS)) == sorted(cloudsave.BACKENDS),
+      True)
+
 summary()

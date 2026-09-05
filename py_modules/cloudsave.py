@@ -400,12 +400,24 @@ _AUTH_PORT = 53682
 #: fails twice over, both times naming the wrong thing -- `Invalid 'code'` while
 #: exchanging, then `Invalid 'access_token' (2094)` on the first listing, when
 #: the code and the token were both perfectly good.
+#: `retired` keeps a storage known without offering it. Box is retired: during
+#: testing 585 files went missing from a Box account between one copy and the
+#: next, with nothing in any log to say what removed them and no way found since
+#: to reproduce it. Whatever the cause, a storage that has done that once is not
+#: one to hand somebody for their saves. The entry stays so that a remote
+#: already set up keeps its name on screen and goes on working -- what is
+#: withdrawn is the offer to make a new one.
 OAUTH_BACKENDS = {
     "dropbox": {"label": "Dropbox"},
     "onedrive": {"label": "OneDrive"},
-    "box": {"label": "Box"},
+    "box": {"label": "Box", "retired": True},
     "pcloud": {"label": "pCloud", "keep": ("hostname",)},
 }
+
+
+def offered(table):
+    """The storages the setup page shows: every one not retired."""
+    return {kind: spec for kind, spec in table.items() if not spec.get("retired")}
 
 #: A hostname kept from a redirect, before it is written into a config file and
 #: used to build URLs. Nothing about the shape of a host needs more than this,
@@ -444,7 +456,7 @@ def login_start(kind):
     until `login_finish`, so abandoning this costs a killed process and nothing
     else.
     """
-    if kind not in OAUTH_BACKENDS:
+    if kind not in offered(OAUTH_BACKENDS):
         return "", "Unknown storage type."
     tool = binary()
     if not tool:
@@ -676,7 +688,7 @@ def login_finish(name, kind, pasted):
     """
     if not valid_name(name):
         return False, "That name cannot be used. Letters, numbers, spaces, . _ - + @"
-    if kind not in OAUTH_BACKENDS:
+    if kind not in offered(OAUTH_BACKENDS):
         return False, "Unknown storage type."
 
     process = _login.get("process")

@@ -285,7 +285,7 @@ Two sorts of storage, on the same page.
 | **FTP** | The same, for a server that speaks plain FTP. FTP servers offer no checksums, so copies there compare size and modification time instead — which is what rclone does by default and what catches a save that changed without changing size |
 | **S3 storage** | The endpoint and an access key pair — you are not asked which S3 it is, because the generic settings are what save files need |
 
-**Ones you sign in to** — Dropbox, OneDrive, Box and pCloud. Pick one and the
+**Ones you sign in to** — Dropbox, OneDrive and pCloud. Pick one and the
 page gives you a **Sign in** link. Log in as you normally would, and the browser
 will land on a page that does not load. **That is expected.** Copy the address
 of that page and paste it into the box, and the Deck takes it from there.
