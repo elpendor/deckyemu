@@ -25,7 +25,8 @@ six-digit code, with a received Game Boy ROM listed underneath and an Add button
 next to it.](docs/images/sending-a-game.jpg)
 
 **Play them from Steam**, with a clean name, boxart and a shelf of their own —
-and back your save data up to another device, or put it back from one.
+and keep your save data safe: back it up to another device, or to cloud storage
+of your own, where closing a game copies that emulator's saves up on their own.
 
 ![Steam's home screen. A game added from a ROM sits first under Recent Games
 with its own wide artwork, beside games bought from

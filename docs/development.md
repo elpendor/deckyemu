@@ -207,7 +207,13 @@ py_modules/                 Backend logic. Plain Python, stdlib only -- it runs
                             a remote from a form. Holds no credential itself
   cloudsync.py              The half that copies. Loose files per emulator, so a
                             second copy sends only what changed; `copy` and
-                            never `sync`, so nothing on the remote is deleted
+                            never `sync`, so nothing on the remote is deleted.
+                            Also the records that decide "did somebody else
+                            write since we did", which is what a launch reads
+  audit.py                  Append-only log of everything that removed or
+                            replaced data, beside the settings. Trimmed by
+                            halving, never rotated away, because the line you
+                            want is the oldest one
   net.py                    stdlib-only HTTP, with a system-CA fallback
   jsonstore.py              Read and write the plugin's own JSON, atomically
   procout.py                Read what a subprocess says while it is still saying it
