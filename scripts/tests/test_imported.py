@@ -393,6 +393,24 @@ check("the frontend uses the suffix the backend writes",
       'const DEFINITION_SUFFIX = "%s";' % imported.SUFFIX in _source, True)
 
 
+section("an id from a definition file still has to be a folder name")
+
+# An id typed in the editor goes through `slugify`, which caps it. One handed
+# over in a definition file did not, and the cloud path check refuses a folder
+# name over 64 characters -- by skipping that emulator's saves and saying so
+# only in the log.
+import emulators  # noqa: E402
+
+check("an id that can be a folder is kept exactly as it is",
+      emulators.usable_id("snes_9x", "SNES 9x"), "snes_9x")
+check("one carrying a path is reduced to something that cannot be one",
+      emulators.usable_id("../../etc", "My Emulator"), "etc")
+check("and one too long to be one is cut to something that fits",
+      len(emulators.usable_id("a" * 200, "My Emulator")) <= 40, True)
+check("an entry with no id at all is still filed under its name",
+      emulators.usable_id("", "My Emulator"), "my-emulator")
+
+
 if __name__ == "__main__":
     from harness import summary
 

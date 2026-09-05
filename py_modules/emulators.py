@@ -83,6 +83,27 @@ def slugify(name):
     return slug[:40] or "emulator"
 
 
+#: What an id may be, because it becomes a directory name -- here, and in
+#: somebody's cloud storage. The length matters as much as the characters: the
+#: path check that builds a remote folder refuses a segment over 64 characters,
+#: and refused it by skipping that emulator's saves with nothing but a line in
+#: the log. `slugify` has always capped its own output; an id handed over in an
+#: imported definition never passed through it.
+_USABLE_ID = re.compile(r"^[a-z0-9][a-z0-9._-]{0,39}$")
+
+
+def usable_id(given, name=""):
+    """The id to file an emulator under: the one it asked for, if it can be one.
+
+    Only rewritten when it genuinely cannot be a folder -- not merely when it
+    differs from what `slugify` would make of it. An emulator already installed
+    under `snes_9x` must keep that id: changing it on the next edit would
+    orphan its launchers and its cloud record.
+    """
+    given = (given or "").strip()
+    return given if _USABLE_ID.match(given) else slugify(given or name)
+
+
 def fix_notices(emulator, entry, options=None):
     """Anything to say about the fixes this emulator, or one of its games, runs.
 
@@ -202,7 +223,7 @@ def validate(emulator):
 def save(emulator):
     """Add or update an emulator. Returns (saved_or_None, error)."""
     entry = {
-        "id": (emulator.get("id") or "").strip() or slugify(emulator.get("name")),
+        "id": usable_id(emulator.get("id"), emulator.get("name")),
         "name": (emulator.get("name") or "").strip(),
         "kind": emulator.get("kind"),
         "target": (emulator.get("target") or "").strip(),

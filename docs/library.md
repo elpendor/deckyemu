@@ -508,6 +508,14 @@ The dialog waits for you — the game is paused, not loading, and pausing costs
 nothing. If it is left long enough that something has clearly gone wrong, the
 game starts with this Deck's saves, which writes nothing.
 
+**Restoring an old backup and then playing brings some of it back.** A restore
+from a .zip only writes to this Deck; your storage still holds what it held, so
+the next launch of that emulator brings down the files it has and this Deck no
+longer does — that is the same rule as ever, since a file that is only up there
+cannot overwrite anything here. If you have deliberately gone back to an older
+set of saves, turn *Check saves before a game starts* off, or copy the older set
+up first so the two agree.
+
 ## When there is no network
 
 Nothing about cloud saves stops you playing. With the Deck offline, the check
