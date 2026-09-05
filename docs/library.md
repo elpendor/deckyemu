@@ -508,6 +508,12 @@ way on purpose — both put saves back, and how much of the backup they use is t
 only difference. That the second one overwrites and cannot be undone is said on
 the confirmation it asks for.
 
+Either way, a restore that would not fit on the Deck is refused before anything
+is written, saying what it needs and what is free. Half a save set is worse than
+none of it, and the sizes are known before a byte moves. It counts what the
+restore would actually write, so restoring what is missing is not refused
+because the whole backup would not fit twice.
+
 The list appears before it is finished. The emulator names come back in about a
 second and each row then says what it holds as its own answer arrives, so the one
 you came for is usually readable while the rest are still counting — the line

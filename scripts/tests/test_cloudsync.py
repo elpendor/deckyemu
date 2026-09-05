@@ -1001,4 +1001,64 @@ check("and a name that could not be a folder is refused rather than staged",
       with_run(FakeRun(), lambda: cloudsync.record_pushes("dropbox", ["../evil", "a/b"])),
       (True, ""))
 
+
+section("a restore that would not fit is refused before anything moves")
+
+# A restore that runs the drive out partway leaves a save set that is half one
+# version and half the other, and the sizes are known before a byte moves.
+import shutil as _shutil  # noqa: E402
+
+from harness import TMP  # noqa: E402
+
+_LANDING = os.path.join(TMP, "room", "saves")
+os.makedirs(_LANDING, exist_ok=True)
+with open(os.path.join(_LANDING, "here.srm"), "wb") as _handle:
+    _handle.write(b"x" * 100)
+
+_ROOM_SOURCE = [{"id": "retroarch", "name": "RetroArch", "whole": False,
+                 "roots": [("saves", _LANDING)]}]
+
+#: Five megabytes replacing the hundred bytes already here, and three more that
+#: are not here at all.
+_UP_THERE = _json.dumps({
+    "device": "other", "at": 1,
+    "files": {"saves/here.srm": {"size": 5000000, "mtime": 1},
+              "saves/gone.srm": {"size": 3000000, "mtime": 1}},
+})
+
+
+def room(free, replace=True, answer=(True, _UP_THERE)):
+    """`room_for` against a storage that says the above and a disk that big."""
+    real_rclone, real_usage = cloudsave.rclone, _shutil.disk_usage
+    real_sources = savedata._all_sources
+    cloudsave.rclone = lambda args, seconds: answer
+    _shutil.disk_usage = lambda path: type("Usage", (), {"free": free})()
+    savedata._all_sources = lambda: list(_ROOM_SOURCE)
+    try:
+        return cloudsync.room_for("dropbox", None, replace)
+    finally:
+        cloudsave.rclone, _shutil.disk_usage = real_rclone, real_usage
+        savedata._all_sources = real_sources
+
+
+# Just under 8 MB of new bytes: the 3 MB file, plus the 5 MB one less the
+# hundred bytes of it already here.
+check("a Deck with room for it says nothing", room(2 * 1000 ** 3), (True, ""))
+_short = room(7 * 10 ** 6 + cloudsync._SPACE_MARGIN)
+check("a Deck without room refuses rather than half-restoring", _short[0], False)
+check("and says both numbers, because one of them is the thing to act on",
+      ("needs" in _short[1], "free" in _short[1]), (True, True))
+
+# `--ignore-existing` will not fetch what is already here, so it costs nothing
+# and must not be counted -- otherwise restoring one missing file is refused
+# because the rest of the set would not fit twice.
+check("restoring only what is missing counts only what is missing",
+      room(4 * 10 ** 6 + cloudsync._SPACE_MARGIN, replace=False), (True, ""))
+
+# The storage not answering is not the same as it not fitting. The copy reports
+# a full disk perfectly well; this check exists to say so earlier, not to be the
+# only thing that can.
+check("a storage that will not answer is not treated as too big",
+      room(1000, answer=(False, "connection refused"))[0], True)
+
 summary()

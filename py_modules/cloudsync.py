@@ -700,6 +700,19 @@ def describe_one(remote, source_id, stamp=""):
     and the reason a caller should ask for these one at a time rather than
     waiting on all of them.
     """
+    files = _files_up_there(remote, source_id, stamp)
+    rows = _rows_from({source_id: files})
+    return rows[0] if rows else {}
+
+
+def _files_up_there(remote, source_id, stamp=""):
+    """`{name: size}` for one emulator, as the storage holds it.
+
+    The record beside its saves answers this without a walk. An emulator put up
+    before records existed has none, and a dated copy never had one, so both
+    fall back to listing -- which is the slow case and the reason a caller
+    should ask for these one at a time rather than waiting on all of them.
+    """
     if not cloudsave.valid_name(remote) or not _SEGMENT.match(source_id or ""):
         return {}
     files = {}
@@ -709,20 +722,86 @@ def describe_one(remote, source_id, stamp=""):
             emulator, _, rest = (entry.get("Path") or "").partition("/")
             if rest and emulator == source_id:
                 files[rest] = entry.get("Size") or 0
-    else:
-        state, problem = _remote_state(remote, source_id, LIST_SECONDS)
-        if state and not problem:
-            files = {name: (said or {}).get("size") or 0
-                     for name, said in (state.get("files") or {}).items()}
-        else:
-            ok, entries, _ = _index(remote, "", source_id)
-            files = {
-                (entry.get("Path") or "").partition("/")[2]: entry.get("Size") or 0
-                for entry in (entries if ok else [])
-                if "/" in (entry.get("Path") or "")
-            }
-    rows = _rows_from({source_id: files})
-    return rows[0] if rows else {}
+        return files
+    state, problem = _remote_state(remote, source_id, LIST_SECONDS)
+    if state and not problem:
+        return {name: (said or {}).get("size") or 0
+                for name, said in (state.get("files") or {}).items()}
+    ok, entries, _ = _index(remote, "", source_id)
+    return {
+        (entry.get("Path") or "").partition("/")[2]: entry.get("Size") or 0
+        for entry in (entries if ok else [])
+        if "/" in (entry.get("Path") or "")
+    }
+
+
+#: Left over the free space, so a restore cannot be the thing that fills a Deck
+#: up. The same margin the unpacker keeps for the same reason.
+_SPACE_MARGIN = 256 * 1024 * 1024
+
+
+def _room(bytes_count):
+    """A size somebody reads on a dialog. Saves are megabytes, not gigabytes."""
+    if bytes_count >= 1e9:
+        return "%.1f GB" % (bytes_count / 1e9)
+    return "%.0f MB" % (bytes_count / 1e6)
+
+
+def room_for(remote, ids=None, replace=False, stamp=""):
+    """Whether what is about to come down fits on this Deck. (ok, error).
+
+    Counted file by file rather than as a total, because the total is almost
+    never what a restore writes: restoring what is missing skips every file
+    already here, and replacing one only needs the difference between the two
+    versions. A whole-set number would refuse a restore that replaces 5 GB of
+    saves with 5 GB of saves on a Deck with a gigabyte free.
+
+    Per filesystem, not per Deck: an emulator whose saves live on the SD card is
+    the case where one number for everything is wrong in the dangerous
+    direction.
+
+    **Not knowing is not a reason to refuse.** A storage that will not answer,
+    or a root that cannot be measured, leaves the copy to report a full disk
+    itself -- which it does perfectly well. This exists to say so before the
+    copy, not to be the only thing that can.
+    """
+    needed = {}
+    for source in _sources(ids):
+        landing = dict(_roots_of(source))
+        for name, size in _files_up_there(remote, source["id"], stamp).items():
+            root, _, rest = name.partition("/")
+            here = landing.get(root)
+            if not here or not rest:
+                continue
+            target = os.path.join(here, *rest.split("/"))
+            try:
+                already = os.path.getsize(target)
+            except OSError:
+                already = -1
+            if already >= 0 and not replace:
+                # `--ignore-existing` will not fetch it, so it costs nothing.
+                continue
+            needed[here] = needed.get(here, 0) + max(
+                0, int(size or 0) - max(already, 0))
+
+    for path, wanted in needed.items():
+        if not wanted:
+            continue
+        at = path
+        while at and not os.path.isdir(at):
+            parent = os.path.dirname(at)
+            if parent == at:
+                break
+            at = parent
+        try:
+            free = shutil.disk_usage(at).free
+        except OSError:
+            continue
+        if wanted + _SPACE_MARGIN > free:
+            return False, ("There is not enough room on this Deck: bringing "
+                           "these saves down needs %s and %s is free."
+                           % (_room(wanted), _room(free)))
+    return True, ""
 
 
 def _rows_from(files_by_emulator):

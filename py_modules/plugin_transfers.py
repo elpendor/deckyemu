@@ -971,6 +971,14 @@ class Transfers(plugin_base.PluginContext):
             cloudsync.pull_steps, name, ids, replace, stamp)
         if error:
             return {"ok": False, "error": error}
+
+        # **Before anything moves, including the copy that keeps a copy.** A
+        # restore that runs the drive out partway leaves a save set that is half
+        # one version and half another, which is worse than either -- and the
+        # sizes are already known, so saying it now costs one comparison.
+        fits, tight = await self._run(cloudsync.room_for, name, ids, replace, stamp)
+        if not fits:
+            return {"ok": False, "error": tight}
         # **What this is about to overwrite, kept first -- when asked.**
         # Replacing is the one thing here that destroys a save with nothing put
         # aside, and it is two presses from a list of storages. So the
