@@ -495,6 +495,18 @@ The dialog waits for you — the game is paused, not loading, and pausing costs
 nothing. If it is left long enough that something has clearly gone wrong, the
 game starts with this Deck's saves, which writes nothing.
 
+## When there is no network
+
+Nothing about cloud saves stops you playing. With the Deck offline, the check
+before a game gives up in about a second and the game starts on the saves it
+already has — which is what would have happened anyway.
+
+Closing the game still tries. A copy that cannot reach your storage rides out a
+short outage, and if it fails properly nothing is written down as having been
+sent, so the save goes up on the next copy instead: the next game you close, or
+**Copy now**. What you played is not lost by having been played somewhere with
+no signal.
+
 ## Restoring from the cloud
 
 **Restore save data** lists your signed-in storages beside the backup files on the
