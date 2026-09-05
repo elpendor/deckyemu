@@ -33,7 +33,7 @@ import { callWithRetry } from "./timeout";
 import { installThroughEmulator } from "./firmwareInstall";
 import { byName } from "./order";
 import { openModal } from "./modalStack";
-import { ICON_BUTTON } from "./iconButton";
+import { ICON_BUTTON, ICON_BUTTON_WIDE } from "./iconButton";
 
 /** The tick or the triangle, in the colour that state is drawn in. */
 function StatusIcon({ state }: { state: FirmwareRowState }) {
@@ -449,7 +449,7 @@ export function FirmwarePanel({ reloadKey = 0 }: Props) {
                           <DialogButton
                             disabled={busy === `discard/${requirement.name}`}
                             onClick={() => discard(requirement)}
-                            style={ICON_BUTTON}
+                            style={ICON_BUTTON_WIDE}
                           >
                             Delete file
                           </DialogButton>
@@ -478,7 +478,7 @@ export function FirmwarePanel({ reloadKey = 0 }: Props) {
                             ? guiInstall(emulator.id, emulator.name, requirement)
                             : install(emulator.id, requirement)
                         }
-                        style={ICON_BUTTON}
+                        style={ICON_BUTTON_WIDE}
                       >
                         Install
                       </DialogButton>
