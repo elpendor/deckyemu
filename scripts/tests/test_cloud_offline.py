@@ -204,8 +204,9 @@ with Swap(*_common):
     _good = run(plugin.cloud_backup_after_play("snes9x_libretro", 4711))
 
 check("a copy that ran is written down", (_good["ok"], _recorded), (True, ["retroarch"]))
-check("and stamps when the storage was last written to",
-      [sorted(one) for one in _saved], [["cloud_last_sync"]])
+check("and stamps when the storage was last written to, and with what",
+      [sorted(one) for one in _saved],
+      [["cloud_last_ids", "cloud_last_remote", "cloud_last_sync"]])
 
 
 if __name__ == "__main__":

@@ -309,7 +309,7 @@ def _section(title, body):
 
 
 def build(version, install, emulators_registered, library, catalog_installed=(),
-          live_secrets=(), inbox=""):
+          live_secrets=(), inbox="", cloud=""):
     """The report, as text.
 
     Everything it needs is passed in: this module reads settings and the log,
@@ -454,6 +454,15 @@ def build(version, install, emulators_registered, library, catalog_installed=(),
                 ]
             ),
         ),
+        # **Which rclone, because it is not ours and it is not pinned.** The
+        # binary is fetched from the project's own releases, whatever is newest
+        # at the time -- deliberately, since provider APIs and sign-in endpoints
+        # move and a frozen copy stops working against them. The cost is that
+        # two people running this are running two different transfer programs,
+        # and a report about saves that did not copy has to be able to say
+        # which. Passed in rather than read here: it means running the binary,
+        # and this module asks nothing of the outside.
+        _section("Cloud saves", cloud or "not set up"),
         _section("Log (last %d lines)" % LOG_LINES, _log_tail()),
         _section("Last launch", _last_launch()),
     ]

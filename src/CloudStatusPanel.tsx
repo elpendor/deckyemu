@@ -1,11 +1,12 @@
-import { Field, PanelSection, PanelSectionRow } from "@decky/ui";
+import { ButtonItem, Field, PanelSection, PanelSectionRow } from "@decky/ui";
 import { addEventListener, removeEventListener, useQuickAccessVisible } from "@decky/api";
 import { useCallback, useEffect, useState } from "react";
 
-import { cloudStatus } from "./backend";
+import { cloudBackupNow, cloudStatus, cloudWaiting } from "./backend";
 import { logError } from "./logError";
 import { ProgressBar } from "./TransferModal";
 import { useCopyPercent } from "./useCopyPercent";
+import { namesOf } from "./waitingNames";
 
 /**
  * That saves are moving right now, for the panel you can actually reach.
@@ -32,8 +33,15 @@ const SAYS: Record<string, string> = {
   restore: "Bringing saves back from your cloud storage.",
 };
 
+//: When the waiting list was last read, so opening the panel repeatedly does
+//: not walk every save directory on the Deck each time. A copy finishing clears
+//: it, because that is when the answer really changes.
+let askedAt = 0;
+const ASK_EVERY_MS = 60000;
+
 export function CloudStatusPanel() {
   const [copying, setCopying] = useState("");
+  const [overdue, setOverdue] = useState<{ id: string; name: string }[]>([]);
   const percent = useCopyPercent(copying);
   const visible = useQuickAccessVisible();
 
@@ -41,7 +49,17 @@ export function CloudStatusPanel() {
     try {
       // `false`: the local half of the status. Asking the provider who you are
       // is two round trips, and this row is on the path of every panel open.
-      setCopying(String((await cloudStatus(false)).copying || ""));
+      const status = await cloudStatus(false);
+      setCopying(String(status.copying || ""));
+      // Only worth asking when the automatic copy is meant to be happening:
+      // with it switched off, saves piling up is the choice somebody made, not
+      // a fault, and the Library tab is where that is dealt with.
+      if (!status.remote || !status.after_play) {
+        setOverdue([]);
+      } else if (Date.now() - askedAt > ASK_EVERY_MS) {
+        askedAt = Date.now();
+        setOverdue((await cloudWaiting()).overdue || []);
+      }
     } catch (error) {
       logError("could not read what the cloud is doing", error);
     }
@@ -57,13 +75,44 @@ export function CloudStatusPanel() {
   // while somebody is already looking. Said by the backend rather than polled:
   // there is no moment this end could know to ask.
   useEffect(() => {
-    const moving = addEventListener<[kind: string]>("cloud_copying", (kind) =>
-      setCopying(kind || ""),
-    );
+    const moving = addEventListener<[kind: string]>("cloud_copying", (kind) => {
+      setCopying(kind || "");
+      // A copy that has just finished is exactly when the list changes, so the
+      // next open asks rather than repeating what it knew before.
+      if (!kind) askedAt = 0;
+    });
     return () => removeEventListener("cloud_copying", moving);
   }, []);
 
-  if (!copying) return null;
+  if (!copying) {
+    if (!overdue.length) return null;
+    // **Not a badge, and not while anything is moving.** Right after a game
+    // closes every save is waiting, which is why the ordinary wait says
+    // nothing anywhere near here. What is left is saves no copy is coming
+    // back for -- a storage that stopped accepting them, or an emulator
+    // nobody has opened since one failed -- which is the state that ends in
+    // somebody losing a save while believing they were covered.
+    return (
+      <PanelSection>
+        <PanelSectionRow>
+          <ButtonItem
+            layout="below"
+            label="Saves not copied"
+            description={`${namesOf(overdue)} ${
+              overdue.length === 1 ? "has" : "have"
+            } saves that have not reached your storage.`}
+            onClick={() => {
+              void cloudBackupNow(overdue.map((one) => one.id))
+                .then(() => setOverdue([]))
+                .catch((error) => logError("could not start the copy", error));
+            }}
+          >
+            Copy them now
+          </ButtonItem>
+        </PanelSectionRow>
+      </PanelSection>
+    );
+  }
 
   return (
     <PanelSection>

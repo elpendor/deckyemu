@@ -539,7 +539,17 @@ export const restoreSaveBackup = callable<
  */
 export const cloudWaiting = callable<
   [],
-  { ok: boolean; waiting: { id: string; name: string }[] }
+  {
+    ok: boolean;
+    waiting: { id: string; name: string; overdue?: boolean }[];
+    /**
+     * The subset still waiting after some later copy finished — so nothing is
+     * going to pick them up on its own. Between quitting a game and its copy
+     * landing everything is waiting, which is the feature working; this is the
+     * half worth interrupting somebody about.
+     */
+    overdue: { id: string; name: string }[];
+  }
 >("cloud_waiting");
 export const cloudBackupNow = callable<
   [ids: string[] | null],

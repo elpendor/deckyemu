@@ -146,6 +146,17 @@ DEFAULT_SETTINGS = {
     # panel: an automatic thing that never says it happened is indistinguishable
     # from one that is broken.
     "cloud_last_sync": 0,
+    #: Which emulators the last copy up actually covered. "Has a copy been and
+    #: gone without taking this one?" was asked from timestamps before, and the
+    #: answer was always yes: the record beside the saves is written a few
+    #: seconds before this stamp, so every emulator looked older than the copy
+    #: that had just carried it.
+    "cloud_last_ids": [],
+    #: And which storage that copy went to. A storage just set up has received
+    #: nothing, so every emulator is "waiting" and none of it is a fault --
+    #: that is what setting one up looks like. Without this the panel called a
+    #: fresh storage a problem the moment one game was played.
+    "cloud_last_remote": "",
     # Which launchers.FORMAT_VERSION the scripts on disk were written in, so a
     # fix to how they are generated reaches games that already exist. Written by
     # startup rather than by anyone, and declared here because this dict is what

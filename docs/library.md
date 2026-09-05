@@ -441,6 +441,15 @@ up there and then, with a bar under the button while it does. It is worth having
 you were playing, so one that failed while you were offline waits for the next
 time you play *that* emulator, which might be never.
 
+**If saves stay uncopied, the plugin's own panel says so.** The row above is on
+the Library tab, where you would have to go looking. When something is still
+waiting after a later copy has been and gone — a storage that has stopped
+accepting saves, or an emulator you have not opened since one failed — nothing
+is going to pick it up on its own, so that one appears on the plugin's front
+panel with the same button. It says nothing about the ordinary wait between
+quitting a game and its copy landing, which would be a light on most of the time
+and mean nothing.
+
 Only one copy runs at a time. Press **Copy now** or start a restore while that
 one is still going and you are asked to try again in a moment, rather than
 having two of them writing the same saves in opposite directions.

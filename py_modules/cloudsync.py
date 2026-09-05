@@ -1020,7 +1020,7 @@ def changed_since_push(source_id, remote=""):
     return False
 
 
-def waiting_to_go(ids=None, remote=""):
+def waiting_to_go(ids=None, remote="", covered=(), last_remote=""):
     """Emulators holding saves newer than the last copy this Deck sent up.
 
     **The gap this closes.** A copy after a game covers the emulator that was
@@ -1043,8 +1043,41 @@ def waiting_to_go(ids=None, remote=""):
     for source in _sources(ids):
         if not _local_files(source):
             continue
-        if changed_since_push(source["id"], remote):
-            found.append({"id": source["id"], "name": source["name"]})
+        if not changed_since_push(source["id"], remote):
+            continue
+        # **Waiting through a copy is a different fact from waiting.** Between
+        # quitting a game and the copy finishing, every save is waiting; that is
+        # the feature working and worth nobody's attention. But a copy after a
+        # game only covers the emulator that was played, so one still waiting
+        # after a copy that did not carry it is one nothing is going to pick up
+        # -- a storage that stopped accepting saves, or an emulator nobody has
+        # opened since it last failed.
+        #
+        # **Asked as "was it in the last copy", not by comparing times.** The
+        # first version compared this emulator's record with the moment of the
+        # last copy, and every emulator failed it: the record goes up first and
+        # the stamp is written after the rest of the bookkeeping, four seconds
+        # later on the device -- so an emulator was overdue the instant its
+        # files changed, including the one whose own copy had just run. It
+        # showed up as the panel announcing uncopied saves seconds after a game
+        # was opened, which is exactly the ordinary wait this is meant to
+        # ignore.
+        # **Both facts, or nothing is said.** A copy has to have happened and
+        # left a list of what it carried, and that copy has to have gone to
+        # this storage. Anything less is a Deck that cannot answer the
+        # question, and the answer to a question you cannot answer is silence:
+        # an install updating from a version that recorded neither, and a
+        # storage set up a minute ago, look identical from here and neither is
+        # a fault. Written first with "or we do not know which storage", which
+        # is how a storage added ten minutes earlier had every emulator but the
+        # one just played called uncopied -- on a list carried over from a copy
+        # that went somewhere else entirely.
+        told = bool(covered) and bool(last_remote) and last_remote == remote
+        found.append({
+            "id": source["id"],
+            "name": source["name"],
+            "overdue": told and source["id"] not in (covered or ()),
+        })
     return found
 
 

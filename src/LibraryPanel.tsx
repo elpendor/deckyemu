@@ -21,6 +21,7 @@ import {
 import { removeShortcut } from "./steam";
 import { ProgressBar } from "./TransferModal";
 import { useCopyPercent } from "./useCopyPercent";
+import { namesOf } from "./waitingNames";
 import { sweepEmptyCollections, unfileGames } from "./collections";
 import { AddedGamesModal } from "./AddedGamesModal";
 import { clearWarning, shouldConfirmClear } from "./clearWarning";
@@ -57,14 +58,6 @@ const BACKEND_SHARE = 0.9;
  * Nothing here is a setting, which is why it is no longer called one -- both
  * controls act on the library immediately.
  */
-/** "RetroArch", "RetroArch and Dolphin", "RetroArch, Dolphin and 2 others". */
-function namesOf(waiting: { name: string }[]) {
-  const names = waiting.map((one) => one.name);
-  if (names.length <= 2) return names.join(" and ");
-  if (names.length === 3) return `${names[0]}, ${names[1]} and ${names[2]}`;
-  return `${names[0]}, ${names[1]} and ${names.length - 2} others`;
-}
-
 export function LibraryPanel({ onRefresh }: Props) {
   const [clearing, setClearing] = useState(false);
   /*

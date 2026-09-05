@@ -71,8 +71,13 @@ section("a copy made from the panel is written down like any other")
 carry(worked)
 check("every emulator in the copy gets its record",
       recorded, [["duckstation", "retroarch"]])
-check("and the time the panel shows is the time it finished",
-      [sorted(one) for one in saved], [["cloud_last_sync"]])
+check("and the time the panel shows is the time it finished, with what it carried",
+      [sorted(one) for one in saved],
+      [["cloud_last_ids", "cloud_last_remote", "cloud_last_sync"]])
+check("including which storage it went to",
+      [one.get("cloud_last_remote") for one in saved], ["dropbox"])
+check("which names the emulators the copy actually covered",
+      [one.get("cloud_last_ids") for one in saved], [["duckstation", "retroarch"]])
 check("with the aged-out safety copies tidied afterwards", pruned, ["dropbox"])
 
 carry(failed)
@@ -162,6 +167,55 @@ try:
     }
     check("and a record from before the name was kept is left alone",
           cloudsync.waiting_to_go(None, "pcloud"), [])
+
+    # **Waiting is ordinary; waiting through a copy is not.** Between quitting a
+    # game and its copy landing, every save is waiting -- so the panel says
+    # nothing about that. What it does say is when some later copy has been and
+    # gone and this one is still here, because a copy after a game only covers
+    # the emulator that was played: nothing is coming back for the rest.
+    cloudsync.read_mine = lambda source_id: {
+        "device": "deck", "at": 1000, "remote": "dropbox", "files": {},
+    }
+    check("waiting after a copy that did not carry it is overdue",
+          [one["overdue"] for one in
+           cloudsync.waiting_to_go(None, "dropbox", ("duckstation",), "dropbox")],
+          [True])
+    # **Not by comparing times.** The record goes up first and the stamp is
+    # written after the rest of the bookkeeping -- four seconds later, measured
+    # -- so a rule that compared them made every emulator overdue the instant
+    # its files changed, including the one whose copy had just run. On the
+    # device that read as the panel announcing uncopied saves seconds after a
+    # game was opened.
+    check("while one the last copy carried is not, however the clocks fell",
+          [one["overdue"] for one in
+           cloudsync.waiting_to_go(None, "dropbox", ("retroarch",), "dropbox")],
+          [False])
+    check("and with no copy ever finished nothing is overdue yet",
+          [one["overdue"] for one in cloudsync.waiting_to_go(None, "dropbox")],
+          [False])
+
+    # **A storage just set up has received nothing**, so everything is waiting
+    # and none of it is a fault -- that is what setting one up looks like. Seen
+    # on the device: a storage added, one GBA game played, and the panel called
+    # every other emulator a problem.
+    check("a storage nothing has been copied to yet is not a fault",
+          [one["overdue"] for one in
+           cloudsync.waiting_to_go(None, "newdrop", ("duckstation",), "dropbox")],
+          [False])
+    # And an install updating from a version that recorded no such list has no
+    # answer either -- reading that as "carried nothing" flagged everything.
+    check("nor is an update that has no record of what the last copy carried",
+          [one["overdue"] for one in
+           cloudsync.waiting_to_go(None, "dropbox", (), "")],
+          [False])
+    # The half-answer is the one that actually reached the device: a covered
+    # list left over from an older version, and no idea which storage it went
+    # to. Trusting the list on its own is what flagged every emulator but the
+    # one just played, ten minutes after a storage was added.
+    check("and neither is a list with no storage recorded beside it",
+          [one["overdue"] for one in
+           cloudsync.waiting_to_go(None, "dropbox", ("duckstation",), "")],
+          [False])
 finally:
     savedata._all_sources = _real_sources
     cloudsync.read_mine = _real_mine

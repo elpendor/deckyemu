@@ -125,7 +125,21 @@ _REPORT = diagnostics.build(
     ["vita3k (appimage)"],
     ["GcMnhBhWcdNuNWo7EY_aVg"],
     _INBOX,
+    "rclone            rclone v1.71.0\nstorage kind      dropbox",
 )
+
+
+section("the report says which transfer program moved the saves")
+
+# **rclone is not ours and is not pinned**: the newest release is fetched,
+# deliberately, because provider APIs and sign-in endpoints move and a frozen
+# copy stops working against them. So two people are running two different
+# transfer programs, and a report about saves that did not copy has to say
+# which one this was.
+check("the version of the tool that copies saves is in the report",
+      "rclone v1.71.0" in _REPORT, True)
+check("and a Deck with cloud saves switched off says so rather than nothing",
+      "not set up" in diagnostics.build({}, None, [], {}), True)
 
 
 section("nothing that unlocks anything leaves the device")

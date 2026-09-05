@@ -89,6 +89,7 @@ class Transfers(plugin_base.PluginContext):
             await self._run(self._installed_catalog_ids),
             [serving.get("url", "").rstrip("/").rsplit("/", 1)[-1]],
             await self._run(fileserver.default_dir, False),
+            await self._cloud_summary(),
         )
 
         if not serving.get("running"):
@@ -519,9 +520,15 @@ class Transfers(plugin_base.PluginContext):
                 await self._record_pushes(tidy, steps)
                 # **The same stamp a game closing writes.** The panel shows it
                 # as "Last copied ...", and copying by hand left it saying
-                # hours ago while the copy it describes had just finished.
-                await self._run(store.set_settings,
-                                {"cloud_last_sync": int(time.time())})
+                # hours ago while the copy it describes had just finished. What
+                # it covered goes with it: that is how the panel tells an
+                # emulator no copy is coming back for from one whose copy has
+                # just been.
+                await self._run(store.set_settings, {
+                    "cloud_last_sync": int(time.time()),
+                    "cloud_last_ids": sorted({step["id"] for step in steps}),
+                    "cloud_last_remote": tidy,
+                })
             if ok and adopt:
                 await self._adopt_records(adopt, steps)
             await self._copy_settled()
@@ -535,6 +542,35 @@ class Transfers(plugin_base.PluginContext):
             await self._copy_settled()
             await decky.emit(done_event, False, str(error), [], kind)
 
+    async def _cloud_summary(self):
+        """What the diagnostic report says about cloud saves.
+
+        The rclone version above all -- see the section in `diagnostics`. The
+        storage is named by its kind, never by the label this Deck gave it: the
+        label is often an account nickname, and a report is a thing people paste
+        into a public issue.
+        """
+        settings = await self._run(store.get_settings)
+        if not settings.get("cloud_saves"):
+            return "off"
+        remote = (settings.get("cloud_remote") or "").rstrip(":")
+        kind = (await self._run(cloudsave.remote_kinds)).get(remote, "")
+        tool = await self._run(cloudsave.binary)
+        told = ""
+        if tool:
+            ok, output = await self._run(
+                cloudsave.rclone, ["version"], 15)
+            told = (output or "").strip().splitlines()[0] if ok else "would not answer"
+        lines = [
+            "%-22s %s" % ("rclone", told or "not installed"),
+            "%-22s %s" % ("storage kind", kind or "none chosen"),
+            "%-22s %s" % ("storages set up", len(await self._run(cloudsave.remotes))),
+            "%-22s %s" % ("copy when a game closes", bool(settings.get("cloud_after_play"))),
+            "%-22s %s" % ("check when one starts", bool(settings.get("cloud_before_play", True))),
+            "%-22s %s" % ("last copy up", settings.get("cloud_last_sync") or "never"),
+        ]
+        return "\n".join(lines)
+
     async def cloud_waiting(self):
         """Which emulators have saves that have not been copied up yet.
 
@@ -545,9 +581,19 @@ class Transfers(plugin_base.PluginContext):
         settings = await self._run(store.get_settings)
         if not settings.get("cloud_saves") or not (settings.get("cloud_remote") or ""):
             return {"ok": True, "waiting": []}
-        return {"ok": True, "waiting": await self._run(
+        waiting = await self._run(
             cloudsync.waiting_to_go, None,
-            (settings.get("cloud_remote") or "").rstrip(":"))}
+            (settings.get("cloud_remote") or "").rstrip(":"),
+            tuple(settings.get("cloud_last_ids") or ()),
+            settings.get("cloud_last_remote") or "")
+        return {
+            "ok": True,
+            "waiting": waiting,
+            # Separated here rather than in the panel, because what counts as
+            # overdue is a fact about the records and the last copy, and two
+            # screens deciding it apart is how they come to disagree.
+            "overdue": [one for one in waiting if one.get("overdue")],
+        }
 
     async def cloud_backup_now(self, ids=None):
         """Start copying saves up to the storage in use. Returns once it starts.
@@ -692,7 +738,11 @@ class Transfers(plugin_base.PluginContext):
         # the next launch has nothing to compare and treats the storage as
         # untouched -- see `cloudsync.compare`.
         await self._run(cloudsync.record_push, remote, source)
-        await self._run(store.set_settings, {"cloud_last_sync": int(time.time())})
+        await self._run(store.set_settings, {
+            "cloud_last_sync": int(time.time()),
+            "cloud_last_ids": [source],
+            "cloud_last_remote": remote,
+        })
         await self._copy_settled()
         await self._run(cloudsync.prune, remote)
         decky.logger.info("Copied %s up after play", source)
