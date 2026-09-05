@@ -799,8 +799,14 @@ check("an emulator never copied up has nothing to compare and nothing to say",
       {"missing": 0, "differing": [], "roots": [], "here": 0, "there": 0,
        "theirs": {"device": "", "at": 0}, "error": ""})
 
+# Bounded at both ends, and both ends have been wrong. Too high and a launch
+# waits on a storage having a bad minute; too low and the check never completes
+# on a slow one -- at six seconds pCloud, measured at 8.5s three times running,
+# failed every launch and brought nothing down, saying so only in the log.
 check("the record is asked for with a deadline, so a launch cannot hang on it",
-      cloudsync.BEFORE_PLAY_SECONDS <= 10, True)
+      cloudsync.BEFORE_PLAY_SECONDS <= 20, True)
+check("and the deadline outlasts the slowest storage measured on the device",
+      cloudsync.BEFORE_PLAY_SECONDS >= 10, True)
 
 section("a game closing is not evidence that anything was written")
 

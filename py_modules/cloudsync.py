@@ -862,10 +862,20 @@ STATE_DIR = os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "cloudstate")
 #:
 #: **This is the number that decides whether launching a game got slower.** It
 #: is not a timeout for a slow network so much as a promise: whatever the
-#: storage is doing, the game starts within about this long. Six seconds is the
-#: outside of what a Dropbox listing takes on hotel wifi; the ordinary answer
-#: arrives in well under one.
-BEFORE_PLAY_SECONDS = 6
+#: storage is doing, the game starts within about this long.
+#:
+#: **Six was too tight, and the storage it failed on failed every time.**
+#: Measured on the device against the record this check actually reads, three
+#: runs each: pCloud 8.5s, 8.5s, 8.5s; Dropbox 2.2s, 2.4s, 2.1s. So on pCloud
+#: the check never once completed -- every launch logged "rclone did not answer
+#: in time" and no save was ever brought down before a game, silently. A number
+#: chosen from the fastest storage tested is a feature that only works there.
+#:
+#: Twelve fits the slowest measured with room over it. It is not a cost anybody
+#: pays on a good connection: the answer arrives when it arrives, and Dropbox's
+#: two seconds is unaffected. Being offline still costs under a second, because
+#: that is decided by `_LAUNCH_FAST` rather than by this.
+BEFORE_PLAY_SECONDS = 12
 
 #: What the launch check adds to its one request, so that having no network
 #: costs a moment instead of the whole budget above.
