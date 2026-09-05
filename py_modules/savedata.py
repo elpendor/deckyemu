@@ -88,7 +88,13 @@ def arrivals_dir(create=True):
 #: Dropped from a whole-directory backup. `cache` is a flatpak's XDG_CACHE_HOME,
 #: so this is the definition rather than a guess about any one emulator, and it
 #: is the largest thing in several of these trees.
-_SKIP_TOP = ("cache",)
+#:
+#: `.ld.so` is flatpak's own linker cache, and it holds a symlink -- which is
+#: how it announced itself, three times, in the middle of a backup: "NOTICE:
+#: .ld.so/active: Can't follow symlink without -L/--copy-links". Nothing behind
+#: it is a save, and a line that reads like an error in the log of the feature
+#: whose whole job is not losing saves is worth the one word it costs to stop.
+_SKIP_TOP = ("cache", ".ld.so")
 
 #: Written beside the archive while it is being built, and renamed over only once
 #: every file is in. Same suffix and same reason as `unpack`: something scanning

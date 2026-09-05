@@ -451,6 +451,11 @@ class Transfers(plugin_base.PluginContext):
             ok, reason = await self._stream_cloud(steps)
             if ok and tidy:
                 await self._record_pushes(tidy, steps)
+                # **The same stamp a game closing writes.** The panel shows it
+                # as "Last copied ...", and copying by hand left it saying
+                # hours ago while the copy it describes had just finished.
+                await self._run(store.set_settings,
+                                {"cloud_last_sync": int(time.time())})
             if ok and adopt:
                 await self._adopt_records(adopt, steps)
             await decky.emit(done_event, ok, reason, names if ok else [])
