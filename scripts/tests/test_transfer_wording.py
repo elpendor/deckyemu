@@ -61,14 +61,16 @@ section("the page is named after the button that opened it")
 # match the button that opens it because "arriving here read as having gone
 # somewhere else". The page on the sending device is the third surface of the
 # same feature, and was the one still using different words.
+#
+# The heading, not the title. A bookmark is named after `<title>`, and one
+# address serves transfers, save backups and the cloud pages alike, so every
+# page says DeckyEmu there -- tests/test_page_titles.py is where that lives.
 _button = "Transfer to Deck"
 check("the panel's button and heading say it", _modal.count(_button) >= 1, True)
-check("the upload page's title and heading say it",
-      (_page.count("<title>%s</title>" % _button),
-       _page.count("<h1>%s</h1>" % _button)), (1, 1))
+check("the upload page's heading says it",
+      _page.count("<h1>%s</h1>" % _button), 1)
 check("and so does the code form, which is where a bookmark lands",
-      (_code_page.count("<title>%s</title>" % _button),
-       _code_page.count("<h1>%s</h1>" % _button)), (1, 1))
+      _code_page.count("<h1>%s</h1>" % _button), 1)
 check("neither page still says 'Send files to your Deck'",
       "Send files to your Deck" in _page + _code_page, False)
 

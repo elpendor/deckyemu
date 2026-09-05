@@ -515,7 +515,7 @@ def code_page(locked, remaining, bad=False, digits=6):
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <link rel="icon" href="%(icon)s">
-<title>Transfer to Deck</title>
+<title>DeckyEmu</title>
 <style>%(style)s
   body { min-height: 100vh; display: grid; place-items: center; }
   main { max-width: 22rem; text-align: center; }
@@ -578,7 +578,7 @@ def download_page(name, size, token, emulators):
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <link rel="icon" href="%(icon)s">
-<title>Save backup</title>
+<title>DeckyEmu</title>
 <style>%(style)s
   body { min-height: 100vh; display: grid; place-items: center; }
   main { max-width: 26rem; text-align: center; }
@@ -627,7 +627,7 @@ def upload_page(directory, arrived, token, durable, report):
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="icon" href="%(icon)s">
-<title>Transfer to Deck</title>
+<title>DeckyEmu</title>
 <style>%(style)s</style>
 </head><body>
 <main>
@@ -741,7 +741,7 @@ def cloud_page(backends, logins, token):
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <link rel="icon" href="%(icon)s">
-<title>Cloud saves</title>
+<title>DeckyEmu</title>
 <style>%(style)s
   main { max-width: 30rem; margin: 0 auto; padding: 18px; }
   label { display: block; margin: 12px 0; font-size: 0.94rem; opacity: 0.85; }

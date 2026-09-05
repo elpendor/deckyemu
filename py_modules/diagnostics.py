@@ -514,7 +514,7 @@ def as_page(report):
     return (
         "<!doctype html><meta charset=utf-8>"
         "<meta name=viewport content='width=device-width,initial-scale=1'>"
-        "<title>DeckyEmu diagnostic report</title>"
+        "<title>DeckyEmu</title>"
         "<style>body{font:14px system-ui;margin:0;padding:12px;background:#1a1c22;color:#e6e6e6}"
         "h1{font-size:17px;margin:0 0 4px}p{opacity:.7;margin:0 0 10px}"
         "a.go{display:inline-block;margin-top:10px;padding:10px 14px;border-radius:8px;"
