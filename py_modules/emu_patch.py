@@ -84,7 +84,7 @@ def patched_name(asset_name, workaround_id):
     return "%s.%s" % (asset_name, workaround_id)
 
 
-def patch_specs(entry):
+def patch_specs(entry, installed_build=""):
     """[(workaround_id, spec)] for every workaround of `entry` that patches.
 
     Reads the catalog rather than a resolved entry: which builds exist is a
@@ -92,12 +92,23 @@ def patch_specs(entry):
     Preparing every patched build at install is what makes the switch itself
     instant and unable to fail -- and what lets the panel say "this build cannot
     take that fix" before the user turns it on rather than afterwards.
+
+    A spec whose `fixed_in` the installed build has reached is dropped: upstream
+    shipped that fix, so there is nothing to patch and an attempt would be
+    refused by a build that no longer holds the bytes. The workaround itself
+    stays -- it may be compensating other things that are still true. An
+    unidentified build reaches nothing and everything is attempted, which is the
+    behaviour that existed before ceilings did.
     """
     found = []
     for item in emulator_catalog.workarounds_for(entry):
         spec = (item.get("apply") or {}).get("patch")
-        if spec:
-            found.append((item.get("id") or "", spec))
+        if not spec:
+            continue
+        if emulator_catalog.schema.build_at_least(installed_build,
+                                                  spec.get("fixed_in")):
+            continue
+        found.append((item.get("id") or "", spec))
     return found
 
 
@@ -394,7 +405,7 @@ def _write_record(entry_id, record):
         decky.logger.warning("Could not record patches for %s: %s", entry_id, error)
 
 
-def refresh(entry, stock_path):
+def refresh(entry, stock_path, installed_build=""):
     """Re-derive every patched build of `entry` from `stock_path`.
 
     Called after an install and after an update, and it always starts by
@@ -407,7 +418,7 @@ def refresh(entry, stock_path):
     either the file it made or the reason it could not.
     """
     entry_id = entry.get("id") or ""
-    specs = patch_specs(entry)
+    specs = patch_specs(entry, installed_build)
     if not emulator_catalog.is_safe_id(entry_id) or not specs:
         return {}
 
@@ -461,7 +472,7 @@ def target_for(path, workaround_id):
     return candidate if os.path.isfile(candidate) else ""
 
 
-def unapplied(entry, stock=""):
+def unapplied(entry, stock="", installed_build=""):
     """[{id, name, error}] for patches that are not running on this install.
 
     The honest half of a patch that fails safe. Without it, a fix that is not
@@ -483,10 +494,16 @@ def unapplied(entry, stock=""):
     """
     entry_id = entry.get("id") or ""
     record = read_record(entry_id)
+    ceilinged = {workaround_id for workaround_id, _ in patch_specs(entry)} - {
+        workaround_id for workaround_id, _ in patch_specs(entry, installed_build)}
     rows = []
     for item in emulator_catalog.workarounds_for(entry):
         workaround_id = item.get("id") or ""
         if not (item.get("apply") or {}).get("patch"):
+            continue
+        # Upstream fixed it, so there is no patched build and that is the
+        # correct outcome rather than a failure to report.
+        if workaround_id in ceilinged:
             continue
         state = record.get(workaround_id)
         if state is None or (stock and target_for(stock, workaround_id)):

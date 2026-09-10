@@ -134,6 +134,12 @@ names, and re-running the patch detection against a real build. `--build` names
 a release tag instead of taking the newest, which answers "would the patch fit
 that one" without installing it.
 
+When upstream merges, it asks for a `fixed_in`. Which one depends on how much
+the merge actually retired: `apply.patch.fixed_in` when only the binary patch is
+now unnecessary and the rest of the workaround still is, and the workaround's own
+`fixed_in` when the whole thing is. A patch with a ceiling is not checked against
+newer builds — the bytes it looks for are supposed to be gone.
+
 Run it when you want to know; there is no schedule. `.github/workflows/workarounds.yml`
 is the same check as a manual dispatch, with the same two arguments, for when you
 would rather not download an emulator over your own connection.

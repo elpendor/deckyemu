@@ -364,10 +364,24 @@ PATCH_FIELDS = {
     "replace": "Bytes to write, as hex, the same length as `find`. Nothing is "
                "inserted or removed, so every address in the binary stays "
                "where it was.",
+    "fixed_in": "The build from which this patch is no longer needed, because "
+                "upstream shipped the fix. Optional. From that build on the "
+                "patch is not attempted and its absence is not reported as a "
+                "failure. "
+                "**This is not the workaround's `fixed_in`, and the difference "
+                "matters.** A workaround may compensate several things at once "
+                "-- Vita3K's motion fix answers an emulator bug *and* two "
+                "facts about Steam -- and upstream fixing its own half retires "
+                "the patch, not the workaround. Retiring the whole thing there "
+                "would tell somebody to switch off what still powers their "
+                "gyro. Without this the patch keeps being attempted, is "
+                "correctly refused by a build that no longer contains those "
+                "bytes, and the panel reports the whole fix as one this build "
+                "would not take.",
 }
 
-#: Required in a patch spec: all of them.
-PATCH_REQUIRED = tuple(PATCH_FIELDS)
+#: Required in a patch spec. `fixed_in` is the only optional one.
+PATCH_REQUIRED = ("file", "within", "find", "replace")
 
 #: Required in every workaround. `default` is the only optional one.
 WORKAROUND_REQUIRED = ("id", "name", "because", "upstream", "costs", "apply")
@@ -431,6 +445,12 @@ def _validate_patch(where, spec):
                         % (where, len(find), len(replace)))
     if find and find == replace:
         problems.append("%s: patch replaces bytes with themselves" % where)
+
+    ceiling = spec.get("fixed_in")
+    if ceiling is not None and not build_number(ceiling):
+        problems.append("%s: patch fixed_in must name a build that can be "
+                        "compared with the one installed, not %r"
+                        % (where, ceiling))
     return problems
 
 

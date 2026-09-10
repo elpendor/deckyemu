@@ -118,13 +118,14 @@ def fix_notices(emulator, entry, options=None):
     """
     off = _effective_off(emulator, options, entry)
     stock = emu_patch.stock_path((emulator.get("target") or "").strip(), entry)
+    build = emu_install.installed_build(entry)
     unavailable = {row["id"]: row["error"]
-                   for row in emu_patch.unapplied(entry, stock)}
+                   for row in emu_patch.unapplied(entry, stock, build)}
     return [
         {"id": row["id"], "name": row["name"], "state": row["state"],
          "note": row["note"]}
         for row in emulator_catalog.workaround_state(
-            entry, off, unavailable, emu_install.installed_build(entry))
+            entry, off, unavailable, build)
         if row["state"] and row["enabled"]
     ]
 

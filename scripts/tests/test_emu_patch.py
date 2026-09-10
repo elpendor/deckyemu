@@ -228,6 +228,40 @@ emu_patch.read_record = lambda entry_id: {}
 check("nothing is claimed before anything was attempted",
       emu_patch.unapplied(_entry, _STOCK), [])
 
+
+section("A patch upstream has fixed, in a workaround that is still needed")
+
+# Vita3K's motion fix answers three things and upstream fixed one of them: PR
+# 4100 bumped the bundled SDL, so from build 4090 the bytes are gone. The other
+# two are Steam's -- a sensorless virtual pad, and an IMU left powered down --
+# and retiring the whole workaround would tell somebody to switch off what still
+# holds their gyro up. So the ceiling is on the patch.
+_ceiling = (_entry["workarounds"][0]["apply"]["patch"].get("fixed_in") or "")
+check("the catalog carries one for vita-motion", bool(_ceiling), True)
+
+_below = [name for name, _ in emu_patch.patch_specs(_entry, "4089")]
+_at = [name for name, _ in emu_patch.patch_specs(_entry, _ceiling)]
+_above = [name for name, _ in emu_patch.patch_specs(_entry, "4200")]
+check("a build below it is still patched", _below, ["vita-motion"])
+check("the build that carries the fix is not", _at, [])
+check("and neither is anything newer", _above, [])
+# Not knowing is not "no", but it leads to the same place: attempt it, and let
+# `patch_bytes` refuse against the real file.
+check("an unidentifiable build is patched as before",
+      [name for name, _ in emu_patch.patch_specs(_entry, "")], ["vita-motion"])
+
+# The failure this whole field exists to stop. Without a ceiling the patch is
+# attempted, correctly refused by a build that no longer holds those bytes, and
+# the panel tells somebody their emulator "would not take" the fix that is in
+# fact running.
+emu_patch.read_record = lambda entry_id: {
+    "vita-motion": {"file": "", "error": "this build has changed"}}
+check("a refused patch is reported on a build below the ceiling",
+      [row["id"] for row in emu_patch.unapplied(_entry, _STOCK, "4089")],
+      ["vita-motion"])
+check("and says nothing on the build that made it unnecessary",
+      emu_patch.unapplied(_entry, _STOCK, _ceiling), [])
+
 emu_patch.read_record = lambda entry_id: {
     "vita-motion": {"file": "", "error": "this build has changed"}}
 check("and a refusal still says why",

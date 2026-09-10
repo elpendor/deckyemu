@@ -215,17 +215,25 @@ def check(entry, wanted_build=""):
         name = item.get("id") or "?"
         print("  %s" % name)
 
+        spec = (item.get("apply") or {}).get("patch")
+        # Answered already if the merge has been acted on. Either the whole
+        # workaround is retired, or -- where upstream fixed one part of a
+        # workaround that compensates several things -- the patch alone carries
+        # the ceiling.
+        answered = bool(item.get("fixed_in")) or bool((spec or {}).get("fixed_in"))
+
         state, detail = upstream_state(item.get("upstream"))
         print("    upstream: %-8s %s" % (state, detail))
-        if state in ("merged", "closed"):
+        if state in ("merged", "closed") and not answered:
             _problems.append(
                 "%s/%s: upstream is %s (%s). Find the first build carrying it "
-                "and set `fixed_in`." % (entry["id"], name, state, detail))
+                "and set `fixed_in` -- on the patch if only the patch is now "
+                "unnecessary, on the workaround if the whole thing is."
+                % (entry["id"], name, state, detail))
         elif state == "unknown":
             _blocked.append("%s/%s: upstream %s" % (entry["id"], name, detail))
 
-        spec = (item.get("apply") or {}).get("patch")
-        if spec:
+        if spec and not spec.get("fixed_in"):
             if not url:
                 tag, url, unreachable = release_asset(entry, wanted_build)
             if unreachable:
@@ -250,9 +258,16 @@ def check(entry, wanted_build=""):
                     _blocked.append("%s/%s: the patch was not checked -- %s"
                                     % (entry["id"], name, detail))
 
+        if spec and spec.get("fixed_in"):
+            # Nothing is checked against the newest build any more, so say which
+            # build stopped it and let somebody notice if that looks wrong.
+            print("    patch:    retired from build %s" % spec["fixed_in"])
+
         if item.get("fixed_in"):
             # A `fixed_in` nobody can reach yet is not wrong, but it is worth
             # saying out loud: until a build carries it, nothing is ever shown.
+            if not tag:
+                tag, url, unreachable = release_asset(entry, wanted_build)
             reached = emulator_catalog.schema.build_at_least(tag, item["fixed_in"])
             print("    fixed_in: %s (build %s %s it)"
                   % (item["fixed_in"], tag, "reaches" if reached else "is below"))

@@ -4120,9 +4120,8 @@ try:
     check("and the startup upgrade puts it back without the recipe moving",
           emulators.find("vita3k").get("layout", ""), _vita_effective.get("layout"))
 
-    # And the migration that goes with motion becoming opt-in: a record written
-    # before any of this has no key at all, and must fall to the defaults rather
-    # than be read as "nothing is switched off".
+    # A record written before any of this has no key at all, and must fall to
+    # the defaults rather than be read as "nothing is switched off".
     #
     # Removed first, because `save` deliberately carries `workarounds_off` over
     # from an existing record -- an edit must not drop somebody's choice -- so
@@ -4134,9 +4133,13 @@ try:
                     "extensions": "vpk"})
     run(plugin._upgrade_emulator_recipes())
     check("a record predating workarounds gets the defaults, not everything on",
-          emulators.find("vita3k").get("workarounds_off"), ["vita-motion"])
-    check("so it keeps Steam Input rather than silently losing it",
-          emulators.find("vita3k").get("layout", ""), "")
+          emulators.find("vita3k").get("workarounds_off"), [])
+    # The layout is the entry's own since recipe 11 -- it answers Steam, not a
+    # bug, so it is not something an install opts into. What a record with no
+    # answer must not gain is the *patch*, which is the line above.
+    check("while the layout arrives anyway, because it is not a fix",
+          emulators.find("vita3k").get("layout", ""),
+          _vita_effective.get("layout"))
 finally:
     emulators.remove("vita3k")
 

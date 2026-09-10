@@ -105,17 +105,20 @@ run(plugin._upgrade_emulator_recipes())
 check("what it was already running stays on",
       stored().get("workarounds_off"), [])
 
-# And the other half of the same rule: an install that never had it does not
-# silently acquire it, which is what makes "absent means the defaults" right
-# everywhere else.
+# The other half used to be "an install that never had it does not silently
+# acquire it", back when acquiring it meant losing Steam Input. Since recipe 11
+# the environment and the layout are the entry's own and arrive either way, and
+# all the switch decides is the patched binary -- which a build old enough to
+# need it cannot do without, and which is not applied at all from 4090. So the
+# default is on, and this now checks that it reaches a record with no answer.
 install(_MOVED_AT - 1)
 _record = stored()
 _record.pop("workarounds_off", None)
 _record["env"] = {}
 emulators._write([_record])
 run(plugin._upgrade_emulator_recipes())
-check("and one that never had it stays off",
-      stored().get("workarounds_off"), ["vita-motion"])
+check("and a record with no answer gets the default, which is now on",
+      stored().get("workarounds_off"), [])
 
 
 section("It is said until the emulator is updated")
@@ -178,7 +181,7 @@ check("an update leaves the corrections as the user left them",
 emulators._write([])
 check("and the defaults still apply to an install with no choice recorded",
       emulator_catalog.to_emulator(_ENTRY, "x", {}).get("workarounds_off"),
-      ["vita-motion"])
+      [])                                # Vita3K motion is on since build 4090
 
 
 section("Updating the emulator ends it")
@@ -191,8 +194,8 @@ _reinstalled = emulator_catalog.to_emulator(
 check("a fresh install carries neither flag",
       (_reinstalled.get("stale_source"), _reinstalled.get("source_notice_shown")),
       (None, None))
-check("and records the recipe that clears it",
-      _reinstalled.get("catalog_recipe"), _MOVED_AT)
+check("and records a recipe at or past the one that clears it",
+      _reinstalled.get("catalog_recipe") >= _MOVED_AT, True)
 
 emulators._write([])
 

@@ -46,7 +46,8 @@ def _unavailable_fixes(entry, emulator):
     stock = emu_patch.stock_path((emulator.get("target") or "").strip(), entry)
     return {
         row["id"]: row["error"] or "This build would not take that fix."
-        for row in emu_patch.unapplied(entry, stock)
+        for row in emu_patch.unapplied(entry, stock,
+                                       emu_install.installed_build(entry))
     }
 
 

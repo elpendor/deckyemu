@@ -420,15 +420,22 @@ check("the panel is told the name, cost and where the real fix is",
 check("and told when one is off",
       emulator_catalog.workaround_state(_shad, ["ps4-motion"])[0]["enabled"], False)
 
-# A fresh install gets the defaults, which for both of these is "on".
-# Off unless asked for. The cost -- Steam Input for every game of that system
-# -- lands on people who never wanted motion, so it is not imposed by default.
-check("a fresh install starts with motion off",
+# What a fresh install starts with, and the two entries now differ on purpose.
+#
+# shadPS4 stays off: its fix still runs a shim over somebody else's emulator for
+# a bug upstream has not merged, and the cost -- Steam Input for every PS4 game
+# -- lands on people who never wanted motion.
+#
+# Vita3K is on, because build 4090 made its binary patch unnecessary. What is
+# left is an environment variable and a layout, Vita games mostly want gyro, and
+# motion that silently does nothing is harder to find than a switch. The cost is
+# the same and is why it stays a switch at all.
+check("a fresh shadPS4 starts with motion off",
       emulator_catalog.to_emulator(_shad, "/x", {}).get("workarounds_off"),
       ["ps4-motion"])
-check("and the same for Vita3K",
+check("and a fresh Vita3K starts with it on",
       emulator_catalog.to_emulator(_vita_entry, "/x", {}).get("workarounds_off"),
-      ["vita-motion"])
+      [])
 # Which means the default resolution has neither half of motion in it.
 _fresh = emulator_catalog.resolve_workarounds(
     _shad, emulator_catalog.default_disabled(_shad))
@@ -521,6 +528,60 @@ check("a fix that edits the emulator's files says so",
 check("and one that only changes how it launches does not",
       _shad_state["ps4-motion"]["patches"], False)
 
+# A fix with nothing left to do on this build is not shown. Vita3K's motion
+# workaround is a patch and nothing else since build 4090 shipped the fix, so
+# from there the row is a question with one answer.
+_ceiling = _vita_entry["workarounds"][0]["apply"]["patch"]["fixed_in"]
+
+
+def _vita(build):
+    return {w["id"]: w for w in emulator_catalog.workaround_state(
+        _vita_entry, [], None, build)}
+
+
+check("below the ceiling the fix is offered, and edits the emulator's files",
+      (list(_vita("4089")), _vita("4089")["vita-motion"]["patches"]),
+      (["vita-motion"], True))
+check("from the build that shipped the fix, there is no row at all",
+      list(_vita(_ceiling)), [])
+check("an unidentifiable build still offers it, because nothing is claimed",
+      list(_vita("")), ["vita-motion"])
+check("and shadPS4 is untouched -- its fix is still a fix",
+      [w["id"] for w in emulator_catalog.workaround_state(_shad, [], None, "")],
+      ["ps4-motion"])
+
+# The half that is not a fix and never was. It answers Steam rather than the
+# emulator, so it is the entry's own and applies whatever the switch says.
+check("motion is on the entry, so it does not depend on the workaround",
+      (bool(_vita_entry.get("env")), bool(_vita_entry.get("layout"))),
+      (True, True))
+check("and survives the workaround being switched off",
+      (bool(emulator_catalog.resolve_workarounds(
+          _vita_entry, ["vita-motion"]).get("env")),
+       bool(emulator_catalog.resolve_workarounds(
+           _vita_entry, ["vita-motion"]).get("layout"))),
+      (True, True))
+
+check("a patch fixed_in that is not a build is refused",
+      any("patch fixed_in must name" in problem
+          for problem in emulator_catalog.validate(
+              dict(_vita_entry, workarounds=[{
+                  "id": "x", "name": "X", "because": "b", "costs": "c",
+                  "upstream": "https://example.invalid/3",
+                  "apply": {"patch": {"file": "usr/bin/X", "within": "sym",
+                                      "find": "00", "replace": "01",
+                                      "fixed_in": "whenever"}}}]))),
+      True)
+check("and leaving it out is fine, because most patches have no fix yet",
+      [problem for problem in emulator_catalog.validate(
+          dict(_vita_entry, workarounds=[{
+              "id": "x", "name": "X", "because": "b", "costs": "c",
+              "upstream": "https://example.invalid/3",
+              "apply": {"patch": {"file": "usr/bin/X", "within": "sym",
+                                  "find": "00", "replace": "01"}}}]))
+       if "fixed_in" in problem],
+      [])
+
 
 section("An install from a source the catalog has stopped naming")
 
@@ -535,8 +596,12 @@ section("An install from a source the catalog has stopped naming")
 # below recipe 10.
 _moved = (_vita_entry.get("source_moved") or {})
 check("Vita3K says when its source moved", _moved.get("recipe"), 10)
-check("and the number is the recipe it moved at",
-      _moved["recipe"], _vita_entry["recipe"])
+# At or below the current recipe, not equal to it. Tying the two together made
+# every later bump for an unrelated reason look like a second source move --
+# recipe 11 moved motion onto the entry and had nothing to do with where the
+# build comes from.
+check("and the number is a recipe that has been reached",
+      _moved["recipe"] <= _vita_entry["recipe"], True)
 check("and it carries the sentence the user is told",
       bool(str(_moved.get("note") or "").strip()), True)
 

@@ -540,6 +540,22 @@ NOTICE_TEXT = {
 }
 
 
+def _applies_here(item, installed_build):
+    """Whether this workaround still changes anything on this build."""
+    apply = item.get("apply") or {}
+    if set(apply) - {"patch"}:
+        return True
+    return _patches_here(item, installed_build)
+
+
+def _patches_here(item, installed_build):
+    """Whether this workaround still edits the emulator's binary on this build."""
+    spec = (item.get("apply") or {}).get("patch")
+    if not spec:
+        return False
+    return not schema.build_at_least(installed_build, spec.get("fixed_in"))
+
+
 def workaround_state(entry, disabled=(), unavailable=None, installed_build=""):
     """What the panel shows: each workaround, with whether it is on.
 
@@ -562,6 +578,12 @@ def workaround_state(entry, disabled=(), unavailable=None, installed_build=""):
     cannot = dict(unavailable or {})
     rows = []
     for item in workarounds_for(entry):
+        # Nothing left to apply on this build, so there is nothing to decide.
+        # A workaround whose only delta was a patch upstream has since shipped
+        # is not a retired fix to explain -- it is not a fix at all here, and a
+        # switch for it is a question with one answer.
+        if not _applies_here(item, installed_build):
+            continue
         identifier = item.get("id", "")
         # Retired first: it is the more useful thing to know, and a fix the
         # emulator has already made is not interesting for not applying.
@@ -582,8 +604,9 @@ def workaround_state(entry, disabled=(), unavailable=None, installed_build=""):
             # Whether this one edits the emulator's own files. Derived rather
             # than written into `because` by hand, because it is the fact a
             # user is most entitled to be told and the one an author is most
-            # likely to forget.
-            "patches": bool((item.get("apply") or {}).get("patch")),
+            # likely to forget. False once the patch's own `fixed_in` is
+            # reached: from that build on, this fix touches nothing.
+            "patches": _patches_here(item, installed_build),
             # One field to check and one sentence to show, rather than a
             # separate string per state that each surface then rewords.
             "state": state,

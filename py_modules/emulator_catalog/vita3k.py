@@ -13,7 +13,9 @@ _VITA3K_SETUP = {
     #      broken: the write "succeeded" into a file Vita3K then refused, the
     #      version was stored, and needs_setup answered no forever afterwards
     #   4  show-welcome, the modal that was stopping every launch
-    "version": 4,
+    #   5  the update prompt, which offers to replace a build this plugin
+    #      installed and records
+    "version": 5,
     "path": _VITA3K_CONFIG,
     "sections": {
         # The dialog that cost an evening. `confirm_missing_firmware_warning`
@@ -49,6 +51,16 @@ _VITA3K_SETUP = {
         # never composited, because gamescope only draws windows Steam
         # launched. With this false, the same command boots the game.
         "show-welcome": {"value": "false", "default": "true"},
+        # Vita3K checks for its own updates at startup and offers to install
+        # one. Accepting it replaces a build this plugin downloaded, recorded in
+        # `.build.json` and derives patched copies from -- so the Emulators tab
+        # would go on naming a build that is no longer there, and the fix
+        # ceiling would be compared against the wrong number. Updating is the
+        # plugin's job; this is the emulator being told so.
+        #
+        # `UpdateStartupMode` in `config/config.h`: 0 off, 1 prompt (upstream's
+        # default), 2 background, 3 automatic.
+        "check-for-updates-mode": {"value": "0", "default": "1"},
     },
 }
 
@@ -152,19 +164,24 @@ ENTRY = {
         # explains why this fix has to touch the emulator's own files. Said in
         # what it looks like rather than what it is: a user does not need the
         # word microsecond to understand "reads it too slowly to notice".
-        "because": "Steam hands a launched game a virtual pad with no sensors "
-                   "on it, and leaves the Deck's own motion sensor powered "
-                   "down unless the game's layout uses gyro -- and Vita3K then "
-                   "reads that sensor a thousand times too slowly to see it "
-                   "move at all.",
+        # No longer mentions Vita3K reading the sensor too slowly. That was
+        # true, and stopped being true in build 4090 -- and a sentence shown on
+        # every build cannot describe a bug only some of them have. What is left
+        # is Steam's behaviour, which is the same on every build and is not
+        # going to change.
+        "because": "Before build 4090 Vita3K read the Deck's motion sensor a "
+                   "thousand times too slowly to see it move, and no setting "
+                   "reaches that -- so a corrected copy of the emulator is "
+                   "made. Switching this off on an older build means motion "
+                   "does nothing, however it is set up.",
         "upstream": "https://github.com/Vita3K/Vita3K/pull/4100",
-        "costs": "Steam Input stops shaping the pad for every Vita game -- "
-                 "remapped buttons, stick curves and the back buttons stop "
-                 "applying, including in games that have no motion at all.",
-        # Off unless asked for, like shadPS4's. Vita games want motion more
-        # often than PS4 games do, but the cost is the same and is paid by
-        # every Vita game either way.
-        "default": False,
+        "costs": "A corrected copy of the emulator is made and run in place "
+                 "of the one upstream shipped. Switching this off runs exactly "
+                 "what was downloaded, with motion doing nothing.",
+        # On, because a build old enough to need it does not work without it.
+        # It is not shown at all from 4090, so this only decides what happens on
+        # a build that is behind.
+        "default": True,
         "apply": {
             # Four bytes, applied to upstream's own build at install and kept
             # beside it, so switching this off runs exactly what upstream
@@ -185,23 +202,21 @@ ENTRY = {
                 "within": "HIDAPI_DriverSteamDeck_UpdateDevice",
                 "find": "41030c24",
                 "replace": "31c99090",
+                # PR 4100 bumped the bundled SDL to 3.4.16, which carries the
+                # upstream fix, and build 4090 is the first to hold it. Checked
+                # against that AppImage: the symbol is still there, and the four
+                # bytes now occur zero times inside it -- so from 4090 the patch
+                # is not attempted rather than attempted and refused.
+                #
+                # The workaround itself is not retired, and that distinction is
+                # the whole reason this field exists. Only one of its three
+                # halves was the emulator's bug; Steam still hands a launched
+                # game a sensorless virtual pad, and still leaves the IMU
+                # powered down unless the layout binds gyro. Retiring the
+                # workaround would tell somebody on 4090 to switch off the two
+                # things still holding their gyro up.
+                "fixed_in": "4090",
             },
-            "env": deck_gyro.motion_env(),
-            # The other half, and the one that is not obvious: Steam powers the
-            # Deck's IMU down unless the running game's layout binds gyro to
-            # something, and the sensors then read exactly `(0, 0, 0)` -- not
-            # noise, zeros -- while buttons and sticks work perfectly. Measured
-            # both ways on the device: with Gyro Behavior at `None` a probe
-            # inside the running game reads zeros; bind it to anything and the
-            # same probe reads gravity within the second.
-            #
-            # Derived from "Gamepad with Gyro", the one stock Deck template that
-            # binds gyro at all, with the binding moved from the mouse to a
-            # stick -- `steam_layouts.py` does the rewriting, on the device,
-            # from the user's own Steam files. Stock would switch the sensor on
-            # just as well, but gyro-to-mouse drifts a pointer across the screen
-            # and Vita3K reads that pointer as the Vita's touchscreen.
-            "layout": steam_layouts.DERIVED_URL,
         },
     }],
     #   2  the fullscreen flag, which was missing entirely
@@ -239,7 +254,31 @@ ENTRY = {
     #  10  back to upstream's own builds. The motion fix moved out of `source`
     #      and into the workaround as four bytes, so this stops being a pin --
     #      but only a recipe bump reaches an install still sitting on the fork
-    "recipe": 10,
+    #  11  motion moved out of the workaround and onto the entry. It is an
+    #      environment variable and a layout -- configuration, not a
+    #      compensation for anybody's bug -- and the emulator's own half was
+    #      fixed in build 4090, so there is nothing left to decline
+    "recipe": 11,
+    # **Motion, which every Vita3K install gets.**
+    #
+    # This lived inside the motion workaround until upstream fixed the emulator
+    # half in build 4090. What is left answers Steam, not Vita3K: it hands the
+    # emulator the Deck's physical pad, which is the only one with sensors on
+    # it, and pins a layout that binds gyro -- Steam leaves the IMU powered down
+    # otherwise, and the sensors then read exactly `(0, 0, 0)`, not noise.
+    # Measured both ways on the device.
+    #
+    # The layout is derived from "Gamepad with Gyro", the one stock Deck
+    # template that binds gyro at all, with the binding moved off the mouse:
+    # gyro-to-mouse drags a pointer across the screen and Vita3K reads that
+    # pointer as the Vita's touchscreen.
+    #
+    # It costs Steam Input shaping the pad, the same as it always did. That was
+    # a switch while it travelled with a patched binary and somebody might
+    # reasonably want the stock build; on its own it is how this emulator runs,
+    # the way shadPS4's Vulkan pin and Supermodel's SDL variables are.
+    "env": deck_gyro.motion_env(),
+    "layout": steam_layouts.DERIVED_URL,
     "setup": _VITA3K_SETUP,
     # Booted on a Deck: firmware and font fetched and imported headlessly, a
     # .pkg installed with its zRIF, and the game started from its Steam

@@ -32,11 +32,14 @@ export function WorkaroundModal({
         {workaround.note && (
           <div>
             <div style={{ fontSize: "14px", fontWeight: 500 }}>
-              {workaround.state === "retired" ? "No longer needed" : "Not running"}
+              {workaround.state === "retired"
+                ? "No longer needed — you can switch this off"
+                : "Not running"}
             </div>
             <div style={{ fontSize: "13px", opacity: 0.8 }}>{workaround.note}</div>
           </div>
         )}
+
         <div>
           <div style={{ fontSize: "14px", fontWeight: 500 }}>What it fixes</div>
           <div style={{ fontSize: "13px", opacity: 0.8 }}>{workaround.because}</div>
@@ -63,18 +66,20 @@ export function WorkaroundModal({
             was retired, which was exactly backwards: the moment somebody is
             told a fix is no longer needed is the moment they would want to see
             what fixed it. The schema requires `upstream`, so there is always
-            something to name. */}
+            something to name.
+
+            It also used to promise "this goes away once the emulator does it
+            itself", which is a promise the plugin cannot keep: a fix answering
+            Steam's behaviour as well as the emulator's is still needed after
+            upstream merges, and Vita3K's motion fix is exactly that. */}
         <div>
           <div style={{ fontSize: "14px", fontWeight: 500 }}>
             {workaround.state === "retired"
-              ? "What replaced it"
-              : "Until the emulator fixes it"}
+              ? "What fixed it"
+              : "Where this is tracked"}
           </div>
           <div style={{ fontSize: "13px", opacity: 0.8 }}>
-            {workaround.state === "retired"
-              ? "Tracked at "
-              : "This goes away once the emulator does it itself. Being tracked at "}
-            {workaround.upstream.replace(/^https:\/\//, "")}.
+            {workaround.upstream.replace(/^https:\/\//, "")}
           </div>
         </div>
       </div>

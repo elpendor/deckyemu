@@ -807,7 +807,7 @@ def install_appimage(entry, asset, on_progress=None):
     # Deliberately not part of the install's success: a build this patch does
     # not fit still installs and still runs, and `emu_patch.unapplied` is how
     # the panel says the fix could not be applied to it.
-    emu_patch.refresh(entry, path)
+    emu_patch.refresh(entry, path, asset.get("tag", ""))
 
     decky.logger.info("Installed %s to %s", entry["id"], path)
     return path, ""

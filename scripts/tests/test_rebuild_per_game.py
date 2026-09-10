@@ -126,8 +126,12 @@ check("its launcher runs the stock build",
       os.path.basename(_PATCHED) in _opted_out, False)
 check("which is still the emulator, not nothing",
       os.path.basename(_STOCK) in _opted_out, True)
-check("and none of the motion environment came with it",
-      "SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD" in _opted_out, False)
+# The environment still comes: since recipe 11 it belongs to the entry rather
+# than to the fix, because it answers Steam and not a bug in the emulator.
+# Opting out of the fix opts out of the patched binary, which is the only thing
+# the fix is.
+check("while the motion environment still comes, being the entry's own",
+      "SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD" in _opted_out, True)
 
 
 section("and with no patched build on disk, the stock one runs")

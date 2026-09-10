@@ -280,9 +280,8 @@ class Startup(plugin_base.PluginContext):
             if emulator.get("workarounds_off") is None:
                 # Absent is not empty. A record written before this existed has
                 # no key at all, and reading that as "nothing is switched off"
-                # would hand it every correction including the ones that default
-                # to off -- turning motion on, and Steam Input off, for somebody
-                # who never asked.
+                # would hand it every correction, turning motion on and Steam
+                # Input off for somebody who never asked.
                 #
                 # But it is not "apply the defaults" either, for the install
                 # that was *already running* one of these back when it was part
@@ -465,7 +464,8 @@ class Startup(plugin_base.PluginContext):
         """
         changed = False
         for entry in emulator_catalog.CATALOG:
-            if not emu_patch.patch_specs(entry):
+            build = await self._run(emu_install.installed_build, entry)
+            if not emu_patch.patch_specs(entry, build):
                 continue
             if await self._run(emu_patch.read_record, entry["id"]):
                 continue
@@ -473,7 +473,7 @@ class Startup(plugin_base.PluginContext):
             if not stock:
                 continue
             decky.logger.info("Preparing patched builds for %s", entry["id"])
-            await self._run(emu_patch.refresh, entry, stock)
+            await self._run(emu_patch.refresh, entry, stock, build)
             changed = True
 
         # Which binary a launcher execs is decided by whether the patched build
