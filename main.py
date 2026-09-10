@@ -38,6 +38,7 @@ import plugin_updates
 import ra_cores
 import hardware
 import ra_detect
+import rompatch
 import romshelf
 import savedata
 import sgdb
@@ -1892,6 +1893,95 @@ class Plugin(
         }
 
 
+
+    def _rom_of(self, app_id):
+        """The ROM path of a tracked game, or "" if it is not one."""
+        library = store.get_library()
+        entry = library.get(str(app_id)) or {}
+        return entry.get("rom_path", "")
+
+    async def rom_patches(self, app_id: int) -> dict:
+        """This game's ROM hacks, in the order RetroArch applies them."""
+        rom_path = await self._run(self._rom_of, app_id)
+        if not rom_path:
+            return {"ok": False, "error": "That game is no longer tracked."}
+        # A hack somebody dropped in by hand is applied by RetroArch whether or
+        # not this list knows about it, so it is taken in rather than hidden.
+        await self._run(rompatch.adopt, app_id, rom_path)
+        return {
+            "ok": True,
+            "patches": await self._run(rompatch.listing, app_id),
+            "warning": await self._run(rompatch.warning_for, rom_path),
+            # Always the transfer folder: it is where a patch sent from a phone
+            # lands, and adding one takes it out again, so this is the one place
+            # a patch is ever expected to be. It was briefly conditional, which
+            # meant the folder somebody was told about was not the folder that
+            # opened once they had used it.
+            "start_in": await self._run(fileserver.default_dir),
+        }
+
+    async def add_rom_patch(self, app_id: int, patch_path: str) -> dict:
+        """Take a patch into this game's list and apply it.
+
+        A patch that came through the transfer page is taken *out* of the inbox,
+        the same way adding a game moves its ROM out: the inbox is what has not
+        been dealt with yet, and it is supposed to empty itself as it is used.
+        Only the inbox's own top level, and only once we have our own copy --
+        anything the user keeps elsewhere is theirs.
+        """
+        source = (patch_path or "").strip()
+        row, error = await self._run(rompatch.add, app_id, source)
+        if error:
+            return {"ok": False, "error": error}
+
+        inbox = await self._run(fileserver.default_dir)
+        if inbox and os.path.dirname(source) == os.path.normpath(inbox):
+            try:
+                await self._run(os.remove, source)
+            except OSError as remove_error:
+                # The copy is made and the patch works; a file left in the inbox
+                # is untidy rather than broken.
+                decky.logger.warning("Could not clear %s from the inbox: %s",
+                                     source, remove_error)
+        return await self.sync_rom_patches(app_id, name=(row or {}).get("name", ""))
+
+    async def remove_rom_patch(self, app_id: int, stored: str) -> dict:
+        """Drop one patch, delete our copy of it, and rewrite what is applied."""
+        error = await self._run(rompatch.remove, app_id, stored)
+        if error:
+            return {"ok": False, "error": error}
+        return await self.sync_rom_patches(app_id)
+
+    async def switch_rom_patch(self, app_id: int, stored: str, on: bool) -> dict:
+        """Turn one patch on or off. The copy is kept either way."""
+        error = await self._run(rompatch.switch, app_id, stored, on)
+        if error:
+            return {"ok": False, "error": error}
+        return await self.sync_rom_patches(app_id)
+
+    async def reorder_rom_patches(self, app_id: int, order: list) -> dict:
+        """Put the list in `order`, which decides which hack wins a conflict."""
+        error = await self._run(rompatch.reorder, app_id, list(order or ()))
+        if error:
+            return {"ok": False, "error": error}
+        return await self.sync_rom_patches(app_id)
+
+    async def sync_rom_patches(self, app_id: int, name: str = "") -> dict:
+        """Write the switched-on patches beside the ROM.
+
+        Also called after the ROM changes, because the files are named after it.
+        """
+        rom_path = await self._run(self._rom_of, app_id)
+        if not rom_path:
+            return {"ok": False, "error": "That game is no longer tracked."}
+        written, error = await self._run(rompatch.sync, app_id, rom_path)
+        decky.logger.info("rom patches: app_id=%s applied=%s%s",
+                          app_id, written, " (%s)" % error if error else "")
+        if error:
+            return {"ok": False, "error": error,
+                    "patches": await self._run(rompatch.listing, app_id)}
+        return {"ok": True, "name": name, "applied": written,
+                "patches": await self._run(rompatch.listing, app_id)}
 
     async def launch_bounced(self, app_id: int) -> dict:
         """Did this game's launcher refuse to start, and what was in the way?

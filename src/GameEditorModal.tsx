@@ -1,4 +1,5 @@
 import {
+  ConfirmModal,
   DialogButton,
   Dropdown,
   Focusable,
@@ -9,12 +10,19 @@ import {
   type SingleDropdownOption,
 } from "@decky/ui";
 import { FileSelectionType, openFilePicker, toaster } from "@decky/api";
+import { FaTrash } from "react-icons/fa";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
   listWorkarounds,
   probeRom,
   resolveGame,
+  addRomPatch,
+  removeRomPatch,
+  romPatches,
+  switchRomPatch,
+  syncRomPatches,
+  type RomPatch,
   updateGame,
   type AddedGame,
   type Core,
@@ -48,6 +56,8 @@ import { sentence } from "./sentence";
 import { filenameNamesTheGame } from "./lookupTerm";
 import { titleAfterArtPick } from "./titleFromArt";
 import { openModal } from "./modalStack";
+import { DANGER_CLASS } from "./danger";
+import { ICON_BUTTON, ICON_BUTTON_WIDE } from "./iconButton";
 
 interface Props {
   game: AddedGame;
@@ -227,11 +237,41 @@ export function GameEditorModal({ game, onSaved, closeModal, onLeave }: Props) {
       ]),
     ),
   );
+  /**
+   * The hacks on this game, in the order RetroArch applies them.
+   *
+   * Every change lands at once rather than waiting for Save, the way artwork
+   * does: a list with a switch on each row that only takes effect later reads
+   * as a list already in that state.
+   */
+  const [patches, setPatches] = useState<RomPatch[] | null>(null);
+  const [patchWarning, setPatchWarning] = useState("");
+  const [patchStart, setPatchStart] = useState("");
+  const [patchBusy, setPatchBusy] = useState("");
   const [saving, setSaving] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [artApplied, setArtApplied] = useState(0);
   const [error, setError] = useState("");
   const [note, setNote] = useState("");
+
+  useEffect(() => {
+    let current = true;
+    romPatches(game.app_id)
+      .then((found) => {
+        if (!current || !found.ok) return;
+        setPatches(found.patches);
+        setPatchWarning(found.warning);
+        setPatchStart(found.start_in);
+      })
+      .catch((patchError) => {
+        // Not surfaced: losing this list beats an error banner over an editor
+        // somebody opened to rename a game.
+        logError("could not read the ROM patches", patchError);
+      });
+    return () => {
+      current = false;
+    };
+  }, [game.app_id]);
 
   // Probing gives the same core ordering the add flow uses, so the sensible
   // choices come first here too. Re-runs when the ROM changes, because the new
@@ -368,6 +408,99 @@ export function GameEditorModal({ game, onSaved, closeModal, onLeave }: Props) {
     setRomPath(path);
     setNote("Check the core, and re-fetch the artwork if this is a different game.");
   }, [romPath]);
+
+  const afterPatchCall = useCallback(
+    (result: Awaited<ReturnType<typeof addRomPatch>>) => {
+      if (result.patches) setPatches(result.patches);
+      if (!result.ok) setError(result.error || "Could not change the patches.");
+      return result.ok;
+    },
+    [],
+  );
+
+  const togglePatch = useCallback(async (row: RomPatch) => {
+    setError("");
+    setPatchBusy(row.file);
+    try {
+      afterPatchCall(await switchRomPatch(game.app_id, row.file, !row.on));
+    } catch (switchError) {
+      logError("could not switch a patch", switchError);
+      setError("Could not change that patch.");
+    } finally {
+      setPatchBusy("");
+    }
+  }, [game.app_id, afterPatchCall]);
+
+  const deletePatch = useCallback(async (row: RomPatch) => {
+    setError("");
+    setPatchBusy(row.file);
+    try {
+      afterPatchCall(await removeRomPatch(game.app_id, row.file));
+    } catch (removeError) {
+      logError("could not remove a patch", removeError);
+      setError("Could not remove that patch.");
+    } finally {
+      setPatchBusy("");
+    }
+  }, [game.app_id, afterPatchCall]);
+
+  // Asked, like every other delete in the plugin. Our copy is the only one left
+  // once a patch has been taken out of the transfer folder, so this is the
+  // press that loses the file rather than one that can be undone by switching
+  // it back on.
+  const confirmDelete = useCallback(
+    (row: RomPatch) => {
+      openModal(
+        <ConfirmModal
+          strTitle={`Remove ${row.name}?`}
+          strDescription="The copy this plugin keeps is deleted, so you would have to send the patch again to put it back. Your ROM file is not touched, and the game goes back to running unpatched."
+          strOKButtonText="Remove"
+          bDestructiveWarning
+          onOK={() => void deletePatch(row)}
+        />,
+      );
+    },
+    [deletePatch],
+  );
+
+  // Opens on the transfer folder, which is where a patch sent from a phone
+  // lands and the only place one is ever expected to be.
+  const pickPatch = useCallback(async () => {
+    setError("");
+    let picked: { path: string; realpath: string } | undefined;
+    try {
+      picked = await openFilePicker(
+        FileSelectionType.FILE,
+        patchStart || dirname(romPath),
+        true,
+        true,
+        undefined,
+        undefined,
+        false,
+        true,
+      );
+    } catch (pickError) {
+      if (!String(pickError ?? "").toLowerCase().includes("cancel")) {
+        logError("patch picker failed", pickError);
+        setError("Could not open the file browser.");
+      }
+      return;
+    }
+    const path = picked?.realpath || picked?.path || "";
+    if (!path) {
+      setError("That selection did not return a file path.");
+      return;
+    }
+    setPatchBusy(path);
+    try {
+      afterPatchCall(await addRomPatch(game.app_id, path));
+    } catch (addError) {
+      logError("could not add a patch", addError);
+      setError("Could not add that patch.");
+    } finally {
+      setPatchBusy("");
+    }
+  }, [romPath, patchStart, game.app_id, afterPatchCall]);
 
   const pickArtwork = useCallback(() => {
     openModal(
@@ -539,6 +672,17 @@ export function GameEditorModal({ game, onSaved, closeModal, onLeave }: Props) {
       }
 
       if (result.rom_changed) notes.push(`now runs ${basename(result.rom_path)}`);
+
+      // The patch files are named after the ROM, so pointing the game at
+      // another one leaves them beside a file nothing loads. Written again
+      // after the update rather than before, so they land beside the new one.
+      if (result.rom_changed && patches?.some((one) => one.on)) {
+        const moved = await syncRomPatches(game.app_id);
+        if (!moved.ok) {
+          setError(moved.error || "Could not move the patches to the new ROM.");
+          return false;
+        }
+      }
       if (coreId !== game.core_id) {
         // Both, and the core first: this note exists *because* the core
         // changed, and it used to report only the platform -- which is the
@@ -571,8 +715,8 @@ export function GameEditorModal({ game, onSaved, closeModal, onLeave }: Props) {
     }
     // `cores?.all` because the toast names what the game now runs on, and a
     // stale list would name the core it ran on before.
-  }, [game, title, coreId, system, romPath, currentOptions, onSaved, closeModal,
-      cores?.all]);
+  }, [game, title, coreId, system, romPath, patches, currentOptions, onSaved,
+      closeModal, cores?.all]);
 
   /**
    * Launch the game to check the change worked.
@@ -593,6 +737,17 @@ export function GameEditorModal({ game, onSaved, closeModal, onLeave }: Props) {
     // one: the save above is what just made it the game's name.
     playGame(game.app_id, title.trim(), onLeave);
   }, [save, game.app_id, title, onLeave]);
+
+  // Counts an unsaved choice, so the row does not offer "choose" for a file it
+  // is already showing.
+  const patchHint = [
+    patches?.length
+      ? "Applied in this order as the game loads. Your ROM file is never changed."
+      : "None yet. Send a patch through the transfer page, then add it here. Your ROM file is never changed.",
+    patchWarning,
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   const coreChanged = coreId !== game.core_id;
   const busy = saving || refreshing;
@@ -617,6 +772,50 @@ export function GameEditorModal({ game, onSaved, closeModal, onLeave }: Props) {
             Change ROM file
           </DialogButton>
         </div>
+
+        {/* RetroArch only: a standalone emulator ignores a file beside a ROM,
+            so the row there would promise something that never happens. */}
+        {!isEmulator && (
+          <div style={FIELD}>
+            <Label hint={patchHint}>ROM hacks</Label>
+            {(patches ?? []).map((row) => (
+              <Focusable
+                key={row.file}
+                style={{ display: "flex", gap: "8px", alignItems: "center" }}
+              >
+                {/* The same shape as the emulator editor's fixes: a wide
+                    button that is the switch, and a small one beside it. */}
+                <DialogButton
+                  onClick={() => void togglePatch(row)}
+                  style={{ ...ICON_BUTTON_WIDE, flexGrow: 1 }}
+                  disabled={busy || patchBusy === row.file}
+                >
+                  {patchBusy === row.file
+                    ? "Working..."
+                    : `${row.name}: ${row.on ? "on" : "off"}`}
+                </DialogButton>
+                {/* `flexShrink` because the row is flex and the square would
+                    otherwise be squeezed to 44 by a long patch name. */}
+                <div className={DANGER_CLASS} style={{ flexShrink: 0 }}>
+                  <DialogButton
+                    onClick={() => confirmDelete(row)}
+                    style={ICON_BUTTON}
+                    disabled={busy || patchBusy === row.file}
+                  >
+                    <FaTrash />
+                  </DialogButton>
+                </div>
+              </Focusable>
+            ))}
+            <DialogButton
+              onClick={() => void pickPatch()}
+              style={BUTTON}
+              disabled={busy || Boolean(patchBusy)}
+            >
+              Add a patch
+            </DialogButton>
+          </div>
+        )}
 
         <div style={FIELD}>
           <Label

@@ -205,6 +205,8 @@ py_modules/                 Backend logic. Plain Python, stdlib only -- it runs
   cheevos.py                RetroAchievements login, and the per-launch config
   store.py                  settings / library / emulators / collections records
   romshelf.py               File a ROM under roms/<system>, and delete it again
+  rompatch.py               A game's ROM hacks: the list, our copies of them,
+                            and the files RetroArch reads beside the ROM
   discset.py                Recognise a multi-disc game from the discs beside it,
                             and write the .m3u that makes it one game
   savedata.py               Where each emulator keeps its saves, and gathering

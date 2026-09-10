@@ -38,6 +38,15 @@ import { HandoffCode } from "./HandoffCode";
  * and the file looks like a ROM the picker cannot read.
  */
 const DEFINITION_SUFFIX = ".deckyemu.json";
+
+/**
+ * A ROM hack, which belongs to a game rather than being one.
+ *
+ * By name here, unlike the editor, which reads the bytes. This only decides
+ * which sentence a row shows; getting it wrong costs a wrong hint, and the add
+ * that matters still checks the file itself.
+ */
+const PATCH_SUFFIXES = [".ips", ".bps", ".ups"];
 import { DANGER_CLASS, DANGER_CSS, DANGER_TEXT } from "./danger";
 import { COLUMN, MUTED } from "./dialogStyle";
 import { logError } from "./logError";
@@ -812,6 +821,14 @@ export function TransferModal({
                     >
                       Install
                     </DialogButton>
+                  ) : PATCH_SUFFIXES.some((one) =>
+                      file.name.toLowerCase().endsWith(one),
+                    ) ? (
+                    // Not "Add": a patch is not a game, and the add flow would
+                    // make a Steam entry out of one. It belongs to a game that
+                    // already exists, so this says where to go instead -- the
+                    // same answer the firmware and backup rows give.
+                    <div style={MUTED}>Add it from the game&rsquo;s editor</div>
                   ) : purpose === "firmware" ? (
                     // A firmware send with no requirement named -- nothing to
                     // install it into from here, so it says where it went

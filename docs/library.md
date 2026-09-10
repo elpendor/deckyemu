@@ -132,6 +132,8 @@ others.
 - **ROM file** — repoint an entry at a moved file, an SD card or a better dump.
   The launcher filename also embeds a hash of the ROM path, so this relocates the
   script too. A ROM the chosen core cannot read is refused.
+- **ROM hacks** — translations and hacks, as patch files. RetroArch games only,
+  and described below.
 - **Core or emulator** — changing it can change the system, so the platform label
   and the per-platform collection follow.
 - **System** — only for a core covering more than one, which is most of them.
@@ -154,6 +156,50 @@ others.
 - **Save and test launch** — starts the game through Steam, so gamescope, Steam
   Input and the overlay behave as they do in normal play. It saves first, since
   the launcher on disk is what Steam runs.
+
+### ROM hacks and translations
+
+A romhack is distributed as a *patch* — a small `.ips`, `.bps` or `.ups` file
+that describes the difference from the original ROM — and never as a ROM. Send
+the patch to the Deck the same way you send a game, through the transfer page,
+then open the game in the editor and press **Add a patch**. The file browser opens
+on that transfer folder, so a hack you just sent is one press away; adding it
+takes the file out of there, the same way adding a game moves its ROM out.
+
+**Your ROM file is never changed.** RetroArch applies patches as the game loads,
+from files sitting next to the ROM, so the original is untouched. The plugin
+keeps its own copy of each patch, which is what lets you switch one off without
+losing it.
+
+Each patch on the list has a switch and a bin. The switch decides whether it is
+applied; the bin removes it and deletes the copy. Both take effect immediately,
+without saving.
+
+**Several patches can be on at once**, and the order on the list is the order
+RetroArch applies them — which decides who wins where two hacks change the same
+bytes. A patch added later goes at the end.
+
+The file is checked before it is taken: anything that is not an IPS, BPS or UPS
+is refused, which catches the two ordinary mistakes — picking the ROM instead of
+the patch, and a browser that renamed the download on the way in.
+
+Two things it cannot do:
+
+- **Emulators other than RetroArch have no list.** This is RetroArch reading
+  files as it loads a game, and nothing else here works that way.
+- **Disc games may ignore patches.** RetroArch patches games it loads into
+  memory, and a disc image is usually read straight from the file instead. The
+  list says so before you add anything. It is a warning rather than a refusal,
+  because the answer depends on the core. Zipped ROMs are fine — they are
+  unpacked into memory and patch normally.
+
+A patch you placed beside a ROM yourself is taken onto the list the first time
+you open the editor, so the screen and the emulator agree about what is applied.
+
+ROMhacking.net, where most of these came from for twenty years, stopped
+accepting submissions in August 2024 and now serves its archive through the
+Internet Archive; hacks are found in a lot of places, and the plugin does not
+care which one a patch came from.
 
 ## Collections
 

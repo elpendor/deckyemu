@@ -612,6 +612,52 @@ export const updateGame = callable<
   ],
   UpdatedGame
 >("update_game");
+
+/** One ROM hack on a game's list. `file` is our copy of it, and its id. */
+export interface RomPatch {
+  file: string;
+  name: string;
+  /** "ips", "bps" or "ups". */
+  kind: string;
+  on: boolean;
+}
+export type RomPatches =
+  | { ok: false; error: string }
+  | {
+      ok: true;
+      patches: RomPatch[];
+      warning: string;
+      /** Where "Add a patch" opens: the transfer folder a patch arrives in. */
+      start_in: string;
+    };
+/**
+ * A game's hacks, in the order RetroArch applies them.
+ *
+ * `warning` is about the ROM rather than the patches, so the list can say
+ * RetroArch may not manage this one before anything is added.
+ */
+export const romPatches = callable<[appId: number], RomPatches>("rom_patches");
+
+/**
+ * Changing the list. Each writes the switched-on patches beside the ROM at
+ * once, so what is on screen and what RetroArch will read cannot drift.
+ */
+export type PatchResult =
+  | { ok: false; error: string; patches?: RomPatch[] }
+  | { ok: true; name: string; applied: number; patches: RomPatch[] };
+export const addRomPatch = callable<
+  [appId: number, patchPath: string], PatchResult
+>("add_rom_patch");
+export const removeRomPatch = callable<
+  [appId: number, stored: string], PatchResult
+>("remove_rom_patch");
+export const switchRomPatch = callable<
+  [appId: number, stored: string, on: boolean], PatchResult
+>("switch_rom_patch");
+/** After the ROM changes: the files are named after it. */
+export const syncRomPatches = callable<
+  [appId: number], PatchResult
+>("sync_rom_patches");
 /**
  * What a collection name made by this plugin looks like, for recognising the
  * ones it left behind empty. See `collection_shape` and `ownedCollectionMatcher`.
