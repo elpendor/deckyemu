@@ -365,7 +365,42 @@ _ART_SLOTS = (
     ("header", "grids", "?dimensions=460x215,920x430&types=static", ""),
     ("hero", "heroes", "?types=static", ""),
     ("logo", "logos", "?types=static", ""),
+    # Steam draws the icon from a file on disk rather than from the art it
+    # stores, so this one is fetched and written out rather than applied like
+    # the four above. PNG only *here* because this path carries images to the
+    # frontend as data URIs -- `icon_url` below, which writes a file, takes
+    # `.ico` as well.
+    ("icon", "icons", "?types=static&mimes=image/png", ""),
 )
+
+
+def icon_url(api_key, game_id):
+    """The best icon URL for one game, or "".
+
+    `art_urls` asks for all five slots at once, which is right when a game is
+    being added and wrong for a run over a whole library: that wants one image
+    per game and would otherwise make four requests per game it has no use for.
+
+    **PNG preferred, `.ico` accepted.** Plenty of games have only `.ico` --
+    Adventures of Lolo 2 has two of them and no PNG at all -- and Steam reads
+    one perfectly well, since that is the format a Windows shortcut icon has
+    always been. Asking for PNG only left those games on the plain tile with
+    nothing to say why.
+    """
+    if not api_key or not game_id:
+        return ""
+    found = net.get_json(
+        "%s/icons/game/%d?types=static" % (API_BASE, game_id), _headers(api_key))
+    rows = (found or {}).get("data") or []
+    if not isinstance(rows, list):
+        return ""
+    png = [row for row in rows
+           if isinstance(row, dict) and "png" in str(row.get("mime") or "").lower()]
+    for row in png + [row for row in rows if isinstance(row, dict)]:
+        url = str(row.get("url") or "").strip()
+        if url:
+            return url
+    return ""
 
 
 def art_urls(api_key, game_id):

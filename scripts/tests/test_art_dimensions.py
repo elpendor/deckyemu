@@ -67,7 +67,15 @@ for _name, _path, _query, _fallback in sgdb._ART_SLOTS:
     check("%s does not ask the same thing twice" % _name, _fallback == _query, False)
 
 check("every slot has somewhere to fetch from",
-      sorted({path for _n, path, _q, _f in sgdb._ART_SLOTS}), ["grids", "heroes", "logos"])
+      sorted({path for _n, path, _q, _f in sgdb._ART_SLOTS}),
+      ["grids", "heroes", "icons", "logos"])
+
+# The icon is the one slot Steam does not take as image data -- it reads a path
+# from `shortcuts.vdf` -- so it is written to a file, and the file's name has to
+# be honest about what is in it.
+_icon_query = next(query for name, _p, query, _f in sgdb._ART_SLOTS if name == "icon")
+check("and the icon asks for PNG only, because it is written out as one",
+      "mimes=image/png" in _icon_query, True)
 
 
 if __name__ == "__main__":

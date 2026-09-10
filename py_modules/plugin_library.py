@@ -30,6 +30,7 @@ import plugin_base
 import launchers
 import romshelf
 import emulators
+import gameicon
 import store
 
 
@@ -41,6 +42,10 @@ class Library(plugin_base.PluginContext):
         entry = await self._run(store.forget_game, app_id)
         if entry:
             await self._run(launchers.remove_launcher, entry.get("launcher_path", ""))
+        # The icon only exists for games whose artwork lookup found one, and it
+        # is named after the app id -- which Steam reuses, so a stale one would
+        # end up on whatever game is added next under that id.
+        await self._run(gameicon.forget, app_id)
         return entry
     async def games_needing_layout(self):
         """Games already added whose emulator depends on a Steam Input layout.

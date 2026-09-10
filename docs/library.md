@@ -24,6 +24,23 @@ When one does not, **Select + Start** opens the emulator's menu, where
 **Change Disc** lists them — see
 [multi-disc games](getting-started.md#multi-disc-games).
 
+### Its icon
+
+Every game added here gets an icon — the small picture beside its name in the
+library list and in the Non-Steam section. It comes from SteamGridDB when the
+artwork lookup found one, and otherwise it is a plain gamepad tile, which is
+still better than the blank square a shortcut has by default.
+
+Games added before this existed are given the plain tile the next time the
+plugin starts. Nothing that already has an icon is touched.
+
+To swap those plain tiles for real artwork, the **Library** tab has
+**Get real icons for these games**, which appears only while at least one game
+is still using the plain one. It looks each game up on SteamGridDB in turn,
+which takes a moment per game, and leaves anything it finds no icon for as it
+is. A single game can be done on its own from its editor, with **Choose the
+right game** or the look-up button beside it.
+
 ### Its page in your library
 
 ![A game added from a ROM, open on its own page in the Steam library, with hero
@@ -148,7 +165,10 @@ others.
   the cover, unless you have written a name of your own. Artwork lands
   immediately; a name change waits for Save, like every other edit here.
   **Look up name and artwork again** is worth running after a core or system
-  change, since the system decides which thumbnail directory is searched.
+  change, since the system decides which thumbnail directory is searched. It
+  also sets the game's **icon** — the small picture beside its name in lists —
+  from the artwork it finds, which is how a game added before icons existed
+  gets a real one.
 - **Launch options** — override the global fullscreen or notification setting for
   one game, and append extra arguments. They are appended rather than inserted,
   because several argument templates end in the ROM path. An override left on

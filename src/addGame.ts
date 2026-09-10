@@ -1,6 +1,11 @@
-import { registerGame, type ArtImage } from "./backend";
+import { gameIcon, registerGame, type ArtImage } from "./backend";
 import { createOrReuseShortcut } from "./reuseShortcut";
-import { addToCollection, applyArtwork, removeShortcut } from "./steam";
+import {
+  addToCollection,
+  applyArtwork,
+  removeShortcut,
+  setShortcutIcon,
+} from "./steam";
 
 /**
  * Putting a prepared game into Steam: the five steps, in the one order.
@@ -36,7 +41,7 @@ export interface AddGameArgs {
   coreId: string;
   /** The database resolveGame settled on; decides the collection for a multi-system core. */
   system?: string;
-  art?: Partial<Record<"capsule" | "header" | "hero" | "logo", ArtImage>>;
+  art?: Partial<Record<"capsule" | "header" | "hero" | "logo" | "icon", ArtImage>>;
   /** False for a game whose boot file is not named after it -- see registerGame. */
   rememberCore?: boolean;
 }
@@ -72,6 +77,26 @@ export async function addPreparedGame(args: AddGameArgs): Promise<AddGameResult>
 
   try {
     const artApplied = args.art ? await applyArtwork(appId, args.art) : 0;
+
+    // Only on a shortcut this call made. A reused one was here before, and its
+    // icon may be something the user chose.
+    //
+    // Separate from `applyArtwork` because Steam takes an icon as a path rather
+    // than as image data, so the backend writes it and answers with where. The
+    // artwork's own icon when the lookup found one, the shipped picture when it
+    // did not.
+    //
+    // Never fatal: a game with a blank square in the library is the state every
+    // game added here was in until this existed, and not worth unwinding a
+    // working add for.
+    if (!reused) {
+      try {
+        const { path } = await gameIcon(appId, args.art?.icon?.data ?? "");
+        setShortcutIcon(appId, path);
+      } catch (iconError) {
+        console.error("[deckyemu] could not set the game icon", iconError);
+      }
+    }
 
     /*
      * Recorded from the attempt, not assumed from the settings.

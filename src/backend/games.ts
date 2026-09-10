@@ -258,7 +258,12 @@ export interface ResolvedGame {
    * the same series.
    */
   title_source: "libretro" | "steamgriddb" | "filename";
-  art: Partial<Record<"capsule" | "header" | "hero" | "logo", ArtImage>>;
+  /**
+   * `icon` is not applied like the other four. Steam draws a shortcut's icon
+   * from a file path, so it is written to disk and handed over separately --
+   * see `gameIcon`.
+   */
+  art: Partial<Record<"capsule" | "header" | "hero" | "logo" | "icon", ArtImage>>;
   art_source: "libretro" | "steamgriddb" | "none";
   /** The SteamGridDB title the art came from, so a wrong match is spottable. */
   art_game_name: string;
@@ -565,6 +570,40 @@ export const prepareShortcut = callable<
  * the backend then records where the game *belongs*, which is a guess. Go
  * through `addPreparedGame` rather than calling this directly.
  */
+/**
+ * The icon to give a game, as a path on disk.
+ *
+ * Pass the `icon` slot's data URI to use the artwork found for this game; pass
+ * nothing for the generic one that ships with the plugin. Steam stores the
+ * path rather than the image, so whatever comes back has to stay where it is.
+ */
+/** A game still wearing the shipped icon, or none at all. */
+export interface GameWithoutIcon {
+  app_id: number;
+  title: string;
+}
+/**
+ * Which games have no icon of their own.
+ *
+ * Told apart by whether a file exists under the game's app id, so a game that
+ * fell back to the shipped picture counts as one without.
+ */
+export const gamesWithoutIcon = callable<[], GameWithoutIcon[]>("games_without_icon");
+/**
+ * Look one game up on SteamGridDB and give it the icon found there.
+ *
+ * `found: false` is an ordinary answer, not a failure: plenty of games have no
+ * icon published, and a run over a whole library would otherwise report those
+ * as errors.
+ */
+export const fetchGameIcon = callable<
+  [appId: number],
+  { ok: boolean; found?: boolean; path?: string; error?: string }
+>("fetch_game_icon");
+
+export const gameIcon = callable<
+  [appId: number, data: string], { path: string }
+>("game_icon");
 export const registerGame = callable<
   [
     appId: number,

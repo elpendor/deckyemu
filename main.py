@@ -14,6 +14,7 @@ import cheevos
 import emulator_catalog
 import emulators
 import fileserver
+import gameicon
 import installer
 import handoff
 import launchers
@@ -1702,6 +1703,89 @@ class Plugin(
             }
         )
         return entry
+
+    async def games_without_icon(self) -> list:
+        """Tracked games wearing the shipped icon, or none at all.
+
+        Told apart by the file rather than by asking Steam: a game whose lookup
+        found an icon has one written under its own app id, and a game that fell
+        back to the shipped picture has nothing there. So this is a directory
+        listing rather than a comparison of paths inside `shortcuts.vdf`.
+        """
+        library = await self._run(store.get_library)
+        rows = []
+        for entry in library.values():
+            app_id = entry.get("app_id")
+            if not app_id or await self._run(gameicon.has_own, app_id):
+                continue
+            rows.append({"app_id": app_id, "title": entry.get("title", "")})
+        return rows
+
+    async def fetch_game_icon(self, app_id: int) -> dict:
+        """Look one game up on SteamGridDB and give it the icon it finds.
+
+        Three requests: a search, the icon lookup and the download. `art_urls`
+        asks for five slots at once, which is right when a game is being added
+        and wasteful here -- this runs once per game in a library.
+
+        Answers `found: False` rather than an error when SteamGridDB simply has
+        no icon for the game. That is an ordinary outcome for anything obscure,
+        and a run over a whole library would otherwise report a fistful of
+        failures that are nothing of the kind.
+
+        **`path` is always something to use.** Not finding an icon falls back to
+        the shipped picture, exactly as adding a game does -- so a game that had
+        no icon at all comes out of this with the plain tile rather than staying
+        blank, and the two ways a game can get an icon end in the same place.
+        """
+        library = await self._run(store.get_library)
+        entry = library.get(str(app_id))
+        if not entry:
+            return {"ok": False, "error": "That game is no longer tracked."}
+
+        settings = await self._run(store.get_settings)
+        api_key = (settings.get("sgdb_api_key") or "").strip()
+        if not api_key:
+            return {"ok": False, "error": "No SteamGridDB API key is set."}
+
+        async def nothing_found():
+            return {"ok": True, "found": False,
+                    "path": await self._run(gameicon.for_game, app_id, "")}
+
+        system = (entry.get("system") or "").strip()
+        game_id = await self._run(
+            sgdb.search_game, api_key, entry.get("title", ""),
+            [system] if system else None, "")
+        if not game_id:
+            return await nothing_found()
+
+        url = await self._run(sgdb.icon_url, api_key, game_id)
+        if not url:
+            return await nothing_found()
+
+        # The bytes rather than a data URI: `get_data_uri` labels everything it
+        # does not recognise as PNG, and plenty of these are `.ico`. The file's
+        # name has to say what is in it, so `gameicon.save` decides from the
+        # bytes and this hands it those.
+        payload, _content_type = await self._run(net.get_bytes, url)
+        if not payload:
+            return await nothing_found()
+
+        path = await self._run(gameicon.save, app_id, payload) or             await self._run(gameicon.for_game, app_id, "")
+        found = await self._run(gameicon.has_own, app_id)
+        decky.logger.info("fetch_game_icon: app_id=%s found=%s", app_id, found)
+        return {"ok": True, "found": found, "path": path}
+
+    async def game_icon(self, app_id: int, data: str = "") -> dict:
+        """Where to point Steam for this game's icon.
+
+        `data` is the `icon` slot from the artwork lookup, as a data URI. With
+        one, it is written under the game's own app id; without, every game gets
+        the picture that ships with the plugin. Steam records the path and reads
+        it from there afterwards, so this always answers with a file that exists
+        or with nothing at all.
+        """
+        return {"path": await self._run(gameicon.for_game, app_id, data)}
 
     async def register_game(
         self,

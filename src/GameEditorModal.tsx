@@ -16,6 +16,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   listWorkarounds,
   probeRom,
+  gameIcon,
   resolveGame,
   addRomPatch,
   removeRomPatch,
@@ -32,6 +33,7 @@ import {
 import {
   addAppsToCollection,
   applyArtwork,
+  setShortcutIcon,
   renameShortcut,
   repointShortcut,
 } from "./steam";
@@ -502,6 +504,25 @@ export function GameEditorModal({ game, onSaved, closeModal, onLeave }: Props) {
     }
   }, [romPath, patchStart, game.app_id, afterPatchCall]);
 
+  /**
+   * Take the icon out of artwork that just arrived, if it brought one.
+   *
+   * **Only when there is one.** Asking for the icon with nothing to give would
+   * answer with the shipped picture, which would quietly replace real artwork
+   * on a game that already had it -- picking a libretro thumbnail fetches a
+   * capsule and nothing else, so that is not a rare case.
+   */
+  const applyIcon = useCallback(async (art?: { icon?: { data: string } }) => {
+    const data = art?.icon?.data;
+    if (!data) return;
+    try {
+      const found = await gameIcon(game.app_id, data);
+      if (found.path) setShortcutIcon(game.app_id, found.path);
+    } catch (iconError) {
+      logError("could not set the icon from the artwork", iconError);
+    }
+  }, [game.app_id]);
+
   const pickArtwork = useCallback(() => {
     openModal(
       <ArtPickerModal
@@ -513,6 +534,7 @@ export function GameEditorModal({ game, onSaved, closeModal, onLeave }: Props) {
           void (async () => {
             try {
               const applied = await applyArtwork(game.app_id, result.art);
+              await applyIcon(result.art);
               setArtApplied(applied);
 
               // And the name, by the same rule the add flow uses -- see
@@ -584,6 +606,9 @@ export function GameEditorModal({ game, onSaved, closeModal, onLeave }: Props) {
         system,
       );
       const applied = await applyArtwork(game.app_id, resolved.art);
+      // Where an old game gets a real icon: the lookup already fetched one if
+      // SteamGridDB had it, so this costs nothing more.
+      await applyIcon(resolved.art);
       setArtApplied(applied);
       if (resolved.title) setTitle(resolved.title);
       toaster.toast({
@@ -607,7 +632,8 @@ export function GameEditorModal({ game, onSaved, closeModal, onLeave }: Props) {
     // game up under the old name after somebody typed a new one -- the same
     // fault `pickRom` was fixed for, in the callback beside it, left behind
     // because the fix was made by hand and this array was not read again.
-  }, [romPath, coreId, system, game.app_id, game.title, title, byFilename]);
+  }, [romPath, coreId, system, game.app_id, game.title, title, byFilename,
+      applyIcon]);
 
   const currentOptions = useCallback((): GameOptions => {
     const options: GameOptions = {};

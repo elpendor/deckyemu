@@ -315,13 +315,17 @@ jobs:
       - name: Assemble the plugin
         run: |
           mkdir -p artifact/deckyemu
-          cp -r main.py plugin.json package.json py_modules dist bin artifact/deckyemu/
+          cp -r main.py plugin.json package.json py_modules dist bin assets artifact/deckyemu/
           # The compile is asserted above; this asserts it was *packaged*. A
           # shim that does not ship is not a failure anybody sees: `resolved_env`
           # drops an LD_PRELOAD whose file is missing, so shadPS4 starts with
           # motion switched on and its axes unrotated -- tilting works, turning
           # does nothing, and nothing anywhere says why.
           test -s artifact/deckyemu/bin/gyroshim.so
+          # And the icon, for the same reason: Steam stores the *path* to a
+          # shortcut's icon, so one that did not ship leaves every game added
+          # by a released build pointing at a file that is not there.
+          test -s artifact/deckyemu/assets/game-icon.png
           find artifact -name '__pycache__' -type d -prune -exec rm -rf {} +
           find artifact -name '*.pyc' -delete
           # The backend half of the stamp. It must agree with what was compiled

@@ -204,6 +204,8 @@ py_modules/                 Backend logic. Plain Python, stdlib only -- it runs
   launchers.py              One .sh per game; the RetroArch override files
   cheevos.py                RetroAchievements login, and the per-launch config
   store.py                  settings / library / emulators / collections records
+  gameicon.py               A game's icon on disk: the one SteamGridDB had, or
+                            the one that ships
   romshelf.py               File a ROM under roms/<system>, and delete it again
   rompatch.py               A game's ROM hacks: the list, our copies of them,
                             and the files RetroArch reads beside the ROM
@@ -327,6 +329,10 @@ src/                        Frontend (React + TypeScript, bundled by rollup).
                             plugin reloads mid-flight
   version.ts                Build stamps compiled in by rollup; isStale()
   updater.ts                Hand an update to decky's own installer
+
+assets/                     Files that ship with the plugin as they are. Only
+                            the game icon so far -- Steam records the path to a
+                            shortcut's icon, so it has to be a real file.
 
 scripts/
   harness.py                The stub decky and the scratch dir. Import it before

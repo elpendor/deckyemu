@@ -34,6 +34,7 @@ import { UpdateDot } from "./UpdateDot";
 import { AddGamePanel } from "./AddGamePanel";
 import { editGameMenuItem } from "./EditGameMenuItem";
 import { refreshAddedGames, rememberAddedGames } from "./addedGames";
+import { repairGameIcons } from "./repairIcons";
 import { repairGameLayouts } from "./repairLayouts";
 import { AddedGamesPanel } from "./AddedGamesPanel";
 import { ErrorBoundary } from "./ErrorBoundary";
@@ -523,6 +524,16 @@ export default definePlugin(() => {
    */
   void repairGameLayouts().catch((error: unknown) =>
     console.error("[deckyemu] could not repair game layouts", error),
+  );
+
+  /*
+   * And the same for icons: a game added before the plugin set one is a blank
+   * square in the library list. Only the shipped picture, and only where there
+   * is no icon at all -- see repairIcons.ts for why it does not look anything
+   * up while it is at it.
+   */
+  void repairGameIcons().catch((error: unknown) =>
+    console.error("[deckyemu] could not repair game icons", error),
   );
 
   /*

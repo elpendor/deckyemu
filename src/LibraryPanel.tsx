@@ -13,12 +13,15 @@ import {
   cloudBackupNow,
   cloudStatus,
   cloudWaiting,
+  fetchGameIcon,
+  gamesWithoutIcon,
   getSettings,
   listAdded,
   setSettings,
   type AddedGame,
+  type GameWithoutIcon,
 } from "./backend";
-import { removeShortcut } from "./steam";
+import { removeShortcut, setShortcutIcon } from "./steam";
 import { ProgressBar } from "./TransferModal";
 import { useCopyPercent } from "./useCopyPercent";
 import { namesOf } from "./waitingNames";
@@ -95,6 +98,15 @@ export function LibraryPanel({ onRefresh }: Props) {
   // the tab has drawn: answering walks every save directory on the Deck.
   const [waiting, setWaiting] = useState<{ id: string; name: string }[]>([]);
   const percent = useCopyPercent(copying);
+  /*
+   * Games still wearing the shipped icon, and how far through fetching real
+   * ones we are.
+   *
+   * Null while unread, so the button does not flash into view and reflow the
+   * rows under it before we know whether there is anything to do.
+   */
+  const [plain, setPlain] = useState<GameWithoutIcon[] | null>(null);
+  const [icons, setIcons] = useState({ running: false, done: 0, found: 0 });
 
   // Bound to the component rather than started with the clear: the backend
   // emits from the moment the call lands, and a listener attached inside the
@@ -173,6 +185,63 @@ export function LibraryPanel({ onRefresh }: Props) {
       )
       .catch((error) => logError("could not read the cloud destination", error));
   }, []);
+
+  const loadPlainIcons = useCallback(() => {
+    gamesWithoutIcon()
+      .then(setPlain)
+      .catch((error: unknown) => {
+        // The button simply does not appear. Nothing else on this tab depends
+        // on the answer.
+        logError("could not check which games have no icon", error);
+        setPlain([]);
+      });
+  }, []);
+
+  useEffect(() => loadPlainIcons(), [loadPlainIcons]);
+
+  /**
+   * Fetch a real icon for every game that has only the shipped one.
+   *
+   * One game at a time on purpose. Each is a SteamGridDB search, an icon
+   * lookup and a download, and firing a library's worth of those at once is
+   * how a key gets rate-limited -- so this is a slow, visible, one-off action
+   * rather than anything automatic.
+   *
+   * A game SteamGridDB has no icon for is not a failure and does not stop the
+   * run; it keeps the picture it has.
+   */
+  const fetchIcons = useCallback(async () => {
+    const waiting = plain ?? [];
+    if (waiting.length === 0) return;
+
+    setIcons({ running: true, done: 0, found: 0 });
+    let found = 0;
+    for (const [index, game] of waiting.entries()) {
+      try {
+        const result = await fetchGameIcon(game.app_id);
+        // The path is set either way. Not finding an icon answers with the
+        // shipped picture, so a game that had none at all leaves this with the
+        // plain tile rather than staying blank -- `found` is only the tally.
+        if (result.ok && result.path) {
+          setShortcutIcon(game.app_id, result.path);
+          if (result.found) found += 1;
+        }
+      } catch (error) {
+        logError(`could not fetch an icon for ${game.app_id}`, error);
+      }
+      setIcons({ running: true, done: index + 1, found });
+    }
+
+    setIcons({ running: false, done: waiting.length, found });
+    toaster.toast({
+      title: "Icons",
+      body:
+        found === 0
+          ? "No icons found for these games."
+          : `${found} of ${waiting.length} game(s) got their own icon.`,
+    });
+    loadPlainIcons();
+  }, [plain, loadPlainIcons]);
 
   const loadGames = useCallback(async () => {
     try {
@@ -342,6 +411,30 @@ export function LibraryPanel({ onRefresh }: Props) {
                 : `Added games (${games.length})`}
           </ButtonItem>
         </PanelSectionRow>
+
+        {/* Only when there is something to fix, because that is the whole of
+            what it offers. Every game gets an icon when it is added -- the one
+            SteamGridDB had, or a plain gamepad tile -- so this is for the games
+            that ended up on the tile, which is all of them for a library added
+            before icons existed. */}
+        {plain !== null && plain.length > 0 && (
+          <PanelSectionRow>
+            <ButtonItem
+              layout="below"
+              disabled={icons.running}
+              onClick={() => void fetchIcons()}
+              description={
+                icons.running
+                  ? `Looking each one up on SteamGridDB. ${icons.found} found so far.`
+                  : `${plain.length} game(s) are using the plain icon. This looks each one up on SteamGridDB, which takes a moment per game.`
+              }
+            >
+              {icons.running
+                ? `Fetching icons... (${icons.done} of ${plain.length})`
+                : "Get real icons for these games"}
+            </ButtonItem>
+          </PanelSectionRow>
+        )}
 
         {/* Directly under the button it governs, rather than in a settings
             group of its own: it changes what opening that list looks like, and

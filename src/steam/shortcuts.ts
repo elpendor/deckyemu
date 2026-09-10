@@ -115,6 +115,40 @@ export function renameShortcut(appId: number, name: string): boolean {
 }
 
 /**
+ * Whether a shortcut already has an icon, or `undefined` when Steam has not
+ * said yet.
+ *
+ * Three answers rather than two on purpose. Steam materialises app overviews as
+ * it loads, and reading an absent one as "no icon" would have the startup
+ * repair set icons on shortcuts whose own is simply not visible yet.
+ */
+export function hasShortcutIcon(appId: number): boolean | undefined {
+  const overview = appStore()?.GetAppOverviewByAppID?.(appId);
+  if (!overview) return undefined;
+  return Boolean(overview.icon_data || overview.icon_hash);
+}
+
+/**
+ * Give a shortcut its icon.
+ *
+ * Steam takes a *path*, not image data, and copies nothing -- the path goes
+ * into `shortcuts.vdf` and is read from there afterwards, so the file has to
+ * keep existing. Measured on the device: `appStore` picks the icon up within a
+ * second and the library draws it without a restart.
+ */
+export function setShortcutIcon(appId: number, path: string): boolean {
+  const apps = steamClient()?.Apps;
+  if (!apps?.SetShortcutIcon || !path) return false;
+  try {
+    apps.SetShortcutIcon(appId, path);
+    return true;
+  } catch (error) {
+    console.error("[deckyemu] could not set shortcut icon", appId, error);
+    return false;
+  }
+}
+
+/**
  * Steam's GameID for a shortcut.
  *
  * Read from the app overview when possible, since that is what Steam itself

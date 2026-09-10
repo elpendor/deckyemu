@@ -68,7 +68,7 @@ build_shim() {
 }
 
 # Only what the plugin needs at runtime: no src/, no node_modules/, no .git.
-PAYLOAD=(main.py plugin.json package.json py_modules dist)
+PAYLOAD=(main.py plugin.json package.json py_modules dist assets)
 for item in "${PAYLOAD[@]}"; do
   if [[ ! -e "$item" ]]; then
     echo "error: expected '$item' in $REPO_ROOT" >&2
