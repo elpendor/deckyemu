@@ -33,6 +33,7 @@ import { deviceGate } from "./deviceGate";
 import { updateBadge } from "./updateBadge";
 import { noteCheck, noteUpdate, setUpdateDotEnabled } from "./updateSignal";
 import { UpdateDot } from "./UpdateDot";
+import { UpdateModal } from "./UpdateModal";
 import { AddGamePanel } from "./AddGamePanel";
 import { editGameMenuItem } from "./EditGameMenuItem";
 import { refreshAddedGames, rememberAddedGames } from "./addedGames";
@@ -233,7 +234,7 @@ function Content() {
         layout="below"
         label={badge.label}
         description={badge.description}
-        onClick={() => openManagePage("updates")}
+        onClick={() => openModal(<UpdateModal />)}
       >
         See what's new
       </ButtonItem>

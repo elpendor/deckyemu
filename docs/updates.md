@@ -26,6 +26,11 @@ does not. The download is checked against the digest published with the release.
 A dot appears on the plugin's Quick Access icon when a newer release exists.
 This plugin is not in decky's store, so nothing else will ever tell you.
 
+The panel then shows the new version at the top, and **See what's new** opens
+its notes and the **Update** button in a dialog over the panel, so you can
+install it without going to the settings page. That also works when a Steam
+update has left decky unable to open plugin pages.
+
 **Opening the Quick Access panel checks**, and that is the one that decides what
 you see. The answer is cached for an hour, so opening the panel twenty times in
 an evening asks GitHub once — and the cache survives a plugin reload, so it does

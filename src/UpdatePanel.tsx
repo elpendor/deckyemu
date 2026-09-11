@@ -123,7 +123,16 @@ const NOTES_PREVIEW = 5;
  * Its own tab rather than a corner of Settings: none of it is a setting.
  */
 
-export function UpdatePanel() {
+/**
+ * `releaseOnly` is the update dialog: the release on offer and nothing else.
+ * Checking and the icon switch are the tab's -- somebody who arrived from the
+ * panel's update row came for the release, and a check button above it answers
+ * a question they did not ask.
+ */
+export function UpdatePanel({
+  onHandedOff,
+  releaseOnly = false,
+}: { onHandedOff?: () => void; releaseOnly?: boolean } = {}) {
   const backend = useBackendVersion();
   const [update, setUpdate] = useState<UpdateCheck | null>(null);
   const [checking, setChecking] = useState(false);
@@ -222,7 +231,7 @@ export function UpdatePanel() {
   /*
    * Both on mount, and the check unforced.
    *
-   * This tab is where the panel's update row sends you, and it used to greet
+   * This is what the panel's update row opens, and it used to greet
    * whoever arrived with "Not checked yet." -- making somebody press a button to
    * be told the thing that sent them here. Unforced because that row came from
    * the same cached answer the backend has been holding for the last hour, so
@@ -276,6 +285,10 @@ export function UpdatePanel() {
         title: `Installing ${release.version}`,
         body: "Decky will confirm and show progress.",
       });
+      // Shown in a dialog, this closes it: decky's confirmation opens on top, and
+      // ours left underneath would come back over the screen afterwards, running
+      // the build the install is about to replace.
+      onHandedOff?.();
 
     } catch (error) {
       logError("could not start the update", error);
@@ -286,7 +299,7 @@ export function UpdatePanel() {
     } finally {
       if (live.current) setInstalling(false);
     }
-  }, [update?.latest]);
+  }, [update?.latest, onHandedOff]);
 
 
   /** What the last check actually found, in one line. */
@@ -348,23 +361,34 @@ export function UpdatePanel() {
           no stamp to read. */}
       {backend?.notes && changelog("installed", `What's new in ${backend.version}`, backend.notes)}
 
-      <PanelSectionRow>
-        <ButtonItem
-          layout="below"
-          onClick={() => void check(true)}
-          disabled={checking || installing}
-          description={status()}
-        >
-          {checking ? "Checking..." : "Check for updates"}
-        </ButtonItem>
-      </PanelSectionRow>
+      {!releaseOnly && (
+        <PanelSectionRow>
+          <ButtonItem
+            layout="below"
+            onClick={() => void check(true)}
+            disabled={checking || installing}
+            description={status()}
+          >
+            {checking ? "Checking..." : "Check for updates"}
+          </ButtonItem>
+        </PanelSectionRow>
+      )}
+
+      {/* Without the check button there is nowhere else to say what the check
+          found, and the dialog would open empty while it runs -- or for good,
+          if the update was installed since the row was drawn. */}
+      {releaseOnly && !update?.available && (
+        <PanelSectionRow>
+          <Field description={checking || !update ? "Checking..." : status()} />
+        </PanelSectionRow>
+      )}
 
       {/* Only the dot has a switch, and only because it is the only part of
           this that arrives without being asked for. decky has a setting of its
           own for exactly this and honours it for the plugins in its store; a
           plugin cannot read that setting, so somebody who has already said they
           do not want to hear about plugin updates can only be answered here. */}
-      {dot !== undefined && (
+      {!releaseOnly && dot !== undefined && (
         <PanelSectionRow>
           <ToggleField
             label="Mark the icon when an update is out"
@@ -383,9 +407,11 @@ export function UpdatePanel() {
               onClick={() => void install()}
               disabled={installing || !canInstallUpdates()}
               description={
-                canInstallUpdates()
-                  ? "Decky downloads and installs it, then reloads the plugin."
-                  : "Decky's installer is not reachable from this window."
+                !canInstallUpdates()
+                  ? "Decky's installer is not reachable from this window."
+                  : releaseOnly && update.current
+                    ? `You are running ${update.current}. Decky downloads and installs it, then reloads the plugin.`
+                    : "Decky downloads and installs it, then reloads the plugin."
               }
             >
               {installing ? "Preparing..." : `Update to ${update.latest.version}`}
