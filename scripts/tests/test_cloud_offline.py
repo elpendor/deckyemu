@@ -209,5 +209,81 @@ check("and stamps when the storage was last written to, and with what",
       [["cloud_last_ids", "cloud_last_remote", "cloud_last_sync"]])
 
 
+section("an emulator's settings are re-applied once its saves come down")
+
+import emu_config  # noqa: E402
+
+# Xenia's signed-in profile lives in its saves folder, and the sweep that names
+# it in the config runs before the pull. A Deck restoring its profile from the
+# storage booted with nobody signed in until this.
+_configured = []
+
+
+def _found(missing):
+    return {"missing": missing, "differing": [], "roots": ["content"],
+            "here": 0, "there": 0, "error": ""}
+
+
+def _before_play(app_id, missing, stream, written=()):
+    with Swap((store, "get_settings", lambda: dict(SETTINGS)),
+              (cloudsave, "binary", lambda: "/tools/rclone"),
+              (cloudsync, "learn_compare", lambda remote: []),
+              (cloudsync, "compare", lambda remote, source: _found(missing)),
+              (cloudsync, "pull_steps",
+               lambda remote, ids, overwrite, only, known: ([{"name": "content", "argv": []}], "")),
+              (emu_config, "missing_files", lambda setup: list(written)),
+              (emu_config, "apply_setup",
+               lambda entry: _configured.append(entry["id"]) or {"ok": True}),
+              (launchers, "wake_launch", _wake)):
+        plugin._stream_cloud = stream
+        return run(plugin.cloud_before_play(app_id, "emu:xenia"))
+
+
+del _woken[:]
+_pulled = _before_play(4713, 7, _worked_stream)
+check("saves that came down re-apply that emulator's settings",
+      (_pulled["restored"], _configured), (7, ["xenia"]))
+check("before the launch is released", _woken, [4713])
+
+del _configured[:]
+_before_play(4714, 0, _worked_stream)
+check("nothing to bring down, nothing re-applied", _configured, [])
+
+_before_play(4715, 7, _failed_stream)
+check("nor after a pull that failed", _configured, [])
+
+# A config the emulator has not written yet is one its first run replaces, which
+# is `_prime_emulator_config`'s problem and not one to start here.
+_before_play(4716, 7, _worked_stream, written=[".local/share/Xenia/xenia-canary.config.toml"])
+check("nor into a config the emulator has not written yet", _configured, [])
+
+
+section("an emulator's settings are re-applied once a game using it closes")
+
+# Cloud saves or not: the emulator has just run and may have made what a setting
+# names. Xenia creating its first profile is the measured case -- the next launch
+# booted with nobody signed in, because nothing looked in between.
+_off = dict(SETTINGS, cloud_saves=False)
+
+
+def _after_play(app_id, took_off):
+    with Swap((store, "get_settings", lambda: dict(_off)),
+              (launchers, "took_off", lambda app_id: took_off),
+              (emu_config, "missing_files", lambda setup: []),
+              (emu_config, "apply_setup",
+               lambda entry: _configured.append(entry["id"]) or {"ok": True})):
+        return run(plugin.cloud_backup_after_play("emu:xenia", app_id))
+
+
+del _configured[:]
+_closed = _after_play(4717, True)
+check("a game closing re-applies its emulator's settings, with cloud saves off",
+      (_closed.get("skipped"), _configured), ("off", ["xenia"]))
+
+del _configured[:]
+_after_play(4718, False)
+check("but not after a launch that never started", _configured, [])
+
+
 if __name__ == "__main__":
     summary()

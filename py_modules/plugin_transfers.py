@@ -40,6 +40,7 @@ import audit
 import cloudsave
 import cloudsync
 import diagnostics
+import emu_config
 import emu_install
 import emulator_catalog
 import emulators
@@ -715,6 +716,11 @@ class Transfers(plugin_base.PluginContext):
             decky.logger.info("Launch %s never started; nothing copied up", app_id)
             return {"ok": True, "skipped": "never started"}
 
+        # Before the switch below, because this is not about cloud saves: it is
+        # the one call the panel makes when any game of ours closes, and the
+        # emulator that just ran may have made what one of its settings names.
+        await self._reapply_setup(self._source_of(core_id))
+
         settings = await self._run(store.get_settings)
         if not settings.get("cloud_saves") or not settings.get("cloud_after_play"):
             return {"ok": True, "skipped": "off"}
@@ -837,7 +843,9 @@ class Transfers(plugin_base.PluginContext):
             steps, plan_error = await self._run(
                 cloudsync.pull_steps, remote, [source], True, "", known)
             if not plan_error:
-                await self._stream_cloud(steps, "launch")
+                pulled, _reason = await self._stream_cloud(steps, "launch")
+                if pulled:
+                    await self._reapply_setup(source)
             # This Deck now holds what the storage holds, so the record of "what
             # we last put there" is theirs. Without this the next launch would
             # ask the same question again.
@@ -850,6 +858,36 @@ class Transfers(plugin_base.PluginContext):
         # puts these saves in the storage, where what they replace is kept.
         await self._run(cloudsync.remember_answer, source, found["theirs"])
         return None
+
+    async def _reapply_setup(self, source):
+        """Re-apply an emulator's settings when what they name may have moved.
+
+        The sweep that keeps settings current runs at startup and when the panel
+        opens, and a setting can depend on files that change in between: Xenia's
+        `{xenia_profile}` names a profile that lives in its saves folder. Two
+        moments, both measured on a Deck:
+
+        * Saves came down before a launch. The sweep had run before the pull, so
+          a profile Dropbox brought back booted unnamed, and the game opened
+          Xenia's sign-in screen anyway.
+        * A game closed. The emulator has just run and may have made what a
+          setting names: a first profile, created in Xenia's own dialog, was not
+          signed in on the next launch, because a game started from the library
+          passes neither of the sweep's moments.
+
+        Only into configs the emulator has already written -- see
+        `emu_config.missing_files` -- and free when nothing moved: the writers
+        leave a file alone when none of its values would change.
+        """
+        entry = emulator_catalog.find(source)
+        if not entry or not entry.get("setup"):
+            return
+        if await self._run(emu_config.missing_files, entry["setup"]):
+            return
+        result = await self._run(emu_config.apply_setup, entry)
+        if not result.get("ok"):
+            decky.logger.warning("Could not re-apply %s settings after saves came down: %s",
+                                 source, result.get("error"))
 
     async def cloud_before_play(self, app_id: int, core_id: str):
         """Bring down what this Deck is missing before a game opens its saves.
@@ -922,6 +960,7 @@ class Transfers(plugin_base.PluginContext):
                         restored = missing
                         decky.logger.info(
                             "Brought %d file(s) down for %s before play", missing, source)
+                        await self._reapply_setup(source)
                     else:
                         decky.logger.warning(
                             "Could not bring %s down before play: %s", source, reason)
