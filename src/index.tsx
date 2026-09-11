@@ -4,6 +4,8 @@ import {
   Field,
   PanelSection,
   PanelSectionRow,
+  findModuleByExport,
+  getReactRoot,
   quickAccessMenuClasses,
 } from "@decky/ui";
 import {
@@ -36,6 +38,7 @@ import { editGameMenuItem } from "./EditGameMenuItem";
 import { refreshAddedGames, rememberAddedGames } from "./addedGames";
 import { repairGameIcons } from "./repairIcons";
 import { repairGameLayouts } from "./repairLayouts";
+import { keepDeckyRoutesWorking, type DeckyRouterHook } from "./repairRoutes";
 import { AddedGamesPanel } from "./AddedGamesPanel";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { closeModalsOnPanelOpen } from "./modalStack";
@@ -490,6 +493,19 @@ export default definePlugin(() => {
   // Not exact: each tab has its own URL under this one (see `tabRoute`), and an
   // exact route leaves those unresolved, so tapping a tab navigates to nothing.
   routerHook.addRoute(MANAGE_ROUTE, GuardedManagePage);
+
+  // After the route is added, so the router it remounts lists it. A no-op on
+  // any Steam client decky hooks by itself -- see repairRoutes.ts.
+  void keepDeckyRoutesWorking({
+    routerHook: () =>
+      (window as unknown as { DeckyPluginLoader?: { routerHook?: DeckyRouterHook } })
+        .DeckyPluginLoader?.routerHook,
+    findModuleByExport,
+    reactRoot: () => {
+      const element = document.getElementById("root");
+      return element ? getReactRoot(element) : null;
+    },
+  });
 
   // The "DeckyEmu" submenu behind the cog on a game's page -- Edit and Remove.
   // The cache is filled first because the item decides whether to appear by
