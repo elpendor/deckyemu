@@ -344,62 +344,17 @@ export function UpdatePanel({
     );
   };
 
+  const running = update?.current || backend?.version;
+
   return (
     <>
-    {/* No title: the sidebar already labels this page "Updates", and a section
-        of the same name under it reads as the heading having been printed
-        twice. Any further group gets a real one -- see below. */}
+    {/* The release, and nothing else: what is on offer, or else what is
+        running. No title -- the sidebar already labels this page "Updates".
+        This group alone is the update dialog; checking and the icon switch are
+        a group of their own below, because mixed in with the release they read
+        as steps of installing it. */}
     <PanelSection>
-      {/* What the build you are running actually changed.
-
-          Above the update check on purpose: it answers "what did I just get?",
-          which is the question you have immediately after updating and the one
-          nothing could answer before -- notes only ever appeared for a release
-          you had *not* installed yet, so they vanished at the moment they became
-          true of you. Read from the build stamp, so it needs no network and, while
-          the repository is private, no token. Absent on a local build, which has
-          no stamp to read. */}
-      {backend?.notes && changelog("installed", `What's new in ${backend.version}`, backend.notes)}
-
-      {!releaseOnly && (
-        <PanelSectionRow>
-          <ButtonItem
-            layout="below"
-            onClick={() => void check(true)}
-            disabled={checking || installing}
-            description={status()}
-          >
-            {checking ? "Checking..." : "Check for updates"}
-          </ButtonItem>
-        </PanelSectionRow>
-      )}
-
-      {/* Without the check button there is nowhere else to say what the check
-          found, and the dialog would open empty while it runs -- or for good,
-          if the update was installed since the row was drawn. */}
-      {releaseOnly && !update?.available && (
-        <PanelSectionRow>
-          <Field description={checking || !update ? "Checking..." : status()} />
-        </PanelSectionRow>
-      )}
-
-      {/* Only the dot has a switch, and only because it is the only part of
-          this that arrives without being asked for. decky has a setting of its
-          own for exactly this and honours it for the plugins in its store; a
-          plugin cannot read that setting, so somebody who has already said they
-          do not want to hear about plugin updates can only be answered here. */}
-      {!releaseOnly && dot !== undefined && (
-        <PanelSectionRow>
-          <ToggleField
-            label="Mark the icon when an update is out"
-            description="Puts a dot on the DeckyEmu icon in the Quick Access bar. Turning it off changes nothing on this tab — checks keep running and this page keeps answering."
-            checked={dot}
-            onChange={(value) => void setDotSetting(value)}
-          />
-        </PanelSectionRow>
-      )}
-
-      {update?.available && update.latest && (
+      {update?.available && update.latest ? (
         <>
           <PanelSectionRow>
             <ButtonItem
@@ -409,9 +364,7 @@ export function UpdatePanel({
               description={
                 !canInstallUpdates()
                   ? "Decky's installer is not reachable from this window."
-                  : releaseOnly && update.current
-                    ? `You are running ${update.current}. Decky downloads and installs it, then reloads the plugin.`
-                    : "Decky downloads and installs it, then reloads the plugin."
+                  : `${running ? `You are running ${running}. ` : ""}Decky downloads and installs it, then reloads the plugin.`
               }
             >
               {installing ? "Preparing..." : `Update to ${update.latest.version}`}
@@ -421,28 +374,60 @@ export function UpdatePanel({
           {update.latest.notes &&
             changelog("offered", `What's new in ${update.latest.version}`, update.latest.notes)}
         </>
-      )}
+      ) : (
+        <>
+          {/* Also what stops the dialog opening empty while the check runs, or
+              for good if the update was installed since its row was drawn. */}
+          <PanelSectionRow>
+            <Field
+              label={checking || !update ? "Checking..." : status()}
+              description={running ? `You are running ${running}.` : undefined}
+            />
+          </PanelSectionRow>
 
-      {/* Nothing to configure. The check reads public releases and needs no
-          credentials; the token this page deliberately never offered to store
-          is gone from the plugin entirely. */}
+          {/* What the build you are running changed -- "what did I just get?",
+              the question you have straight after updating. Read from the build
+              stamp, so it needs no network; absent on a local build, which has
+              no stamp. Only once the check has answered, so it never shows for a
+              moment and then gives way to an update that turns out to be
+              waiting. */}
+          {backend?.notes && update &&
+            changelog("installed", `What's new in ${backend.version}`, backend.notes)}
+        </>
+      )}
     </PanelSection>
 
-    {/* Reporting a problem lives here rather than under Library, which is about
-        games added to Steam -- a bug is as likely to be in artwork, a transfer,
-        an emulator install or an update as in the library. This tab already
-        answers "which build am I running", which is the first question of any
-        bug report and the first section of the report itself.
+    {!releaseOnly && (
+      <PanelSection title="Update checks">
+        <PanelSectionRow>
+          <ButtonItem
+            layout="below"
+            onClick={() => void check(true)}
+            disabled={checking || installing}
+            description="Asks GitHub now, rather than waiting for the next check."
+          >
+            {checking ? "Checking..." : "Check for updates"}
+          </ButtonItem>
+        </PanelSectionRow>
 
-        After the update check on purpose: those are the two things you do when
-        something is wrong, and they are in the right order, because being a
-        version behind is one of the answers.
-
-        Titled for the thing rather than for the situation: "Something wrong" is
-        a sentence fragment where every other group on this page is a noun --
-        Launching, Naming, Install cores. "Reporting a problem" would fit that
-        and then say the button's own words back at it, and this is already what
-        the report calls itself on the page it is served on. */}
+        {/* Only the dot has a switch, and only because it is the only part of
+            this that arrives without being asked for. decky has a setting of its
+            own for exactly this and honours it for the plugins in its store; a
+            plugin cannot read that setting, so somebody who has already said
+            they do not want to hear about plugin updates can only be answered
+            here. */}
+        {dot !== undefined && (
+          <PanelSectionRow>
+            <ToggleField
+              label="Mark the icon when an update is out"
+              description="Puts a dot on the DeckyEmu icon in the Quick Access bar. Turning it off changes nothing on this tab — checks keep running and this page keeps answering."
+              checked={dot}
+              onChange={(value) => void setDotSetting(value)}
+            />
+          </PanelSectionRow>
+        )}
+      </PanelSection>
+    )}
     </>
   );
 }

@@ -11,8 +11,8 @@ Back to [the README](../README.md).
 ## Updates and what changed
 
 The **Updates** tab shows which build is running, checks GitHub for a newer one,
-and installs it. It also shows **what's new** for both the release being offered
-and the build already installed.
+and installs it. It also shows **what's new**: in the release being offered when
+there is one, and otherwise in the build you are running.
 
 The notes are generated from commit subjects, grouped under New, Fixed, Faster
 and Under the hood. They ship inside the build as well as on the release, so the
