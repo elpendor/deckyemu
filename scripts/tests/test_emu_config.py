@@ -863,6 +863,76 @@ finally:
     sysenv.user_home = _real_user_home
 
 
+section("the Xenia profile signed in at boot")
+
+# Xenia saves the profile it signed in only on a clean exit, and a game closed
+# from Steam is killed instead -- so the setup block names it, and the sign-in
+# screen stops coming up at every launch.
+_xhome = os.path.join(TMP, "xeniahome")
+_xcontent = os.path.join(_xhome, ".local", "share", "Xenia", "content")
+_xcfg = os.path.join(_xhome, ".local", "share", "Xenia", "xenia-canary.config.toml")
+_xenia = next(entry for entry in emu_catalog.CATALOG if entry["id"] == "xenia")
+
+
+def _xenia_account(xuid, written_ns):
+    package = os.path.join(_xcontent, xuid, "FFFE07D1", "00010000", xuid)
+    os.makedirs(package, exist_ok=True)
+    account = os.path.join(package, "Account")
+    open(account, "wb").close()
+    os.utime(account, ns=(written_ns, written_ns))
+
+
+def _xenia_config(slot):
+    with open(_xcfg, "w", encoding="utf-8") as handle:
+        handle.write(
+            "[Display]\n"
+            "fullscreen = false                                \t# Whether to launch the emulator in fullscreen.\n"
+            "\n"
+            "[Profiles]\n"
+            "logged_profile_slot_0_xuid = %s                   \t# XUID of the profile to load on boot in slot 0\n"
+            % slot
+        )
+
+
+check("the token looks where the Xenia entry keeps saves",
+      os.path.normpath(emu_config._XENIA_CONTENT), os.path.normpath(_xenia["saves"][0]))
+
+sysenv.user_home = lambda: _xhome
+try:
+    check("no content folder, no profile", emu_config._xenia_profile(), "")
+
+    # Saves made with nobody signed in, and a game's folder under an XUID-shaped
+    # name: neither holds a profile package, and Xenia skips both.
+    os.makedirs(os.path.join(_xcontent, "0" * 16, "4E4D07DC"), exist_ok=True)
+    os.makedirs(os.path.join(_xcontent, "E0300000AAAAAAAA", "4E4D07DC"), exist_ok=True)
+    check("a folder without a profile package is not a profile", emu_config._xenia_profile(), "")
+
+    _xenia_account("E0300000A17D7DFE", 1_000_000_000)
+    check("the one profile is the one signed in", emu_config._xenia_profile(), "E0300000A17D7DFE")
+
+    _xenia_account("E0300000B0000001", 2_000_000_000)
+    check("of two, the one written last", emu_config._xenia_profile(), "E0300000B0000001")
+
+    _xenia_config('""')
+    _result = emu_config.apply_setup(_xenia)
+    check("the setup applied", _result.get("ok"), True)
+    check("the empty slot now names the profile",
+          "logged_profile_slot_0_xuid = 'E0300000B0000001'" in open(_xcfg, encoding="utf-8").read(),
+          True)
+
+    # A profile somebody chose themselves, saved by a clean exit from Xenia's own
+    # menu, is theirs and stays.
+    _xenia_config('"E0300000C0000002"')
+    _result = emu_config.apply_setup(_xenia)
+    check("a slot naming another profile is left alone",
+          "Profiles/logged_profile_slot_0_xuid" in _result.get("skipped", []), True)
+    check("and still names it",
+          'logged_profile_slot_0_xuid = "E0300000C0000002"' in open(_xcfg, encoding="utf-8").read(),
+          True)
+finally:
+    sysenv.user_home = _real_user_home
+
+
 if __name__ == "__main__":
     summary()
 

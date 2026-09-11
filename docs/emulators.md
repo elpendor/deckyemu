@@ -323,6 +323,14 @@ like `58410954/000D0000/` holding one long-named file, and that file — the gam
 comes out named after the zip, ready to add. See
 [Unpacking a zip](transfers.md#unpacking-a-zip).
 
+**A profile, once.** Games save to a profile, and the first time Xenia starts
+without one it says so and offers to create it: choose **Create Profile** with
+the controller, and type a gamertag with the on-screen keyboard (Steam + X).
+From then on the plugin signs that profile in whenever a game starts, so no
+game asks you to sign in. Xenia itself would not: it remembers who was signed
+in only when it is quit from its own menu, and a game closed from Steam never
+is.
+
 ## Arcade ROM sets
 
 Supermodel runs the Sega Model 3 board, and an arcade game for it is not one

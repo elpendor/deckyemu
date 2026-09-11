@@ -960,6 +960,53 @@ def _ps4_games_dir():
     return sysenv.user_dir("games", "ps4")
 
 
+# The Xenia profile to sign in at boot. Not a folder, but the same problem as
+# one: the XUID is generated when the profile is created, on the Deck, long after
+# the catalog was evaluated.
+#
+# Xenia reads `[Profiles] logged_profile_slot_0_xuid` at boot and writes it only
+# in `OnDestroy`, which a game closed from Steam never reaches -- the process is
+# killed and the log ends mid-frame, with no "Cheap-skate exit!". So a Deck
+# holding exactly one profile booted every game with nobody signed in, and a
+# game that asks for a profile put Xenia's sign-in screen up at every launch.
+XENIA_PROFILE_TOKEN = "{xenia_profile}"
+
+# Kept in step with the Xenia entry's `saves` by a test, for the reason above.
+_XENIA_CONTENT = os.path.join(".local", "share", "Xenia", "content")
+_XUID_RE = re.compile(r"^[0-9A-F]{16}$")
+
+
+def _xenia_profile():
+    """The XUID of the Xenia profile used last, or "" when there is none.
+
+    A profile is what `ProfileManager::FindProfiles` counts as one: a folder
+    named by sixteen hex digits, not all of them zero, holding its own profile
+    package at `FFFE07D1/00010000/<xuid>`. The all-zero folder is where saves
+    made with nobody signed in go, and a game's folder has no package in it.
+
+    Of several, the one whose package was written last, which is the one Xenia
+    had signed in most recently.
+    """
+    content = os.path.join(sysenv.user_home(), _XENIA_CONTENT)
+    try:
+        names = sorted(os.listdir(content))
+    except OSError:
+        return ""
+    chosen, chosen_at = "", -1
+    for name in names:
+        if not _XUID_RE.match(name) or name == "0" * 16:
+            continue
+        package = os.path.join(content, name, "FFFE07D1", "00010000", name)
+        try:
+            with os.scandir(package) as entries:
+                written = max((entry.stat().st_mtime_ns for entry in entries), default=0)
+        except OSError:
+            continue
+        if written > chosen_at:
+            chosen, chosen_at = name, written
+    return chosen
+
+
 def _expand(value):
     """Resolve tokens in a setup's values, whatever shape the value is.
 
@@ -975,6 +1022,8 @@ def _expand(value):
             value = value.replace(PACKAGES_TOKEN, _packages_dir())
         if PS4_GAMES_TOKEN in value:
             value = value.replace(PS4_GAMES_TOKEN, _ps4_games_dir())
+        if XENIA_PROFILE_TOKEN in value:
+            value = value.replace(XENIA_PROFILE_TOKEN, _xenia_profile())
         return value
     if isinstance(value, dict):
         return {key: _expand(item) for key, item in value.items()}

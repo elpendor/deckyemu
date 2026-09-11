@@ -35,14 +35,31 @@ _XENIA_CONFIG = "%s/xenia-canary.config.toml" % _XENIA_STORAGE
 # is a no-op. That is the half that can be checked.
 _XENIA_SETUP = {
     "format": emu_config.TOML_KEYS,
-    "label": "fullscreen",
-    "version": 1,
+    "label": "fullscreen, profile sign-in",
+    # 2: the profile slot below.
+    "version": 2,
     "path": _XENIA_CONFIG,
     "sections": {
         "Display": {
             # `raw`, for the reason xemu's entry gives: quoted, this is the
             # string "false", which is true.
             "fullscreen": {"value": "true", "default": "false", "raw": True},
+        },
+        # Signs the Deck's profile in at boot. Xenia saves whoever was signed in
+        # only on a clean exit, and Steam closes a game by killing it, so the
+        # slot stayed empty and a game that wants a profile -- Beautiful
+        # Katamari imports `XamShowSigninUI` -- opened Xenia's sign-in screen at
+        # every launch. The token resolves to the profile Xenia already has, and
+        # to "" while there is none, which changes nothing.
+        #
+        # Named rather than created: Xenia encrypts a profile's Account file with
+        # a console key, which is not something this repository can carry. Xenia
+        # itself offers to create one on its first boot with none.
+        "Profiles": {
+            "logged_profile_slot_0_xuid": {
+                "value": emu_config.XENIA_PROFILE_TOKEN,
+                "default": "",
+            },
         },
     },
 }
