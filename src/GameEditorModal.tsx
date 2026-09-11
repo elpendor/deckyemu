@@ -582,7 +582,7 @@ export function GameEditorModal({ game, onSaved, closeModal, onLeave }: Props) {
     // callback keeps the name the field had when the editor opened, so typing
     // a name and *then* picking a game threw the typed name away -- the one
     // case the rule exists to protect.
-  }, [romPath, game.app_id, coreId, game.title, title, byFilename]);
+  }, [romPath, game.app_id, coreId, game.title, title, byFilename, applyIcon]);
 
   /**
    * Re-run the normal name and artwork lookup for the current core.
