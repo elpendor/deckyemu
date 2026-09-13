@@ -5,21 +5,11 @@ body:
   - type: markdown
     attributes:
       value: |
-        Two things worth knowing before you spend time on this, both of them
-        better said here than discovered from silence.
+        Two things worth knowing before you spend time on this, both of them better said here than discovered from silence.
 
-        **An emulator this plugin does not cover needs no code and no
-        permission.** A `.deckyemu.json` definition describes its system, file
-        extensions, launch arguments and firmware layout, and is imported from
-        the Quick Access panel — no Desktop Mode, nothing to type on the Deck.
-        See [docs/emulator-definitions.md](https://github.com/elpendor/deckyemu/blob/main/docs/emulator-definitions.md).
-        That is a thing you can finish this evening rather than wait for, so it
-        is worth reading before filing anything below.
+        **An emulator this plugin does not cover needs no code and no permission.** A `.deckyemu.json` definition describes its system, file extensions, launch arguments and firmware layout, and is imported from the Quick Access panel — no Desktop Mode, nothing to type on the Deck. See [docs/emulator-definitions.md](https://github.com/elpendor/deckyemu/blob/main/docs/emulator-definitions.md). That is a thing you can finish this evening rather than wait for, so it is worth reading before filing anything below.
 
-        **There is no promise that a request is acted on.** One maintainer, no
-        store listing, and nothing here is anybody's job. A request can be a
-        good idea and still be closed — usually against one of the two
-        constraints below, and the reason is always given.
+        **There is no promise that a request is acted on.** One maintainer, no store listing, and nothing here is anybody's job. A request can be a good idea and still be closed — usually against one of the two constraints below, and the reason is always given.
 
   - type: textarea
     id: what
@@ -29,9 +19,7 @@ body:
         What you are trying to get done, not the button you imagine doing it.
         The first is something to solve; the second is one answer to it, and
         often not the one that fits the rest of the panel.
-      placeholder: |
-        I keep several ROM hacks of the same game and cannot tell them apart in
-        Steam — they all take the name of the game they patch.
+      placeholder: I keep several ROM hacks of the same game and cannot tell them apart in Steam — they all take the name of the game they patch.
     validations:
       required: true
 
@@ -74,16 +62,11 @@ body:
       value: |
         ### The two constraints
 
-        These are not style preferences. They decide most of what is possible,
-        so a request that already answers them is a much shorter conversation.
+        These are not style preferences. They decide most of what is possible, so a request that already answers them is a much shorter conversation.
 
-        **Everything works in Game Mode.** No Desktop Mode, no keyboard, no
-        second device, no SSH — including the first install. It is why this
-        plugin exists next to tools that already do more. Anything that ends at
-        a shell command needs an in-panel alternative instead.
+        **Everything works in Game Mode.** No Desktop Mode, no keyboard, no second device, no SSH — including the first install. It is why this plugin exists next to tools that already do more. Anything that ends at a shell command needs an in-panel alternative instead.
 
-        **The backend is stdlib only.** It runs on decky's frozen Python, so
-        there is nothing to install and no dependency to add.
+        **The backend is stdlib only.** It runs on decky's frozen Python, so there is nothing to install and no dependency to add.
 
   - type: textarea
     id: gamemode
