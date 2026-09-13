@@ -156,8 +156,10 @@ a fix says what it fixes and what that costs, which is the whole basis for
 deciding. **The switch always works**, both ways, whatever else is going on.
 
 **Set per emulator, or per game.** The emulator's switch is the default for its
-games; edit any game and the same fixes appear there, set to *Follow the
-emulator* until you say otherwise.
+games; edit any game and the same fixes appear there. While the link beside a
+fix is joined, the game follows the emulator and the fix's switch is greyed out,
+showing the emulator's setting. Break the link and the switch can be set for
+that game alone; join it again to hand the fix back to the emulator.
 
 **A fix tells you when it is not doing its job**, and only then:
 

@@ -1,6 +1,7 @@
 import { DialogButton, ModalRoot } from "@decky/ui";
 import { FaQuestion } from "react-icons/fa";
 
+import { ICON_BUTTON } from "./iconButton";
 import { openModal } from "./modalStack";
 import type { Workaround } from "./backend";
 
@@ -87,20 +88,18 @@ export function WorkaroundModal({
   );
 }
 
-/** The small button beside a workaround row that opens the explanation. */
+/**
+ * The small button beside a workaround row that opens the explanation.
+ *
+ * The shared square, not a size of its own. It sits beside the link button in a
+ * game's fixes, which uses that square like the bin on a patch row does, and a
+ * 40px button of its own size next to it read as a different kind of button.
+ */
 export function WorkaroundInfo({ workaround }: { workaround: Workaround }) {
   return (
     <DialogButton
       onClick={() => openModal(<WorkaroundModal workaround={workaround} />)}
-      style={{
-        width: "40px",
-        minWidth: "40px",
-        height: "40px",
-        padding: "0",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-      }}
+      style={{ ...ICON_BUTTON, flexShrink: 0 }}
     >
       <FaQuestion />
     </DialogButton>

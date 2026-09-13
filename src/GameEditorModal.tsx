@@ -5,12 +5,13 @@ import {
   Focusable,
   ModalRoot,
   Spinner,
+  Tabs,
   TextField,
   type DropdownOption,
   type SingleDropdownOption,
 } from "@decky/ui";
 import { FileSelectionType, openFilePicker, toaster } from "@decky/api";
-import { FaTrash } from "react-icons/fa";
+import { FaLink, FaTrash, FaUnlink } from "react-icons/fa";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
@@ -85,13 +86,19 @@ interface Props {
 }
 
 const FIELD = { display: "flex", flexDirection: "column" as const, gap: "4px" };
-const ROW = { display: "flex", gap: "8px", flexWrap: "wrap" as const };
 /**
  * Field buttons span the modal, matching the text fields and dropdowns they sit
  * between. Sized to content they left a ragged right edge in a column of
  * full-width controls.
  */
 const BUTTON = { width: "100%" };
+
+/**
+ * How tall the tab box is. The added games list uses 62vh with nothing under
+ * its tabs; this editor has a footer of three buttons, so less. A starting
+ * point to check on the device, not a measured answer.
+ */
+const EDITOR_TABS_HEIGHT = "50vh";
 
 /** "" means follow the global setting rather than override it. */
 const OSD_OPTIONS: SingleDropdownOption[] = [
@@ -108,27 +115,25 @@ const FULLSCREEN_OPTIONS: SingleDropdownOption[] = [
 ];
 
 /**
- * Three states rather than a switch, matching the fullscreen control above.
+ * One workaround, as a choice this game makes, in one row: the fix's switch, a
+ * link toggle for following the emulator, and the explanation.
  *
- * "Follow" is the important one and the reason this is not a checkbox: a fix
- * costs something for every game its emulator runs, so a shortcut may differ
- * from the default -- but a game that quietly stopped tracking that default
- * would be found by nobody.
- */
-const WORKAROUND_OPTIONS: SingleDropdownOption[] = [
-  { data: "", label: "Follow the emulator" },
-  { data: "on", label: "On for this game" },
-  { data: "off", label: "Off for this game" },
-];
-
-/**
- * One workaround, as a choice this game makes.
+ * Three states -- follow the emulator, on, off -- from two controls that each
+ * have two. "Follow" is the important state: a fix costs something for every
+ * game its emulator runs, so a shortcut may differ from the default, but a game
+ * that quietly stopped tracking that default would be found by nobody.
  *
- * Its own component so `rgOptions` can be memoised. Every other Dropdown in
- * this modal is handed a module-level constant, and this was the only one
- * building its array inline -- so it got a new one on every render, including
- * the render caused by choosing from it. The Dropdown remounted underneath the
- * selection, and the focus that went with it took the modal down too.
+ * * **Linked:** the switch is greyed out and shows the emulator's answer. It
+ *   cannot be pressed, because there is nothing for this game to decide.
+ * * **Unlinked:** the switch wakes up where it was -- the emulator's answer --
+ *   and pressing it sets the fix for this game alone.
+ *
+ * The link's state is its shape, joined or broken, never its colour: a lit
+ * button and a focused one are both drawn light, and the first version could not
+ * be told apart from the cursor sitting on it.
+ *
+ * All three, always. Whether a fix is retired or cannot run changes what is said
+ * about it, never which choices exist.
  */
 function WorkaroundRow({
   fix,
@@ -139,36 +144,26 @@ function WorkaroundRow({
   choice: string;
   onChoose: (value: string) => void;
 }) {
-  const options = useMemo(
-    () =>
-      // All three, always. Whether a fix is retired or cannot run changes what
-      // is said about it, never which choices exist -- filtering one away made
-      // the same state offer different options depending on where the user
-      // happened to be standing when it changed.
-      WORKAROUND_OPTIONS.map((option) =>
-        option.data === ""
-          ? {
-              ...option,
-              // Which way "follow" currently goes, so the choice can be made
-              // without opening the emulator's page beside it.
-              label: `${fix.name}: follow the emulator (${
-                fix.enabled ? "on" : "off"
-              })`,
-            }
-          : { ...option, label: `${fix.name}: ${option.label}` },
-      ),
-    [fix.name, fix.enabled],
-  );
+  const following = choice === "";
+  const on = following ? fix.enabled : choice === "on";
 
   return (
     <Focusable style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-      <div style={{ flexGrow: 1 }}>
-        <Dropdown
-          rgOptions={options}
-          selectedOption={choice}
-          onChange={(option) => onChoose(String(option.data))}
-        />
-      </div>
+      <DialogButton
+        disabled={following}
+        onClick={() => onChoose(on ? "off" : "on")}
+        style={{ ...ICON_BUTTON_WIDE, flexGrow: 1 }}
+      >
+        <SwitchLabel name={fix.name} on={on} />
+      </DialogButton>
+      <DialogButton
+        // Unlinking keeps what was showing, so the switch wakes up exactly
+        // where it was and nothing changes until it is pressed.
+        onClick={() => onChoose(following ? (fix.enabled ? "on" : "off") : "")}
+        style={{ ...ICON_BUTTON, flexShrink: 0 }}
+      >
+        {following ? <FaLink /> : <FaUnlink />}
+      </DialogButton>
       <WorkaroundInfo workaround={fix} />
     </Focusable>
   );
@@ -261,6 +256,9 @@ export function GameEditorModal({ game, onSaved, closeModal, onLeave }: Props) {
   const [artApplied, setArtApplied] = useState(0);
   const [error, setError] = useState("");
   const [note, setNote] = useState("");
+  // Opens on Game every time: unlike the added games list there is no place in
+  // a browse worth coming back to.
+  const [tab, setTab] = useState("game");
 
   useEffect(() => {
     let current = true;
@@ -926,285 +924,170 @@ export function GameEditorModal({ game, onSaved, closeModal, onLeave }: Props) {
   const coreChanged = coreId !== game.core_id;
   const busy = saving || refreshing;
 
-  return (
-    <ModalRoot closeModal={closeModal} bAllowFullSize>
-      <div style={{ fontSize: "20px", fontWeight: 600, marginBottom: "12px" }}>
-        Edit {game.title}
+  // Each tab's content, scrolled the way the added games list scrolls: an inner
+  // Focusable filling the pane. Steam's own pane must stay still -- letting it
+  // do the scrolling turned the tab bar black as content moved under it. A
+  // Focusable, because a controller cannot enter a scroll region with nothing
+  // focusable in it.
+  const pane = (children: React.ReactNode) => (
+    <Focusable
+      style={{
+        ...FIELD,
+        gap: "14px",
+        height: "100%",
+        overflowY: "auto",
+        boxSizing: "border-box",
+        paddingTop: "8px",
+        paddingBottom: "8px",
+      }}
+    >
+      {children}
+    </Focusable>
+  );
+
+  const nameAndArtwork = (
+    <div style={FIELD}>
+      <Label
+        hint={
+          artApplied > 0
+            ? `${artApplied} image(s) applied. Artwork lands immediately; a name change waits for Save.`
+            : `Artwork lands immediately, a name change waits for Save. Looking up by ${
+                byFilename ? "filename" : "name"
+              } also uses the current core, which decides where boxart comes from.`
+        }
+      >
+        Name and artwork
+      </Label>
+      <div style={FIELD}>
+        <DialogButton onClick={pickArtwork} style={BUTTON} disabled={busy}>
+          Choose the right game
+        </DialogButton>
+        {/* Named after what it looks the game up *by*: one takes the game you
+            point at, the other takes the file's name and guesses, and only this
+            one replaces a name you typed. "by name" when the file has none of
+            its own -- a package boots eboot.bin, and "by filename" would be a
+            search for "Eboot". */}
+        <DialogButton onClick={() => void refetch()} style={BUTTON} disabled={busy}>
+          {refreshing
+            ? "Looking up..."
+            : byFilename
+              ? "Look up by filename"
+              : "Look up by name"}
+        </DialogButton>
+      </div>
+    </div>
+  );
+
+  const runningTab = pane(
+    <>
+      <div style={FIELD}>
+        <Label
+          hint={
+            coreChanged
+              ? "Changing this rewrites the launcher and may move the game to another collection."
+              : `Currently ${game.platform || game.system || "unknown system"}.`
+          }
+        >
+          Core or emulator
+        </Label>
+        {!cores ? (
+          <Spinner style={{ height: "20px" }} />
+        ) : (
+          <Dropdown
+            rgOptions={coreOptions}
+            selectedOption={coreId}
+            // Shown only when nothing is selected, which here means the core
+            // this game runs on is no longer installed. Without it the control
+            // is simply blank, which reads as the editor being broken.
+            strDefaultLabel={pinnedLabel(cores.all, coreId) || undefined}
+            onChange={(option) => setCoreId(String(option.data))}
+          />
+        )}
+        {cores && cores.matching.length > 0 && (
+          <DialogButton onClick={() => setShowAll((previous) => !previous)} style={BUTTON}>
+            {showAll ? "Show matching only" : "Show everything installed"}
+          </DialogButton>
+        )}
+
+        {/* The core this game runs on is gone. Sends the user to the tab that
+            installs one, with this core already chosen, rather than installing
+            it here: a second place that installs cores is duplication that has
+            drifted twice before. */}
+        {cores && missingCore && (
+          <DialogButton
+            style={BUTTON}
+            onClick={() => {
+              // Modals first, navigation last: `openManagePage` closes the Quick
+              // Access panel, and Steam re-reveals it as each modal above it
+              // dismisses.
+              closeModal?.();
+              onLeave?.();
+              if (isEmulator) {
+                openManagePage("emulators");
+              } else {
+                preselectCore(coreId);
+                openManagePage("retroarch");
+              }
+            }}
+          >
+            {isEmulator ? "Set up this emulator" : "Install this core"}
+          </DialogButton>
+        )}
       </div>
 
-      <Focusable style={{ ...FIELD, gap: "14px" }}>
-        <div style={FIELD}>
-          <Label hint="The name shown in your Steam library.">Name</Label>
-          <TextField value={title} onChange={(event) => setTitle(event.target.value)} />
-        </div>
-
-        <div style={FIELD}>
-          <Label hint={romPath === game.rom_path ? basename(romPath) : `New file: ${basename(romPath)}`}>
-            ROM file
-          </Label>
-          <DialogButton onClick={() => void pickRom()} style={BUTTON} disabled={busy}>
-            Change ROM file
-          </DialogButton>
-        </div>
-
-        {/* RetroArch only: a standalone emulator ignores a file beside a ROM,
-            so the row there would promise something that never happens. */}
-        {!isEmulator && (
-          <div style={FIELD}>
-            <Label hint={patchHint}>ROM hacks</Label>
-            {(patches ?? []).map((row) => (
-              <Focusable
-                key={row.file}
-                style={{ display: "flex", gap: "8px", alignItems: "center" }}
-              >
-                {/* The same shape as the emulator editor's fixes: a wide
-                    button that is the switch, and a small one beside it. */}
-                <DialogButton
-                  onClick={() => void togglePatch(row)}
-                  style={{ ...ICON_BUTTON_WIDE, flexGrow: 1 }}
-                  disabled={busy || patchBusy === row.file}
-                >
-                  {patchBusy === row.file ? (
-                    "Working..."
-                  ) : (
-                    <SwitchLabel name={row.name} on={row.on} />
-                  )}
-                </DialogButton>
-                {/* `flexShrink` because the row is flex and the square would
-                    otherwise be squeezed to 44 by a long patch name. */}
-                <div className={DANGER_CLASS} style={{ flexShrink: 0 }}>
-                  <DialogButton
-                    onClick={() => confirmDelete(row)}
-                    style={ICON_BUTTON}
-                    disabled={busy || patchBusy === row.file}
-                  >
-                    <FaTrash />
-                  </DialogButton>
-                </div>
-              </Focusable>
-            ))}
-            <DialogButton
-              onClick={() => void pickPatch()}
-              style={BUTTON}
-              disabled={busy || Boolean(patchBusy)}
-            >
-              Install a patch
-            </DialogButton>
-          </div>
-        )}
-
-        {content !== null && (
-          <div style={FIELD}>
-            <Label
-              hint={
-                contentProblem ||
-                (content.length
-                  ? "Ryujinx runs the newest update and every DLC as the game starts."
-                  : "None yet. Send an update or DLC through the transfer page, then install it here.")
-              }
-            >
-              Updates and DLC
-            </Label>
-            {content.map((row) => (
-              <Focusable
-                key={row.file}
-                style={{ display: "flex", gap: "8px", alignItems: "center" }}
-              >
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div>
-                    {contentBusy === row.file
-                      ? "Working..."
-                      : row.used
-                        ? row.label
-                        : `${row.label} — not used, a newer update is`}
-                  </div>
-                  <FileName name={row.file} style={{ fontSize: "12px", opacity: 0.7 }} />
-                </div>
-                <div className={DANGER_CLASS} style={{ flexShrink: 0 }}>
-                  <DialogButton
-                    onClick={() => confirmDeleteContent(row)}
-                    style={ICON_BUTTON}
-                    disabled={busy || Boolean(contentBusy)}
-                  >
-                    <FaTrash />
-                  </DialogButton>
-                </div>
-              </Focusable>
-            ))}
-            <DialogButton
-              onClick={() => void pickContent()}
-              style={BUTTON}
-              disabled={busy || Boolean(contentBusy) || Boolean(contentProblem)}
-            >
-              {contentBusy && !content.some((row) => row.file === contentBusy)
-                ? "Installing..."
-                : "Install an update or DLC"}
-            </DialogButton>
-          </div>
-        )}
-
+      {/* Only for a core covering several systems. This is where a game filed
+          under the wrong one gets moved -- deleting and re-adding produced the
+          same wrong answer. */}
+      {systemChoices.length > 0 && (
         <div style={FIELD}>
           <Label
             hint={
-              coreChanged
-                ? "Changing this rewrites the launcher and may move the game to another collection."
-                : `Currently ${game.platform || game.system || "unknown system"}.`
+              system === game.system
+                ? "Which shelf this game belongs on, and where its artwork comes from."
+                : "Saving moves the game to the collection for this system."
             }
           >
-            Core or emulator
+            System
           </Label>
-          {!cores ? (
-            <Spinner style={{ height: "20px" }} />
-          ) : (
-            <Dropdown
-              rgOptions={coreOptions}
-              selectedOption={coreId}
-              // Shown only when nothing is selected, which here means the core
-              // this game runs on is no longer installed. Without it the
-              // control is simply blank, which reads as the editor being
-              // broken rather than as the core having been removed.
-              strDefaultLabel={pinnedLabel(cores.all, coreId) || undefined}
-              onChange={(option) => setCoreId(String(option.data))}
-            />
-          )}
-          {cores && cores.matching.length > 0 && (
-            <DialogButton onClick={() => setShowAll((previous) => !previous)} style={BUTTON}>
-              {showAll ? "Show matching only" : "Show everything installed"}
-            </DialogButton>
-          )}
-
-          {/* The core this game runs on is gone -- uninstalling RetroArch takes
-              its cores with it. Sends the user to the tab that installs one,
-              with this core already chosen, rather than installing it here:
-              that tab already handles RetroArch being absent too, and a second
-              place that installs cores is the duplication this project has
-              twice watched drift. One tap instead of six navigations. */}
-          {cores && missingCore && (
-            <DialogButton
-              style={BUTTON}
-              onClick={() => {
-                // Modals first, navigation last, and the order is the whole of
-                // it: `openManagePage` closes the Quick Access panel on its way
-                // out, and Steam re-reveals that panel as each modal above it
-                // dismisses. Navigating first meant arriving at the page with
-                // the panel open again over it.
-                closeModal?.();
-                // The list this was opened from, which would otherwise be left
-                // sitting over the page just navigated to.
-                onLeave?.();
-
-                if (isEmulator) {
-                  // Not a libretro core, so the core list cannot install it.
-                  openManagePage("emulators");
-                } else {
-                  preselectCore(coreId);
-                  openManagePage("retroarch");
-                }
-              }}
-            >
-              {isEmulator ? "Set up this emulator" : "Install this core"}
-            </DialogButton>
-          )}
-        </div>
-
-        {/* Only for a core covering several systems. This is where a game filed
-            under the wrong one gets moved: everything added before the add
-            panel gained the same row had its system inferred from whichever
-            system's cover art matched the filename first, which put Mega Drive
-            games on the Game Gear shelf. Deleting and re-adding was the only
-            way back, and it produced the same answer. */}
-        {systemChoices.length > 0 && (
-          <div style={FIELD}>
-            <Label
-              hint={
-                system === game.system
-                  ? "Which shelf this game belongs on, and where its artwork comes from."
-                  : "Saving moves the game to the collection for this system."
-              }
-            >
-              System
-            </Label>
-            <Dropdown
-              rgOptions={systemChoices}
-              selectedOption={system}
-              onChange={(option) => setSystem(String(option.data))}
-            />
-          </div>
-        )}
-
-        <div style={FIELD}>
-          <Label
-            hint={
-              artApplied > 0
-                // This used to warn that a game page open behind the editor
-                // would sit blank until it was re-opened, which it did: applying
-                // emptied all four slots before writing any, and a details page
-                // renders that gap. It does not any more -- `steam/artwork.ts`
-                // clears each slot immediately before its own write -- so the
-                // warning is gone rather than reworded.
-                ? `${artApplied} image(s) applied. Artwork lands immediately; a name change waits for Save.`
-                : `Artwork lands immediately, a name change waits for Save. Looking up by ${
-                    byFilename ? "filename" : "name"
-                  } also uses the current core, which decides where boxart comes from.`
-            }
-          >
-            Name and artwork
-          </Label>
-          <div style={FIELD}>
-            <DialogButton onClick={pickArtwork} style={BUTTON} disabled={busy}>
-              Choose the right game
-            </DialogButton>
-            {/* Named after what it looks the game up *by*, because that is the
-                whole difference between these two buttons: one takes the game
-                you point at, the other takes the file's name and guesses. Both
-                produce a name and artwork -- which is what the label above the
-                pair says -- so "again" was the only thing distinguishing them,
-                and "again" describes when it runs rather than what it uses.
-
-                It matters because this one *does* replace a name you typed and
-                the picker beside it does not. A button that says which input it
-                trusts explains that; one that says "again" does not. */}
-            <DialogButton onClick={() => void refetch()} style={BUTTON} disabled={busy}>
-              {/* "by name" when the file has none of its own. A game installed
-                  from a package boots eboot.bin, so "Look up by filename" would
-                  be describing a search for "Eboot" -- the same search, and the
-                  same nothing, for every PS3, PS4 and Vita game. */}
-              {refreshing
-                ? "Looking up..."
-                : byFilename
-                  ? "Look up by filename"
-                  : "Look up by name"}
-            </DialogButton>
-          </div>
-        </div>
-
-        <div style={FIELD}>
-          <Label hint="Overrides Settings for this one game. Leave on 'follow' to keep tracking it.">
-            Launch options
-          </Label>
-          {isEmulator ? (
-            <Dropdown
-              rgOptions={FULLSCREEN_OPTIONS}
-              selectedOption={fullscreen}
-              onChange={(option) => setFullscreen(String(option.data))}
-            />
-          ) : (
-            <Dropdown
-              rgOptions={OSD_OPTIONS}
-              selectedOption={osd}
-              onChange={(option) => setOsd(String(option.data) as OsdChoice)}
-            />
-          )}
-          <TextField
-            label="Extra arguments"
-            value={extraArgs}
-            onChange={(event) => setExtraArgs(event.target.value)}
+          <Dropdown
+            rgOptions={systemChoices}
+            selectedOption={system}
+            onChange={(option) => setSystem(String(option.data))}
           />
-          {fixes.length > 0 && (
-            <div style={{ fontSize: "14px", fontWeight: 500, paddingTop: "6px" }}>
-              Fixes
-            </div>
-          )}
+        </div>
+      )}
+
+      <div style={FIELD}>
+        <Label hint="Overrides Settings for this one game. Leave on 'follow' to keep tracking it.">
+          Launch options
+        </Label>
+        {isEmulator ? (
+          <Dropdown
+            rgOptions={FULLSCREEN_OPTIONS}
+            selectedOption={fullscreen}
+            onChange={(option) => setFullscreen(String(option.data))}
+          />
+        ) : (
+          <Dropdown
+            rgOptions={OSD_OPTIONS}
+            selectedOption={osd}
+            onChange={(option) => setOsd(String(option.data) as OsdChoice)}
+          />
+        )}
+        <TextField
+          label="Extra arguments"
+          value={extraArgs}
+          onChange={(event) => setExtraArgs(event.target.value)}
+        />
+        <div style={{ fontSize: "12px", opacity: 0.6 }}>
+          Appended to the command line and split like a shell would. Some emulators expect
+          the ROM last and will ignore anything after it.
+        </div>
+      </div>
+
+      {fixes.length > 0 && (
+        <div style={FIELD}>
+          <Label hint="While linked, the game uses the emulator's setting.">Fixes</Label>
           {fixes.map((fix) => (
             <WorkaroundRow
               key={fix.id}
@@ -1215,28 +1098,219 @@ export function GameEditorModal({ game, onSaved, closeModal, onLeave }: Props) {
               }
             />
           ))}
-          <div style={{ fontSize: "12px", opacity: 0.6 }}>
-            Appended to the command line and split like a shell would. Some emulators expect
-            the ROM last and will ignore anything after it.
-          </div>
         </div>
-      </Focusable>
+      )}
+    </>,
+  );
+
+  const addonsTab = pane(
+    <>
+      <div style={{ fontSize: "12px", opacity: 0.6 }}>
+        Changes on this tab apply straight away, without Save.
+      </div>
+
+      {/* RetroArch only: a standalone emulator ignores a file beside a ROM, so
+          the list there would promise something that never happens. */}
+      {!isEmulator && (
+        <div style={FIELD}>
+          <Label hint={patchHint}>ROM hacks</Label>
+          {(patches ?? []).map((row) => (
+            <Focusable
+              key={row.file}
+              style={{ display: "flex", gap: "8px", alignItems: "center" }}
+            >
+              {/* The same shape as the emulator editor's fixes: a wide button
+                  that is the switch, and a small one beside it. */}
+              <DialogButton
+                onClick={() => void togglePatch(row)}
+                style={{ ...ICON_BUTTON_WIDE, flexGrow: 1 }}
+                disabled={busy || patchBusy === row.file}
+              >
+                {patchBusy === row.file ? (
+                  "Working..."
+                ) : (
+                  <SwitchLabel name={row.name} on={row.on} />
+                )}
+              </DialogButton>
+              {/* `flexShrink` because the row is flex and the square would
+                  otherwise be squeezed by a long patch name. */}
+              <div className={DANGER_CLASS} style={{ flexShrink: 0 }}>
+                <DialogButton
+                  onClick={() => confirmDelete(row)}
+                  style={ICON_BUTTON}
+                  disabled={busy || patchBusy === row.file}
+                >
+                  <FaTrash />
+                </DialogButton>
+              </div>
+            </Focusable>
+          ))}
+          <DialogButton
+            onClick={() => void pickPatch()}
+            style={BUTTON}
+            disabled={busy || Boolean(patchBusy)}
+          >
+            Install a patch
+          </DialogButton>
+        </div>
+      )}
+
+      {content !== null && (
+        <div style={FIELD}>
+          <Label
+            hint={
+              contentProblem ||
+              (content.length
+                ? "Ryujinx runs the newest update and every DLC as the game starts."
+                : "None yet. Send an update or DLC through the transfer page, then install it here.")
+            }
+          >
+            Updates and DLC
+          </Label>
+          {content.map((row) => (
+            <Focusable
+              key={row.file}
+              style={{ display: "flex", gap: "8px", alignItems: "center" }}
+            >
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div>
+                  {contentBusy === row.file
+                    ? "Working..."
+                    : row.used
+                      ? row.label
+                      : `${row.label} — not used, a newer update is`}
+                </div>
+                <FileName name={row.file} style={{ fontSize: "12px", opacity: 0.7 }} />
+              </div>
+              <div className={DANGER_CLASS} style={{ flexShrink: 0 }}>
+                <DialogButton
+                  onClick={() => confirmDeleteContent(row)}
+                  style={ICON_BUTTON}
+                  disabled={busy || Boolean(contentBusy)}
+                >
+                  <FaTrash />
+                </DialogButton>
+              </div>
+            </Focusable>
+          ))}
+          <DialogButton
+            onClick={() => void pickContent()}
+            style={BUTTON}
+            disabled={busy || Boolean(contentBusy) || Boolean(contentProblem)}
+          >
+            {contentBusy && !content.some((row) => row.file === contentBusy)
+              ? "Installing..."
+              : "Install an update or DLC"}
+          </DialogButton>
+        </div>
+      )}
+
+      {/* Always a tab, even with nothing on it: tabs that come and go move
+          where the bumpers land, and changing the core on Running would add or
+          remove one mid-edit. */}
+      {isEmulator && content === null && (
+        <div style={{ fontSize: "13px", opacity: 0.8 }}>
+          Nothing to add for games on this emulator. ROM hacks work with RetroArch
+          games, and updates and DLC with Ryujinx.
+        </div>
+      )}
+    </>,
+  );
+
+  const gameTab = pane(
+    <>
+      <div style={FIELD}>
+        <Label hint="The name shown in your Steam library.">Name</Label>
+        <TextField value={title} onChange={(event) => setTitle(event.target.value)} />
+      </div>
+
+      {nameAndArtwork}
+
+      <div style={FIELD}>
+        <Label hint={romPath === game.rom_path ? basename(romPath) : `New file: ${basename(romPath)}`}>
+          ROM file
+        </Label>
+        <DialogButton onClick={() => void pickRom()} style={BUTTON} disabled={busy}>
+          Change ROM file
+        </DialogButton>
+      </div>
+    </>,
+  );
+
+  return (
+    <ModalRoot closeModal={closeModal} bAllowFullSize>
+      <div style={{ fontSize: "20px", fontWeight: 600, marginBottom: "4px" }}>
+        Edit {game.title}
+      </div>
+
+      {/* A stated height, for the reason the added games list gives: Steam's
+          tab row fills a sized parent and a modal sizes to its content, so
+          without one the tabs render below the dialog's border. `overflow:
+          hidden` clips the slide Steam animates between panes. What is left of
+          the panel after the title and the footer is roughly this. */}
+      {/* Steam's pane pads itself 58px top, 24px sides and 40px bottom, measured
+          on the device. The top keeps content clear of the tab row and stays;
+          the sides and bottom only inset this editor inside its own dialog, so
+          they go. `_TabContentsScroll` is one of Steam's unhashed class names. */}
+      <style>{`.deckyemu-editor-tabs ._TabContentsScroll { padding-left: 0; padding-right: 0; padding-bottom: 0; }`}</style>
+      <div
+        className="deckyemu-editor-tabs"
+        style={{
+          height: EDITOR_TABS_HEIGHT,
+          display: "flex",
+          flexDirection: "column",
+          // `clip`, not `hidden`. Both cut off the panes Steam slides in from
+          // beyond the edges, but a `hidden` box can still be scrolled by code:
+          // pressing a bumper with focus inside a tab moved focus into the
+          // incoming pane, Steam's smooth focus scroll scrolled this box up to
+          // 243px sideways to reach it, and the tab bar slid with the content.
+          // Recorded frame by frame on the device. A `clip` box is not a scroll
+          // container, so there is nothing for that scroll to move.
+          overflow: "clip",
+        }}
+      >
+        <Tabs
+          activeTab={tab}
+          onShowTab={(next: string) => setTab(next)}
+          tabs={[
+            { id: "game", title: "Game", content: gameTab },
+            { id: "emulator", title: "Emulator", content: runningTab },
+            { id: "addons", title: "Add-ons", content: addonsTab },
+          ]}
+        />
+      </div>
 
       {note && (
-        <div style={{ fontSize: "13px", opacity: 0.8, marginTop: "10px" }}>{note}</div>
+        <div style={{ fontSize: "13px", opacity: 0.8, marginTop: "6px" }}>{note}</div>
       )}
       {error && (
-        <div style={{ color: "#e35d5d", fontSize: "13px", marginTop: "10px" }}>{error}</div>
+        <div style={{ color: "#e35d5d", fontSize: "13px", marginTop: "6px" }}>{error}</div>
       )}
 
-      <Focusable style={{ ...ROW, marginTop: "16px" }}>
-        <DialogButton onClick={() => void save()} disabled={busy || !title.trim()}>
+      {/* Outside the tabs, so Save is visibly for the whole editor. One row that
+          does not wrap: a Steam button claims a full line whenever its row lets
+          it, and three stacked buttons under a fixed-height tab box ran off the
+          bottom of the panel. */}
+      <Focusable style={{ display: "flex", gap: "8px", marginTop: "10px" }}>
+        <DialogButton
+          onClick={() => void save()}
+          disabled={busy || !title.trim()}
+          style={{ flex: 1, minWidth: 0 }}
+        >
           {saving ? "Saving..." : "Save"}
         </DialogButton>
-        <DialogButton onClick={() => void testLaunch()} disabled={busy || !title.trim()}>
-          Save and test launch
+        <DialogButton
+          onClick={() => void testLaunch()}
+          disabled={busy || !title.trim()}
+          style={{ flex: 1, minWidth: 0 }}
+        >
+          Save and test
         </DialogButton>
-        <DialogButton onClick={() => closeModal?.()} disabled={busy}>
+        <DialogButton
+          onClick={() => closeModal?.()}
+          disabled={busy}
+          style={{ flex: 1, minWidth: 0 }}
+        >
           Close
         </DialogButton>
       </Focusable>

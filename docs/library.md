@@ -145,6 +145,12 @@ page in Big Picture reaches the same editor: the cog menu carries a **DeckyEmu**
 entry with **Edit** and **Remove**, for the games this plugin added and no
 others.
 
+The editor is in three tabs, switched with the bumpers: **Game** holds the name,
+artwork and ROM file; **Emulator** holds the core or emulator, the system,
+launch options and fixes; **Add-ons** holds ROM hacks or updates and DLC. **Save**,
+**Save and test** and **Close** sit below all three, and Save covers every tab
+except Add-ons, whose changes apply straight away.
+
 - **Name** — renaming moves the launcher, since its filename embeds the title.
 - **ROM file** — repoint an entry at a moved file, an SD card or a better dump.
   The launcher filename also embeds a hash of the ROM path, so this relocates the
@@ -174,7 +180,7 @@ others.
   one game, and append extra arguments. They are appended rather than inserted,
   because several argument templates end in the ROM path. An override left on
   *follow the global setting* still picks up later changes to it.
-- **Save and test launch** — starts the game through Steam, so gamescope, Steam
+- **Save and test** — starts the game through Steam, so gamescope, Steam
   Input and the overlay behave as they do in normal play. It saves first, since
   the launcher on disk is what Steam runs.
 
