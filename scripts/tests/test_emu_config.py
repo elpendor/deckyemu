@@ -882,15 +882,18 @@ def _xenia_account(xuid, written_ns):
     os.utime(account, ns=(written_ns, written_ns))
 
 
-def _xenia_config(slot):
+def _xenia_config(slot, mask="0"):
     with open(_xcfg, "w", encoding="utf-8") as handle:
         handle.write(
+            "[Content]\n"
+            "license_mask = %s                                  \t# Set license mask for activated content.\n"
+            "\n"
             "[Display]\n"
             "fullscreen = false                                \t# Whether to launch the emulator in fullscreen.\n"
             "\n"
             "[Profiles]\n"
             "logged_profile_slot_0_xuid = %s                   \t# XUID of the profile to load on boot in slot 0\n"
-            % slot
+            % (mask, slot)
         )
 
 
@@ -929,6 +932,25 @@ try:
     check("and still names it",
           'logged_profile_slot_0_xuid = "E0300000C0000002"' in open(_xcfg, encoding="utf-8").read(),
           True)
+
+    # Every XBLA title ran as its trial -- Banjo-Kazooie offered "Unlock Full
+    # Game" on the Deck -- because Xenia's license mask defaults to 0.
+    _xenia_config('""')
+    emu_config.apply_setup(_xenia)
+    _written = open(_xcfg, encoding="utf-8").read()
+    check("Xenia's default license mask becomes the full-version license",
+          "license_mask = 1" in _written, True)
+    check("written as a number, not a quoted string",
+          "license_mask = '1'" in _written or 'license_mask = "1"' in _written, False)
+
+    # -1 is the everything-on value Xenia warns about. Somebody who chose it
+    # chose it.
+    _xenia_config('""', mask="-1")
+    _result = emu_config.apply_setup(_xenia)
+    check("a license mask somebody set themselves is left alone",
+          ("Content/license_mask" in _result.get("skipped", []),
+           "license_mask = -1" in open(_xcfg, encoding="utf-8").read()),
+          (True, True))
 finally:
     sysenv.user_home = _real_user_home
 

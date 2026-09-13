@@ -318,6 +318,12 @@ emulator by its extension, and these files have none. The plugin now reads the
 first few bytes instead, so an XBLA container can be added like any other game
 even though its name says nothing.
 
+**XBLA games start as the full version.** Every Xbox Live Arcade title has a
+trial mode, and Xenia runs them as trials unless told otherwise. Installing
+Xenia from here sets it to report the full-version license, so the game's
+"Unlock Full Game" option does not appear. If you have set Xenia's
+`license_mask` yourself, your value is kept.
+
 **Unzip first.** Xenia refuses `.zip`, `.7z`, `.rar`, `.tar` and `.gz` outright,
 and XBLA titles are almost always distributed zipped. Send the zip to the Deck,
 start adding it, and press **Unpack this zip** in the panel: inside is a folder

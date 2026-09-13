@@ -35,11 +35,23 @@ _XENIA_CONFIG = "%s/xenia-canary.config.toml" % _XENIA_STORAGE
 # is a no-op. That is the half that can be checked.
 _XENIA_SETUP = {
     "format": emu_config.TOML_KEYS,
-    "label": "fullscreen, profile sign-in",
+    "label": "fullscreen, profile sign-in, XBLA full version",
     # 2: the profile slot below.
-    "version": 2,
+    # 3: `license_mask`, so an XBLA title runs as the full game.
+    "version": 3,
     "path": _XENIA_CONFIG,
     "sections": {
+        # Every XBLA title shipped with a trial mode and asks the console whether
+        # it was bought. Xenia answers from this mask and defaults it to 0, so
+        # each one ran as its trial -- Banjo-Kazooie offered "Unlock Full Game"
+        # on the Deck. 1 is the first license, which Xenia's own description
+        # calls "generally the full version license in Xbox Live Arcade titles";
+        # -1 enables every license and Xenia warns it "could lead to undefined
+        # behavior", so it is not used. Disc games never ask. `raw` because the
+        # value is a number, not a string.
+        "Content": {
+            "license_mask": {"value": "1", "default": "0", "raw": True},
+        },
         "Display": {
             # `raw`, for the reason xemu's entry gives: quoted, this is the
             # string "false", which is true.
