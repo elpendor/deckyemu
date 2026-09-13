@@ -64,6 +64,7 @@ import { titleAfterArtPick } from "./titleFromArt";
 import { openModal } from "./modalStack";
 import { DANGER_CLASS } from "./danger";
 import { FileName } from "./FileName";
+import { SwitchLabel } from "./SwitchLabel";
 import { ICON_BUTTON, ICON_BUTTON_WIDE } from "./iconButton";
 
 interface Props {
@@ -445,40 +446,55 @@ export function GameEditorModal({ game, onSaved, closeModal, onLeave }: Props) {
     setNote("Check the core, and re-fetch the artwork if this is a different game.");
   }, [romPath]);
 
+  /**
+   * A refusal is a dialog, not the error line -- the same rule the updates list
+   * below follows, for the same reason. That line is at the foot of this editor,
+   * under everything scrolled past to reach the list, so a patch refused for
+   * being the ROM read as a press that did nothing.
+   */
+  const showPatchRefusal = useCallback((heading: string, body: string) => {
+    openModal(
+      <ConfirmModal
+        strTitle={heading}
+        strDescription={body}
+        strOKButtonText="Close"
+        bAlertDialog
+      />,
+    );
+  }, []);
+
   const afterPatchCall = useCallback(
-    (result: Awaited<ReturnType<typeof addRomPatch>>) => {
+    (result: Awaited<ReturnType<typeof addRomPatch>>, heading = "Not changed") => {
       if (result.patches) setPatches(result.patches);
-      if (!result.ok) setError(result.error || "Could not change the patches.");
+      if (!result.ok) showPatchRefusal(heading, result.error || "Could not change the patches.");
       return result.ok;
     },
-    [],
+    [showPatchRefusal],
   );
 
   const togglePatch = useCallback(async (row: RomPatch) => {
-    setError("");
     setPatchBusy(row.file);
     try {
       afterPatchCall(await switchRomPatch(game.app_id, row.file, !row.on));
     } catch (switchError) {
       logError("could not switch a patch", switchError);
-      setError("Could not change that patch.");
+      showPatchRefusal("Not changed", "Could not change that patch.");
     } finally {
       setPatchBusy("");
     }
-  }, [game.app_id, afterPatchCall]);
+  }, [game.app_id, afterPatchCall, showPatchRefusal]);
 
   const deletePatch = useCallback(async (row: RomPatch) => {
-    setError("");
     setPatchBusy(row.file);
     try {
-      afterPatchCall(await removeRomPatch(game.app_id, row.file));
+      afterPatchCall(await removeRomPatch(game.app_id, row.file), "Not removed");
     } catch (removeError) {
       logError("could not remove a patch", removeError);
-      setError("Could not remove that patch.");
+      showPatchRefusal("Not removed", "Could not remove that patch.");
     } finally {
       setPatchBusy("");
     }
-  }, [game.app_id, afterPatchCall]);
+  }, [game.app_id, afterPatchCall, showPatchRefusal]);
 
   // Asked, like every other delete in the plugin. Our copy is the only one left
   // once a patch has been taken out of the transfer folder, so this is the
@@ -502,7 +518,6 @@ export function GameEditorModal({ game, onSaved, closeModal, onLeave }: Props) {
   // Opens on the transfer folder, which is where a patch sent from a phone
   // lands and the only place one is ever expected to be.
   const pickPatch = useCallback(async () => {
-    setError("");
     let picked: { path: string; realpath: string } | undefined;
     try {
       picked = await openFilePicker(
@@ -518,25 +533,25 @@ export function GameEditorModal({ game, onSaved, closeModal, onLeave }: Props) {
     } catch (pickError) {
       if (!String(pickError ?? "").toLowerCase().includes("cancel")) {
         logError("patch picker failed", pickError);
-        setError("Could not open the file browser.");
+        showPatchRefusal("Not installed", "Could not open the file browser.");
       }
       return;
     }
     const path = picked?.realpath || picked?.path || "";
     if (!path) {
-      setError("That selection did not return a file path.");
+      showPatchRefusal("Not installed", "That selection did not return a file path.");
       return;
     }
     setPatchBusy(path);
     try {
-      afterPatchCall(await addRomPatch(game.app_id, path));
+      afterPatchCall(await addRomPatch(game.app_id, path), "Not installed");
     } catch (addError) {
       logError("could not add a patch", addError);
-      setError("Could not add that patch.");
+      showPatchRefusal("Not installed", "Could not install that patch.");
     } finally {
       setPatchBusy("");
     }
-  }, [romPath, patchStart, game.app_id, afterPatchCall]);
+  }, [romPath, patchStart, game.app_id, afterPatchCall, showPatchRefusal]);
 
   /**
    * A refusal is a dialog, not the error line.
@@ -902,7 +917,7 @@ export function GameEditorModal({ game, onSaved, closeModal, onLeave }: Props) {
   const patchHint = [
     patches?.length
       ? "Applied in this order as the game loads. Your ROM file is never changed."
-      : "None yet. Send a patch through the transfer page, then add it here. Your ROM file is never changed.",
+      : "None yet. Send a patch through the transfer page, then install it here or from its row there. Your ROM file is never changed.",
     patchWarning,
   ]
     .filter(Boolean)
@@ -949,9 +964,11 @@ export function GameEditorModal({ game, onSaved, closeModal, onLeave }: Props) {
                   style={{ ...ICON_BUTTON_WIDE, flexGrow: 1 }}
                   disabled={busy || patchBusy === row.file}
                 >
-                  {patchBusy === row.file
-                    ? "Working..."
-                    : `${row.name}: ${row.on ? "on" : "off"}`}
+                  {patchBusy === row.file ? (
+                    "Working..."
+                  ) : (
+                    <SwitchLabel name={row.name} on={row.on} />
+                  )}
                 </DialogButton>
                 {/* `flexShrink` because the row is flex and the square would
                     otherwise be squeezed to 44 by a long patch name. */}
@@ -971,7 +988,7 @@ export function GameEditorModal({ game, onSaved, closeModal, onLeave }: Props) {
               style={BUTTON}
               disabled={busy || Boolean(patchBusy)}
             >
-              Add a patch
+              Install a patch
             </DialogButton>
           </div>
         )}

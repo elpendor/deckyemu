@@ -55,6 +55,7 @@ import { requirementForFile, type RequirementMatch } from "./firmwareMatch";
 import { confirmDiscardTransfer } from "./discardTransfer";
 import { importDefinition } from "./importDefinition";
 import { installContentFor } from "./installContent";
+import { openPatchInstall } from "./installPatch";
 import { openRestoreSaves } from "./openRestore";
 import { closeOpenModals, openModal } from "./modalStack";
 import { ICON_BUTTON, ICON_BUTTON_WIDE } from "./iconButton";
@@ -851,10 +852,16 @@ export function TransferModal({
                       file.name.toLowerCase().endsWith(one),
                     ) ? (
                     // Not "Add": a patch is not a game, and the add flow would
-                    // make a Steam entry out of one. It belongs to a game that
-                    // already exists, so this says where to go instead -- the
-                    // same answer the firmware and backup rows give.
-                    <div style={MUTED}>Add it from the game&rsquo;s editor</div>
+                    // make a Steam entry out of one. Install, like an update --
+                    // but a patch does not say which game it is for, so the
+                    // button asks first.
+                    <DialogButton
+                      disabled={busy}
+                      onClick={() => openPatchInstall(file.path, file.name, () => void load())}
+                      style={ICON_BUTTON_WIDE}
+                    >
+                      Install
+                    </DialogButton>
                   ) : purpose === "firmware" ? (
                     // A firmware send with no requirement named -- nothing to
                     // install it into from here, so it says where it went

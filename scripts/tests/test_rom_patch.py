@@ -191,12 +191,36 @@ with open(_MODAL, encoding="utf-8") as _handle:
 
 # The row's action is decided by what the file is for, the way a BIOS gets
 # Install and a save backup gets Restore. A patch belongs to a game that already
-# exists, and the add flow would make a Steam entry out of one.
+# exists, and the add flow would make a Steam entry out of one -- so its row
+# installs it, asking which game, rather than offering Add.
 check("every format the editor takes is recognised there too",
       all(('"%s"' % suffix) in _source for suffix, _magic in rompatch.PATCH_MAGIC),
       True)
-check("and the row says where it actually goes",
-      "from the game" in _source, True)
+check("and the row installs it onto a game rather than adding it as one",
+      "openPatchInstall(" in _source, True)
+
+
+section("installing from outside the editor asks which game, the named one first")
+
+_LIBRARY = [
+    {"app_id": 1, "title": "Secret of Mana", "rom_path": os.path.join(_ROOT, "Secret of Mana (USA).sfc"),
+     "platform": "SNES"},
+    {"app_id": 2, "title": "Chrono Trigger", "rom_path": _ROM, "platform": "SNES"},
+    {"app_id": 3, "title": "Crash Bandicoot", "rom_path": os.path.join(_ROOT, "Crash.chd"),
+     "platform": "PS1"},
+]
+_ranked = rompatch.rank_targets(os.path.join(_ROOT, "Chrono Trigger Retranslation v1.2.ips"),
+                                _LIBRARY)
+check("the game named in the patch comes first, and is marked as the likely one",
+      [(one["title"], one["likely"]) for one in _ranked][0], ("Chrono Trigger", True))
+check("and every other game is still offered, since a name is only a hint",
+      sorted(one["title"] for one in _ranked),
+      ["Chrono Trigger", "Crash Bandicoot", "Secret of Mana"])
+check("words like 'patch' and 'translation' are not a match on their own",
+      [one["likely"] for one in rompatch.rank_targets("Translation Patch.ips", _LIBRARY)],
+      [False, False, False])
+check("a disc game says RetroArch may ignore it, before anyone chooses it",
+      [one["warning"] != "" for one in _ranked if one["title"] == "Crash Bandicoot"], [True])
 
 
 if __name__ == "__main__":

@@ -49,6 +49,7 @@ import {
   updateDraft,
 } from "./romDraft";
 import { installContentFor, installWaitingContent } from "./installContent";
+import { openPatchInstall } from "./installPatch";
 import {
   continueAfterEmulator,
   installEmulatorAndUnpack,
@@ -973,6 +974,25 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
         </PanelSectionRow>
       )}
 
+      {/* A ROM hack, which belongs to a game rather than being one -- the same
+          Install an update gets, asking which game since a patch does not say. */}
+      {probe?.rom_patch && (
+        <PanelSectionRow>
+          <ButtonItem
+            layout="below"
+            disabled={adding}
+            onClick={() =>
+              openPatchInstall(romPath, romName, (installed) => {
+                if (installed) resetDraft();
+              })
+            }
+            description="A ROM hack, not a game. It goes onto a game you have already added, and your ROM file is not changed."
+          >
+            Install
+          </ButtonItem>
+        </PanelSectionRow>
+      )}
+
       {/* A Switch update or DLC, which belongs to a game rather than being one.
           Instead of the core list, for the reason a save backup is: adding it
           would make a Steam entry that boots nothing. It names its game, so
@@ -1161,7 +1181,7 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
 
           `coreOptions.length` as well, since with nothing registered and no
           cores the list is empty and a disabled dropdown says even less. */}
-      {probe && !pendingPackage && !probe.save_backup && !probe.game_content
+      {probe && !pendingPackage && !probe.save_backup && !probe.game_content && !probe.rom_patch
         && probe.matching_cores.length === 0
         && installable.length === 0 && coreOptions.length > 0 && (
         <PanelSectionRow>
@@ -1369,7 +1389,7 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
           still missing, usually a core. */}
       {/* Not for an update or DLC: its Install row above is the whole of what can
           be done with it, and a disabled Add under it reads as a step missing. */}
-      {romPath && !probe?.game_content && (
+      {romPath && !(probe?.game_content || probe?.rom_patch) && (
         <PanelSectionRow>
           {/* Not blocked outright. The check is good enough to warn on and not
               good enough to overrule somebody with the file in front of them:
@@ -1402,7 +1422,7 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
         </PanelSectionRow>
       )}
 
-      {romPath && !looking && !probe?.game_content && (
+      {romPath && !looking && !(probe?.game_content || probe?.rom_patch) && (
         <PanelSectionRow>
           <ButtonItem layout="below" onClick={openArtPicker} disabled={adding}>
             {/* The words on the screen this opens, which has always called

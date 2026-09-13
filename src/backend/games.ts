@@ -70,6 +70,12 @@ export interface RomProbe {
    * folder, newest update first. Installed straight after the game is added.
    */
   content_waiting?: { path: string; name: string; label: string }[];
+  /**
+   * Set when the file is a ROM hack -- read from its bytes -- rather than a game.
+   * The core list is empty then, and the panel offers Install, which asks which
+   * game it goes on.
+   */
+  rom_patch?: { kind: string };
   extension: string;
   /** What cores were matched against — the content extension inside archives. */
   match_extension: string;
@@ -689,7 +695,7 @@ export type RomPatches =
       ok: true;
       patches: RomPatch[];
       warning: string;
-      /** Where "Add a patch" opens: the transfer folder a patch arrives in. */
+      /** Where "Install a patch" opens: the transfer folder a patch arrives in. */
       start_in: string;
     };
 /**
@@ -720,6 +726,25 @@ export const switchRomPatch = callable<
 export const syncRomPatches = callable<
   [appId: number], PatchResult
 >("sync_rom_patches");
+
+/** A game a patch could be installed on. */
+export interface PatchTarget {
+  app_id: number;
+  title: string;
+  platform: string;
+  /** Its title is named in the patch's filename, so it is listed first. */
+  likely: boolean;
+  /** What RetroArch may not manage for this game, or "". */
+  warning: string;
+}
+/**
+ * The RetroArch games a patch could go on, the likely ones first. A patch does
+ * not say which game it is for, so Install asks.
+ */
+export const patchTargets = callable<
+  [patchPath: string],
+  { ok: true; games: PatchTarget[] } | { ok: false; error: string }
+>("patch_targets");
 
 /** One update or DLC kept for a Switch game. `file` is its name in our folder, and its id. */
 export interface GameContentRow {

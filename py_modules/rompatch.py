@@ -83,6 +83,55 @@ def warning_for(rom_path):
     return ""
 
 
+#: Words a patch name and a game title can share without saying anything about
+#: whether they are the same game.
+_NOISE_WORDS = frozenset((
+    "the", "of", "and", "an", "rev", "usa", "europe", "japan", "world", "en",
+    "patch", "hack", "translation", "fix", "fixes", "ips", "bps", "ups",
+))
+_WORD = re.compile(r"[a-z0-9]+")
+
+
+def _words(text):
+    return {
+        word for word in _WORD.findall((text or "").lower())
+        if len(word) > 1 and word not in _NOISE_WORDS and not word.isdigit()
+    }
+
+
+def rank_targets(patch_path, games):
+    """The games a patch could go on, the likely ones first.
+
+    A patch does not say which game it is for, unlike a Switch update, so the
+    person installing it chooses -- and the one they want is nearly always named
+    in the patch's own filename: `Chrono Trigger Retranslation v1.2.ips`. A game
+    is *likely* when every word of its title is in that name, or when two of its
+    words are. Everything else is still listed, because a name is a hint and a
+    hack called `ct_retrans.ips` is not wrong.
+
+    `games` are library records; the caller decides which can take a patch.
+    """
+    patch_words = _words(os.path.splitext(os.path.basename(patch_path or ""))[0])
+    ranked = []
+    for game in games:
+        title_words = _words(game.get("title"))
+        shared = patch_words & (title_words | _words(
+            os.path.splitext(os.path.basename(game.get("rom_path") or ""))[0]))
+        likely = bool(title_words) and (title_words <= patch_words or len(shared) >= 2)
+        ranked.append((
+            (not likely, -len(shared), (game.get("title") or "").lower()),
+            {
+                "app_id": game.get("app_id"),
+                "title": game.get("title", ""),
+                "platform": game.get("platform", ""),
+                "likely": likely,
+                "warning": warning_for(game.get("rom_path") or ""),
+            },
+        ))
+    ranked.sort(key=lambda pair: pair[0])
+    return [row for _key, row in ranked]
+
+
 # ---------------------------------------------------------------------- list
 
 def _record_path(app_id):

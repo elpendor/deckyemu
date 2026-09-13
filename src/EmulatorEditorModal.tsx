@@ -9,6 +9,7 @@ import {
 } from "@decky/ui";
 import { FileSelectionType, openFilePicker, toaster } from "@decky/api";
 
+import { SwitchLabel } from "./SwitchLabel";
 import { WorkaroundInfo } from "./WorkaroundInfo";
 import { adoptedSystemId, initialSystemId, systemFields } from "./systemChoice";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -119,9 +120,11 @@ function Workarounds({ emulatorId }: { emulatorId: string }) {
             onClick={() => toggle(item)}
             style={{ flexGrow: 1 }}
           >
-            {busy === item.id
-              ? "Working..."
-              : `${item.name}: ${item.enabled ? "on" : "off"}`}
+            {busy === item.id ? (
+              "Working..."
+            ) : (
+              <SwitchLabel name={item.name} on={item.enabled} />
+            )}
           </DialogButton>
           <WorkaroundInfo workaround={item} />
         </Focusable>

@@ -182,10 +182,14 @@ others.
 
 A romhack is distributed as a *patch* — a small `.ips`, `.bps` or `.ups` file
 that describes the difference from the original ROM — and never as a ROM. Send
-the patch to the Deck the same way you send a game, through the transfer page,
-then open the game in the editor and press **Add a patch**. The file browser opens
-on that transfer folder, so a hack you just sent is one press away; adding it
-takes the file out of there, the same way adding a game moves its ROM out.
+the patch to the Deck the same way you send a game, through the transfer page.
+Its row in the transfer list has **Install**, and so does the add panel if you
+pick it there. A patch does not say which game it is for, so Install asks: it
+lists your RetroArch games, with the ones named in the patch's filename first.
+
+Or open the game in the editor and press **Install a patch**, whose file browser
+opens on the transfer folder. Either way, installing takes the file out of there,
+the same way adding a game moves its ROM out.
 
 **Your ROM file is never changed.** RetroArch applies patches as the game loads,
 from files sitting next to the ROM, so the original is untouched. The plugin

@@ -1063,6 +1063,21 @@ class Plugin(
                 if vita["title"]:
                     result["provisional_title"] = vita["title"]
 
+        # A ROM hack, which belongs to a game rather than being one. Read from
+        # the bytes, like the editor does, and only for something small enough
+        # to be a patch: a ROM is what people pick by mistake, and no ROM opens
+        # with a patch's magic. The core list is emptied the way it is for a save
+        # backup, and the panel offers Install instead.
+        try:
+            small = os.path.getsize(rom_path) <= rompatch.MAX_PATCH_BYTES
+        except OSError:
+            small = False
+        patch_kind = await self._run(rompatch.kind_of, rom_path) if small else ""
+        if patch_kind:
+            result["rom_patch"] = {"kind": patch_kind.lstrip(".")}
+            result["matching_cores"] = []
+            result["suggested_core_id"] = ""
+
         # A Switch update or DLC, which belongs to a game rather than being one.
         # Adding it would make a Steam entry that boots nothing, so the core list
         # is emptied the way it is for a save backup, and the panel offers
@@ -2085,6 +2100,24 @@ class Plugin(
                     "patches": await self._run(rompatch.listing, app_id)}
         return {"ok": True, "name": name, "applied": written,
                 "patches": await self._run(rompatch.listing, app_id)}
+
+    async def patch_targets(self, patch_path: str) -> dict:
+        """The games a ROM hack could be installed on, the likely ones first.
+
+        RetroArch games only. A standalone emulator ignores a file beside the
+        ROM, so offering one would promise a patch that never applies -- the
+        rule the editor's ROM hacks row already follows.
+        """
+        path = (patch_path or "").strip()
+        if not await self._run(rompatch.kind_of, path):
+            return {"ok": False, "error": ("That is not an IPS, BPS or UPS patch. "
+                                           "Check you picked the patch and not the ROM.")}
+        library = await self._run(store.get_library)
+        games = [
+            entry for entry in library.values()
+            if entry.get("app_id") and not emulators.is_emulator_id(entry.get("core_id", ""))
+        ]
+        return {"ok": True, "games": await self._run(rompatch.rank_targets, path, games)}
 
     def _game_content_for(self, app_id):
         """`(entry, games_root, base_id, problem)` for one game's updates and DLC.
