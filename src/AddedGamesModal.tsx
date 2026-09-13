@@ -330,7 +330,13 @@ export function AddedGamesModal({ closeModal, onChanged }: Props) {
             //
             // The inner Focusable keeps its own `overflowY`, so clipping here
             // costs the scrolling nothing.
-            overflow: "hidden",
+            //
+            // `clip` rather than `hidden`: a `hidden` box can still be scrolled
+            // by code, and Steam's focus scroll does exactly that when a bumper
+            // is pressed with focus inside a tab -- measured in the game editor,
+            // where this box scrolled 243px sideways and the tab bar slid with
+            // the content.
+            overflow: "clip",
           }}
         >
           <Tabs
