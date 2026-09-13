@@ -42,20 +42,29 @@ for an emulator you removed, a definition that was refused. That is the only way
 to clear the inbox from Game Mode, and it asks first, naming the size.
 
 Arriving files show a progress bar of bytes received against the declared total,
-and each can be **cancelled**, which deletes the partial rather than leaving it
-behind. That status also appears in the Quick Access panel, so dismissing the
-dialog does not hide a transfer that is still running.
+and each can be **cancelled**. That status also appears in the Quick Access
+panel, so dismissing the dialog does not hide a transfer that is still running.
+
+**Cancelling stops the transfer but keeps what arrived.** The sending page is
+told to stop rather than retry. Choosing the same file on it again carries on
+from where it was cancelled instead of starting over, which matters for a game
+of several gigabytes on a slow connection.
 
 **An interrupted transfer carries on where it left off.** Wifi dropping, a phone
 locking its screen or a tab left in the background all end an upload partway;
 the Deck keeps what it has and the sending page reconnects and sends the rest,
-so a 4 GB ROM that stopped at 90% resumes at 90%. Files are sent one at a time
-rather than all at once, and the page asks the sending device to stay awake
-while they are moving. Two things end a resumable transfer for good: cancelling
-it, and stopping the server — so the panel says **Paused** rather than
-**Waiting** while one is between attempts, and closing the dialog leaves the
-server running until it finishes or goes idle. Keep the page open; a tab that is
-closed cannot come back, and the browser will ask before letting you.
+so a 4 GB ROM that stopped at 90% resumes at 90%. A connection that stops
+carrying anything without closing — which looks like a frozen progress bar — is
+given up after twenty seconds and picked up the same way. Files are sent one at
+a time rather than all at once, and the page asks the sending device to stay
+awake while they are moving.
+
+What has arrived is kept for as long as the transfer server is running. The
+panel says **Paused** rather than **Waiting** while a transfer is between
+attempts, and closing the dialog leaves the server running until it finishes or
+goes idle. Once the server stops, anything half-sent is cleared the next time it
+starts. Keep the page open; a tab that is closed cannot come back by itself, and
+the browser will ask before letting you.
 
 ### The same server runs backwards
 

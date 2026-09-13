@@ -2399,10 +2399,17 @@ else:
     check("cancelling it reports what it signalled", fileserver.cancel(live[0]["id"]), 1)
     check("and the handler lets go", settled(5.0), 0)
     dripping.join(timeout=10)
+    # Kept, so sending it again resumes. Deleting it made a transfer that only
+    # looked stuck start over from zero when somebody cancelled their way out.
     check(
-        "the half-written file is deleted, not left as litter",
+        "the half-written file is kept, so sending it again carries on",
         os.path.isfile(os.path.join(incoming, "Abandoned.iso.uploading")),
-        False,
+        True,
+    )
+    check(
+        "and a cancelled file is not counted as a paused transfer",
+        fileserver.status()["paused"],
+        0,
     )
     check(
         "and no finished file is invented from a partial transfer",
@@ -2460,9 +2467,9 @@ else:
         fileserver.cancel(stalled[0]["id"])
         check("cancelling releases a handler blocked on a dead socket", settled(5.0), 0)
         check(
-            "and its partial file goes too",
+            "and its partial file is kept for a resume, like any other stop",
             os.path.isfile(os.path.join(incoming, "Stalled.iso.uploading")),
-            False,
+            True,
         )
     else:
         print("SKIP cancelling a stalled transfer (shutdown does not unblock reads here)")
@@ -2602,8 +2609,8 @@ else:
     # connection half open, so its handler sat in rfile.read forever and the
     # panel listed the file twice -- once complete, and once arriving forever at
     # the byte the suspend hit. A resume has to retire the request it replaces,
-    # and must not do it by cancelling, because a cancel deletes the very bytes
-    # the new request is carrying on from.
+    # and must not do it by cancelling, because a cancel also refuses every later
+    # attempt at the file -- including the very request that is carrying on.
     _ghost_partial = os.path.join(incoming, "Ghost.iso.5-5.uploading")
     with open(_ghost_partial, "wb") as _handle:
         _handle.write(b"the bytes a resume carries on from")

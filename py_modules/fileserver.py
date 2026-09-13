@@ -199,10 +199,10 @@ _upload_seq = 0
 #: **Cancelling has to outlive the request it cancelled.** A cancel flags the
 #: entry and shuts the socket down, and the sender sees a dropped connection --
 #: which is exactly what a flaky network looks like, so it does what it should
-#: do about a flaky network and retries about a second later. The partial has
-#: been deleted by then, so it is offered offset 0 and sends the whole file
-#: again. From the Deck that reads as Cancel not working: the row goes, and
-#: comes back at 0%.
+#: do about a flaky network and retries about a second later. The partial is
+#: still there -- a cancel keeps it, so choosing the file again resumes -- so an
+#: unrefused retry would simply carry on, and from the Deck that reads as Cancel
+#: not working: the row goes, and comes straight back.
 #:
 #: Keyed on the partial path rather than the upload id, because the id is one
 #: per request and the thing being refused is a *file*: the path carries the
@@ -798,6 +798,19 @@ class _Handler(BaseHTTPRequestHandler):
             offset = int(self.headers.get("X-Upload-Offset") or 0)
         except ValueError:
             offset = -1
+
+        # **Stop the request this replaces, and wait for it to be gone, before
+        # measuring the file.** It used to be measured first and superseded
+        # after, and the old handler -- still blocked in a read on a connection
+        # the sender had given up on -- wrote one last piece in between. The new
+        # request then appended after bytes it had not counted, and the game
+        # came out 506,113 bytes too long, duplicated in the middle, with the log
+        # saying it had arrived whole. Measured on a Deck on a 6.4GB NSP.
+        if supersede(partial) and not _wait_until_released(partial):
+            # Still writing after the wait. Measuring now would be the same
+            # race, so the sender is told to ask again instead.
+            self._send(409, str(_partial_size(partial)))
+            return
         already = _partial_size(partial)
         if offset < 0 or offset != already:
             # The sender and the Deck disagree about what is here. The answer
@@ -897,9 +910,9 @@ class _Handler(BaseHTTPRequestHandler):
 
         cancelled = cancelled or _was_cancelled(upload_id)
         if cancelled and _was_superseded(upload_id):
-            # A newer request is appending to this very file. Deleting the
-            # partial here -- which is what an ordinary cancel does -- would
-            # delete the transfer that replaced this one, mid-flight.
+            # A newer request is appending to this very file, so this one only
+            # steps aside: it is not a cancel, and must not be logged or answered
+            # as one -- nothing the user did stopped it.
             decky.logger.info(
                 "Gave %s up at %d of %d bytes; a newer request has it",
                 name, offset + received, total,
@@ -908,11 +921,17 @@ class _Handler(BaseHTTPRequestHandler):
             return
 
         if cancelled:
-            # Deleted rather than kept, and the only path that deletes one. The
-            # user asked for this file to go away; keeping something to resume
-            # would be answering a different question.
-            _quiet_remove(partial)
-            decky.logger.info("Cancelled %s after %d of %d bytes", name, offset + received, total)
+            # Kept, like any other stop. It used to be deleted, and that turned a
+            # transfer which only *looked* stuck -- resumed at 3GB over a link
+            # running at 1MB/s -- into one that started again from zero when
+            # somebody pressed Cancel to get out of it. Cancel stops the sender;
+            # `_cancelled` is what keeps it stopped. Sending the file again
+            # carries on from here, and the next server session sweeps what
+            # nobody came back for.
+            decky.logger.info(
+                "Cancelled %s at %d of %d bytes; kept in case it is sent again",
+                name, offset + received, total,
+            )
             self._reply(499, "Cancelled.")
             return
 
@@ -924,6 +943,22 @@ class _Handler(BaseHTTPRequestHandler):
                 name, offset + received, total,
             )
             self._reply(400, "Upload ended early.")
+            return
+
+        # The file on disk, not this request's arithmetic. `offset + received`
+        # is what the log used to report as arrived, and it said a game had come
+        # in whole while the file held half a megabyte twice. A size that does
+        # not match is a file whose bytes cannot be trusted anywhere, so it goes
+        # rather than being renamed into something that looks like a game; the
+        # sender's retry asks again and starts over.
+        on_disk = _partial_size(partial)
+        if on_disk != total:
+            decky.logger.warning(
+                "Discarded %s: %d bytes on disk where %d were sent",
+                name, on_disk, total,
+            )
+            _quiet_remove(partial)
+            self._reply(500, "The file did not come out the right size. Sending it again.")
             return
 
         try:
@@ -978,8 +1013,9 @@ def cancel(upload_id=None):
     """Abandon one upload, or every one. Returns how many were signalled.
 
     Two steps, because either alone is not enough. The flag is what tells the
-    handler this was deliberate, so it deletes its partial file and says
-    "cancelled" rather than reporting a fault. Shutting the socket down is what
+    handler this was deliberate, so it says "cancelled" rather than reporting a
+    fault, and `_cancelled` refuses the sender's automatic retry. The partial is
+    kept either way, so choosing the file again resumes. Shutting the socket down is what
     makes that happen *now*: the handler spends nearly all of its time blocked in
     rfile.read waiting for the next chunk, and on a connection that has stalled --
     which is the one you most want to abandon -- that read might never return on
@@ -1041,9 +1077,9 @@ def supersede(partial):
     54-second suspend, the file completed on the new request, and the old one
     was still listed above it frozen at 586 MB.
 
-    Deliberately not `cancel`, which deletes the partial file: that file is the
-    very thing the new request is appending to, so the two differ by the one
-    thing that matters. This says stop and leave the bytes alone.
+    Deliberately not `cancel`, which records the file as cancelled and so
+    refuses every later attempt at it -- including the new request, which is
+    the sender carrying on. This says stop this one request and nothing else.
     """
     with _state_lock:
         targets = [
@@ -1073,6 +1109,30 @@ def supersede(partial):
             len(targets), os.path.basename(partial),
         )
     return len(targets)
+
+
+#: How long a resume waits for the request it replaces to let go. The shutdown
+#: in `supersede` releases a handler blocked in a read at once on Linux; this
+#: only bounds the case where it does not, which then answers "ask again".
+_RELEASE_WAIT = 10.0
+
+
+def _wait_until_released(partial, timeout=_RELEASE_WAIT):
+    """Whether no request holds `partial` any more, waiting up to `timeout`.
+
+    Asked by a resume after `supersede`, and before anything measures the file:
+    until the old handler has left `_in_flight` it may still write, and a size
+    read before that write is the offset that duplicated bytes into a game.
+    """
+    deadline = time.monotonic() + timeout
+    while True:
+        with _state_lock:
+            held = any(entry.get("partial") == partial for entry in _in_flight.values())
+        if not held:
+            return True
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(0.05)
 
 
 def sweep_partials(directory):
@@ -1221,6 +1281,10 @@ def _paused_count():
     with _state_lock:
         directory = _target_dir
         live = {entry["partial"] for entry in _in_flight.values() if entry.get("partial")}
+        # A cancelled file keeps its partial now, so it can be resumed if it is
+        # sent again -- but nothing is coming back for it on its own, and
+        # counting it would hold the server up and call it Paused.
+        stopped = set(_cancelled)
     if not directory:
         return 0
     try:
@@ -1230,7 +1294,9 @@ def _paused_count():
     return sum(
         1
         for name in names
-        if name.endswith(".uploading") and os.path.join(directory, name) not in live
+        if name.endswith(".uploading")
+        and os.path.join(directory, name) not in live
+        and os.path.join(directory, name) not in stopped
     )
 
 

@@ -1708,11 +1708,10 @@ class Transfers(plugin_base.PluginContext):
     async def cancel_upload(self, upload_id: int = 0):
         """Abandon a transfer in progress. 0 means every one of them.
 
-        The half-written file goes with it, and this is the one thing that
-        deletes one. An interrupted upload keeps its partial so the sender can
-        carry on from it; a cancelled one is the user saying they do not want
-        this file, which is a different answer. The handler deletes its own,
-        being the only thread that can do it safely while the file is open.
+        What already arrived is kept, as it is for any other stop. Cancel
+        stops the sender and refuses its automatic retry; choosing the same
+        file again carries on from the kept bytes. It used to delete them, and
+        that sent a transfer which only looked stuck back to zero.
         """
         cancelled = await self._run(fileserver.cancel, upload_id or None)
         status = await self._run(fileserver.status)

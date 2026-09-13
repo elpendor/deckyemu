@@ -207,9 +207,10 @@ function humanSize(n) {
 
 // How many uploads are still running, so leaving the page can be questioned.
 //
-// Closing the tab aborts the request, and a multi-gigabyte ROM then has to start
-// over from nothing -- there is no resume. The Deck cleans up the half-written
-// file either way, so this guards the user's time rather than the disk.
+// Closing the tab aborts the request. The Deck keeps what arrived, and picking
+// the file again on a reopened page carries on from there -- but only while the
+// Deck's server is still up, and nothing resends it by itself once the page is
+// gone. So this guards the user's time rather than the disk.
 //
 // Advisory only: the browser decides the wording, the user can still leave, and
 // several mobile browsers ignore beforeunload entirely. The server therefore
@@ -326,6 +327,11 @@ function askPending(file, restart) {
 // attempt that transferred bytes resets it, so a slow connection dropping every
 // few minutes keeps going, while a Deck that has gone away stops asking.
 const MAX_STALLS = 6;
+// How long an upload may go without a single progress event before it is given
+// up and retried. Browsers report progress many times a second while bytes
+// move, even over a poor link, so twenty seconds of silence is a connection that
+// has stopped rather than one that is slow.
+const STALL_MS = 20000;
 const MAX_TRIES = 30;
 
 function attempt(job) {
@@ -360,11 +366,24 @@ function attempt(job) {
     // it knows that, and the next attempt asks -- but enough to tell an attempt
     // that achieved something from one that never got started.
     let moved = 0;
+    // A stall watchdog. When the network stops carrying bytes without closing
+    // the connection, nothing times out at either end: the request just sits,
+    // measured once at a minute before the socket finally died, and the row looks
+    // frozen. Giving up on the request after STALL_MS with no progress hands it
+    // to the ordinary retry, which asks the Deck how much it has and carries on
+    // from there -- a freeze becomes a resume nobody has to press for.
+    let lastProgress = Date.now();
+    const watchdog = setInterval(() => {
+      if (Date.now() - lastProgress > STALL_MS) request.abort();
+    }, 2000);
+    const stopWatching = () => clearInterval(watchdog);
     request.upload.addEventListener('progress', (e) => {
+      lastProgress = Date.now();
       if (!e.lengthComputable) return;
       moved = e.loaded;
       job.fill.style.width = (((offset + e.loaded) / job.file.size) * 100) + '%';
     });
+    request.addEventListener('loadend', stopWatching);
     request.addEventListener('load', () => {
       if (request.status === 200) { finish(job); return; }
       // 410 is the Deck saying the user cancelled this file. Terminal, and the

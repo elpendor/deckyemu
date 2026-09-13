@@ -703,8 +703,9 @@ export const stopFileServerIfIdle = callable<
 /**
  * Abandon a transfer in progress. `0` cancels every one of them.
  *
- * The half-written file is deleted with it: nothing can resume an upload, so
- * keeping it would only leave litter in the folder the user browses for ROMs.
+ * What already arrived is kept: sending the same file again carries on from
+ * there rather than starting over. The next server session clears it if nobody
+ * does.
  */
 export const cancelUpload = callable<
   [uploadId: number],

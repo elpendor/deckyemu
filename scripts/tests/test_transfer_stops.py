@@ -191,6 +191,11 @@ try:
     _partial = fileserver._partial_path(os.path.join(_dir, _NAME), _FP)
     _in_flight(9001, _partial)
     check("the cancel is signalled", fileserver.cancel(9001), 1)
+    # And its handler lets go, as a real one does once cancel() has shut its
+    # socket. A resume now waits for exactly that before measuring the file --
+    # see test_resume_race.py -- so a stand-in that held on forever would make
+    # every later send wait out the release timeout and be told to ask again.
+    fileserver._in_flight.pop(9001, None)
 
     # The check the device needed. Told here, the page shows "cancelled on the
     # Deck" instead of starting a body it is not allowed to send.
