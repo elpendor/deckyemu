@@ -209,7 +209,25 @@ export interface UploadInFlight {
   cancelled: boolean;
 }
 
+/**
+ * A half-sent file nobody is sending: cancelled, or interrupted and not yet
+ * picked up again. Kept so sending it again carries on; deletable from the list.
+ */
+export interface StoppedTransfer {
+  /** The file's own name, as the sender picked it. */
+  name: string;
+  /** The half-file's name in the transfer folder, which is what deleting it takes. */
+  partial: string;
+  received: number;
+  /** The whole file's size, or 0 when the sender gave no fingerprint to read it from. */
+  total: number;
+  /** Cancelled on the Deck, as opposed to merely interrupted. */
+  cancelled: boolean;
+}
+
 export interface FileServerStatus {
+  /** Half-sent files nobody is sending. See `StoppedTransfer`. */
+  stopped?: StoppedTransfer[];
   running: boolean;
   /** Contains the access token, so treat it as a secret while running. */
   url: string;
@@ -726,6 +744,16 @@ export const discardTransferredFile = callable<
   [name: string],
   { ok: boolean; error?: string; removed?: boolean; received?: ReceivedFile[] }
 >("discard_transferred_file");
+
+/**
+ * Delete what arrived of a stopped transfer, by the half-file's name. Sending
+ * the file again afterwards starts from the beginning. Refused for a transfer
+ * that is still arriving -- Cancel is what stops one of those.
+ */
+export const discardStoppedTransfer = callable<
+  [partial: string],
+  { ok: boolean; error?: string; removed?: boolean }
+>("discard_stopped_transfer");
 
 /**
  * Extract a zip sitting in the transfer folder, in place.

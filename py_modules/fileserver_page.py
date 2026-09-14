@@ -151,6 +151,9 @@ _STYLE = """
   li.done .name::before { content: "\\2713  "; color: var(--ok); }
   li.failed .name::before { content: "\\2717  "; color: var(--bad); }
   li.failed .size { color: var(--bad); }
+  /* Small, beside the message: the page's own button style is sized for a form. */
+  li button.resume { font-size: 13px; padding: 6px 12px; margin-left: 10px;
+                     border-radius: 8px; flex-shrink: 0; }
   /* Between two attempts: not done, not failed, and it used to look like
      neither. "reconnecting" landed in the same muted grey as the file size it
      replaced -- the one corner of the row nobody reads for news -- so the state
@@ -327,6 +330,9 @@ function askPending(file, restart) {
 // attempt that transferred bytes resets it, so a slow connection dropping every
 // few minutes keeps going, while a Deck that has gone away stops asking.
 const MAX_STALLS = 6;
+// What a cancelled row says. The row also gets a Resume button -- see
+// offerResume -- which is what says it can carry on.
+const CANCELLED_NOTE = 'cancelled on the Deck';
 // How long an upload may go without a single progress event before it is given
 // up and retried. Browsers report progress many times a second while bytes
 // move, even over a poor link, so twenty seconds of silence is a connection that
@@ -342,7 +348,7 @@ function attempt(job) {
   const first = job.tries === 0;
   askPending(job.file, first).then((pending) => {
     if (job !== current) return;
-    if (pending.cancelled) { fail(job, 'cancelled on the Deck'); return; }
+    if (pending.cancelled) { fail(job, CANCELLED_NOTE); return; }
     const offset = pending.offset;
     job.tries += 1;
     // Out of the waiting state and back to an ordinary row: this is a transfer
@@ -392,7 +398,7 @@ function attempt(job) {
       // is what made Cancel look broken -- the row vanished and came back at 0%
       // about a second later, because a cancelled connection is indistinguish-
       // able from a dropped one at this end.
-      if (request.status === 410) { fail(job, 'cancelled on the Deck'); return; }
+      if (request.status === 410) { fail(job, CANCELLED_NOTE); return; }
       again(job, moved, request.responseText || ('failed (' + request.status + ')'));
     });
     request.addEventListener('error', () => again(job, moved, 'connection lost'));
@@ -437,7 +443,35 @@ function fail(job, message) {
   job.bar.remove();
   job.row.className = 'failed';
   job.size.textContent = message;
+  offerResume(job);
   settle(job);
+}
+
+// A failed row keeps the file it was sending, so it can be sent again without
+// the file picker. The Deck kept what arrived -- a cancel does not delete it --
+// and the next attempt asks how much that is, so this carries on rather than
+// starting over. Queued as a first attempt: that is what tells the Deck this is
+// a person choosing to send it, which clears a cancel the Deck is holding.
+// Gone once the page reloads, because the file goes with it.
+function offerResume(job) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'resume';
+  button.textContent = 'Resume';
+  button.addEventListener('click', () => {
+    button.remove();
+    job.row.className = '';
+    job.size.textContent = humanSize(job.file.size);
+    job.fill.style.width = '0';
+    job.row.appendChild(job.bar);
+    job.stalls = 0;
+    job.tries = 0;
+    active += 1;
+    pending.push(job);
+    reflowHeadings();
+    pump();
+  });
+  job.size.parentNode.appendChild(button);
 }
 
 function settle(job) {

@@ -46,9 +46,19 @@ and each can be **cancelled**. That status also appears in the Quick Access
 panel, so dismissing the dialog does not hide a transfer that is still running.
 
 **Cancelling stops the transfer but keeps what arrived.** The sending page is
-told to stop rather than retry. Choosing the same file on it again carries on
-from where it was cancelled instead of starting over, which matters for a game
-of several gigabytes on a slow connection.
+told to stop rather than retry, and its row gets a **Resume** button that
+carries on from where it was cancelled instead of starting over — which matters
+for a game of several gigabytes on a slow connection. A transfer that gave up on
+a dead connection gets the same button. Once the page has been reloaded the
+button is gone, but choosing the same file again carries on just the same.
+Either way only while the transfer dialog stays open on the Deck: closing it
+lets the server stop, and a cancelled transfer's half-file is cleared when the
+server next starts.
+
+Anything half-sent that nobody is sending — cancelled, or interrupted and not
+picked up again — is listed under **Stopped**, with how far it got. Its bin
+deletes what arrived, after asking; sending that file again then starts from the
+beginning.
 
 **An interrupted transfer carries on where it left off.** Wifi dropping, a phone
 locking its screen or a tab left in the background all end an upload partway;

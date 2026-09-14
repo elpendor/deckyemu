@@ -1,7 +1,7 @@
 import { ConfirmModal } from "@decky/ui";
 import { toaster } from "@decky/api";
 
-import { discardTransferredFile } from "./backend";
+import { discardStoppedTransfer, discardTransferredFile } from "./backend";
 import { FileName } from "./FileName";
 import { DANGER_TEXT } from "./danger";
 import { logError } from "./logError";
@@ -33,6 +33,11 @@ import { humanSize } from "./TransferModal";
 export function confirmDiscardTransfer(
   file: { name: string; size: number },
   onDiscarded: () => void,
+  /**
+   * A stopped transfer rather than a finished file: the half-file's name to
+   * delete, and a sentence that says what deleting it costs.
+   */
+  stopped?: { partial: string },
 ): void {
   openModal(
     <ConfirmModal
@@ -51,7 +56,9 @@ export function confirmDiscardTransfer(
       onOK={() =>
         void (async () => {
           try {
-            const result = await discardTransferredFile(file.name);
+            const result = stopped
+              ? await discardStoppedTransfer(stopped.partial)
+              : await discardTransferredFile(file.name);
             if (!result.ok) {
               toaster.toast({ title: "Could not delete", body: result.error ?? "" });
               return;
@@ -83,12 +90,19 @@ export function confirmDiscardTransfer(
            */}
           <FileName name={file.name} mode="wrap" style={{ fontWeight: 600 }} />
 
-          <div style={DANGER_TEXT}>
-            This deletes {humanSize(file.size)} from the transfer folder on this Deck.
-            It cannot be undone from here — the file would have to be sent again.
-            Anything already added to your library or installed into an emulator is
-            unaffected.
-          </div>
+          {stopped ? (
+            <div style={DANGER_TEXT}>
+              This deletes the {humanSize(file.size)} already sent to this Deck. Sending
+              the file again starts from the beginning instead of carrying on.
+            </div>
+          ) : (
+            <div style={DANGER_TEXT}>
+              This deletes {humanSize(file.size)} from the transfer folder on this Deck.
+              It cannot be undone from here — the file would have to be sent again.
+              Anything already added to your library or installed into an emulator is
+              unaffected.
+            </div>
+          )}
         </div>
       }
     />,

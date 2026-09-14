@@ -1645,6 +1645,20 @@ class Transfers(plugin_base.PluginContext):
         return {"ok": True, "removed": True,
                 "received": await self._run(fileserver.received_files)}
 
+    async def discard_stopped_transfer(self, partial: str):
+        """Delete what arrived of a transfer nobody is sending any more.
+
+        A cancelled or interrupted transfer keeps its half-file so sending the
+        file again carries on, and until this there was no way to be rid of one
+        in Game Mode short of waiting for the next server session. By the
+        half-file's bare name; `fileserver.discard_partial` refuses anything
+        else, and anything still arriving.
+        """
+        removed, error = await self._run(fileserver.discard_partial, partial or "")
+        if error:
+            return {"ok": False, "error": error}
+        return {"ok": True, "removed": removed}
+
 
     async def unpack_transferred_file(self, name: str):
         """Extract a zip in the transfer folder, in place. The only way to, in Game Mode.

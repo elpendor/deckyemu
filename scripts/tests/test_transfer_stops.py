@@ -258,5 +258,64 @@ check("Stop stops it even with something arriving",
 fileserver._in_flight.clear()
 
 
+section("a stopped transfer is listed, and can be deleted from Game Mode")
+
+# A cancel keeps its half-file so sending again carries on, which left it
+# invisible: the received list skips half-files, and nothing but the next
+# session's sweep ever cleared one.
+_stop_dir = os.path.join(TMP, "stopped-transfers")
+os.makedirs(_stop_dir, exist_ok=True)
+_state = fileserver.start(_stop_dir)
+check("a server for these", _state.get("error", ""), "")
+try:
+    _cancelled_partial = fileserver._partial_path(
+        os.path.join(_stop_dir, "Big Game.nsp"), "4000-1734644188000")
+    _interrupted_partial = fileserver._partial_path(
+        os.path.join(_stop_dir, "Other Game.iso"), "9000-1")
+    _arriving_partial = fileserver._partial_path(
+        os.path.join(_stop_dir, "Arriving.iso"), "500-2")
+    for _path, _size in ((_cancelled_partial, 1000), (_interrupted_partial, 300),
+                         (_arriving_partial, 100)):
+        with open(_path, "wb") as _handle:
+            _handle.write(b"x" * _size)
+    with open(os.path.join(_stop_dir, "Finished.iso"), "wb") as _handle:
+        _handle.write(b"done")
+    fileserver._cancelled[_cancelled_partial] = fileserver._now()
+    _in_flight(8001, _arriving_partial)
+
+    _listed = {one["name"]: one for one in fileserver.status()["stopped"]}
+    check("both stopped transfers are listed, by the file's own name",
+          sorted(_listed), ["Big Game.nsp", "Other Game.iso"])
+    check("with how far each got, and the whole size read from its name",
+          (_listed["Big Game.nsp"]["received"], _listed["Big Game.nsp"]["total"]), (1000, 4000))
+    check("and which was cancelled rather than interrupted",
+          (_listed["Big Game.nsp"]["cancelled"], _listed["Other Game.iso"]["cancelled"]),
+          (True, False))
+    check("a transfer still arriving is not a stopped one", "Arriving.iso" in _listed, False)
+    check("and a finished file is not either", "Finished.iso" in _listed, False)
+
+    check("a path is refused, not followed",
+          fileserver.discard_partial("../" + os.path.basename(_cancelled_partial))[0], False)
+    check("so is a finished file, which has its own delete",
+          fileserver.discard_partial("Finished.iso"),
+          (False, "That is not a stopped transfer."))
+    check("and a transfer still arriving is left to Cancel",
+          (fileserver.discard_partial(os.path.basename(_arriving_partial))[0],
+           os.path.isfile(_arriving_partial)),
+          (False, True))
+
+    check("a stopped transfer is deleted",
+          fileserver.discard_partial(os.path.basename(_cancelled_partial)), (True, ""))
+    check("its half-file is gone", os.path.isfile(_cancelled_partial), False)
+    check("and so is its cancelled mark, so sending it again starts fresh",
+          _cancelled_partial in fileserver._cancelled, False)
+    check("deleting it twice is not an error",
+          fileserver.discard_partial(os.path.basename(_cancelled_partial)), (False, ""))
+finally:
+    fileserver._in_flight.clear()
+    fileserver._cancelled.clear()
+    fileserver.stop()
+
+
 if __name__ == "__main__":
     summary()

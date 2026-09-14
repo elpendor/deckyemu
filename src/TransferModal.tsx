@@ -664,6 +664,7 @@ export function TransferModal({
 
   const running = Boolean(status?.running);
   const received = status?.received ?? [];
+  const stopped = status?.stopped ?? [];
   const uploads = status?.uploads ?? [];
 
   // ModalRoot gets our handler, not the raw one, so dismissing with B stops the
@@ -789,6 +790,59 @@ export function TransferModal({
                 <ProgressBar fraction={file.total > 0 ? file.received / file.total : 0} />
               </Focusable>
             ))}
+          </div>
+        )}
+
+        {/* Half-sent files nobody is sending: cancelled, or interrupted and not
+            picked up again. Kept so choosing the file again carries on, which
+            made them invisible -- the list skips half-files, and the only way
+            to be rid of one was to wait for the next server session. A heading
+            of their own, so Received still counts only finished files. */}
+        {stopped.length > 0 && (
+          <div style={{ ...COLUMN, gap: "6px" }}>
+            <div>
+              <div style={{ fontWeight: 600 }}>Stopped ({stopped.length})</div>
+              {/* Said once for the group: nothing else on this screen tells you a
+                  cancel kept what arrived, so the bin reads as the only way on. */}
+              {/* "While this stays open" is the load-bearing half: closing the
+                  dialog lets the server stop, and starting it again clears
+                  what a cancelled transfer left. */}
+              <div style={MUTED}>
+                Resume it from the page that sent it while this stays open, or send
+                the same file again.
+              </div>
+            </div>
+            <Focusable style={RECEIVED}>
+              {stopped.map((file) => (
+                <Focusable
+                  key={file.partial}
+                  style={{ display: "flex", alignItems: "center", gap: "10px" }}
+                >
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <FileName name={file.name} />
+                    <div style={MUTED}>
+                      {file.total > 0
+                        ? `${file.cancelled ? "Cancelled" : "Stopped"} at ${Math.floor((file.received / file.total) * 100)}% · ${humanSize(file.received)} of ${humanSize(file.total)}`
+                        : `${file.cancelled ? "Cancelled" : "Stopped"} · ${humanSize(file.received)} sent`}
+                    </div>
+                  </div>
+                  <div className={DANGER_CLASS}>
+                    <DialogButton
+                      onClick={() =>
+                        confirmDiscardTransfer(
+                          { name: file.name, size: file.received },
+                          load,
+                          { partial: file.partial },
+                        )
+                      }
+                      style={ICON_BUTTON}
+                    >
+                      <FaTrash />
+                    </DialogButton>
+                  </div>
+                </Focusable>
+              ))}
+            </Focusable>
           </div>
         )}
 

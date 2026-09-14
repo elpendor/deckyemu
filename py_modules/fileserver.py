@@ -1300,10 +1300,84 @@ def _paused_count():
     )
 
 
+#: `<name>.<size>-<modified>`: what `_partial_path` leaves once `.uploading` is
+#: taken off, when the sender sent a fingerprint. The size is the whole file's.
+_TAGGED_PARTIAL = re.compile(r"^(?P<name>.+)\.(?P<size>\d+)-\d+$")
+
+
+def stopped_files():
+    """Half-sent files nobody is sending, for the transfer dialog to list.
+
+    A cancel keeps its partial, so choosing the file again carries on -- and
+    that made them invisible: the received list skips half-files, and the only
+    thing that ever cleared one was the next server session's sweep. Listed so
+    each can be deleted from Game Mode.
+
+    What is being written right now is excluded; that row is an arriving
+    transfer with a Cancel button, not a stopped one.
+    """
+    directory = saving_into()
+    with _state_lock:
+        live = {entry["partial"] for entry in _in_flight.values() if entry.get("partial")}
+        cancelled = set(_cancelled)
+    try:
+        names = sorted(os.listdir(directory))
+    except OSError:
+        return []
+
+    found = []
+    for partial in names:
+        if not partial.endswith(".uploading"):
+            continue
+        path = os.path.join(directory, partial)
+        if path in live or not os.path.isfile(path):
+            continue
+        stem = partial[: -len(".uploading")]
+        match = _TAGGED_PARTIAL.match(stem)
+        found.append({
+            "name": match.group("name") if match else stem,
+            "partial": partial,
+            "received": _partial_size(path),
+            "total": int(match.group("size")) if match else 0,
+            "cancelled": path in cancelled,
+        })
+    return found
+
+
+def discard_partial(partial):
+    """Delete a stopped transfer's half-file by its name. Returns `(removed, error)`.
+
+    By bare name out of the folder transfers land in, and only a `.uploading`
+    file, so nothing else on the Deck can be named. A partial still being
+    written is refused -- deleting it would race the thread writing it, and
+    Cancel is the button for that row. The cancelled mark goes too, so sending
+    the file again later starts fresh rather than being refused.
+    """
+    if (not partial or partial != os.path.basename(partial)
+            or partial in (".", "..") or not partial.endswith(".uploading")):
+        return False, "That is not a stopped transfer."
+    path = os.path.join(saving_into(), partial)
+    with _state_lock:
+        if any(entry.get("partial") == path for entry in _in_flight.values()):
+            return False, "That file is still arriving. Cancel it first."
+        _cancelled.pop(path, None)
+    if not os.path.isfile(path):
+        # Already gone is what the caller asked for.
+        return False, ""
+    try:
+        os.remove(path)
+    except OSError as error:
+        return False, "Could not delete it: %s" % error
+    decky.logger.info("Discarded the stopped transfer %s", partial)
+    return True, ""
+
+
 def status():
     # Before the lock: it reads the directory, and holding the lock across a
     # filesystem call would put every upload's per-chunk progress write behind it.
     paused = _paused_count()
+    # Same reason, and it takes the lock itself to read what is live.
+    stopped = stopped_files()
     # Outside the lock, for the same reason `paused` is: both read the disk, and
     # holding the state lock across a directory scan would block every upload
     # handler trying to register itself.
@@ -1377,6 +1451,9 @@ def status():
             # in four places, because the two disagreed -- so they agree here
             # instead and there is one answer to the question.
             "received": waiting,
+            # Half-files nobody is sending, deletable one at a time. See
+            # `stopped_files`.
+            "stopped": stopped,
             "idle_seconds": int(_now() - _last_activity) if running else 0,
             "idle_timeout": IDLE_TIMEOUT,
         }
