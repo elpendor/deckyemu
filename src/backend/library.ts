@@ -194,6 +194,8 @@ export interface ReceivedFile {
   path: string;
   size: number;
   at: number;
+  /** For a Switch update or DLC: the added game it installs into, if any. */
+  game_content?: import("./games").GameContentOwner | null;
 }
 
 /** A file still arriving. `total` is the size its sender declared. */

@@ -48,6 +48,7 @@ import {
   subscribeDraft,
   updateDraft,
 } from "./romDraft";
+import { installContentFor, installWaitingContent } from "./installContent";
 import {
   continueAfterEmulator,
   installEmulatorAndUnpack,
@@ -730,6 +731,15 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
         notes.push("SD card access granted to the RetroArch flatpak");
       }
 
+      // After the game is registered, because installing one is matched
+      // against the game's record. The paths were found when the file was
+      // picked and are still right: filing moves the game, not what is beside it.
+      const waiting = probe?.content_waiting ?? [];
+      if (waiting.length) {
+        const installed = await installWaitingContent(added.appId, waiting);
+        if (installed) notes.push(`${installed} update(s) and DLC installed`);
+      }
+
       toaster.toast({
         title: `Added ${prepared.title}`,
         body: sentence(notes.join(" - ")),
@@ -963,6 +973,36 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
         </PanelSectionRow>
       )}
 
+      {/* A Switch update or DLC, which belongs to a game rather than being one.
+          Instead of the core list, for the reason a save backup is: adding it
+          would make a Steam entry that boots nothing. It names its game, so
+          Install needs no question -- unless that game has not been added, and
+          then the row says what to do first. */}
+      {probe?.game_content && (
+        <PanelSectionRow>
+          {/* Always the button. When its game is not in the library, pressing
+              it says so -- a sentence in place of the button broke the flow. */}
+          <ButtonItem
+            layout="below"
+            disabled={adding}
+            onClick={() => {
+              const owner = probe.game_content!;
+              updateDraft({ adding: true });
+              void installContentFor(owner, romPath).then((installed) =>
+                installed ? resetDraft() : updateDraft({ adding: false }),
+              );
+            }}
+            description={
+              probe.game_content.app_id
+                ? `${probe.game_content.label} for ${probe.game_content.title}. It is not a game, so it goes into that game rather than onto your library.`
+                : `${probe.game_content.label}. It is not a game, so it goes into the game it belongs to rather than onto your library.`
+            }
+          >
+            {adding ? "Installing..." : "Install"}
+          </ButtonItem>
+        </PanelSectionRow>
+      )}
+
       {/* A zip that can come apart here, offered the same way a `.pkg` is: the
           button is in the panel you are already adding from, and pressing it
           leaves the panel pointing at what came out rather than sending you
@@ -1095,6 +1135,18 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
         </>
       )}
 
+      {/* A Switch game's updates and DLC sent with it. Said before Add rather
+          than discovered afterwards, beside the disc row, because it changes
+          what the one press does: it adds the game and installs these. */}
+      {(probe?.content_waiting?.length ?? 0) > 0 && (
+        <PanelSectionRow>
+          <Field
+            label="Its updates and DLC are here too"
+            description={`${probe!.content_waiting!.map((one) => one.label).join(", ")} — installed into the game when it is added.`}
+          />
+        </PanelSectionRow>
+      )}
+
       {/* Nothing claims this file. Forcing something installed is sometimes
           right and this is the only way to do it -- but only when there is
           nothing better to offer.
@@ -1109,7 +1161,8 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
 
           `coreOptions.length` as well, since with nothing registered and no
           cores the list is empty and a disabled dropdown says even less. */}
-      {probe && !pendingPackage && !probe.save_backup && probe.matching_cores.length === 0
+      {probe && !pendingPackage && !probe.save_backup && !probe.game_content
+        && probe.matching_cores.length === 0
         && installable.length === 0 && coreOptions.length > 0 && (
         <PanelSectionRow>
           <DropdownItem
@@ -1314,7 +1367,9 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
           the panel's largest control saying nothing -- while a ROM *is* picked it
           stays visible but disabled, because then it is telling you something is
           still missing, usually a core. */}
-      {romPath && (
+      {/* Not for an update or DLC: its Install row above is the whole of what can
+          be done with it, and a disabled Add under it reads as a step missing. */}
+      {romPath && !probe?.game_content && (
         <PanelSectionRow>
           {/* Not blocked outright. The check is good enough to warn on and not
               good enough to overrule somebody with the file in front of them:
@@ -1347,7 +1402,7 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
         </PanelSectionRow>
       )}
 
-      {romPath && !looking && (
+      {romPath && !looking && !probe?.game_content && (
         <PanelSectionRow>
           <ButtonItem layout="below" onClick={openArtPicker} disabled={adding}>
             {/* The words on the screen this opens, which has always called

@@ -81,6 +81,10 @@ OPTIONAL = {
                 "FIRMWARE_REQUIRED below.",
     "data": "Paths this emulator owns, relative to home, for the reset tab to "
             "clear. The flatpak's own directory is already covered.",
+    "game_content": "Where the emulator reads each game's updates and DLC, as "
+                    "{'format': 'ryujinx', 'path': <directory relative to home>}. "
+                    "Gives the game editor an Updates and DLC list. The path "
+                    "must sit inside a directory the entry owns, like `saves`.",
     "saves": "Where this emulator keeps save data, relative to home, for the "
              "backup to carry off the device. Each path must sit inside one "
              "of the directories the entry already owns -- the flatpak's own, "
@@ -148,6 +152,10 @@ OPTIONAL = {
 #: user to download the same build by hand -- see FORBIDDEN_WHEN_IMPORTED for
 #: what is actually withheld, which is everything that is not that.
 SOURCE_KINDS = ("flatpak", "github", "byo")
+
+#: The shapes `game_content` can name, which is to say the ones `gamecontent`
+#: knows how to write. Ryujinx's two JSON files per game are the only one.
+GAME_CONTENT_FORMATS = ("ryujinx",)
 
 #: Keys a firmware spec may carry, as `emu_firmware` reads them.
 FIRMWARE_REQUIRED = ("name",)
@@ -647,6 +655,25 @@ def validate(entry, known_platforms=(), imported=False):
         elif not any(_under(path, root) for root in roots):
             bad("saves path %r is outside every directory this entry owns (%s)"
                 % (path, ", ".join(roots)))
+
+    # Written whenever a game's updates or DLC change, so the same fence as
+    # `saves`: inside a directory the entry owns, never anywhere else in home.
+    content = entry.get("game_content")
+    if content:
+        if not isinstance(content, dict):
+            bad("game_content must be an object with 'format' and 'path'")
+        else:
+            if content.get("format") not in GAME_CONTENT_FORMATS:
+                bad("game_content format %r is not one of %s"
+                    % (content.get("format"),
+                       ", ".join(repr(one) for one in GAME_CONTENT_FORMATS)))
+            path = content.get("path")
+            if _escapes(path):
+                bad("game_content path %r must be relative to home and must not "
+                    "escape it" % path)
+            elif not any(_under(path, root) for root in roots):
+                bad("game_content path %r is outside every directory this entry "
+                    "owns (%s)" % (path, ", ".join(roots) or "none"))
 
     seed = entry.get("seed")
     if seed:

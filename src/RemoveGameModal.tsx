@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import {
   deletePackagedGame,
   deleteRom,
+  gameContent,
   packagedGameInfo,
   unregisterGame,
   type AddedGame,
@@ -74,6 +75,29 @@ export function RemoveGameModal({ closeModal, game, onRemoved }: Props) {
     };
   }, [game.rom_path]);
 
+  // Updates and DLC kept for a Switch game, which removing it deletes as well.
+  // Asked separately because they belong to the game rather than to its file:
+  // a ROM on an SD card is left alone, and these are still this plugin's copies.
+  const [content, setContent] = useState<{ count: number; bytes: number } | null>(null);
+  useEffect(() => {
+    let live = true;
+    gameContent(game.app_id)
+      .then((found) => {
+        if (!live || !found.ok || !found.rows.length) return;
+        setContent({
+          count: found.rows.length,
+          bytes: found.rows.reduce((total, row) => total + row.size, 0),
+        });
+      })
+      .catch((error) => logError("could not read the game's updates and DLC", error));
+    return () => {
+      live = false;
+    };
+  }, [game.app_id]);
+  const contentNote = content
+    ? ` Its ${content.count === 1 ? "installed update or DLC is" : `${content.count} installed updates and DLC are`} deleted too — ${humanSize(content.bytes)}.`
+    : "";
+
   return (
     <ConfirmModal
       closeModal={closeModal}
@@ -82,7 +106,7 @@ export function RemoveGameModal({ closeModal, game, onRemoved }: Props) {
       // and the only defence against that being a surprise is saying so in the
       // sentence the user reads before pressing.
       strDescription={
-        extra?.kind === "rom"
+        (extra?.kind === "rom"
           ? `This deletes the Steam shortcut, its launcher script, and the ROM itself ` +
             `— ${humanSize(extra.bytes)} from roms/${extra.folder}` +
             ((extra.files?.length ?? 0) > 1
@@ -97,9 +121,10 @@ export function RemoveGameModal({ closeModal, game, onRemoved }: Props) {
               `unpacking it again. Your save data is kept` +
               (extra.system === "ps4" ? "." : ", and so is your licence.")
             : "This deletes the Steam shortcut and its launcher script. The ROM is somewhere " +
-              "of your own rather than in this plugin's folder, so it is left alone."
+              "of your own rather than in this plugin's folder, so it is left alone.") +
+        contentNote
       }
-      strOKButtonText={extra ? "Remove and delete" : "Remove"}
+      strOKButtonText={extra || content ? "Remove and delete" : "Remove"}
       bDestructiveWarning
       onOK={() => {
         void (async () => {

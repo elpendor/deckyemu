@@ -655,7 +655,7 @@ export function LibraryPanel({ onRefresh }: Props) {
                     status={progress.text}
                   />
                 ) : (
-                  "Deletes every shortcut, launcher and empty collection this plugin created, and every ROM and unpacked game it put on this Deck."
+                  "Deletes every shortcut, launcher and empty collection this plugin created, and every ROM, unpacked game, update and DLC it put on this Deck."
                 )
               }
             >

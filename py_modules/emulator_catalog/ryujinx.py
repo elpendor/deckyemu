@@ -179,6 +179,14 @@ ENTRY = {
         ".var/app/io.github.ryubing.Ryujinx/config/Ryujinx/bis/user/saveMeta",
         ".var/app/io.github.ryubing.Ryujinx/config/Ryujinx/bis/system/save",
     ],
+    # Where Ryujinx reads each game's updates and DLC: a folder per base title
+    # id holding `updates.json` and `dlc.json`, read at every boot. Its own
+    # autoload folders never run for a game started from a shortcut -- see
+    # `gamecontent` -- so the plugin writes these instead.
+    "game_content": {
+        "format": "ryujinx",
+        "path": "%s/games" % _RYUJINX_CONFIG,
+    },
     "databases": [],
     "platform": "Nintendo - Switch",
     "args": "{rom}",

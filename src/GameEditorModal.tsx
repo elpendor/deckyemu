@@ -24,6 +24,10 @@ import {
   switchRomPatch,
   syncRomPatches,
   type RomPatch,
+  gameContent,
+  installGameContent,
+  removeGameContent,
+  type GameContentRow,
   updateGame,
   type AddedGame,
   type Core,
@@ -59,6 +63,7 @@ import { filenameNamesTheGame } from "./lookupTerm";
 import { titleAfterArtPick } from "./titleFromArt";
 import { openModal } from "./modalStack";
 import { DANGER_CLASS } from "./danger";
+import { FileName } from "./FileName";
 import { ICON_BUTTON, ICON_BUTTON_WIDE } from "./iconButton";
 
 interface Props {
@@ -269,6 +274,35 @@ export function GameEditorModal({ game, onSaved, closeModal, onLeave }: Props) {
         // Not surfaced: losing this list beats an error banner over an editor
         // somebody opened to rename a game.
         logError("could not read the ROM patches", patchError);
+      });
+    return () => {
+      current = false;
+    };
+  }, [game.app_id]);
+
+  /**
+   * A Switch game's updates and DLC. `null` until read, and the section is only
+   * drawn for an emulator that takes them -- Ryujinx, today.
+   *
+   * Changes land at once, like the patch list above: installing is a file move
+   * and a rewrite of Ryujinx's list, not something Save would add to.
+   */
+  const [content, setContent] = useState<GameContentRow[] | null>(null);
+  const [contentProblem, setContentProblem] = useState("");
+  const [contentStart, setContentStart] = useState("");
+  const [contentBusy, setContentBusy] = useState("");
+
+  useEffect(() => {
+    let current = true;
+    gameContent(game.app_id)
+      .then((found) => {
+        if (!current || !found.ok || !found.supported) return;
+        setContent(found.rows);
+        setContentProblem(found.problem);
+        setContentStart(found.start_in);
+      })
+      .catch((contentError) => {
+        logError("could not read the game's updates and DLC", contentError);
       });
     return () => {
       current = false;
@@ -503,6 +537,105 @@ export function GameEditorModal({ game, onSaved, closeModal, onLeave }: Props) {
       setPatchBusy("");
     }
   }, [romPath, patchStart, game.app_id, afterPatchCall]);
+
+  /**
+   * A refusal is a dialog, not the error line.
+   *
+   * That line sits at the foot of this editor, below everything the user
+   * scrolled past to reach the list -- so an update for another game was
+   * refused with a correct sentence nobody could see, and the press looked like
+   * it did nothing at all.
+   */
+  const showContentRefusal = useCallback((heading: string, body: string) => {
+    openModal(
+      <ConfirmModal
+        strTitle={heading}
+        strDescription={body}
+        strOKButtonText="Close"
+        bAlertDialog
+      />,
+    );
+  }, []);
+
+  const afterContentCall = useCallback(
+    (result: Awaited<ReturnType<typeof installGameContent>>, heading: string) => {
+      if (result.rows) setContent(result.rows);
+      if (!result.ok) {
+        showContentRefusal(heading, result.error || "Could not change the updates and DLC.");
+      }
+    },
+    [showContentRefusal],
+  );
+
+  const deleteContent = useCallback(async (row: GameContentRow) => {
+    setContentBusy(row.file);
+    try {
+      afterContentCall(await removeGameContent(game.app_id, row.file), "Not removed");
+    } catch (removeError) {
+      logError("could not remove an update or DLC", removeError);
+      showContentRefusal("Not removed", "Could not remove that file.");
+    } finally {
+      setContentBusy("");
+    }
+  }, [game.app_id, afterContentCall, showContentRefusal]);
+
+  // Asked, like the patch bin above. The copy kept here is usually the only one
+  // left on the Deck, and an update is gigabytes to send again.
+  const confirmDeleteContent = useCallback(
+    (row: GameContentRow) => {
+      openModal(
+        <ConfirmModal
+          strTitle={`Remove ${row.label}?`}
+          strDescription={
+            row.kind === "update"
+              ? "The file is deleted from this Deck, so you would have to send it again to put it back. The game runs the update before it, or none."
+              : "The file is deleted from this Deck, so you would have to send it again to put it back. The game runs without it."
+          }
+          strOKButtonText="Remove"
+          bDestructiveWarning
+          onOK={() => void deleteContent(row)}
+        />,
+      );
+    },
+    [deleteContent],
+  );
+
+  // Opens on the transfer folder, where an update sent from another device lands.
+  const pickContent = useCallback(async () => {
+    let picked: { path: string; realpath: string } | undefined;
+    try {
+      picked = await openFilePicker(
+        FileSelectionType.FILE,
+        contentStart || dirname(romPath),
+        true,
+        true,
+        undefined,
+        undefined,
+        false,
+        true,
+      );
+    } catch (pickError) {
+      if (!String(pickError ?? "").toLowerCase().includes("cancel")) {
+        logError("update picker failed", pickError);
+        showContentRefusal("Not installed", "Could not open the file browser.");
+      }
+      return;
+    }
+    const path = picked?.realpath || picked?.path || "";
+    if (!path) {
+      showContentRefusal("Not installed", "That selection did not return a file path.");
+      return;
+    }
+    setContentBusy(path);
+    try {
+      afterContentCall(await installGameContent(game.app_id, path), "Not installed");
+    } catch (installError) {
+      logError("could not install an update or DLC", installError);
+      showContentRefusal("Not installed", "Could not install that file.");
+    } finally {
+      setContentBusy("");
+    }
+  }, [romPath, contentStart, game.app_id, afterContentCall, showContentRefusal]);
 
   /**
    * Take the icon out of artwork that just arrived, if it brought one.
@@ -839,6 +972,56 @@ export function GameEditorModal({ game, onSaved, closeModal, onLeave }: Props) {
               disabled={busy || Boolean(patchBusy)}
             >
               Add a patch
+            </DialogButton>
+          </div>
+        )}
+
+        {content !== null && (
+          <div style={FIELD}>
+            <Label
+              hint={
+                contentProblem ||
+                (content.length
+                  ? "Ryujinx runs the newest update and every DLC as the game starts."
+                  : "None yet. Send an update or DLC through the transfer page, then install it here.")
+              }
+            >
+              Updates and DLC
+            </Label>
+            {content.map((row) => (
+              <Focusable
+                key={row.file}
+                style={{ display: "flex", gap: "8px", alignItems: "center" }}
+              >
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div>
+                    {contentBusy === row.file
+                      ? "Working..."
+                      : row.used
+                        ? row.label
+                        : `${row.label} — not used, a newer update is`}
+                  </div>
+                  <FileName name={row.file} style={{ fontSize: "12px", opacity: 0.7 }} />
+                </div>
+                <div className={DANGER_CLASS} style={{ flexShrink: 0 }}>
+                  <DialogButton
+                    onClick={() => confirmDeleteContent(row)}
+                    style={ICON_BUTTON}
+                    disabled={busy || Boolean(contentBusy)}
+                  >
+                    <FaTrash />
+                  </DialogButton>
+                </div>
+              </Focusable>
+            ))}
+            <DialogButton
+              onClick={() => void pickContent()}
+              style={BUTTON}
+              disabled={busy || Boolean(contentBusy) || Boolean(contentProblem)}
+            >
+              {contentBusy && !content.some((row) => row.file === contentBusy)
+                ? "Installing..."
+                : "Install an update or DLC"}
             </DialogButton>
           </div>
         )}

@@ -151,6 +151,7 @@ others.
   script too. A ROM the chosen core cannot read is refused.
 - **ROM hacks** — translations and hacks, as patch files. RetroArch games only,
   and described below.
+- **Updates and DLC** — for Switch games on Ryujinx, also described below.
 - **Core or emulator** — changing it can change the system, so the platform label
   and the per-platform collection follow.
 - **System** — only for a core covering more than one, which is most of them.
@@ -220,6 +221,38 @@ ROMhacking.net, where most of these came from for twenty years, stopped
 accepting submissions in August 2024 and now serves its archive through the
 Internet Archive; hacks are found in a lot of places, and the plugin does not
 care which one a patch came from.
+
+### Switch updates and DLC
+
+A Switch game's updates and DLC arrive as `.nsp` files of their own, and each
+one says which game it is for. So once one is on the Deck there is nothing to
+choose: its row in the transfer list reads *Update v2.0.2 for* the game, with
+**Install**, and picking it in the add panel offers the same **Install** instead
+of adding it as a game. If that game has not been added yet, pressing
+**Install** says so.
+
+**Sent together, added together.** Send a game with its updates and DLC and pick
+the game in the add panel: a row lists what it found beside it, and pressing
+**Add to Steam** adds the game and installs those with it.
+
+The game's editor has the same button, **Install an update or DLC**, whose file
+browser opens on the transfer folder. Installing takes the file out of there,
+the same way adding a game moves its ROM. A file you pick from anywhere else is
+copied instead, so yours stays where it is.
+
+The plugin reads the package to tell what it is, so an update meant for another
+game, a DLC for another game, or a whole game picked by mistake is refused
+before anything moves. No keys are needed for that, and nothing is changed in
+Ryujinx's own window: the game just starts with its update and DLC in place.
+
+**The newest update is the one used.** Keeping an older one does no harm, and
+removing the newest puts the one before it back in charge. **Every DLC is on.**
+Each row has a bin, which deletes that file from the Deck.
+
+Removing the game from the library deletes its updates and DLC too.
+
+Only Ryujinx takes these today, and only `.nsp` files. A game dumped with its
+update and DLC merged into one file needs none of this.
 
 ## Collections
 

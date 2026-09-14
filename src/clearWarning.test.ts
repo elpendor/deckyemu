@@ -50,6 +50,9 @@ describe("clearWarning", () => {
     for (const count of [null, 0, 1, 2, 999]) {
       const text = clearWarning(count);
       expect(text, `count ${count}`).toContain("the ROMs it filed");
+      // Clearing the library deletes a Switch game's kept updates and DLC too,
+      // and this sentence is the whole of the protection.
+      expect(text, `count ${count}`).toContain("the updates and DLC it installed");
       expect(text, `count ${count}`).toContain("Save data is kept");
       expect(text, `count ${count}`).toContain("not touched");
       expect(text, `count ${count}`).toMatch(/\.$/);

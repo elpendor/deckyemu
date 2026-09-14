@@ -39,11 +39,13 @@ import plugin_updates
 import ra_cores
 import hardware
 import ra_detect
+import gamecontent
 import rompatch
 import romshelf
 import savedata
 import sgdb
 import store
+import switch_content
 import sysenv
 import vita_games
 import vita_release
@@ -1061,6 +1063,23 @@ class Plugin(
                 if vita["title"]:
                     result["provisional_title"] = vita["title"]
 
+        # A Switch update or DLC, which belongs to a game rather than being one.
+        # Adding it would make a Steam entry that boots nothing, so the core list
+        # is emptied the way it is for a save backup, and the panel offers
+        # Install into the game it names instead.
+        if "." + extension in gamecontent.SUFFIXES:
+            owner = await self._run(
+                gamecontent.owner, rom_path, await self._run(store.get_library))
+            if owner:
+                result["game_content"] = owner
+                result["matching_cores"] = []
+                result["suggested_core_id"] = ""
+        # And the other way round: a game whose updates and DLC were sent with
+        # it, waiting beside it. Installed straight after the game is added, so
+        # sending a game and its update together ends in one Add.
+        if "." + extension in gamecontent.GAME_SUFFIXES and not result.get("game_content"):
+            result["content_waiting"] = await self._run(gamecontent.waiting_for, rom_path)
+
         # An Xbox disc image with nothing to boot. Worth saying here because the
         # console says it so badly: "Please insert an Xbox disc" on a black
         # screen reads as a broken emulator, a missing BIOS or a dead pad long
@@ -2066,6 +2085,76 @@ class Plugin(
                     "patches": await self._run(rompatch.listing, app_id)}
         return {"ok": True, "name": name, "applied": written,
                 "patches": await self._run(rompatch.listing, app_id)}
+
+    def _game_content_for(self, app_id):
+        """`(entry, games_root, base_id, problem)` for one game's updates and DLC.
+
+        `games_root` is empty when the game's emulator has nowhere to put them,
+        which is every emulator but Ryujinx. `problem` says why a game whose
+        emulator does still cannot take one: its own file does not say which
+        game it is, so nothing sent can be matched to it.
+        """
+        entry = store.get_library().get(str(app_id))
+        if not entry:
+            return None, "", "", "That game is no longer tracked."
+        games_root = gamecontent.games_root_for(entry.get("core_id", ""))
+        if not games_root:
+            return entry, "", "", ""
+        base_id = switch_content.inspect(entry.get("rom_path", ""))["base_id"]
+        if not base_id:
+            return entry, games_root, "", (
+                "The game's own file does not say which game it is, so no update "
+                "or DLC can be matched to it.")
+        return entry, games_root, base_id, ""
+
+    async def game_content(self, app_id: int) -> dict:
+        """A game's updates and DLC, or `supported: False` for any other emulator."""
+        entry, games_root, _base_id, problem = await self._run(self._game_content_for, app_id)
+        if entry is None:
+            return {"ok": False, "error": problem}
+        return {
+            "ok": True,
+            "supported": bool(games_root),
+            "problem": problem,
+            "rows": await self._run(gamecontent.rows, app_id) if games_root else [],
+            "start_in": await self._run(fileserver.default_dir),
+        }
+
+    async def install_game_content(self, app_id: int, path: str) -> dict:
+        """Keep an update or DLC for a game and tell Ryujinx about it."""
+        entry, games_root, base_id, problem = await self._run(self._game_content_for, app_id)
+        if entry is None or problem or not games_root:
+            return {"ok": False, "error": problem
+                    or "This game's emulator does not take updates or DLC."}
+        inbox = await self._run(fileserver.default_dir)
+        row, error = await self._run(
+            gamecontent.add, app_id, (path or "").strip(), base_id, inbox)
+        if error:
+            return {"ok": False, "error": error,
+                    "rows": await self._run(gamecontent.rows, app_id)}
+        return await self._sync_game_content(app_id, games_root, base_id,
+                                              (row or {}).get("file", ""))
+
+    async def remove_game_content(self, app_id: int, file: str) -> dict:
+        """Delete one kept update or DLC and take it off Ryujinx's list."""
+        entry, games_root, base_id, problem = await self._run(self._game_content_for, app_id)
+        if entry is None or problem or not games_root:
+            return {"ok": False, "error": problem
+                    or "This game's emulator does not take updates or DLC."}
+        error = await self._run(gamecontent.remove, app_id, file)
+        if error:
+            return {"ok": False, "error": error,
+                    "rows": await self._run(gamecontent.rows, app_id)}
+        return await self._sync_game_content(app_id, games_root, base_id, file)
+
+    async def _sync_game_content(self, app_id, games_root, base_id, name):
+        error = await self._run(gamecontent.sync, app_id, base_id, games_root)
+        rows = await self._run(gamecontent.rows, app_id)
+        decky.logger.info("game content: app_id=%s base=%s kept=%d%s", app_id, base_id,
+                          len(rows), " (%s)" % error if error else "")
+        if error:
+            return {"ok": False, "error": error, "rows": rows}
+        return {"ok": True, "name": name, "rows": rows}
 
     async def launch_bounced(self, app_id: int) -> dict:
         """Did this game's launcher refuse to start, and what was in the way?

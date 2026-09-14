@@ -49,6 +49,7 @@ import launchers
 import procout
 import savedata
 import unpack
+import gamecontent
 import store
 
 
@@ -60,6 +61,17 @@ class Transfers(plugin_base.PluginContext):
         # Its own folder, not wherever ROMs are browsed from -- see
         # fileserver.default_dir.
         status["suggested_dir"] = await self._run(fileserver.default_dir)
+        # A Switch update or DLC names the game it is for, so its row can offer
+        # Install into that game rather than Add, which would make a Steam entry
+        # out of something that is not a game. The library is read only when
+        # there is a package to ask about.
+        library = None
+        for item in status.get("received") or []:
+            if not item.get("name", "").lower().endswith(gamecontent.SUFFIXES):
+                continue
+            if library is None:
+                library = await self._run(store.get_library)
+            item["game_content"] = await self._run(gamecontent.owner, item["path"], library)
         return status
 
     async def start_report(self):

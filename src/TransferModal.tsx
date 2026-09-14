@@ -54,6 +54,7 @@ import { installThroughEmulator } from "./firmwareInstall";
 import { requirementForFile, type RequirementMatch } from "./firmwareMatch";
 import { confirmDiscardTransfer } from "./discardTransfer";
 import { importDefinition } from "./importDefinition";
+import { installContentFor } from "./installContent";
 import { openRestoreSaves } from "./openRestore";
 import { closeOpenModals, openModal } from "./modalStack";
 import { ICON_BUTTON, ICON_BUTTON_WIDE } from "./iconButton";
@@ -801,7 +802,13 @@ export function TransferModal({
                 >
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <FileName name={file.name} />
-                    <div style={MUTED}>{humanSize(file.size)}</div>
+                    <div style={MUTED}>
+                      {humanSize(file.size)}
+                      {file.game_content
+                        ? ` · ${file.game_content.label}` +
+                          (file.game_content.app_id ? ` for ${file.game_content.title}` : "")
+                        : ""}
+                    </div>
                   </div>
                   {/* What the file is for decides the button. A BIOS offered
                       "Add" was being offered the ROM add flow, which would have
@@ -817,6 +824,25 @@ export function TransferModal({
                     <DialogButton
                       disabled={busy}
                       onClick={() => void install(file.name)}
+                      style={ICON_BUTTON_WIDE}
+                    >
+                      Install
+                    </DialogButton>
+                  ) : file.game_content ? (
+                    // A Switch update or DLC names the game it is for, so this
+                    // installs straight into that game -- the same Install a
+                    // BIOS row has, and never Add, which would make a Steam
+                    // entry out of something that is not a game. Offered even
+                    // when that game is not in the library: pressing it says so.
+                    <DialogButton
+                      disabled={busy}
+                      onClick={() => {
+                        setBusy(true);
+                        void installContentFor(file.game_content!, file.path).finally(() => {
+                          setBusy(false);
+                          void load();
+                        });
+                      }}
                       style={ICON_BUTTON_WIDE}
                     >
                       Install

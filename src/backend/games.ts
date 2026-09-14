@@ -46,7 +46,30 @@ export interface Core {
   source?: "emulator";
 }
 
+/**
+ * The added game a Switch update or DLC belongs to. `app_id` is 0 when that game
+ * is not in the library, and `problem` then says so.
+ */
+export interface GameContentOwner {
+  kind: "update" | "dlc";
+  /** "Update v2.0.2", "Update" or "DLC". */
+  label: string;
+  app_id: number;
+  title: string;
+  problem: string;
+}
+
 export interface RomProbe {
+  /**
+   * Set when the file is a Switch update or DLC rather than a game. The core
+   * list is empty then, and the panel offers Install into the game it names.
+   */
+  game_content?: GameContentOwner;
+  /**
+   * For a Switch game: its updates and DLC sent with it, waiting in the same
+   * folder, newest update first. Installed straight after the game is added.
+   */
+  content_waiting?: { path: string; name: string; label: string }[];
   extension: string;
   /** What cores were matched against — the content extension inside archives. */
   match_extension: string;
@@ -697,6 +720,41 @@ export const switchRomPatch = callable<
 export const syncRomPatches = callable<
   [appId: number], PatchResult
 >("sync_rom_patches");
+
+/** One update or DLC kept for a Switch game. `file` is its name in our folder, and its id. */
+export interface GameContentRow {
+  file: string;
+  /** "Update v2.0.2", "Update" or "DLC". */
+  label: string;
+  kind: "update" | "dlc";
+  size: number;
+  /** False for an update older than another kept one: Ryujinx runs only the newest. */
+  used: boolean;
+}
+export type GameContent =
+  | { ok: false; error: string }
+  | {
+      ok: true;
+      /** Whether this game's emulator takes updates and DLC at all. Ryujinx only. */
+      supported: boolean;
+      /** Why a game whose emulator does still cannot take one, or "". */
+      problem: string;
+      rows: GameContentRow[];
+      /** Where "Install an update or DLC" opens: the transfer folder. */
+      start_in: string;
+    };
+export const gameContent = callable<[appId: number], GameContent>("game_content");
+
+/** Each change rewrites Ryujinx's list for the game at once. */
+export type GameContentResult =
+  | { ok: false; error: string; rows?: GameContentRow[] }
+  | { ok: true; name: string; rows: GameContentRow[] };
+export const installGameContent = callable<
+  [appId: number, path: string], GameContentResult
+>("install_game_content");
+export const removeGameContent = callable<
+  [appId: number, file: string], GameContentResult
+>("remove_game_content");
 /**
  * What a collection name made by this plugin looks like, for recognising the
  * ones it left behind empty. See `collection_shape` and `ownedCollectionMatcher`.

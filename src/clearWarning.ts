@@ -35,8 +35,9 @@ export function clearWarning(count: number | null): string {
   return (
     scope +
     ", its launcher scripts, any collection it created that ends up empty, " +
-    "and every game it put on this Deck — the ROMs it filed and the games it " +
-    "unpacked into emulators. Playing any of them again means sending the files " +
+    "and every game it put on this Deck — the ROMs it filed, the games it " +
+    "unpacked into emulators, and the updates and DLC it installed. Playing any " +
+    "of them again means sending the files " +
     "from another machine again. Save data is kept, collections holding games " +
     "you added yourself are kept, and ROMs you keep somewhere of your own are " +
     "not touched."

@@ -209,6 +209,10 @@ py_modules/                 Backend logic. Plain Python, stdlib only -- it runs
   romshelf.py               File a ROM under roms/<system>, and delete it again
   rompatch.py               A game's ROM hacks: the list, our copies of them,
                             and the files RetroArch reads beside the ROM
+  switch_content.py         What a Switch .nsp is -- game, update or DLC -- and
+                            which game it is for, read without keys
+  gamecontent.py            A Switch game's updates and DLC: our copies, and the
+                            per-game lists Ryujinx reads at boot
   discset.py                Recognise a multi-disc game from the discs beside it,
                             and write the .m3u that makes it one game
   savedata.py               Where each emulator keeps its saves, and gathering

@@ -593,6 +593,10 @@ class Audit(plugin_base.PluginContext):
             if not entry:
                 continue
             await self._run(launchers.remove_launcher, entry.get("launcher_path", ""))
+            # A game's updates and DLC are left, like its ROM. Forgetting is the
+            # library check's repair for a record that drifted, and its dialog
+            # promises nothing but the record goes; removing a game and clearing
+            # the library are what delete what a game put on the Deck.
             removed.append(entry.get("title", str(app_id)))
             games.append(
                 {
