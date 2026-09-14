@@ -124,9 +124,9 @@ _SUPERMODEL_GLOBAL = {
     # nothing new to learn.
     #
     # Supermodel binds them to the keyboard and nothing else, which in Game Mode
-    # means they do not exist. That is §1a exactly: a feature that needs a
-    # keyboard needs an in-panel alternative, and here the alternative is a pad
-    # binding.
+    # means they do not exist. Everything here has to work with a controller
+    # alone, so a feature that needs a keyboard needs another way in, and here
+    # that way is a pad binding.
     #
     # L3 and R3 rather than a combination, because the operator menus are
     # *navigated* with these two and a combination that fires its own components

@@ -1667,10 +1667,10 @@ class Transfers(plugin_base.PluginContext):
         zipped, Xenia refuses a zip outright -- it shows an error box, which
         gamescope will not draw, so it presents as a hang -- and nothing here
         could extract one. The route from "sent to the Deck" to "playable" went
-        through Desktop Mode and a file manager, which section 1a says a feature
-        may not require. Zipped multi-file games had the same dead end long
-        before Xenia existed; nobody had hit it because RetroArch reads a zip
-        itself, and every emulator that cannot is a recent arrival.
+        through Desktop Mode and a file manager, and nothing in this plugin may
+        need Desktop Mode to finish. Zipped multi-file games had the same dead
+        end long before Xenia existed; nobody had hit it because RetroArch reads
+        a zip itself, and every emulator that cannot is a recent arrival.
 
         By name out of the folder, like the delete beside it: `inbox_path`
         refuses anything that is not already the basename of a real file in

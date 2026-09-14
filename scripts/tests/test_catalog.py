@@ -358,7 +358,7 @@ check("no entry takes one half of motion without the other",
 
 
 
-section("Workarounds -- corrections a user can decline, and only those")
+section("workarounds holds only what a user can switch off")
 
 # The line this field draws is the whole point of it. Nearly every entry here
 # corrects the emulator it describes -- shadPS4 is told which binary to run and

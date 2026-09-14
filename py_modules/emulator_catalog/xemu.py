@@ -122,8 +122,9 @@ _XEMU_FIRMWARE = [
 
 
 # button_home is deliberately left on its keyboard default. The Guide button is
-# the only sensible pad target for it and Steam takes that button on a Deck --
-# the same reason RetroArch's autoconfig menu binding never arrives (section 5).
+# the only sensible pad target for it and Steam takes that button on a Deck, so
+# a binding there would never reach xemu -- the same reason RetroArch's own
+# Guide-button menu binding never arrives.
 
 # The floor under every catalog system: formats this plugin states outright,
 # which derivation then widens. Keyed on the same string an entry puts in

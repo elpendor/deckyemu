@@ -12,13 +12,13 @@ re-labels games that were added years earlier. The cost is that changing the
 format has to move games between shelves, which is what
 `plan_collection_migration` and `collection_targets` are for.
 
-**Split out of main.py against what §2 used to say**, and the measurement is
-worth keeping because the rule it replaces sounded right. That entry protected
-this block on the grounds that it and the shortcuts block were mutually
-referential. They are not, and were not: shortcuts calls in here ten times and
-nothing in here has ever called back. A one-way dependency across a surface of
-six helpers is what plugin_base is for, and four of the six were already
-declared in it before this file existed.
+**Split out of main.py against an older rule**, and the measurement is worth
+keeping because that rule sounded right. It protected this block on the grounds
+that it and the shortcuts block were mutually referential. They are not, and
+were not: shortcuts calls in here ten times and nothing in here has ever called
+back. A one-way dependency across a surface of six helpers is what plugin_base
+is for, and four of the six were already declared in it before this file
+existed.
 
 What did *not* come along: `_menu_combo`, `_launch_options` and `_clean_options`
 were in the collections block and are not about collections -- they are how a

@@ -1,4 +1,4 @@
-import { MenuGroup, MenuItem } from "@decky/ui";
+import { findModuleByExport, MenuGroup, MenuItem } from "@decky/ui";
 
 import { addedGame, refreshAddedGames } from "./addedGames";
 import { GameEditorModal } from "./GameEditorModal";
@@ -43,13 +43,14 @@ export function editGameMenuItem(appId: number): unknown | null {
    * `MenuGroup` is found by matching minified Steam source, the same way
    * everything else in this corner is, so it can come back undefined on a
    * client that renamed something -- and rendering `undefined` as a component
-   * throws inside Steam's own render, which §5 says costs the whole screen.
+   * throws inside Steam's own render, which costs the whole screen.
    *
    * So the group is used only when it is really there, and the fallback is the
    * single item this used to be: Edit alone, with removal still on the panel's
    * game list where it has always been. One action lost beats a black screen.
    */
-  if (typeof MenuGroup !== "function") {
+  const Group = menuGroup();
+  if (!Group) {
     return (
       <MenuItem key={MENU_ITEM_KEY} onSelected={edit}>
         Edit in DeckyEmu
@@ -58,7 +59,7 @@ export function editGameMenuItem(appId: number): unknown | null {
   }
 
   return (
-    <MenuGroup key={MENU_ITEM_KEY} label="DeckyEmu">
+    <Group key={MENU_ITEM_KEY} label="DeckyEmu">
       <MenuItem onSelected={edit}>Edit</MenuItem>
       {/* Steam's own styling for a destructive row, which is what this is: it
           deletes the shortcut, the launcher and the game's files. What that
@@ -66,6 +67,63 @@ export function editGameMenuItem(appId: number): unknown | null {
       <MenuItem tone="destructive" onSelected={remove}>
         Remove
       </MenuItem>
-    </MenuGroup>
+    </Group>
   );
+}
+
+/** What `menuGroup` found: `undefined` before it looks, `null` if nothing. */
+let repairedGroup: unknown;
+
+/**
+ * Steam's menu group component: decky's, or found here when decky could not.
+ *
+ * Decky finds it by a module whose menu item renders
+ * `"emphasis"==this.props.tone`. The client that arrived around 2026-09-10
+ * (build 1789086785) writes the same comparison the other way round,
+ * `this.props.tone=="emphasis"`, so decky's search matched nothing and every
+ * game's menu fell back to one item -- the same minifier change that broke
+ * decky's router hook (see `repairRoutes`). `@decky/ui` 4.12.0 still searches
+ * the old way.
+ *
+ * Both orders are accepted here, then the same second step decky takes: the
+ * function in that module carrying `bInGamepadUI:`. Checked on the device
+ * before shipping -- exactly one module, exactly one such function. Looked for
+ * once and remembered, because the search walks every module in Steam. A throw
+ * or a miss is `null`, and the caller then draws the single item, never an
+ * undefined component.
+ */
+function menuGroup(): typeof MenuGroup | null {
+  if (typeof MenuGroup === "function") return MenuGroup;
+  if (repairedGroup === undefined) {
+    repairedGroup = null;
+    try {
+      const module = findModuleByExport((e: unknown) => {
+        const candidate = e as {
+          prototype?: { Focus?: unknown; OnOKButton?: unknown; render?: unknown };
+        };
+        const render = candidate?.prototype?.render;
+        return Boolean(
+          candidate?.prototype?.Focus &&
+            candidate?.prototype?.OnOKButton &&
+            typeof render === "function" &&
+            /"emphasis"==this\.props\.tone|this\.props\.tone=="emphasis"/.test(String(render)),
+        );
+      }) as Record<string, unknown> | undefined;
+      const found = module
+        ? Object.values(module).find(
+            (e) => typeof e === "function" && String(e).includes("bInGamepadUI:"),
+          )
+        : undefined;
+      if (typeof found === "function") {
+        repairedGroup = found;
+        // An error rather than info: only console.error from plugin code
+        // reaches cef_log.txt, and a repair that leaves no trace is one nobody
+        // can confirm.
+        console.error("[deckyemu] decky could not find the menu group component; found it");
+      }
+    } catch (error) {
+      console.error("[deckyemu] could not look for the menu group component", error);
+    }
+  }
+  return typeof repairedGroup === "function" ? (repairedGroup as typeof MenuGroup) : null;
 }

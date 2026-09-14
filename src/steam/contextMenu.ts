@@ -17,11 +17,11 @@ import {
  * the development Deck and were read rather than guessed at.
  *
  * **Nothing here may throw.** This runs inside Steam's render, for every game
- * menu, including games this plugin has never heard of -- and §5 is explicit
- * that an uncaught throw there unmounts to whatever boundary Steam happens to
- * have, which in Game Mode is an empty screen recoverable only by restarting
- * Steam. Every step bails out instead: a shape that is not what was expected
- * means no menu item, never an exception.
+ * menu, including games this plugin has never heard of -- and an uncaught throw
+ * there unmounts to whatever boundary Steam happens to have, which in Game Mode
+ * is an empty screen recoverable only by restarting Steam. Every step bails out
+ * instead: a shape that is not what was expected means no menu item, never an
+ * exception.
  *
  * Expect this to break on a Steam update. It already has for the others --
  * decky-steamgriddb carries an `// Oct 2025 client` branch for the day the

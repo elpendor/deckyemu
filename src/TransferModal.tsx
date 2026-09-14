@@ -536,8 +536,8 @@ export function TransferModal({
       // arrives on top of the panel opened below -- and with the added-games
       // list underneath, that is exactly what happened: the panel appeared with
       // the game ready and closed again about a second later, as the list came
-      // back and took the active overlay. Same rule as "navigate last" (§5),
-      // one layer down.
+      // back and took the active overlay. The same reason navigating has to
+      // come after closing every modal, one layer down.
       //
       // Unconditional because none of them is a place to come back to. The user
       // is adding the file they just pressed a button about; a list of games
