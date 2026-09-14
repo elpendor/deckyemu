@@ -200,6 +200,43 @@ check("and the row installs it onto a game rather than adding it as one",
       "openPatchInstall(" in _source, True)
 
 
+section("removing a game deletes its patches, and a hand-placed one is left")
+
+_GONE = "5551"
+_reset(_GONE)
+rompatch.add(_GONE, _IPS)
+rompatch.sync(_GONE, _ROM)
+check("the patch is kept and written beside the ROM, as the game has it",
+      (len(rompatch.listing(_GONE)), _names_beside()), (1, ["Chrono Trigger.ips"]))
+check("removing the game deletes both", rompatch.forget(_GONE, _ROM), 2)
+check("our copy is gone", os.path.isdir(rompatch.store_dir(_GONE, create=False)), False)
+check("and so is what was written beside the ROM", _names_beside(), [])
+check("while the ROM itself is untouched", _read(_ROM), _ROM_BYTES)
+
+# A patch beside a ROM whose game never had a list was put there by hand: sync
+# has never run to make it ours.
+_HAND = "5552"
+_reset(_HAND)
+_write(os.path.join(_ROOT, "Chrono Trigger.ips"), _read(_IPS))
+check("a game with no list deletes nothing beside its ROM", rompatch.forget(_HAND, _ROM), 0)
+check("so the hand-placed patch stays", _names_beside(), ["Chrono Trigger.ips"])
+os.remove(os.path.join(_ROOT, "Chrono Trigger.ips"))
+
+import inspect  # noqa: E402
+
+sys.path.insert(0, os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "py_modules"))
+import plugin_audit  # noqa: E402
+import plugin_library  # noqa: E402
+
+check("removing a game deletes its patches",
+      "rompatch.forget" in inspect.getsource(plugin_library.Library.unregister_game), True)
+check("and so does clearing the library",
+      "rompatch.forget" in inspect.getsource(plugin_library.Library.clear_library), True)
+check("but forgetting a record, the library check's repair, does not",
+      "rompatch" in inspect.getsource(plugin_audit.Audit.forget_games), False)
+
+
 section("installing from outside the editor asks which game, the named one first")
 
 _LIBRARY = [

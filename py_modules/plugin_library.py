@@ -32,6 +32,7 @@ import romshelf
 import emulators
 import gamecontent
 import gameicon
+import rompatch
 import store
 
 
@@ -45,10 +46,11 @@ class Library(plugin_base.PluginContext):
             await self._run(launchers.remove_launcher, entry.get("launcher_path", ""))
             # Its updates and DLC are copies this plugin keeps, gigabytes of
             # them, and nothing would point at them again. The remove dialog
-            # says so before this runs.
+            # says so before this runs. Its ROM hacks likewise.
             await self._run(
                 gamecontent.forget, app_id,
                 await self._run(gamecontent.games_root_for, entry.get("core_id", "")))
+            await self._run(rompatch.forget, app_id, entry.get("rom_path", ""))
         # The icon only exists for games whose artwork lookup found one, and it
         # is named after the app id -- which Steam reuses, so a stale one would
         # end up on whatever game is added next under that id.
@@ -190,6 +192,7 @@ class Library(plugin_base.PluginContext):
             freed += await self._run(
                 gamecontent.forget, entry.get("app_id"),
                 await self._run(gamecontent.games_root_for, entry.get("core_id", "")))
+            await self._run(rompatch.forget, entry.get("app_id"), entry.get("rom_path", ""))
 
         await decky.emit("clear_library_progress", "Removing launchers", 90)
         removed = 0

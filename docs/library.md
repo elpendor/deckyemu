@@ -227,6 +227,9 @@ Two things it cannot do:
 A patch you placed beside a ROM yourself is taken onto the list the first time
 you open the editor, so the screen and the emulator agree about what is applied.
 
+Removing the game deletes its patches too: the copies the plugin keeps, and the
+files it wrote beside the ROM.
+
 ROMhacking.net, where most of these came from for twenty years, stopped
 accepting submissions in August 2024 and now serves its archive through the
 Internet Archive; hacks are found in a lot of places, and the plugin does not

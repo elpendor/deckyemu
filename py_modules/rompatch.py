@@ -310,6 +310,32 @@ def sync(app_id, rom_path):
     return written, ""
 
 
+def forget(app_id, rom_path):
+    """Delete a removed game's patches: our copies, and what we wrote beside its ROM.
+
+    The copies in `store_dir` are this plugin's alone. The files beside the ROM
+    are ours only once this game has a list, because `sync` clears everything
+    there before writing; with no list, a patch beside the ROM is one somebody
+    placed by hand and is left. Returns how many files went.
+
+    For removing a game and clearing the library, not for forgetting a record --
+    the same line a game's updates and DLC follow.
+    """
+    removed = 0
+    if listing(app_id) and rom_path:
+        for path in beside(rom_path):
+            try:
+                os.remove(path)
+                removed += 1
+            except OSError:
+                pass
+    directory = store_dir(app_id, create=False)
+    if directory and os.path.isdir(directory):
+        removed += len([name for name in os.listdir(directory) if name != _RECORD])
+        shutil.rmtree(directory, ignore_errors=True)
+    return removed
+
+
 def adopt(app_id, rom_path):
     """Take a patch somebody put beside the ROM by hand into the list.
 
