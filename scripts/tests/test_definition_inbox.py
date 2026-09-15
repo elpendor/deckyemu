@@ -149,9 +149,11 @@ import main  # noqa: E402
 
 _loop = asyncio.new_event_loop()
 _plugin = main.Plugin()
-# `_main` is what normally sets this, and it does a great deal else besides.
-# These endpoints need the loop and nothing more.
+# `_main` is what normally sets these, and it does a great deal else besides.
+# These endpoints need the loop, and a replaced definition rewrites launchers,
+# which asks whether RetroArch was found.
 _plugin.loop = _loop
+_plugin._install = None
 
 
 def _run(coro):
@@ -182,6 +184,22 @@ check("so the Import list no longer offers it",
       [item["name"] for item in fileserver.inbox_files(imported.SUFFIX)
        if item["name"].startswith("inboxtest")],
       [])
+
+# Replacing a definition reaches the emulator already registered from it, now.
+# Registration copies the formats, and only a restart used to carry a change
+# over -- so a definition that stopped claiming .nsz went on being offered one.
+import emulators  # noqa: E402
+
+emulators.save({"name": "Inbox Test", "id": "inboxtest", "kind": "flatpak",
+                "target": "org.example.InboxTest", "args": "-g {rom}",
+                "extensions": ["nsp", "nsz", "xci"],
+                "catalog_extensions": ["nsp", "nsz", "xci"]})
+_write("inboxtest%s" % imported.SUFFIX,
+       json.dumps(dict(json.loads(_GOOD), cannot_open=["nsz"])))
+_replaced = _run(_plugin.import_emulator_definition("inboxtest%s" % imported.SUFFIX, True))
+check("a replacement imports", _replaced.get("ok"), True)
+check("and the registered emulator stops claiming what it now cannot open",
+      emulators.find("inboxtest").get("extensions"), ["nsp", "xci"])
 
 # The half with the real cost. A refused definition is still the user's only
 # copy on the device, and consuming it would leave them holding the reasons it

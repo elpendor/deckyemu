@@ -112,6 +112,10 @@ class PluginContext:
         """Re-read the registered emulators and return them."""
         raise NotImplementedError
 
+    def _upgrade_emulator_recipes(self) -> Awaitable[None]:
+        """Carry changed catalog entries onto the emulators registered from them."""
+        raise NotImplementedError
+
     def list_cores(self) -> Awaitable[list]:
         """The installed cores, re-scanned. What a ROM can actually be run with."""
         raise NotImplementedError

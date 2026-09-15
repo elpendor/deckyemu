@@ -288,6 +288,20 @@ class Emulators(plugin_base.PluginContext):
             decky.logger.warning("Imported %s but could not clear it from %s", name, path)
 
         await self._run(emulator_catalog.reload_imported)
+        # A replaced definition has to reach the emulator already registered
+        # from it, now rather than at the next start. Registration copied the
+        # old one's formats and arguments, so a definition that stopped claiming
+        # `.nsz` went on being offered one until the plugin restarted. The
+        # startup pass is the one that carries a changed entry over, and it
+        # leaves anything edited in the emulator editor alone.
+        #
+        # The definition is saved by now, so a refresh that fails is logged
+        # rather than reported as a failed import; the next start runs it again.
+        try:
+            await self._upgrade_emulator_recipes()
+        except Exception as failure:  # noqa: BLE001
+            decky.logger.warning("Imported %s but could not apply it yet: %s",
+                                 entry["id"], failure)
         decky.logger.info("Imported emulator definition %s (%s)", entry["id"], name)
         # The catalog changed, and whoever is looking at it may not be whoever
         # imported it: the transfer dialog can do this with the Emulators tab
