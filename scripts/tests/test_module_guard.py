@@ -122,8 +122,9 @@ section("the standard library the sandbox actually has")
 # Only top-level names, because that is the granularity the failure has: `xml`
 # is present in the sandbox and `xml.etree` is not, so listing `xml` would have
 # allowed the exact import that broke.
+# `ctypes`: an .nsz unpacked through switch_nsz from the panel on 2026-09-14.
 PROVEN_STDLIB = frozenset((
-    "asyncio", "base64", "collections", "concurrent", "difflib", "functools",
+    "asyncio", "base64", "collections", "concurrent", "ctypes", "difflib", "functools",
     "glob", "hashlib", "html", "http", "inspect", "io", "json", "os",
     "posixpath", "re", "secrets", "shlex", "shutil", "socket", "ssl", "stat",
     "struct", "subprocess", "sys", "threading", "time", "typing", "urllib",

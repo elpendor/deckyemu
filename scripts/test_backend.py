@@ -1656,10 +1656,11 @@ check(
 # libretro has no core for the Switch, PS3, PS4, Vita or Xbox 360, so there is
 # nothing to derive from and the manual table is the only source. These must work
 # with an empty catalog, which is also the offline case.
+# Less the compressed format Ryujinx says it cannot open.
 check(
     "the Switch falls back to the manual table",
     emu_catalog.extensions_for(emu_catalog.find("ryujinx"), []),
-    ["nsp", "nsz", "xci", "xcz"],
+    ["nsp", "xci"],
 )
 check(
     "and needs no libretro catalog at all",

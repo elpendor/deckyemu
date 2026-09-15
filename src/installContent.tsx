@@ -61,18 +61,23 @@ export async function installContentFor(
  * into one dialog rather than one each, since several at once is the likely
  * shape -- an update and its DLC sent for a game whose file says nothing.
  *
- * Resolves how many went in.
+ * `onStep` is told before each one starts, so the panel can say which it is on:
+ * an `.nsz` is unpacked on the way in, and a large update takes a while.
+ *
+ * Resolves the labels of the ones that went in.
  */
 export async function installWaitingContent(
   appId: number,
   waiting: NonNullable<RomProbe["content_waiting"]>,
-): Promise<number> {
-  let installed = 0;
+  onStep?: (one: NonNullable<RomProbe["content_waiting"]>[number], index: number) => void,
+): Promise<string[]> {
+  const installed: string[] = [];
   const refused: string[] = [];
-  for (const one of waiting) {
+  for (const [index, one] of waiting.entries()) {
+    onStep?.(one, index);
     try {
       const result = await installGameContent(appId, one.path);
-      if (result.ok) installed += 1;
+      if (result.ok) installed.push(one.label);
       else refused.push(`${one.label}: ${result.error}`);
     } catch (error) {
       logError("could not install an update or DLC after adding", error);

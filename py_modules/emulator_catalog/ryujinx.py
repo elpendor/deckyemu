@@ -189,6 +189,10 @@ ENTRY = {
     },
     "databases": [],
     "platform": "Nintendo - Switch",
+    # A compressed Switch package. 1.3.3 has no NSZ reader at all -- nothing for
+    # `.nsz` or `NCZSECTN` in its binary -- and a game added as one crashes ten
+    # seconds in. An `.nsz` is unpacked into the `.nsp` instead (switch_nsz).
+    "cannot_open": ("nsz",),
     "args": "{rom}",
     "fullscreen_args": "--fullscreen",
     # Gyro, without giving up Steam Input.

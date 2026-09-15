@@ -236,7 +236,7 @@ MANUAL_EXTENSIONS = {
     "Nintendo - GameCube": ["iso", "gcm", "gcz", "rvz", "ciso", "dol", "elf", "m3u"],
     "Nintendo - Wii": ["iso", "wbfs", "rvz", "wad", "gcz", "ciso"],
     "Nintendo - Wii U": ["wud", "wux", "wua", "wuhb", "rpx", "elf", "iso"],
-    "Nintendo - Switch": ["nsp", "xci", "nsz", "xcz"],
+    "Nintendo - Switch": ["nsp", "xci", "nsz"],
     "Nintendo - Nintendo 3DS": ["3ds", "cci", "cxi", "app", "3dsx", "elf", "axf"],
     "Sony - PlayStation": ["bin", "cue", "chd", "pbp", "img", "ecm", "iso", "m3u"],
     "Sony - PlayStation 2": ["iso", "chd", "cso", "zso", "bin", "cue", "gz", "mdf"],

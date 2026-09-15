@@ -7,6 +7,7 @@ Back to [the README](../README.md).
 
 **Contents** — [Sending files from another device](#sending-files-from-another-device) ·
 [Unpacking a zip](#unpacking-a-zip) ·
+[Unpacking a Switch .nsz](#unpacking-a-switch-nsz) ·
 [Where a ROM ends up](#where-a-rom-ends-up)
 
 ## Sending files from another device
@@ -156,6 +157,28 @@ it was.
 
 Only `.zip`. Nothing on a stock SteamOS reads `.7z` or `.rar`, so the button is
 not offered for those rather than failing after you press it.
+
+## Unpacking a Switch .nsz
+
+An `.nsz` is a Switch package compressed to save space, and Ryujinx cannot open
+one. Pick it in the add panel and **Unpack this .nsz** is the only thing
+offered: the rows for adding it wait until it is an `.nsp`. Pressing it writes
+the `.nsp` into the transfer folder with a progress bar, then the panel switches
+to it and adding carries on as usual.
+
+It takes seconds rather than minutes: a 577 MB `.nsz` became its 1.34 GB `.nsp`
+in under five seconds on a Deck. No keys are involved. An `.nsz` carries what it
+needs to be put back together, and every part is checked against the original
+before the `.nsz` is deleted, so what you get is the file it was made from, bit
+for bit.
+
+**It needs room for the `.nsp`.** When there is room for both files, the `.nsz`
+is left untouched until the `.nsp` has checked out. When there is only room for
+the `.nsp`, the `.nsz` is used up as it is read, so the peak is the `.nsp` alone
+— and if that unpack then fails, the `.nsz` has to be sent again.
+
+Updates and DLC sent as `.nsz` need no step of their own: they are unpacked as
+they install. See [Switch updates and DLC](library.md#switch-updates-and-dlc).
 
 ## Where a ROM ends up
 

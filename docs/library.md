@@ -237,16 +237,19 @@ care which one a patch came from.
 
 ### Switch updates and DLC
 
-A Switch game's updates and DLC arrive as `.nsp` files of their own, and each
-one says which game it is for. So once one is on the Deck there is nothing to
-choose: its row in the transfer list reads *Update v2.0.2 for* the game, with
-**Install**, and picking it in the add panel offers the same **Install** instead
-of adding it as a game. If that game has not been added yet, pressing
-**Install** says so.
+A Switch game's updates and DLC arrive as `.nsp` or `.nsz` files of their own,
+and each one says which game it is for. So once one is on the Deck there is
+nothing to choose: its row in the transfer list reads *Update v2.0.2 for* the
+game, with **Install**, and picking it in the add panel offers the same
+**Install** instead of adding it as a game. If that game has not been added yet,
+pressing **Install** says so.
 
 **Sent together, added together.** Send a game with its updates and DLC and pick
 the game in the add panel: a row lists what it found beside it, and pressing
-**Add to Steam** adds the game and installs those with it.
+**Add to Steam** adds the game and installs those with it. While it works the
+button becomes a progress bar naming each step, and the message afterwards names
+what went in. A game sent as an `.nsz` is unpacked first; its updates and DLC are
+listed once it is an `.nsp`.
 
 The game's editor has the same button, **Install an update or DLC**, whose file
 browser opens on the transfer folder. Installing takes the file out of there,
@@ -264,8 +267,10 @@ Each row has a bin, which deletes that file from the Deck.
 
 Removing the game from the library deletes its updates and DLC too.
 
-Only Ryujinx takes these today, and only `.nsp` files. A game dumped with its
-update and DLC merged into one file needs none of this.
+Only Ryujinx takes these today. An `.nsz` is unpacked into the `.nsp` Ryujinx
+reads as it installs, straight into the folder it is kept in, so it is written
+once. A game dumped with its update and DLC merged into one file needs none of
+this.
 
 ## Collections
 

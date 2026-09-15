@@ -48,6 +48,7 @@ import fileserver
 import launchers
 import procout
 import savedata
+import switch_nsz
 import unpack
 import gamecontent
 import store
@@ -1672,6 +1673,10 @@ class Transfers(plugin_base.PluginContext):
         end long before Xenia existed; nobody had hit it because RetroArch reads
         a zip itself, and every emulator that cannot is a recent arrival.
 
+        A Switch `.nsz` comes through here too. Ryujinx cannot open one, and
+        `switch_nsz` writes the `.nsp` it can -- the same press of Unpack, and
+        the same rule that the file it came from goes once it is done.
+
         By name out of the folder, like the delete beside it: `inbox_path`
         refuses anything that is not already the basename of a real file in
         there, so this cannot be aimed at an archive somewhere else on the
@@ -1680,17 +1685,30 @@ class Transfers(plugin_base.PluginContext):
         path = await self._run(fileserver.inbox_path, name)
         if not path:
             return {"ok": False, "error": "%s is not in the transfer folder." % name}
-        if not name.lower().endswith(".zip"):
+        if not name.lower().endswith((".zip", ".nsz")):
             # `.7z` and `.rar` are the ones people ask about next. Neither is in
             # the standard library and neither has a tool on a stock SteamOS, so
             # offering the button and failing at the end would be worse than
             # saying so.
             return {"ok": False,
-                    "error": "Only .zip files can be unpacked here."}
+                    "error": "Only .zip and .nsz files can be unpacked here."}
 
-        written, error = await self._run(
-            unpack.into_folder, path, await self._run(fileserver.default_dir)
-        )
+        destination = await self._run(fileserver.default_dir)
+        if name.lower().endswith(".nsz"):
+            # Minutes for a large game rather than a second or two, so the
+            # panel gets a percentage. The work runs in the executor and an
+            # event is sent from the loop, so each one is handed back to it.
+            loop = asyncio.get_running_loop()
+
+            def report(done, total):
+                percent = int(done * 100 / total) if total else -1
+                asyncio.run_coroutine_threadsafe(
+                    decky.emit("nsz_unpack_progress", name, percent), loop)
+
+            written, error = await self._run(
+                switch_nsz.into_folder, path, destination, report)
+        else:
+            written, error = await self._run(unpack.into_folder, path, destination)
         if error:
             return {"ok": False, "error": error}
 

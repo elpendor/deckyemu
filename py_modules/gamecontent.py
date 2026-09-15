@@ -29,14 +29,15 @@ import decky
 import emulator_catalog
 import emulators
 import switch_content
+import switch_nsz
 import sysenv
 
-#: Only NSPs. Whether Ryujinx reads a compressed `.nsz` as an update or DLC has
-#: not been checked, and an XCI update is not something anybody distributes.
-SUFFIXES = (".nsp",)
+#: NSPs, and NSZs, which Ryujinx cannot read and so are kept as the `.nsp`
+#: they unpack into. An XCI update is not something anybody distributes.
+SUFFIXES = (".nsp", ".nsz")
 
 #: What a Switch game itself can arrive as, for finding its updates beside it.
-GAME_SUFFIXES = (".nsp", ".xci", ".nsz", ".xcz")
+GAME_SUFFIXES = (".nsp", ".xci", ".nsz")
 
 _SAFE_APP = re.compile(r"^[0-9]{1,20}$")
 _TITLE_ID = re.compile(r"^[0-9a-f]{16}$")
@@ -121,7 +122,7 @@ def check(path, base_id):
     if not path or not os.path.isfile(path):
         return None, "That file is not there."
     if not path.lower().endswith(SUFFIXES):
-        return None, "Only .nsp files can be installed as an update or DLC."
+        return None, "Only .nsp and .nsz files can be installed as an update or DLC."
     found = switch_content.inspect(path)
     if found["kind"] == switch_content.BASE:
         return None, "That is a game, not an update or DLC. Add it as a game instead."
@@ -145,7 +146,7 @@ def _free_name(directory, name):
     return candidate
 
 
-def add(app_id, path, base_id, inbox):
+def add(app_id, path, base_id, inbox, progress=None):
     """Keep an update or DLC for this game. Returns `(row, error)`.
 
     Moved out of the transfer folder, the way a ROM is when its game is added:
@@ -163,6 +164,8 @@ def add(app_id, path, base_id, inbox):
     name = os.path.basename(path)
     from_inbox = bool(inbox) and (
         os.path.dirname(os.path.realpath(path)) == os.path.realpath(inbox))
+    if name.lower().endswith(".nsz"):
+        return _keep_unpacked(app_id, path, found, directory, from_inbox, progress)
 
     kept = os.path.join(directory, name)
     if os.path.isfile(kept) and os.path.getsize(kept) == os.path.getsize(path):
@@ -193,6 +196,37 @@ def add(app_id, path, base_id, inbox):
     decky.logger.info("Kept %s %s for app %s (%s)", found["kind"], name, app_id,
                       "moved" if from_inbox else "copied")
     return dict(found, file=name, path=target), ""
+
+
+def _keep_unpacked(app_id, path, found, directory, from_inbox, progress):
+    """`add` for an .nsz: unpacked straight into the folder it is kept in.
+
+    What is kept is the `.nsp`, since nothing here reads the compressed one.
+    Written where it stays rather than into the transfer folder and moved, which
+    would write the same gigabytes a second time. From the transfer folder the
+    `.nsz` goes afterwards, and may be used up on the way when that is the only
+    way it fits; from anywhere else it is left exactly as it was.
+    """
+    name, size, error = switch_nsz.plan(path)
+    if error:
+        return None, error
+    kept = os.path.join(directory, name)
+    if not (os.path.isfile(kept) and os.path.getsize(kept) == size):
+        name = _free_name(directory, name)
+        _written, error = switch_nsz.into_folder(
+            path, directory, progress, name=name, use_up=from_inbox)
+        if error:
+            return None, error
+        kept = os.path.join(directory, name)
+        decky.logger.info("Kept %s %s for app %s (unpacked from %s)", found["kind"], name,
+                          app_id, os.path.basename(path))
+    # Otherwise the same package, sent a second time and already kept.
+    if from_inbox:
+        try:
+            os.remove(path)
+        except OSError as remove_error:
+            decky.logger.warning("Could not clear %s from the inbox: %s", path, remove_error)
+    return dict(switch_content.inspect(kept), file=name, path=kept), ""
 
 
 def remove(app_id, stored):

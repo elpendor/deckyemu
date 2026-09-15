@@ -73,6 +73,7 @@ import { coreById, discRow, readsPlaylist, withDisc } from "./discSet";
 import { PackagedGameEntries, PendingPackageRows } from "./PackageRows";
 import { ArtPickerModal } from "./ArtPickerModal";
 import { openManagePage } from "./manageRoute";
+import { InstallProgress } from "./InstallProgress";
 import { SGDB_PROMPT, sgdbKeyJustAppeared, shouldOfferSgdb } from "./sgdbPrompt";
 import { TransferModal } from "./TransferModal";
 import { logError } from "./logError";
@@ -222,9 +223,14 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
   } = draft;
 
   // Its own flag rather than the draft's `unpacking`, which belongs to package
-  // extraction and drives a progress bar this does not have. A zip comes apart
-  // in a second or two with nothing to report in between.
+  // extraction. A zip comes apart in a second or two with nothing to report in
+  // between; an .nsz takes minutes for a large game, and reports a percentage.
   const [unzipping, setUnzipping] = useState(false);
+  const [nszPercent, setNszPercent] = useState(-1);
+  // What Add is doing, when it installs updates and DLC after the game. Only
+  // then: an ordinary add is over in a moment and "Adding..." says enough.
+  // `measured` is for the steps that report a percentage.
+  const [addStep, setAddStep] = useState<{ label: string; measured: boolean } | null>(null);
 
   const lookup = lookupArtwork;
 
@@ -327,6 +333,18 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
     };
   }, []);
 
+  // How far an .nsz has got. Only one unpack runs from this panel at a time,
+  // so whatever arrives is that one's.
+  useEffect(() => {
+    const listener = addEventListener<[string, number]>(
+      "nsz_unpack_progress",
+      (_name, percent) => setNszPercent(percent),
+    );
+    return () => {
+      removeEventListener("nsz_unpack_progress", listener);
+    };
+  }, []);
+
 
 
   /**
@@ -342,11 +360,12 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
   const unpackRom = useCallback(
     async (name: string) => {
       setUnzipping(true);
+      setNszPercent(-1);
       updateDraft({ error: "" });
       try {
         const result = await unpackTransferredFile(name);
         if (!result.ok) {
-          updateDraft({ error: result.error ?? "Could not unpack this zip." });
+          updateDraft({ error: result.error ?? "Could not unpack this file." });
           return;
         }
         const written = result.written ?? [];
@@ -361,8 +380,8 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
           body: `${written.length} files — pick one from Transfer to Deck`,
         });
       } catch (unpackError) {
-        logError("could not unpack a zip", unpackError);
-        updateDraft({ error: "Could not unpack this zip." });
+        logError("could not unpack a file", unpackError);
+        updateDraft({ error: "Could not unpack this file." });
       } finally {
         setUnzipping(false);
       }
@@ -655,6 +674,13 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
   const addToSteam = useCallback(async () => {
     if (!romPath || !coreId) return;
     updateDraft({ adding: true, error: "" });
+    // Set either way, so a step left over from an add that stopped early is not
+    // what the next one shows.
+    setAddStep(
+      probe?.content_waiting?.length
+        ? { label: title ? `Adding ${title}` : "Adding to Steam", measured: false }
+        : null,
+    );
 
     try {
       // The system row's answer decides the collection for a core covering
@@ -737,9 +763,17 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
       // picked and are still right: filing moves the game, not what is beside it.
       const waiting = probe?.content_waiting ?? [];
       if (waiting.length) {
-        const installed = await installWaitingContent(added.appId, waiting);
-        if (installed) notes.push(`${installed} update(s) and DLC installed`);
+        const installed = await installWaitingContent(added.appId, waiting, (one, index) => {
+          setNszPercent(-1);
+          setAddStep({
+            label: `Installing ${one.label} (${index + 1} of ${waiting.length})`,
+            measured: one.name.toLowerCase().endsWith(".nsz"),
+          });
+        });
+        // Named, not counted: which update went in is the thing worth knowing.
+        if (installed.length) notes.push(`${installed.join(", ")} installed`);
       }
+      setAddStep(null);
 
       toaster.toast({
         title: `Added ${prepared.title}`,
@@ -750,6 +784,7 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
       resetDraft();
     } catch (addError) {
       logError("add failed", addError);
+      setAddStep(null);
       updateDraft({
         adding: false,
         error:
@@ -804,6 +839,11 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
   // Null once the emulator is here, which is what takes the offer off screen
   // after the install and puts the ordinary unpack button back.
   const missing = missingEmulator(pendingPackage);
+  // An .nsz nothing installed can open. Unpacking is the only thing to do with
+  // it, so the rows for adding it stay away until it is the .nsp.
+  const unpackFirst = Boolean(
+    probe?.can_unpack && probe.unpack_kind === "nsz" && probe.matching_cores.length === 0,
+  );
 
   return (
     <PanelSection title="Add a game">
@@ -1002,24 +1042,29 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
         <PanelSectionRow>
           {/* Always the button. When its game is not in the library, pressing
               it says so -- a sentence in place of the button broke the flow. */}
-          <ButtonItem
-            layout="below"
-            disabled={adding}
-            onClick={() => {
-              const owner = probe.game_content!;
-              updateDraft({ adding: true });
-              void installContentFor(owner, romPath).then((installed) =>
-                installed ? resetDraft() : updateDraft({ adding: false }),
-              );
-            }}
-            description={
-              probe.game_content.app_id
-                ? `${probe.game_content.label} for ${probe.game_content.title}. It is not a game, so it goes into that game rather than onto your library.`
-                : `${probe.game_content.label}. It is not a game, so it goes into the game it belongs to rather than onto your library.`
-            }
-          >
-            {adding ? "Installing..." : "Install"}
-          </ButtonItem>
+          {adding && probe.unpack_kind === "nsz" ? (
+            <InstallProgress label="Unpacking and installing" percent={nszPercent} status="" />
+          ) : (
+            <ButtonItem
+              layout="below"
+              disabled={adding}
+              onClick={() => {
+                const owner = probe.game_content!;
+                setNszPercent(-1);
+                updateDraft({ adding: true });
+                void installContentFor(owner, romPath).then((installed) =>
+                  installed ? resetDraft() : updateDraft({ adding: false }),
+                );
+              }}
+              description={
+                probe.game_content.app_id
+                  ? `${probe.game_content.label} for ${probe.game_content.title}. It is not a game, so it goes into that game rather than onto your library.`
+                  : `${probe.game_content.label}. It is not a game, so it goes into the game it belongs to rather than onto your library.`
+              }
+            >
+              {adding ? "Installing..." : "Install"}
+            </ButtonItem>
+          )}
         </PanelSectionRow>
       )}
 
@@ -1034,22 +1079,33 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
           holding an XBLA container or a .cue and its .bin files is not, and
           this is the only way forward. Only the person looking at it knows
           which, so nothing is decided for them. */}
-      {probe?.can_unpack && !probe.save_backup && (
+      {/* Not for an update or DLC: Install unpacks it into its game. */}
+      {probe?.can_unpack && !probe.save_backup && !probe.game_content && (
         <PanelSectionRow>
-          <ButtonItem
-            layout="below"
-            disabled={unzipping || adding}
-            onClick={() => void unpackRom(romName)}
-            description={
-              probe.archived_content
-                ? "This zip holds Xbox 360 content, and Xenia cannot read a zip — it has to come out first. Unpacking puts the game in the transfer folder, named after this file."
-                : probe.matching_cores.length > 0
-                  ? "Or take the zip apart here. Needed for anything that does not run from an archive — an Xbox 360 title, or a disc set whose .cue names its .bin files."
-                  : "Nothing installed can run this zip as it stands. Unpacking it puts the contents in the transfer folder, where they can be added."
-            }
-          >
-            {unzipping ? "Unpacking…" : "Unpack this zip"}
-          </ButtonItem>
+          {unzipping && probe.unpack_kind === "nsz" ? (
+            <InstallProgress label="Unpacking the .nsz" percent={nszPercent} status="" />
+          ) : (
+            <ButtonItem
+              layout="below"
+              disabled={unzipping || adding}
+              onClick={() => void unpackRom(romName)}
+              description={
+                probe.unpack_kind === "nsz"
+                  ? "Ryujinx cannot open a compressed .nsz, so it has to be unpacked first. This writes the .nsp in the transfer folder, checks it against the original, and deletes the .nsz."
+                  : probe.archived_content
+                    ? "This zip holds Xbox 360 content, and Xenia cannot read a zip — it has to come out first. Unpacking puts the game in the transfer folder, named after this file."
+                    : probe.matching_cores.length > 0
+                      ? "Or take the zip apart here. Needed for anything that does not run from an archive — an Xbox 360 title, or a disc set whose .cue names its .bin files."
+                      : "Nothing installed can run this zip as it stands. Unpacking it puts the contents in the transfer folder, where they can be added."
+              }
+            >
+              {unzipping
+                ? "Unpacking…"
+                : probe.unpack_kind === "nsz"
+                  ? "Unpack this .nsz"
+                  : "Unpack this zip"}
+            </ButtonItem>
+          )}
         </PanelSectionRow>
       )}
 
@@ -1158,7 +1214,7 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
       {/* A Switch game's updates and DLC sent with it. Said before Add rather
           than discovered afterwards, beside the disc row, because it changes
           what the one press does: it adds the game and installs these. */}
-      {(probe?.content_waiting?.length ?? 0) > 0 && (
+      {!unpackFirst && (probe?.content_waiting?.length ?? 0) > 0 && (
         <PanelSectionRow>
           <Field
             label="Its updates and DLC are here too"
@@ -1182,7 +1238,7 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
           `coreOptions.length` as well, since with nothing registered and no
           cores the list is empty and a disabled dropdown says even less. */}
       {probe && !pendingPackage && !probe.save_backup && !probe.game_content && !probe.rom_patch
-        && probe.matching_cores.length === 0
+        && !unpackFirst && probe.matching_cores.length === 0
         && installable.length === 0 && coreOptions.length > 0 && (
         <PanelSectionRow>
           <DropdownItem
@@ -1273,7 +1329,7 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
         </>
       )}
 
-      {looking && (
+      {looking && !unpackFirst && (
         <PanelSectionRow>
           <Field label="Looking up name and artwork">
             <Spinner style={{ height: "20px" }} />
@@ -1285,7 +1341,7 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
           then is the .pkg's filename, and the real one comes from the game's
           own PARAM.SFO a few seconds later. Offering it for editing first
           invites a name that is then overwritten. */}
-      {romPath && !looking && !pendingPackage && (
+      {romPath && !looking && !pendingPackage && !unpackFirst && (
         <PanelSectionRow>
           <TextField
             label="Name in Steam"
@@ -1305,7 +1361,7 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
 
       {/* Under the field it describes, and only when the name is a guess. The
           field above is editable, so this is the moment to look at it. */}
-      {romPath && !looking && !pendingPackage && resolved &&
+      {romPath && !looking && !pendingPackage && !unpackFirst && resolved &&
         NAME_SOURCE_LABELS[resolved.title_source] && (
         <PanelSectionRow>
           <Field
@@ -1320,7 +1376,7 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
           lookup answering after the game was added put its artwork rows back on
           a panel with nothing selected. `addFlow` stops the write; this stops
           it being renderable at all. */}
-      {romPath && resolved && !looking && (
+      {romPath && resolved && !looking && !unpackFirst && (
         <PanelSectionRow>
           <Field
             label="Artwork"
@@ -1359,7 +1415,7 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
           it to be a remark on. It disappears by itself the moment a key exists;
           there is no dismissal, because the row asks for one thing and having
           done it is the only signal needed. See sgdbPrompt.ts. */}
-      {romPath && resolved && !looking && shouldOfferSgdb(settings) && (
+      {romPath && resolved && !looking && !unpackFirst && shouldOfferSgdb(settings) && (
         <>
           <PanelSectionRow>
             <Field label={SGDB_PROMPT.label} description={SGDB_PROMPT.description} />
@@ -1389,7 +1445,7 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
           still missing, usually a core. */}
       {/* Not for an update or DLC: its Install row above is the whole of what can
           be done with it, and a disabled Add under it reads as a step missing. */}
-      {romPath && !(probe?.game_content || probe?.rom_patch) && (
+      {romPath && !unpackFirst && !(probe?.game_content || probe?.rom_patch) && (
         <PanelSectionRow>
           {/* Not blocked outright. The check is good enough to warn on and not
               good enough to overrule somebody with the file in front of them:
@@ -1397,32 +1453,40 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
               it can make are not all in the safe direction. What it does buy is
               that nobody adds one of these by accident — the button says what
               it is about to do. */}
-          <ButtonItem
-            layout="below"
-            onClick={addToSteam}
-            disabled={!canAdd}
-            description={
-              probe?.disc_warning && !adding
-                ? "This will be added and will not boot."
-                : undefined
-            }
-          >
-            {adding
-              ? "Adding..."
-              : probe?.disc_warning
-                ? "Add anyway"
-                : probe?.already_added
-                  // Not "Add anyway", which is the wording for a file that will
-                  // not work. This one will work perfectly; there is simply
-                  // going to be two of it, and the button should say that
-                  // rather than imply a risk.
-                  ? "Add a second time"
-                  : "Add to Steam"}
-          </ButtonItem>
+          {adding && addStep ? (
+            <InstallProgress
+              label={addStep.label}
+              percent={addStep.measured ? nszPercent : -1}
+              status=""
+            />
+          ) : (
+            <ButtonItem
+              layout="below"
+              onClick={addToSteam}
+              disabled={!canAdd}
+              description={
+                probe?.disc_warning && !adding
+                  ? "This will be added and will not boot."
+                  : undefined
+              }
+            >
+              {adding
+                ? "Adding..."
+                : probe?.disc_warning
+                  ? "Add anyway"
+                  : probe?.already_added
+                    // Not "Add anyway", which is the wording for a file that
+                    // will not work. This one will work perfectly; there is
+                    // simply going to be two of it, and the button should say
+                    // that rather than imply a risk.
+                    ? "Add a second time"
+                    : "Add to Steam"}
+            </ButtonItem>
+          )}
         </PanelSectionRow>
       )}
 
-      {romPath && !looking && !(probe?.game_content || probe?.rom_patch) && (
+      {romPath && !looking && !unpackFirst && !(probe?.game_content || probe?.rom_patch) && (
         <PanelSectionRow>
           <ButtonItem layout="below" onClick={openArtPicker} disabled={adding}>
             {/* The words on the screen this opens, which has always called
@@ -1444,7 +1508,7 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
           those cover is a lookup that never finished: the reply was lost, so
           there is nothing to correct and nothing to choose between -- just the
           same request, worth making again. */}
-      {romPath && !looking && error === LOOKUP_FAILED && (
+      {romPath && !looking && !unpackFirst && error === LOOKUP_FAILED && (
         <PanelSectionRow>
           <ButtonItem
             layout="below"

@@ -727,11 +727,18 @@ check("a manual extension does not survive cannot_open",
           dict(emulator_catalog.find("pcsx2"), databases=["Nintendo - GameCube"]), _DB),
       False)
 
-# Nothing else uses it yet. This fails the day something does, as a prompt to
-# check that the reason is written down beside it rather than inferred later.
-check("PCSX2 is the only entry that has to correct the derivation",
-      [entry["id"] for entry in emulator_catalog.CATALOG if entry.get("cannot_open")],
-      ["pcsx2"])
+# Fails the day another entry uses it, as a prompt to check that the reason is
+# written down beside it rather than inferred later.
+check("only PCSX2 and Ryujinx have to correct the derivation",
+      sorted(entry["id"] for entry in emulator_catalog.CATALOG if entry.get("cannot_open")),
+      ["pcsx2", "ryujinx"])
+
+# Ryujinx cannot read a compressed package. Offered one, it made a Steam entry
+# that crashed on launch; an .nsz is unpacked into the .nsp it can read instead.
+_ryujinx_extensions = emulator_catalog.extensions_for(emulator_catalog.find("ryujinx"), _DB)
+check("Ryujinx is offered for .nsp and .xci but not .nsz",
+      [ext for ext in ("nsp", "xci", "nsz") if ext in _ryujinx_extensions],
+      ["nsp", "xci"])
 
 # **`changes_disc` is a claim that the other discs are reachable once the first
 # is running**, and the cost of a wrong yes is a library entry that can only ever

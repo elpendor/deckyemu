@@ -764,8 +764,9 @@ export const discardStoppedTransfer = callable<
  * go, and partly because the rest of the plugin only acts on files sitting
  * directly in the transfer folder.
  *
- * The zip is left where it is. An extraction can produce something subtly wrong
- * and the original is the only way back; the delete button is in the same row.
+ * The zip goes once everything in it is out, and so does an `.nsz` once the
+ * `.nsp` it became has checked out against the names inside it. An `.nsz`
+ * reports `nsz_unpack_progress` (name, percent) while it runs.
  */
 export const unpackTransferredFile = callable<
   [name: string],

@@ -46,6 +46,7 @@ import savedata
 import sgdb
 import store
 import switch_content
+import switch_nsz
 import sysenv
 import vita_games
 import vita_release
@@ -975,12 +976,20 @@ class Plugin(
             # the `.zip` and read the chip dumps out of it by name, so unpacking
             # scatters forty files nothing can load and then consumes the one
             # file that could be played.
+            #
+            # A Switch `.nsz` is the other kind. Ryujinx cannot open one, and
+            # `switch_nsz` turns it into the `.nsp` it can -- offered only where
+            # the libraries that takes are present, so it is never a button that
+            # refuses.
             "can_unpack": (
-                extension == "zip"
-                and not romset
+                (extension == "zip" and not romset
+                 or extension == "nsz" and await self._run(switch_nsz.available))
                 and await self._run(fileserver.inbox_path, os.path.basename(rom_path))
                 == rom_path
             ),
+            # What unpacking does, so the panel can say: a zip comes apart, an
+            # `.nsz` becomes an `.nsp`.
+            "unpack_kind": "nsz" if extension == "nsz" else "zip",
             # What to call this file in the panel. Normally its extension, which
             # is what every one of those sentences was written around -- but a
             # file matched on its header has no extension to show, and ".stfs"
@@ -2160,8 +2169,18 @@ class Plugin(
             return {"ok": False, "error": problem
                     or "This game's emulator does not take updates or DLC."}
         inbox = await self._run(fileserver.default_dir)
+        # An .nsz is unpacked on the way in, which for an update can take a
+        # while, so it reports the way the Unpack button does.
+        loop = asyncio.get_running_loop()
+        name = os.path.basename(path or "")
+
+        def report(done, total):
+            percent = int(done * 100 / total) if total else -1
+            asyncio.run_coroutine_threadsafe(
+                decky.emit("nsz_unpack_progress", name, percent), loop)
+
         row, error = await self._run(
-            gamecontent.add, app_id, (path or "").strip(), base_id, inbox)
+            gamecontent.add, app_id, (path or "").strip(), base_id, inbox, report)
         if error:
             return {"ok": False, "error": error,
                     "rows": await self._run(gamecontent.rows, app_id)}
