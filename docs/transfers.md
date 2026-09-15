@@ -120,7 +120,7 @@ transfer is running.
 
 Pick the zip the way you would pick any game — **Add a game**, then the file
 browser or the **Add** button in the received list. The panel then offers
-**Unpack this zip**, in the same place a `.pkg` offers to install itself.
+**Unpack this zip**, in the same place a `.pkg` offers to unpack itself.
 
 It is offered *beside* the usual core choice, not instead of it, because both
 can be right. RetroArch reads a zip directly, so a zipped SNES ROM can just be

@@ -839,10 +839,12 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
   // Null once the emulator is here, which is what takes the offer off screen
   // after the install and puts the ordinary unpack button back.
   const missing = missingEmulator(pendingPackage);
-  // An .nsz nothing installed can open. Unpacking is the only thing to do with
-  // it, so the rows for adding it stay away until it is the .nsp.
+  // Something that has to be unpacked before it is a game: a package on its
+  // way into its emulator, or an .nsz nothing installed can open. The rows for
+  // adding it stay away until it is the game itself.
   const unpackFirst = Boolean(
-    probe?.can_unpack && probe.unpack_kind === "nsz" && probe.matching_cores.length === 0,
+    pendingPackage ||
+      (probe?.can_unpack && probe.unpack_kind === "nsz" && probe.matching_cores.length === 0),
   );
 
   return (

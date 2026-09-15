@@ -323,10 +323,10 @@ export function PendingPackageRows({
             <InstallProgress
               label={
                 packaged.system === "ps4"
-                  ? "Installing into shadPS4"
+                  ? "Unpacking into shadPS4"
                   : packaged.system === "vita"
-                    ? "Installing into Vita3K"
-                    : "Installing into RPCS3"
+                    ? "Unpacking into Vita3K"
+                    : "Unpacking into RPCS3"
               }
               percent={unpackPercent}
               status={unpackStatus}
@@ -385,16 +385,16 @@ export function PendingPackageRows({
                       "The .pkg is deleted afterwards."
               }
             >
-              {/* "Install", not "Unpack", on all three. Only RPCS3 and the PS4
-                  extractor literally unpack anything -- Vita3K installs -- and
-                  the word the user cares about is the same in every case: the
-                  game ends up in the emulator. */}
+              {/* "Unpack", on all three, because it is the word every file that
+                  is not a game yet uses here: a zip and an .nsz are unpacked
+                  too. That Vita3K strictly installs rather than unpacks matters
+                  less than the panel saying one thing for one gesture. */}
               {/* No name in it. It said the product code once -- "Install
                   PCSA00011" -- and then the filename, and the row above this
                   one is the picker, which shows the file that was chosen. A
                   button repeating what is directly above it is one more thing
                   to read and no more information. */}
-              Install this game
+              Unpack this .pkg
             </ButtonItem>
           )}
         </PanelSectionRow>
