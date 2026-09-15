@@ -115,6 +115,15 @@ rather than another project's reading of the same file.
 The other two consoles need nothing extra. RPCS3 unpacks its own packages, and
 Vita3K installs from a `.pkg` directly once it has the licence key.
 
+**A PS3 licence can be sent on its own.** A `.rap` beside its `.pkg` goes in when
+the game is unpacked, whatever it is called. One sent later, for a game already
+in RPCS3, has **Install** in the transfer list: a `.rap` named for its content
+id, like `UP0000-ABCD12345_00-0000000000000001.rap`, is put where RPCS3 reads it.
+Any other name says nothing about which game it unlocks, so it is refused with a
+note to send it beside its `.pkg`. A Vita `.zrif` key has nothing to go into on
+its own — Vita3K reads it only while it installs the game — so its row says that
+instead.
+
 ## Getting to the emulator's own menu
 
 **DuckStation and PCSX2.** Both ship every hotkey bound to a key, and both put

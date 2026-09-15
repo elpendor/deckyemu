@@ -50,6 +50,16 @@ export interface Ps3Game {
 export const listPs3Packages = callable<[], { ok: boolean; packages: Ps3Package[] }>(
   "list_ps3_packages",
 );
+/**
+ * Put a PS3 `.rap` sent on its own into RPCS3, by its name in the transfer
+ * folder. Only one named for its content id: anything else says which game it
+ * is for only when it is beside its `.pkg`, and goes in with that.
+ */
+export const installPs3Licence = callable<
+  [name: string],
+  { ok: boolean; error?: string; name?: string }
+>("install_ps3_licence");
+
 export const installPs3Package = callable<
   [path: string],
   {

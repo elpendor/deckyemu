@@ -321,6 +321,24 @@ class PackagedGames(plugin_base.PluginContext):
             "licence": licence,
         }
 
+    async def install_ps3_licence(self, name: str):
+        """Put a `.rap` sent on its own into RPCS3, by name out of the transfer folder.
+
+        By name rather than path, like everything else that acts on the folder:
+        `inbox_path` refuses anything that is not already a file in there.
+        """
+        path = await self._run(fileserver.inbox_path, name)
+        if not path:
+            return {"ok": False, "error": "%s is not in the transfer folder." % name}
+        if not name.lower().endswith(".rap"):
+            return {"ok": False, "error": "Only a .rap is a PS3 licence."}
+        if not await self._run(emulators.find, "rpcs3"):
+            return {"ok": False, "error": "RPCS3 is not installed. %s" % _WHERE}
+        installed, error = await self._run(ps3_games.install_licence_file, path)
+        if error:
+            return {"ok": False, "error": error}
+        return {"ok": True, "name": installed}
+
     async def install_ps4_package(self, path: str):
         """Unpack a PS4 .pkg with the standalone extractor, fetching it first.
 

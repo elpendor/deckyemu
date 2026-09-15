@@ -19,6 +19,7 @@ import {
   type FirmwareReport,
   getSettings,
   installFirmware,
+  installPs3Licence,
   resetTransferLink,
   setSettings,
   startFileServer,
@@ -589,6 +590,38 @@ export function TransferModal({
     [firmware, installInto],
   );
 
+  // A PS3 licence sent on its own. Refusals are a dialog, as for an update: the
+  // list is about to be looked at again, and a corner toast goes unseen.
+  const installLicence = useCallback(
+    async (name: string) => {
+      const refuse = (body: string) =>
+        openModal(
+          <ConfirmModal
+            strTitle="Licence not installed"
+            strDescription={body}
+            strOKButtonText="Close"
+            bAlertDialog
+          />,
+        );
+      setBusy(true);
+      try {
+        const result = await installPs3Licence(name);
+        if (result.ok) {
+          toaster.toast({ title: "Licence installed", body: result.name ?? name });
+        } else {
+          refuse(result.error || "Could not install that licence.");
+        }
+      } catch (licenceError) {
+        logError("could not install a licence", licenceError);
+        refuse("Could not install that licence.");
+      } finally {
+        setBusy(false);
+        void load();
+      }
+    },
+    [load],
+  );
+
   const install = useCallback(
     async (name: string) => {
       const match = matchFor(name);
@@ -883,6 +916,20 @@ export function TransferModal({
                     >
                       Install
                     </DialogButton>
+                  ) : file.name.toLowerCase().endsWith(".rap") ? (
+                    // A PS3 licence, not a game: Add would make a Steam entry
+                    // out of sixteen bytes. Install puts it where RPCS3 looks.
+                    <DialogButton
+                      disabled={busy}
+                      onClick={() => void installLicence(file.name)}
+                      style={ICON_BUTTON_WIDE}
+                    >
+                      Install
+                    </DialogButton>
+                  ) : file.licence_key ? (
+                    // Vita3K reads a key only while it installs the package, so
+                    // there is nothing to put it into from here.
+                    <div style={MUTED}>Used when its .pkg is unpacked</div>
                   ) : file.game_content ? (
                     // A Switch update or DLC names the game it is for, so this
                     // installs straight into that game -- the same Install a

@@ -242,14 +242,14 @@ try:
     _pkg_probe = os.path.join(_fw_dir, "braid.pkg")
     _hdr = bytearray(b"\0" * 0x54)
     _hdr[0:4] = b"\x7fPKG"
-    _hdr[0x30:0x30 + 36] = b"UP4049-NPUB30133_00-BRAID00000000001"
+    _hdr[0x30:0x30 + 36] = b"UP0000-ABCD12345_00-0000000000000001"
     with io.open(_pkg_probe, "wb") as _handle:
         _handle.write(bytes(_hdr))
     check("the content id is read whole, not just the title id",
           ps3_games.package_content_id(_pkg_probe),
-          "UP4049-NPUB30133_00-BRAID00000000001")
+          "UP0000-ABCD12345_00-0000000000000001")
     check("with no licence anywhere it reports nothing",
-          ps3_games.licence_state("UP4049-NPUB30133_00-BRAID00000000001", _fw_dir), "")
+          ps3_games.licence_state("UP0000-ABCD12345_00-0000000000000001", _fw_dir), "")
     # Not the same as missing, and never shown as one: without a content id
     # there is nowhere to look, which is every game installed outside this
     # plugin. "No licence" there would be a guess, wrong for licence-free games.
@@ -260,10 +260,10 @@ try:
     # install -- and the package that carried it is deleted.
     check("a title with nothing recorded has no content id",
           ps3_games.content_id_for("NPUB99999"), "")
-    ps3_games.remember_content_id("NPUB30133", "UP4049-NPUB30133_00-BRAID00000000001")
+    ps3_games.remember_content_id("NPUB30133", "UP0000-ABCD12345_00-0000000000000001")
     check("and one recorded at install is remembered",
           ps3_games.content_id_for("NPUB30133"),
-          "UP4049-NPUB30133_00-BRAID00000000001")
+          "UP0000-ABCD12345_00-0000000000000001")
 
     # A licence sent with its game lands beside the game, not in the firmware
     # folder -- which is the obvious thing to do and is what the Vita flow
@@ -315,19 +315,60 @@ try:
           ps3_games.install_licence(_CID, _dirs, _pkg_beside), _CID + ".rap")
     os.remove(os.path.join(ps3_games.exdata_dir(), _CID + ".rap"))
     os.remove(os.path.join(_beside, "two.rap"))
-    io.open(os.path.join(_fw_dir, "UP4049-NPUB30133_00-BRAID00000000001.rap"), "w").close()
+    io.open(os.path.join(_fw_dir, "UP0000-ABCD12345_00-0000000000000001.rap"), "w").close()
     check("a sent licence is waiting",
-          ps3_games.licence_state("UP4049-NPUB30133_00-BRAID00000000001", _fw_dir),
+          ps3_games.licence_state("UP0000-ABCD12345_00-0000000000000001", _fw_dir),
           "waiting")
     # The lone-candidate sweep is deliberately limited to the folder the package
     # is in. The firmware folder collects licences for every game ever sent, so
     # "the only .rap here" means nothing there -- and with no package to be
     # beside, there is no folder to sweep at all.
-    os.rename(os.path.join(_fw_dir, "UP4049-NPUB30133_00-BRAID00000000001.rap"),
-              os.path.join(_fw_dir, "braid.rap"))
+    os.rename(os.path.join(_fw_dir, "UP0000-ABCD12345_00-0000000000000001.rap"),
+              os.path.join(_fw_dir, "licence.rap"))
     check("a renamed licence in the firmware folder is not guessed at",
-          ps3_games.licence_state("UP4049-NPUB30133_00-BRAID00000000001", _fw_dir), "")
-    os.remove(os.path.join(_fw_dir, "braid.rap"))
+          ps3_games.licence_state("UP0000-ABCD12345_00-0000000000000001", _fw_dir), "")
+    os.remove(os.path.join(_fw_dir, "licence.rap"))
+
+    # A licence sent on its own, for a game already in RPCS3. Its name is the
+    # only thing saying which game it unlocks, so a content id is installed and
+    # anything else is sent back to travel with its package.
+    _alone = os.path.join(_fw_dir, "up0000-abcd12345_00-0000000000000001.rap")
+    with open(_alone, "wb") as _handle:
+        _handle.write(bytes(range(16)))
+    check("a licence named for its content id installs on its own",
+          ps3_games.install_licence_file(_alone),
+          ("UP0000-ABCD12345_00-0000000000000001.rap", ""))
+    check("under the name RPCS3 reads, whatever case it arrived in",
+          os.path.isfile(os.path.join(
+              ps3_games.exdata_dir(), "UP0000-ABCD12345_00-0000000000000001.rap")), True)
+    check("and it has left the transfer folder", os.path.isfile(_alone), False)
+
+    with open(_alone, "wb") as _handle:
+        _handle.write(bytes(range(16)))
+    check("the same licence sent twice is not an error",
+          ps3_games.install_licence_file(_alone),
+          ("UP0000-ABCD12345_00-0000000000000001.rap", ""))
+    with open(_alone, "wb") as _handle:
+        _handle.write(bytes(16))
+    check("a different one for the same game does not replace it",
+          "already installed" in ps3_games.install_licence_file(_alone)[1], True)
+    os.remove(_alone)
+    os.remove(os.path.join(ps3_games.exdata_dir(), "UP0000-ABCD12345_00-0000000000000001.rap"))
+
+    _anonymous = os.path.join(_fw_dir, "licence.rap")
+    with open(_anonymous, "wb") as _handle:
+        _handle.write(bytes(range(16)))
+    check("one named anything else is sent back to go with its package",
+          "does not say which game" in ps3_games.install_licence_file(_anonymous)[1], True)
+    check("and is left where it was", os.path.isfile(_anonymous), True)
+    os.remove(_anonymous)
+
+    _not_a_rap = os.path.join(_fw_dir, "UP0000-ABCD12345_00-0000000000000001.rap")
+    with open(_not_a_rap, "wb") as _handle:
+        _handle.write(b"a note somebody renamed")
+    check("a file of the wrong size is not a licence",
+          "16 bytes" in ps3_games.install_licence_file(_not_a_rap)[1], True)
+    os.remove(_not_a_rap)
     os.remove(_pkg_probe)
 
     # Installed is read from what the emulator produced, not from a record of
@@ -377,7 +418,7 @@ try:
     # with "Failed to decrypt content", so a .RAP sent from a phone that
     # uppercased it would sit at the destination reporting as installed and
     # decrypt nothing.
-    _rap_name = "UP4049-NPUB30133_00-BRAID00000000001.RAP"
+    _rap_name = "UP0000-ABCD12345_00-0000000000000001.RAP"
     _send(_rap_name)
     _rap_result = emu_firmware.install(emu_catalog.find("rpcs3"), "Game licences (.rap)")
     check("an uppercase licence is installed lowercase",

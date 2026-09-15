@@ -427,6 +427,60 @@ def install_licence(content_id, directories=(), pkg_path=""):
     return name
 
 
+#: A PS3 content id, as in `UP0001-BLUS30443_00-0000000000000001`. A `.rap` sent
+#: on its own carries nothing else that says which game it unlocks.
+_CONTENT_ID_RE = re.compile(r"^[A-Z]{2}[0-9]{4}-[A-Z]{4}[0-9]{5}_[0-9]{2}-[A-Z0-9]{16}$")
+
+#: Every `.rap` is sixteen bytes.
+RAP_BYTES = 16
+
+
+def install_licence_file(path):
+    """Move a `.rap` sent on its own into RPCS3's licences. Returns (name, error).
+
+    For a game already in RPCS3, or one whose package comes later: nothing else
+    puts a licence in place except unpacking its package. Only a file named for
+    its content id, because the name is the one binding RPCS3 has and nothing
+    here can tell which game an anonymous sixteen bytes belong to -- beside its
+    `.pkg`, `install_licence` can.
+    """
+    stem = os.path.splitext(os.path.basename(path or ""))[0].upper()
+    if not _CONTENT_ID_RE.match(stem):
+        return "", ("This licence's name does not say which game it unlocks. Send "
+                    "it beside the game's .pkg, and it goes in when the game is "
+                    "unpacked.")
+    try:
+        with open(path, "rb") as handle:
+            data = handle.read(RAP_BYTES + 1)
+    except OSError as error:
+        return "", "Could not read that licence: %s" % error
+    if len(data) != RAP_BYTES:
+        return "", "That is not a PS3 licence: a .rap is 16 bytes."
+
+    name = stem + ".rap"
+    target = os.path.join(exdata_dir(create=True), name)
+    if os.path.isfile(target):
+        try:
+            with open(target, "rb") as handle:
+                same = handle.read() == data
+        except OSError:
+            same = False
+        if not same:
+            return "", "A different licence for %s is already installed." % stem
+        # The same licence sent twice. The one in place is it.
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+        return name, ""
+    try:
+        shutil.move(path, target)
+    except OSError as error:
+        return "", "Could not install that licence: %s" % error
+    decky.logger.info("Installed licence %s on its own", name)
+    return name, ""
+
+
 def licence_state(content_id, directories=(), pkg_path=""):
     """Where this content's .rap is: 'installed', 'waiting', '' or 'unknown'.
 

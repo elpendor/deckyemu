@@ -50,6 +50,7 @@ import procout
 import savedata
 import switch_nsz
 import unpack
+import vita_games
 import gamecontent
 import store
 
@@ -68,6 +69,11 @@ class Transfers(plugin_base.PluginContext):
         # there is a package to ask about.
         library = None
         for item in status.get("received") or []:
+            # A Vita licence key is only read while its package installs, so its
+            # row says that instead of offering Add. `.txt` too, but only when
+            # there really is a key in it.
+            if item.get("name", "").lower().endswith(vita_games.ZRIF_SUFFIXES):
+                item["licence_key"] = bool(await self._run(vita_games.zrif_from, item["path"]))
             if not item.get("name", "").lower().endswith(gamecontent.SUFFIXES):
                 continue
             if library is None:
