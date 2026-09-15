@@ -5,6 +5,8 @@ body:
   - type: markdown
     attributes:
       value: |
+        **DeckyEmu is for the Steam Deck**, and on any other machine it says so rather than being broken. Setting something up, or not sure whether it is a bug? Ask in [Q&A](https://github.com/elpendor/deckyemu/discussions/categories/q-a) instead.
+
         Before anything else: **the plugin can gather most of what is needed for you.**
 
         On the Deck, open the Quick Access panel → the DeckyEmu settings page → **Updates** → **Report a problem**. It puts a report on your local network, reachable by scanning a QR code or by typing a short address and six digits on a phone or PC. Copy the text and paste it below.

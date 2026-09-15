@@ -1,5 +1,15 @@
 # Contributing
 
+## Questions
+
+Ask in [Q&A](https://github.com/elpendor/deckyemu/discussions/categories/q-a):
+setting something up, what a row means, or whether something is a bug at all.
+The diagnostic report below helps there as much as in a bug report.
+
+**What works on a Deck, and what it took**, goes in
+[Compatibility](https://github.com/elpendor/deckyemu/discussions/categories/compatibility),
+one system and emulator per post.
+
 ## Bug reports
 
 These are the most useful thing you can send, and the plugin builds one for you.
@@ -20,20 +30,22 @@ what you did; that is enough to start.
 
 ## Asking for something
 
-Open an issue with **Ask for something**. Say what you are trying to get done
-rather than the button you imagine doing it — the first is a problem to solve,
-the second is one answer to it, and often not the one that fits the rest of the
-panel. Say what you do about it today as well, however ugly the workaround is;
-that is what separates a papercut from the reason somebody stops using the
-plugin.
+Post it in
+[Ideas](https://github.com/elpendor/deckyemu/discussions/categories/ideas). Say
+what you are trying to get done rather than the button you imagine doing it —
+the first is a problem to solve, the second is one answer to it, and often not
+the one that fits the rest of the panel. Say what you do about it today as well,
+however ugly the workaround is; that is what separates a papercut from the
+reason somebody stops using the plugin.
 
 **There is no promise that a request is acted on**, the same as for pull
 requests below. One maintainer, no store listing, and nothing here is anybody's
 job. A request can be a good idea and still be closed — usually against Game
 Mode or the stdlib-only backend, and the reason is always given rather than
-left to be inferred from silence.
+left to be inferred from silence. An idea that is going to be built becomes an
+issue, linked back to the conversation it came from.
 
-Before filing one for an emulator, read the next section: that case needs no
+Before posting one about an emulator, read the next section: that case needs no
 code, no permission and no waiting.
 
 ## Emulators this project does not ship
@@ -45,18 +57,20 @@ typing on the Deck. See
 [docs/emulator-definitions.md](docs/emulator-definitions.md), which is also the
 list of what a definition is not allowed to do and why.
 
-Definitions are welcome as issues. Whether one is ever bundled is a separate
+Definitions are welcome in Ideas. Whether one is ever bundled is a separate
 question — a bundled entry is reviewed as code, because an entry is not data
-the plugin reads but a list of actions it performs.
+the plugin reads but a list of actions it performs. Some emulators this project
+deliberately does not carry, and definitions for those are not taken, here or
+anywhere else in the repository.
 
 ## Pull requests
 
-Open an issue first. This is a small project with one maintainer and no store
-listing, so a patch can be perfectly good and still not land — usually because
-it solves a problem differently from how the rest of the plugin solves it, and
-that is a conversation worth having before you spend an evening rather than
-after. **There is no promise of review**, and that is worth knowing before you
-start rather than discovering from silence.
+Start with a post in Ideas first. This is a small project with one maintainer
+and no store listing, so a patch can be perfectly good and still not land —
+usually because it solves a problem differently from how the rest of the plugin
+solves it, and that is a conversation worth having before you spend an evening
+rather than after. **There is no promise of review**, and that is worth knowing
+before you start rather than discovering from silence.
 
 If you do send one:
 

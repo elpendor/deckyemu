@@ -1,4 +1,5 @@
-# Every issue goes through one of the forms.
+# Issues are for things that are broken. Everything else has a place in
+# Discussions, and the chooser says where.
 #
 # The bug form asks for the diagnostic report, and the report is the difference
 # between a bug that can be reproduced and one that reads "it didn't work" --
@@ -6,10 +7,15 @@
 # log nobody can reach. The plugin can produce that report in two taps, so the
 # form asks for something it costs almost nothing to give.
 #
-# The request form spends its questions on the two constraints that decide most
-# of what is possible here -- Game Mode, and a stdlib-only backend -- and on
-# saying that an emulator this plugin does not cover needs a definition file
-# rather than a request. Both are cheaper to read on the way in than to explain
-# in comments afterwards, and the second turns a wait into something the person
-# asking can finish themselves.
+# Requests went to Ideas rather than staying an issue form. Most are never built,
+# and an issue is expected to end closed, so they either sat open for good or
+# were closed on somebody. What decides one is a conversation, and an idea that
+# is going to be built becomes an issue from the discussion.
 blank_issues_enabled: false
+contact_links:
+  - name: Ask a question
+    url: https://github.com/elpendor/deckyemu/discussions/categories/q-a
+    about: Setting something up, or not sure whether it is a bug.
+  - name: Ask for something
+    url: https://github.com/elpendor/deckyemu/discussions/categories/ideas
+    about: A feature, a change to one that exists, or an emulator the plugin does not cover.

@@ -1,0 +1,31 @@
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For setting something up, or when you are not sure whether something is a bug. Something clearly broken goes in [an issue](https://github.com/elpendor/deckyemu/issues/new?template=bug_report.yml) instead.
+
+        **The plugin can gather what an answer usually needs.** On the Deck, open the Quick Access panel → the DeckyEmu settings page → **Updates** → **Report a problem**, and copy the text it puts on your local network. API keys, account tokens and the names of your games are removed from it; read it before pasting anyway.
+
+        Please do not ask for or link to ROMs, BIOS, firmware or keys. Posts that do are removed.
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Your question
+      description: What you are trying to do, and where it stops.
+    validations:
+      required: true
+
+  - type: input
+    id: emulator
+    attributes:
+      label: Which system and emulator
+      description: Skip if it is not about one.
+      placeholder: GameCube, Dolphin (flatpak)
+
+  - type: textarea
+    id: report
+    attributes:
+      label: Diagnostic report
+      description: Pasted from "Report a problem", if you can get to it.
+      render: text

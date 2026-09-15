@@ -1,0 +1,48 @@
+body:
+  - type: markdown
+    attributes:
+      value: |
+        What works on a Steam Deck through DeckyEmu, and what it took. One system and emulator per post keeps them findable.
+
+        Please do not ask for or link to ROMs, BIOS, firmware or keys. Posts that do are removed.
+
+  - type: input
+    id: emulator
+    attributes:
+      label: Emulator or core, and where it came from
+      placeholder: Dolphin, installed from the Emulators tab
+    validations:
+      required: true
+
+  - type: input
+    id: system
+    attributes:
+      label: System and file type
+      placeholder: GameCube, .rvz
+    validations:
+      required: true
+
+  - type: dropdown
+    id: result
+    attributes:
+      label: How well it works
+      options:
+        - Works as added
+        - Works after changing something
+        - Starts but does not play properly
+        - Does not start
+    validations:
+      required: true
+
+  - type: textarea
+    id: changes
+    attributes:
+      label: What you changed, if anything
+      description: Settings in the plugin or the emulator, a Fix switched on or off, firmware that was needed.
+
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: The plugin version from the Updates tab, and the emulator's if you know it.
+      placeholder: DeckyEmu 0.13.0, Dolphin 2509
