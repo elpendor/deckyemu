@@ -455,6 +455,32 @@ export const firmwareStatus = callable<[], FirmwareReport>("firmware_status");
  * seconds with no window — and `installed` then says what it produced, with the
  * source file deleted only once that has been confirmed.
  */
+/** A requirement a file in the ROM transfer folder would fill. */
+export interface TransferFirmwareMatch {
+  entry_id: string;
+  emulator: string;
+  requirement: string;
+  gui_install: boolean;
+  prompt: string;
+}
+
+/**
+ * Which requirement each named file in the ROM transfer folder would fill, for
+ * a BIOS sent from the Quick Access transfer rather than from its own row.
+ * Name-matched requirements only: a size-matched one would claim ROMs.
+ */
+export const firmwareMatches = callable<
+  [names: string[]],
+  Record<string, TransferFirmwareMatch>
+>("firmware_matches");
+
+/** Moves a file from the ROM transfer folder into the firmware folder. */
+export const moveToFirmware = callable<
+  [name: string, replace?: boolean],
+  /** `exists`: a different file of that name is already there; ask first. */
+  { ok: boolean; error?: string; exists?: boolean }
+>("move_to_firmware");
+
 export const installFirmware = callable<
   [entryId: string, requirement: string],
   {

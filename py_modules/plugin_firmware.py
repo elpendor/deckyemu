@@ -17,6 +17,7 @@ the name where decky looks while the code lives somewhere findable.
 import asyncio
 import os
 import re
+import shutil
 
 import decky
 
@@ -27,6 +28,7 @@ import emu_firmware
 import emu_install
 import emulator_catalog
 import emulators
+import fileserver
 import launchers
 import procout
 import ra_cores
@@ -111,6 +113,20 @@ class CollapsedLog:
                 self._label, self._count - REPEATS_SHOWN,
             )
         self._last, self._count = "", 0
+
+
+def _same_bytes(one, other):
+    """Whether two files hold the same bytes. Not `filecmp`: decky's bundled
+    Python has not been shown to carry it, and a BIOS is small enough to read."""
+    if os.path.getsize(one) != os.path.getsize(other):
+        return False
+    with open(one, "rb") as first, open(other, "rb") as second:
+        while True:
+            left, right = first.read(65536), second.read(65536)
+            if left != right:
+                return False
+            if not left:
+                return True
 
 
 class Firmware(plugin_base.PluginContext):
@@ -198,15 +214,118 @@ class Firmware(plugin_base.PluginContext):
                 "emulators": emulators_report,
             }
 
+        return await self._run(_collect, await self._present_emulator_ids())
+
+    async def _present_emulator_ids(self):
+        """Catalog emulators that are installed and ask for firmware."""
         present = set()
         for entry in emulator_catalog.CATALOG:
+            if not entry.get("firmware"):
+                continue
             if entry["source"]["kind"] == "flatpak":
                 if await self._run(emu_install.flatpak_installed, entry["source"]["id"]):
                     present.add(entry["id"])
             elif await self._run(emu_install.installed_appimage, entry["id"]):
                 present.add(entry["id"])
+        return present
 
-        return await self._run(_collect, present)
+    async def firmware_matches(self, names: list):
+        """Which requirement each file sent to the ROM transfer folder would fill.
+
+        A BIOS sent from the Quick Access transfer lands in the ROM inbox, not in
+        the firmware folder, and nothing asked what it was -- so it was offered
+        Add, as a game, and never Install. The firmware panel's own send was the
+        only route, which is not where anyone sending a batch of files goes.
+
+        **Only requirements recognised by name.** xemu's BIOS matches any `.bin`
+        of 256KB, 512KB or 1MB, which is fine in a folder that holds nothing but
+        firmware and wrong in one full of ROMs: a 1MB cartridge dump would have
+        been offered to xemu. A `.rap` is left out too; the transfer dialog
+        already installs licences its own way. RetroArch's rows count in full,
+        shown or folded, because each is an exact filename.
+
+        Returns `{name: {entry_id, emulator, requirement, gui_install, prompt}}`,
+        first match winning in the panel's order.
+        """
+        present = await self._present_emulator_ids()
+        retroarch = await self._retroarch_firmware()
+
+        def _match():
+            files = []
+            for name in names or ():
+                name = str(name)
+                if name.lower().endswith(".rap"):
+                    continue
+                path = fileserver.inbox_path(name)
+                if path:
+                    files.append({"name": name, "size": os.path.getsize(path)})
+            if not files:
+                return {}
+            entries = [
+                dict(entry, firmware=[
+                    spec for spec in entry["firmware"] if not spec.get("sizes")
+                ])
+                for entry in emulator_catalog.CATALOG
+                if entry["id"] in present
+            ]
+            if retroarch:
+                entries.append(retroarch)
+            entries.sort(key=lambda entry: entry["name"].lower())
+            state = emu_firmware.read_state()
+            found = {}
+            for entry in entries:
+                for row in emu_firmware.status(entry, files, state):
+                    for name in row["waiting"]:
+                        found.setdefault(name, {
+                            "entry_id": entry["id"],
+                            "emulator": entry["name"],
+                            "requirement": row["name"],
+                            "gui_install": row["gui_install"],
+                            "prompt": row["prompt"],
+                        })
+            return found
+
+        return await self._run(_match)
+
+    async def move_to_firmware(self, name: str, replace: bool = False):
+        """Move a file from the ROM transfer folder into the firmware folder.
+
+        The step before installing a BIOS that arrived through the ROM transfer:
+        every install reads the firmware folder, so the file goes there first
+        and then takes the same path a firmware send does.
+
+        A different file already waiting under the same name is answered with
+        `exists` so the dialog can ask; `replace` is the yes. Only the firmware
+        folder is ever replaced here -- a staging copy, not an installed BIOS.
+        """
+
+        def _move():
+            source = fileserver.inbox_path(name)
+            if not source:
+                return {"ok": False, "error": "%s is no longer in the transfer folder." % name}
+            folder = emu_install.firmware_dir()
+            if os.path.normpath(os.path.dirname(source)) == os.path.normpath(folder):
+                return {"ok": True}
+            target = os.path.join(folder, os.path.basename(source))
+            # The same file sent twice -- once from its row, once with the ROMs
+            # -- is not a conflict. Refusing it left an Install button that
+            # could never work, over a file already where it needed to be.
+            if os.path.isfile(target) and _same_bytes(source, target):
+                os.remove(source)
+                return {"ok": True}
+            if os.path.exists(target):
+                if not replace:
+                    return {
+                        "ok": False,
+                        "exists": True,
+                        "error": "A different file named %s is already in the firmware folder."
+                        % name,
+                    }
+                os.remove(target)
+            shutil.move(source, target)
+            return {"ok": True}
+
+        return await self._run(_move)
 
 
     async def missing_firmware(self, core_id: str):

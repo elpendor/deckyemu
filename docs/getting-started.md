@@ -59,6 +59,8 @@ Some things worth knowing:
   and when the plugin unloads.
 - **BIOS files and keys go the same way.** They are recognised by name and offered
   to the emulator that needs them — see [step 2](#2-get-something-to-run-it).
+  xemu's two files are the exception: they are told apart by size, not name, so
+  send those from their own row under **BIOS and firmware**.
 - **Send whole games.** For a multi-disc or `.cue`/`.bin` game, send every file.
   The plugin will not file a game it cannot account for in full.
 

@@ -15,7 +15,9 @@ import {
   cancelUpload,
   fileServerStatus,
   firmwareDir,
+  firmwareMatches,
   firmwareStatus,
+  moveToFirmware,
   type FirmwareReport,
   getSettings,
   installFirmware,
@@ -245,6 +247,11 @@ export function TransferModal({
   // matching rather than guessed at here -- it tells an MCPX ROM from an Xbox
   // BIOS by size, which no filename can do.
   const [firmware, setFirmware] = useState<FirmwareReport | null>(null);
+  // The same question for a ROM send: a BIOS sent from the Quick Access
+  // transfer lands among the ROMs and was only ever offered Add.
+  const [inboxFirmware, setInboxFirmware] = useState<
+    Record<string, RequirementMatch>
+  >({});
   const [remember, setRemember] = useState(false);
   const timer = useRef<number | undefined>(undefined);
 
@@ -315,12 +322,35 @@ export function TransferModal({
   }, [purpose]);
 
   const load = useCallback(async () => {
+    let received: string[] = [];
     try {
       const result = await fileServerStatus();
       setStatus(result);
       setDir((current) => current || result.target_dir || result.suggested_dir || "");
+      received = (result.received ?? []).map((file) => file.name);
     } catch (loadError) {
       logError("could not read file server status", loadError);
+    }
+    if (purpose === "roms" && received.length) {
+      try {
+        const matches = await firmwareMatches(received);
+        setInboxFirmware(
+          Object.fromEntries(
+            Object.entries(matches ?? {}).map(([name, match]) => [
+              name,
+              {
+                entryId: match.entry_id,
+                emulatorName: match.emulator,
+                requirement: match.requirement,
+                guiInstall: match.gui_install,
+                prompt: match.prompt,
+              },
+            ]),
+          ),
+        );
+      } catch (matchError) {
+        logError("could not match sent files to firmware", matchError);
+      }
     }
     // What each arrival is actually for. Only on a firmware send: on a ROM send
     // nothing here installs anything, and the call would be asking the backend
@@ -578,6 +608,7 @@ export function TransferModal({
   const matchFor = useCallback(
     (name: string): RequirementMatch | undefined =>
       requirementForFile(firmware, name) ??
+      inboxFirmware[name] ??
       (installInto
         ? {
             entryId: installInto.entryId,
@@ -587,7 +618,7 @@ export function TransferModal({
             prompt: "",
           }
         : undefined),
-    [firmware, installInto],
+    [firmware, inboxFirmware, installInto],
   );
 
   // A PS3 licence sent on its own. Refusals are a dialog, as for an update: the
@@ -631,6 +662,33 @@ export function TransferModal({
       setBusy(true);
       setError("");
       try {
+        // Arrived among the ROMs: every install reads the firmware folder, so
+        // the file goes there first and then takes the same path.
+        if (inboxFirmware[name] && !requirementForFile(firmware, name)) {
+          let moved = await moveToFirmware(name);
+          // A different file of the same name is already waiting there. Only
+          // the user knows which dump is the right one, so ask; an identical
+          // one never gets here, the backend just drops the spare.
+          if (!moved.ok && moved.exists) {
+            const replace = await new Promise<boolean>((resolve) =>
+              openModal(
+                <ConfirmModal
+                  strTitle="Replace the waiting file?"
+                  strDescription={`A different ${name} is already in the firmware folder, not yet installed. Replace it with the one you just sent?`}
+                  strOKButtonText="Replace"
+                  onOK={() => resolve(true)}
+                  onCancel={() => resolve(false)}
+                />,
+              ),
+            );
+            if (!replace) return;
+            moved = await moveToFirmware(name, true);
+          }
+          if (!moved.ok) {
+            setError(moved.error ?? "Could not move that file.");
+            return;
+          }
+        }
         // Some requirements are not a copy at all: the emulator will only take
         // the file through its own window. Falling through to the copy path
         // returned that requirement's instructions *as an error*, which read
@@ -692,7 +750,7 @@ export function TransferModal({
         setBusy(false);
       }
     },
-    [matchFor, load, close],
+    [matchFor, inboxFirmware, firmware, load, close],
   );
 
   const running = Boolean(status?.running);
