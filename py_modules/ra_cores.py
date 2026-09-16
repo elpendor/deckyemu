@@ -84,6 +84,31 @@ def _parse_info(path):
     return values
 
 
+def _firmware(info):
+    """The files a core's .info says it reads from RetroArch's system folder.
+
+    `firmwareN_path` is relative to that folder and may name a subfolder
+    (`dc/dc_boot.bin`). `firmwareN_opt` is "true" for almost every entry -- the
+    core boots without it -- and absent counts as optional too, because a warning
+    under every game for a file nobody declared required is worse than silence.
+    """
+    try:
+        count = int(info.get("firmware_count") or 0)
+    except ValueError:
+        count = 0
+    found = []
+    for index in range(count):
+        path = (info.get("firmware%d_path" % index) or "").strip()
+        if not path:
+            continue
+        found.append({
+            "path": path,
+            "desc": (info.get("firmware%d_desc" % index) or "").strip(),
+            "optional": (info.get("firmware%d_opt" % index) or "true").lower() != "false",
+        })
+    return found
+
+
 def _core_id(so_path):
     """`snes9x_libretro.so` -> `snes9x`."""
     name = os.path.basename(so_path)
@@ -192,6 +217,7 @@ def list_cores(install):
                 # .info file does not. Note that "yes" means the core can take
                 # part, not that RetroAchievements has a set for a given game.
                 "cheevos": _cheevos_support(info),
+                "firmware": _firmware(info),
             }
 
     result = sorted(cores.values(), key=lambda core: core["display_name"].lower())

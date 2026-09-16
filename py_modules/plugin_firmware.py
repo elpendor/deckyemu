@@ -29,6 +29,8 @@ import emulator_catalog
 import emulators
 import launchers
 import procout
+import ra_cores
+import ra_firmware
 import store
 import sysenv
 
@@ -114,6 +116,32 @@ class CollapsedLog:
 class Firmware(plugin_base.PluginContext):
     """Firmware endpoints. See the module docstring."""
 
+    async def _retroarch_firmware(self):
+        """RetroArch's requirements, read off its cores, or None.
+
+        Scans the cores if nothing has yet, the same way `list_cores` does:
+        the panel can open before anything asked for them.
+        """
+        if not self._install:
+            return None
+        if not self._cores:
+            self._cores = await self._run(ra_cores.list_cores, self._install)
+        return await self._run(ra_firmware.entry, self._install, self._cores)
+
+    async def _firmware_entry(self, entry_id):
+        """The entry a firmware endpoint acts on: a catalog emulator or RetroArch."""
+        if entry_id == ra_firmware.ENTRY_ID:
+            return await self._retroarch_firmware()
+        return emulator_catalog.find(entry_id)
+
+    @staticmethod
+    def _sharing_entries(retroarch):
+        """Everything whose installed files may be offered to another emulator."""
+        entries = list(emulator_catalog.CATALOG)
+        if retroarch:
+            entries.append(retroarch)
+        return entries
+
     async def firmware_dir(self):
         """Where the user's own BIOS files, keys and firmware are collected."""
         return {"path": await self._run(emu_install.firmware_dir)}
@@ -127,6 +155,8 @@ class Firmware(plugin_base.PluginContext):
         would not exist to check against anyway.
         """
 
+        retroarch = await self._retroarch_firmware()
+
         def _collect(present_ids):
             # Both reads hoisted out of the loop for the same reason: the answer
             # is the same for every emulator, and asking per requirement meant
@@ -134,7 +164,9 @@ class Firmware(plugin_base.PluginContext):
             # of times to draw one panel.
             files = emu_firmware.available()
             state = emu_firmware.read_state()
-            shared = emu_firmware.installed_elsewhere(emulator_catalog.CATALOG, state)
+            shared = emu_firmware.installed_elsewhere(
+                self._sharing_entries(retroarch), state
+            )
             present_entries = [
                 entry
                 for entry in emulator_catalog.CATALOG
@@ -148,6 +180,19 @@ class Firmware(plugin_base.PluginContext):
                 }
                 for entry in present_entries
             ]
+            if retroarch:
+                rows, optional = ra_firmware.visible(
+                    retroarch,
+                    emu_firmware.status(retroarch, files, state, shared),
+                    ra_firmware.library_core_ids(store.get_library()),
+                )
+                if rows or optional:
+                    emulators_report.append({
+                        "id": retroarch["id"],
+                        "name": retroarch["name"],
+                        "requirements": rows,
+                        "optional_files": optional,
+                    })
             return {
                 "path": emu_install.firmware_dir(),
                 "emulators": emulators_report,
@@ -178,24 +223,34 @@ class Firmware(plugin_base.PluginContext):
         usually fatal and occasionally not, and the plugin is in no position to
         be certain which.
 
-        Silent for libretro cores: RetroArch has its own system directory and
-        its own rules about what is needed, and guessing at them here would
-        produce a warning nobody could act on.
+        A libretro core is asked about what its own `.info` declares required,
+        which is a short list -- most cores mark every file optional. It used to
+        be silent, on the grounds that RetroArch's rules were its own; the
+        `.info` files are those rules, written down.
         """
-        if not emulators.is_emulator_id(core_id):
-            return {"ok": True, "missing": []}
+        retroarch = await self._retroarch_firmware()
+        if emulators.is_emulator_id(core_id):
+            emulator = await self._run(emulators.find, emulators.emulator_id(core_id))
+            if not emulator:
+                return {"ok": True, "missing": []}
+            entry = emulator_catalog.find(emulator.get("id", ""))
+            name = (entry or {}).get("name", "")
+        else:
+            core = next((c for c in self._cores if c["id"] == core_id), None)
+            entry = (
+                await self._run(ra_firmware.for_core, self._install, self._cores, core_id)
+                if core
+                else None
+            )
+            # The core, not "RetroArch": it is the core that will not start.
+            name = (core or {}).get("short_name") or core_id
 
-        emulator = await self._run(emulators.find, emulators.emulator_id(core_id))
-        if not emulator:
-            return {"ok": True, "missing": []}
-
-        entry = emulator_catalog.find(emulator.get("id", ""))
         if not entry or not entry.get("firmware"):
             return {"ok": True, "missing": []}
 
         def _unmet():
             files = emu_firmware.available()
-            shared = emu_firmware.installed_elsewhere(emulator_catalog.CATALOG)
+            shared = emu_firmware.installed_elsewhere(self._sharing_entries(retroarch))
             return [
                 {
                     "name": item["name"],
@@ -214,7 +269,7 @@ class Firmware(plugin_base.PluginContext):
 
         return {
             "ok": True,
-            "emulator": entry["name"],
+            "emulator": name,
             "missing": await self._run(_unmet),
         }
 
@@ -267,7 +322,7 @@ class Firmware(plugin_base.PluginContext):
         is the emulator that does the work -- see `_import_firmware` -- and this
         only chooses between the two.
         """
-        entry = emulator_catalog.find(entry_id)
+        entry = await self._firmware_entry(entry_id)
         if not entry:
             return {"ok": False, "error": "That emulator is not in the catalog."}
 
@@ -275,8 +330,12 @@ class Firmware(plugin_base.PluginContext):
         if spec and spec.get("import"):
             return await self._import_firmware(entry, spec)
 
+        retroarch = (
+            entry if entry_id == ra_firmware.ENTRY_ID else await self._retroarch_firmware()
+        )
+
         def _install():
-            shared = emu_firmware.installed_elsewhere(emulator_catalog.CATALOG)
+            shared = emu_firmware.installed_elsewhere(self._sharing_entries(retroarch))
             return emu_firmware.install(entry, requirement, shared=shared)
 
         return await self._run(_install)
@@ -505,7 +564,7 @@ class Firmware(plugin_base.PluginContext):
 
     async def uninstall_firmware(self, entry_id: str, requirement: str):
         """Take a requirement's files back out, so it can be installed again."""
-        entry = emulator_catalog.find(entry_id)
+        entry = await self._firmware_entry(entry_id)
         if not entry:
             return {"ok": False, "error": "That emulator is not in the catalog."}
         return await self._run(emu_firmware.uninstall, entry, requirement)

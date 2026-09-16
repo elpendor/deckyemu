@@ -7,10 +7,18 @@ import {
 } from "@decky/ui";
 import { toaster } from "@decky/api";
 import { useCallback, useEffect, useState } from "react";
-import { FaCheckCircle, FaDownload, FaExclamationTriangle, FaTrash, FaUpload } from "react-icons/fa";
+import {
+  FaCheckCircle,
+  FaDownload,
+  FaExclamationTriangle,
+  FaInfoCircle,
+  FaTrash,
+  FaUpload,
+} from "react-icons/fa";
 
 import {
   firmwareState,
+  optionalSummary,
   STATE_COLOR,
   STATE_TITLE,
   type FirmwareRowState,
@@ -32,6 +40,7 @@ import { humanSize, TransferModal } from "./TransferModal";
 import { callWithRetry } from "./timeout";
 import { installThroughEmulator } from "./firmwareInstall";
 import { byName } from "./order";
+import { OptionalFilesModal } from "./OptionalFilesModal";
 import { openModal } from "./modalStack";
 import { ICON_BUTTON, ICON_BUTTON_WIDE } from "./iconButton";
 
@@ -117,7 +126,15 @@ export function FirmwarePanel({ reloadKey = 0 }: Props) {
   // requirements the user was about to satisfy. Re-reads on dismiss, since the
   // point is that an arriving file turns "still needed" into "ready".
   const send = useCallback(
-    (entryId: string, emulatorName: string, requirement: FirmwareState) => {
+    (
+      entryId: string,
+      emulatorName: string,
+      label: string,
+      expects: string,
+      // Absent for the optional-files line, which is not one requirement: the
+      // dialog then goes by the name of whatever arrives.
+      requirementName?: string,
+    ) => {
       void (async () => {
         // Started before the dialog opens, like the ROM transfer does, so
         // there is nothing to press before sending. The ROM side gets away
@@ -143,13 +160,10 @@ export function FirmwarePanel({ reloadKey = 0 }: Props) {
             onClosed={load}
             // Named, so an arriving file can be put in place from the dialog
             // rather than sending the user back to this row to press install.
-            installInto={{ entryId, requirement: requirement.name }}
-            expecting={[
-              {
-                label: `${emulatorName} — ${requirement.name}`,
-                expects: requirement.expects || requirement.note,
-              },
-            ]}
+            installInto={
+              requirementName ? { entryId, requirement: requirementName } : undefined
+            }
+            expecting={[{ label: `${emulatorName} — ${label}`, expects }]}
           />,
         );
       })();
@@ -376,6 +390,52 @@ export function FirmwarePanel({ reloadKey = 0 }: Props) {
             <div style={{ fontWeight: 600, padding: "10px 0 2px" }}>{emulator.name}</div>
           </PanelSectionRow>
 
+          {/* Files a core in use could read and does not need. One line
+              rather than a row each: as rows they were a column of warnings
+              about nothing. First in the group, because it is the one line
+              that is always there while rows come and go with what is sent.
+              What arrives is recognised by name and becomes a row of its own. */}
+          {(emulator.optional_files?.length ?? 0) > 0 && (
+            <PanelSectionRow>
+              <Field
+                label="Optional files"
+                description={optionalSummary(emulator.optional_files?.length ?? 0)}
+                childrenContainerWidth="min"
+              >
+                <div style={{ display: "flex", gap: "6px" }}>
+                  {/* The subtitle only counts them; this lists every one
+                      with the cores that read it. */}
+                  <DialogButton
+                    onClick={() =>
+                      openModal(
+                        <OptionalFilesModal
+                          emulatorName={emulator.name}
+                          files={emulator.optional_files ?? []}
+                        />,
+                      )
+                    }
+                    style={ICON_BUTTON}
+                  >
+                    <FaInfoCircle />
+                  </DialogButton>
+                  <DialogButton
+                    onClick={() =>
+                      send(
+                        emulator.id,
+                        emulator.name,
+                        "optional files",
+                        "Recognised by name, whichever of these you send.",
+                      )
+                    }
+                    style={ICON_BUTTON}
+                  >
+                    <FaUpload />
+                  </DialogButton>
+                </div>
+              </Field>
+            </PanelSectionRow>
+          )}
+
           {emulator.requirements.map((requirement) => {
             const key = `${emulator.id}/${requirement.name}`;
             const ready = requirement.waiting.length > 0;
@@ -510,7 +570,15 @@ export function FirmwarePanel({ reloadKey = 0 }: Props) {
                     ) : (
                       <DialogButton
                         disabled={busy === key}
-                        onClick={() => send(emulator.id, emulator.name, requirement)}
+                        onClick={() =>
+                          send(
+                            emulator.id,
+                            emulator.name,
+                            requirement.name,
+                            requirement.expects || requirement.note,
+                            requirement.name,
+                          )
+                        }
                         style={ICON_BUTTON}
                       >
                         <FaUpload />
@@ -521,6 +589,7 @@ export function FirmwarePanel({ reloadKey = 0 }: Props) {
               </PanelSectionRow>
             );
           })}
+
         </div>
       ))}
     </PanelSection>

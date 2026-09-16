@@ -64,3 +64,15 @@ export const STATE_TITLE: Record<FirmwareRowState, string> = {
   waiting: "Waiting to be installed",
   missing: "Not supplied yet",
 };
+
+/**
+ * What the optional-files line says: how many, and no names. A few names and
+ * "and 21 more" told nobody anything the info button beside it does not say
+ * in full.
+ */
+export function optionalSummary(count: number): string {
+  return (
+    `${count} ${count === 1 ? "file" : "files"} your games run without. ` +
+    "A core uses them if they are here."
+  );
+}

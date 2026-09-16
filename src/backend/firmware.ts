@@ -94,10 +94,26 @@ export interface FirmwareState {
   detected?: boolean;
 }
 
+/** An optional file folded out of the rows: what it is, and who reads it. */
+export interface OptionalFile {
+  name: string;
+  label: string;
+  cores: string[];
+}
+
 export interface FirmwareReport {
   /** The folder files are sent to. */
   path: string;
-  emulators: Array<{ id: string; name: string; requirements: FirmwareState[] }>;
+  emulators: Array<{
+    id: string;
+    name: string;
+    requirements: FirmwareState[];
+    /**
+     * Optional files nobody has supplied, folded into one line rather than a
+     * row each. RetroArch only: six cores in use declared 27 of them.
+     */
+    optional_files?: OptionalFile[];
+  }>;
 }
 
 /**

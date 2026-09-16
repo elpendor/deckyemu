@@ -145,6 +145,21 @@ def save_dirs(config_dir):
     }
 
 
+def system_dir(config_dir):
+    """The folder this RetroArch's cores read BIOS files from.
+
+    `system_directory` in `retroarch.cfg`, like `save_dirs` and for the same
+    reason: EmuDeck points it at `~/Emulation/bios`, and a file put in the
+    default folder there is never read. RetroArch writes "default" for a key
+    nobody set, which means `<config>/system`.
+    """
+    cfg = parse_cfg(os.path.join(config_dir, "retroarch.cfg"))
+    value = cfg.get("system_directory", "")
+    if value == "default":
+        value = ""
+    return _resolve_ra_path(value, config_dir) or os.path.join(config_dir, "system")
+
+
 def _build_install(kind, config_dir, exe=None, extra_core_dirs=()):
     cfg = parse_cfg(os.path.join(config_dir, "retroarch.cfg"))
 

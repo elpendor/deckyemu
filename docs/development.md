@@ -257,6 +257,7 @@ py_modules/                 Backend logic. Plain Python, stdlib only -- it runs
                             config, and the rule for when that is allowed
   emu_firmware.py           Match a BIOS or key file by name and put it where the
                             emulator reads it
+  ra_firmware.py            RetroArch's BIOS rows, read off each core's .info
   emu_patch.py              Correct a bug inside an emulator's own binary, when
                             nothing else reaches it
   steam_layouts.py          The Steam Input layout an emulator needs, derived

@@ -94,6 +94,17 @@ and names where the file is, so there is nothing to send again. Installing it
 shares the same file between the two rather than making a copy, and removing it
 from one leaves the other's in place — the remove dialog says so.
 
+**RetroArch cores are listed too**, under **RetroArch**, from what each core
+declares it reads, for the cores your games run on. A file a core needs, or one
+already in place, gets a row; files a core can use but does not need are listed
+together on one **Optional files** line at the top of the group, with a send
+button and an info button listing them all and the cores that read each. One you
+send turns into a row of its own. Files go into RetroArch's own system
+folder, wherever `retroarch.cfg` points it (EmuDeck moves it to
+`~/Emulation/bios`), under the exact name the core opens: a `SCPH5501.BIN` sent
+from a phone lands as `scph5501.bin`. Most cores run without any of them; when a
+core says it cannot, adding a game for it warns the same way PCSX2 does.
+
 A few cannot be installed for you, because the emulator unpacks them itself:
 RPCS3's `PS3UPDAT.PUP`, a Switch firmware archive, and xemu's BIOS files. Those
 are still detected, and the row tells you the one step left.

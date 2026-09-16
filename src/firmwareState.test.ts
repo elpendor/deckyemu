@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   firmwareState,
+  optionalSummary,
   STATE_COLOR,
   STATE_TITLE,
   type FirmwareCounts,
@@ -42,6 +43,19 @@ describe("firmwareState", () => {
    */
   it("counts installed-with-leftovers as done, not outstanding", () => {
     expect(firmwareState(req(["4.93"], ["PS3UPDAT.PUP"]))).toBe("installed");
+  });
+});
+
+describe("optionalSummary", () => {
+  // The names live behind the info button; a partial list here said nothing.
+  it("counts the files and names none", () => {
+    expect(optionalSummary(27)).toBe(
+      "27 files your games run without. A core uses them if they are here.",
+    );
+  });
+
+  it("says file for one", () => {
+    expect(optionalSummary(1)).toMatch(/^1 file your/);
   });
 });
 

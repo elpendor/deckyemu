@@ -216,6 +216,10 @@ def _dest_name(requirement, name):
     from a phone that helpfully uppercased it would sit at the destination,
     report as installed, and decrypt nothing.
     """
+    # A libretro core opens exactly the name its .info declares, so a dump sent
+    # as `SCPH5501.BIN` has to land as `scph5501.bin` or it is never read.
+    if requirement.get("as"):
+        return requirement["as"]
     if not requirement.get("lower_ext"):
         return name
     stem, extension = os.path.splitext(name)
@@ -327,6 +331,10 @@ def _installed_at(requirement, destination, recorded=()):
             ],
         )
     )
+    if requirement.get("as"):
+        # Only the exact name counts as in place: the core would not open a
+        # file that merely matches with different capitals.
+        matched = {requirement["as"]} & set(present)
     found = matched | (set(recorded) & set(present))
     stub = requirement.get("stub")
     if stub:
