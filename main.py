@@ -350,6 +350,8 @@ class Plugin(
             ("upgrade emulator recipes", self._upgrade_emulator_recipes),
             ("upgrade emulator setups", self._upgrade_emulator_setups),
             ("re-file split firmware records", self._resplit_firmware_records),
+            # Before sharing, which matches by content once this is loaded.
+            ("load the BIOS checksum list", self._refresh_bios_dat),
             # Every start, so a library that predates sharing gets it too. Safe
             # to repeat: a share somebody removed is recorded and left alone.
             ("share firmware already on the Deck", self._share_firmware_with_library),

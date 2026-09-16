@@ -90,7 +90,8 @@ def entry(install, cores):
                     "label": _label(item.get("desc", ""), item["path"]),
                     "match": r"(?i)^%s$" % re.escape(name),
                     "as": name,
-                    "expects": "Named %s. Capital letters do not matter." % name,
+                    "expects": "Named %s, or any file that is this BIOS whatever "
+                    "it is called." % name,
                     "dest": base + ("/" + folder if folder else ""),
                     "optional": True,
                     "core_ids": [],

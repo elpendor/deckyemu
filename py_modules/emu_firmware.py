@@ -56,6 +56,7 @@ import zipfile
 
 import decky
 
+import bios_dat
 import emu_config
 import emu_install
 import jsonstore
@@ -170,7 +171,12 @@ def available(directory=None):
             continue
         if not os.path.isfile(path) or info.st_size > MAX_FIRMWARE_BYTES:
             continue
-        found.append({"name": name, "size": info.st_size, "modified": int(info.st_mtime)})
+        found.append({
+            "name": name,
+            "size": info.st_size,
+            "modified": int(info.st_mtime),
+            "path": path,
+        })
 
     found.sort(key=lambda item: item["modified"], reverse=True)
     return found
@@ -236,6 +242,24 @@ def _matching(requirement, files):
         decky.logger.warning("Bad firmware pattern %r: %s", pattern, error)
         return []
 
+    # By content, for a file whose name says nothing. `as` accepts the file the
+    # checksum list knows under that name -- a core opens exactly one -- and
+    # `system` accepts any BIOS of that system, for an emulator that tells its
+    # BIOS files apart itself. Only a file with a path can be read, and
+    # `bios_dat.identify` never fetches, so without the list this is names only.
+    known_as = (requirement.get("as") or "").lower()
+    system = requirement.get("system") or ""
+
+    def _by_content(item):
+        if not (known_as or system) or not item.get("path"):
+            return False
+        identity = bios_dat.identify(item["path"])
+        if not identity:
+            return False
+        return (bool(known_as) and known_as in identity["names"]) or (
+            bool(system) and identity["system"] == system
+        )
+
     # Size, where the filename cannot do the job. The Xbox pair is the case:
     # an MCPX boot ROM and an Xbox BIOS are both a .bin under whatever name the
     # dumper chose, and telling them apart by name is impossible -- but an MCPX
@@ -246,8 +270,8 @@ def _matching(requirement, files):
     return [
         item["name"]
         for item in files
-        if matcher.match(item["name"])
-        and (not sizes or item.get("size") in sizes)
+        if (matcher.match(item["name"]) and (not sizes or item.get("size") in sizes))
+        or _by_content(item)
     ]
 
 
@@ -326,7 +350,11 @@ def _installed_at(requirement, destination, recorded=()):
         _matching(
             requirement,
             [
-                {"name": name, "size": _size_of(os.path.join(destination, name))}
+                {
+                    "name": name,
+                    "size": _size_of(os.path.join(destination, name)),
+                    "path": os.path.join(destination, name),
+                }
                 for name in present
             ],
         )

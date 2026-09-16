@@ -138,7 +138,10 @@ ENTRY = {
             "note": "Optional, but compatibility is better with one.",
             # Four digits, where the PS2's has five -- see the PCSX2 entry.
             "match": r"(?i)^scph[-_]?\d{4}\.(bin|rom)$",
-            "expects": "Named scph plus four digits, e.g. scph1001.bin. Five digits is a PS2 BIOS and goes to PCSX2 instead.",
+            # DuckStation tells PS1 BIOS files apart by their contents, so a
+            # dump under any name is as good as one named scph1001.bin.
+            "system": "Sony - PlayStation",
+            "expects": "Named scph plus four digits, e.g. scph1001.bin, or any PS1 BIOS recognised by its contents. Five digits is a PS2 BIOS and goes to PCSX2 instead.",
             "dest": "%s/bios" % _DUCKSTATION_CONFIG,
         }
     ],

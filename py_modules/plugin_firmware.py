@@ -23,6 +23,8 @@ import decky
 
 import plugin_base
 
+import bios_dat
+
 import emu_config
 import emu_firmware
 import emu_install
@@ -202,6 +204,10 @@ class Firmware(plugin_base.PluginContext):
         except Exception:
             decky.logger.exception("Could not share firmware")
 
+    async def _refresh_bios_dat(self):
+        """Load libretro's BIOS checksum list, fetching it when it is old."""
+        await self._run(bios_dat.refresh)
+
     async def _share_firmware_with_library(self):
         library = await self._run(store.get_library)
         await self._share_firmware(
@@ -308,7 +314,7 @@ class Firmware(plugin_base.PluginContext):
                     continue
                 path = fileserver.inbox_path(name)
                 if path:
-                    files.append({"name": name, "size": os.path.getsize(path)})
+                    files.append({"name": name, "size": os.path.getsize(path), "path": path})
             if not files:
                 return {}
             entries = [

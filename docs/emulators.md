@@ -103,7 +103,9 @@ button and an info button listing them all and the cores that read each. One you
 send turns into a row of its own. Files go into RetroArch's own system
 folder, wherever `retroarch.cfg` points it (EmuDeck moves it to
 `~/Emulation/bios`), under the exact name the core opens: a `SCPH5501.BIN` sent
-from a phone lands as `scph5501.bin`. Most cores run without any of them; when a
+from a phone lands as `scph5501.bin`. A dump under any other name is recognised
+by its contents too, from the checksum list libretro publishes, which the plugin
+downloads and keeps for a month; offline, only the name counts. Most cores run without any of them; when a
 core says it cannot, adding a game for it warns the same way PCSX2 does.
 
 A few cannot be installed for you, because the emulator unpacks them itself:

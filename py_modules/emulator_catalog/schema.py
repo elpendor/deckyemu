@@ -175,6 +175,7 @@ FIRMWARE_OPTIONAL = FIRMWARE_ROUTES + (
     "expects",      # what to tell the user when `match` rejects their file
     "lower_ext",    # lowercase the extension before matching
     "as",           # the exact name it lands as, whatever it was sent as
+    "system",       # also accept any BIOS libretro lists for this system, by content
     "sizes",        # byte sizes a valid file may have
     "optional",     # the emulator runs without it, so do not warn
     "removes",      # paths to delete when uninstalling this firmware
