@@ -338,6 +338,7 @@ class Firmware(plugin_base.PluginContext):
                             "requirement": row["name"],
                             "gui_install": row["gui_install"],
                             "prompt": row["prompt"],
+                            "unrecognised": name in row["unrecognised"],
                         })
             return found
 

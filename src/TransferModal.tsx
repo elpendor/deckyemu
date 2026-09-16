@@ -55,6 +55,7 @@ import { COLUMN, MUTED } from "./dialogStyle";
 import { logError } from "./logError";
 import { installThroughEmulator } from "./firmwareInstall";
 import { requirementForFile, type RequirementMatch } from "./firmwareMatch";
+import { confirmUnknownDump } from "./confirmUnknownDump";
 import { confirmDiscardTransfer } from "./discardTransfer";
 import { importDefinition } from "./importDefinition";
 import { installContentFor } from "./installContent";
@@ -344,6 +345,7 @@ export function TransferModal({
                 requirement: match.requirement,
                 guiInstall: match.gui_install,
                 prompt: match.prompt,
+                unrecognised: Boolean(match.unrecognised),
               },
             ]),
           ),
@@ -658,6 +660,10 @@ export function TransferModal({
       const match = matchFor(name);
       if (!match) return;
       const { entryId, requirement } = match;
+
+      if (match.unrecognised && !(await confirmUnknownDump([name], requirement))) {
+        return;
+      }
 
       setBusy(true);
       setError("");

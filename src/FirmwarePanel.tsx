@@ -41,6 +41,7 @@ import { callWithRetry } from "./timeout";
 import { installThroughEmulator } from "./firmwareInstall";
 import { byName } from "./order";
 import { OptionalFilesModal } from "./OptionalFilesModal";
+import { confirmUnknownDump } from "./confirmUnknownDump";
 import { openModal } from "./modalStack";
 import { ICON_BUTTON, ICON_BUTTON_WIDE } from "./iconButton";
 
@@ -176,6 +177,17 @@ export function FirmwarePanel({ reloadKey = 0 }: Props) {
       setBusy(`${entryId}/${requirement.name}`);
       void (async () => {
         try {
+          // What this press would put in place: the files waiting, or else the
+          // one another emulator holds.
+          const incoming = requirement.waiting.length
+            ? requirement.waiting
+            : (requirement.elsewhere ?? []).map((item) => item.name);
+          const unknown = incoming.filter((name) =>
+            (requirement.unrecognised ?? []).includes(name),
+          );
+          if (unknown.length && !(await confirmUnknownDump(unknown, requirement.name))) {
+            return;
+          }
           const result = await installFirmware(entryId, requirement.name);
           if (!result.ok) {
             toaster.toast({ title: "Could not install", body: result.error ?? "" });
@@ -488,6 +500,12 @@ export function FirmwarePanel({ reloadKey = 0 }: Props) {
               description = [requirement.note, requirement.expects]
                 .filter(Boolean)
                 .join(" ");
+            }
+            // Said whatever the state: a bad dump installs fine and then fails
+            // in the game, where nothing points back here.
+            const unrecognised = requirement.unrecognised ?? [];
+            if (unrecognised.length) {
+              description = `${description.replace(/\.$/, "")}. ${unrecognised.join(", ")} is not a known dump, so it may not work.`;
             }
 
             return (

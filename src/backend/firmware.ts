@@ -45,6 +45,11 @@ export interface FirmwareState {
    * removing it from this one is not the end of it.
    */
   kept_by?: string[];
+  /**
+   * Files matched by name whose contents are not a known dump of it, per
+   * libretro's checksum list. Likely bad or altered; said on the row.
+   */
+  unrecognised?: string[];
   can_install: boolean;
   /**
    * Whether taking it back out is offered. For an imported requirement this
@@ -462,6 +467,8 @@ export interface TransferFirmwareMatch {
   requirement: string;
   gui_install: boolean;
   prompt: string;
+  /** The checksum list says this file is not a known dump of it. */
+  unrecognised?: boolean;
 }
 
 /**

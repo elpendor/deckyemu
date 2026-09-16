@@ -527,6 +527,39 @@ def same_bytes(one, other):
         return False
 
 
+def _unknown_dump(requirement, path):
+    """Whether the checksum list says the file at `path` is not this BIOS.
+
+    False whenever it cannot say: a requirement judged by name alone, no list
+    loaded, or no file. Only a definite "this is not it" counts.
+    """
+    known_as = (requirement.get("as") or "").lower()
+    system = requirement.get("system") or ""
+    if not (known_as or system) or not bios_dat.loaded():
+        return False
+    if not path or not os.path.isfile(path):
+        return False
+    identity = bios_dat.identify(path)
+    return not (identity and (
+        (known_as and known_as in identity["names"])
+        or (system and identity["system"] == system)
+    ))
+
+
+def _unrecognised(requirement, candidates):
+    """The names among `(name, path)` pairs that are not a known dump of it.
+
+    A name that matches over contents that do not is a bad or altered dump: it
+    installs, then fails in the game with nothing connecting the two. So the row
+    says so, installing it asks first, and sharing leaves it alone.
+    """
+    found = []
+    for name, path in candidates:
+        if name not in found and _unknown_dump(requirement, path):
+            found.append(name)
+    return found
+
+
 def share_held(entry, shared):
     """Put in place, unasked, every file another emulator already holds.
 
@@ -548,7 +581,12 @@ def share_held(entry, shared):
             continue
         destination = _destination(requirement)
         installed = _installed_at(requirement, destination, _recorded(entry.get("id", ""), name))
-        if installed or not _elsewhere(entry, requirement, destination, installed, shared):
+        if installed:
+            continue
+        held = _elsewhere(entry, requirement, destination, installed, shared)
+        # A dump the checksum list does not know is the user's to install, not
+        # something to spread to every emulator unasked.
+        if not held or any(_unknown_dump(requirement, item["path"]) for item in held):
             continue
         result = install(entry, name, files=[], shared=shared)
         done.extend(result.get("linked") or [])
@@ -698,6 +736,16 @@ def status(entry, files=None, state=None, shared=None):
                     {"name": item["name"], "from": item["owner"]} for item in elsewhere
                 ],
                 "kept_by": kept_by,
+                "unrecognised": _unrecognised(
+                    requirement,
+                    [(name, os.path.join(destination, name)) for name in installed]
+                    + [
+                        (item["name"], item.get("path"))
+                        for item in files
+                        if item["name"] in matched and item["name"] not in installed
+                    ]
+                    + [(item["name"], item["path"]) for item in elsewhere],
+                ),
                 # An imported requirement is installable the moment its file is
                 # here; there is no destination folder to have resolved first.
                 "can_install": bool(importer)

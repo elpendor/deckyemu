@@ -105,7 +105,11 @@ folder, wherever `retroarch.cfg` points it (EmuDeck moves it to
 `~/Emulation/bios`), under the exact name the core opens: a `SCPH5501.BIN` sent
 from a phone lands as `scph5501.bin`. A dump under any other name is recognised
 by its contents too, from the checksum list libretro publishes, which the plugin
-downloads and keeps for a month; offline, only the name counts. Most cores run without any of them; when a
+downloads and keeps for a month; offline, only the name counts. A file with the
+right name but contents the list does not know is flagged on its row, and
+installing it asks first; it is never shared to another emulator on its own. It
+is not refused outright, because the list does not include every legitimate
+file. Most cores run without any of them; when a
 core says it cannot, adding a game for it warns the same way PCSX2 does.
 
 A few cannot be installed for you, because the emulator unpacks them itself:

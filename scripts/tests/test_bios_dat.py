@@ -89,6 +89,20 @@ try:
     check("a file of the same size that is not a known BIOS is left alone",
           "not a bios.bin" in emu_firmware.status(_standalone, shared=[])[0]["waiting"], False)
 
+    # A right name over the wrong contents: installs, and then fails in the
+    # game with nothing pointing back here. Said on the row instead.
+    _send("made_bios.bin", _OTHER)
+    _row = emu_firmware.status(_core, shared=[])[0]
+    check("a dump under the right name but unknown contents is flagged",
+          _row["unrecognised"], ["made_bios.bin"])
+    check("a recognised one is not",
+          "My Console BIOS.bin" in _row["unrecognised"], False)
+    bios_dat.use({})
+    check("and nothing is flagged without a list to judge by",
+          emu_firmware.status(_core, shared=[])[0]["unrecognised"], [])
+    bios_dat.use(_table)
+    os.remove(os.path.join(_inbox, "made_bios.bin"))
+
     _result = emu_firmware.install(_core, "made_bios.bin", shared=[])
     check("it lands under the name the core opens", _result["copied"], ["made_bios.bin"])
     check("and reads as in place",
@@ -101,6 +115,20 @@ try:
     check("a file one emulator holds is recognised for another by content",
           [item["name"] for item in emu_firmware.status(_standalone, shared=_shared)[0]["elsewhere"]],
           ["made_bios.bin"])
+
+    # A dump the list does not know is installed only by a press, never spread.
+    _named = {"id": "named", "name": "Named", "firmware": [{
+        "name": "scph0000.bin", "match": r"(?i)^scph0000\.bin$", "as": "scph0000.bin",
+        "dest": ".var/app/org.example.Named/bios",
+    }]}
+    _twin = {"id": "twin", "name": "Twin", "firmware": [dict(
+        _named["firmware"][0], dest=".var/app/org.example.Twin/bios")]}
+    _send("scph0000.bin", _OTHER)
+    emu_firmware.install(_named, "scph0000.bin", shared=[])
+    _shared = emu_firmware.installed_elsewhere([_named, _twin])
+    check("a held file that is not a known dump is flagged where it is offered",
+          emu_firmware.status(_twin, shared=_shared)[0]["unrecognised"], ["scph0000.bin"])
+    check("and is not shared unasked", emu_firmware.share_held(_twin, _shared), [])
 finally:
     bios_dat.use({})
     emu_firmware._write_state(_saved_state)

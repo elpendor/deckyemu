@@ -111,6 +111,11 @@ def refresh():
     decky.logger.info("BIOS checksum list: %d known files", len(_table))
 
 
+def loaded():
+    """Whether there is a list to judge a file against at all."""
+    return bool(_table)
+
+
 def identify(path):
     """What the file at `path` is, as `{"names", "system"}`, or None.
 

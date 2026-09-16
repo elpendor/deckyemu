@@ -28,6 +28,8 @@ export interface RequirementMatch {
   guiInstall: boolean;
   /** What the user will be asked once that window is open. */
   prompt: string;
+  /** Not a known dump of it, per the checksum list: ask before installing. */
+  unrecognised?: boolean;
 }
 
 /**
@@ -51,6 +53,7 @@ export function requirementForFile(
           requirement: requirement.name,
           guiInstall: Boolean(requirement.gui_install),
           prompt: requirement.prompt ?? "",
+          unrecognised: Boolean(requirement.unrecognised?.includes(name)),
         };
       }
     }
