@@ -451,6 +451,82 @@ def _elsewhere(entry, requirement, destination, installed, shared):
     return [item for name, item in candidates.items() if name in accepted]
 
 
+#: Requirements whose shared copy somebody removed, so sharing does not put it
+#: back. `{entry id: [requirement name]}`. Kept apart from the install record,
+#: which says what is in place; this says what was turned down.
+DECLINED_PATH = os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "firmware_declined.json")
+
+
+def _declined():
+    return jsonstore.read_json(DECLINED_PATH, {})
+
+
+def _set_declined(entry_id, requirement_name, declined):
+    state = _declined()
+    names = set(state.get(entry_id) or ())
+    if declined == (requirement_name in names):
+        return
+    if declined:
+        names.add(requirement_name)
+    else:
+        names.discard(requirement_name)
+    if names:
+        state[entry_id] = sorted(names)
+    else:
+        state.pop(entry_id, None)
+    try:
+        jsonstore.write_json(DECLINED_PATH, state, sort_keys=True)
+    except OSError as error:
+        decky.logger.warning("Could not record a declined firmware share: %s", error)
+
+
+def same_bytes(one, other):
+    """Whether two files hold the same bytes. Not `filecmp`: decky's bundled
+    Python has not been shown to carry it, and a BIOS is small enough to read."""
+    try:
+        if os.path.samefile(one, other):
+            return True
+        if os.path.getsize(one) != os.path.getsize(other):
+            return False
+        with open(one, "rb") as first, open(other, "rb") as second:
+            while True:
+                left, right = first.read(65536), second.read(65536)
+                if left != right:
+                    return False
+                if not left:
+                    return True
+    except OSError:
+        return False
+
+
+def share_held(entry, shared):
+    """Put in place, unasked, every file another emulator already holds.
+
+    **Sharing is automatic, and removing a shared copy is the way to say no.**
+    Pressing Install on a file already on the Deck decided nothing -- the link
+    replaces nothing and costs no space -- so it happens whenever the emulator
+    comes into use. A requirement somebody removed is recorded as declined and
+    skipped here, or the next game saved would put it straight back; its row
+    still offers Install, which is how it is taken back.
+
+    Never touches the transfer folder: a file sent is a new dump, and installing
+    one is still the user's press. Returns the files shared.
+    """
+    declined = set(_declined().get(entry.get("id", "")) or ())
+    done = []
+    for requirement in entry.get("firmware") or []:
+        name = requirement.get("name", "")
+        if name in declined:
+            continue
+        destination = _destination(requirement)
+        installed = _installed_at(requirement, destination, _recorded(entry.get("id", ""), name))
+        if installed or not _elsewhere(entry, requirement, destination, installed, shared):
+            continue
+        result = install(entry, name, files=[], shared=shared)
+        done.extend(result.get("linked") or [])
+    return done
+
+
 def _link_or_copy(source, target):
     """Put `source` at `target` as the same file, or as a copy if it cannot be.
 
@@ -555,16 +631,20 @@ def status(entry, files=None, state=None, shared=None):
             if not installed and not matched
             else []
         )
-        # Who else holds a file of the same name, so the remove dialog can say
-        # whether this is the last copy. By name, not by inode: a copy made
-        # where a link could not be is as much "another copy" as a link is.
+        # Who else holds this same file, so the remove dialog can say whether
+        # this is the last copy. By content, not by name: DuckStation keeps
+        # SCPH5500.BIN where a core reads scph5500.bin, and two different dumps
+        # can share a name. A copy made where a link could not be counts too.
         here = os.path.normpath(destination) if destination else ""
         kept_by = sorted({
             item["owner"]
             for item in shared or ()
-            if item["name"] in installed
-            and item["entry_id"] != entry.get("id", "")
+            if item["entry_id"] != entry.get("id", "")
             and os.path.normpath(os.path.dirname(item["path"])) != here
+            and any(
+                same_bytes(item["path"], os.path.join(destination, name))
+                for name in installed
+            )
         })
 
         report.append(
@@ -915,6 +995,8 @@ def install(entry, requirement_name, files=None, shared=None):
 
     placed = copied + linked
     if placed:
+        # Installed again, so whatever was declined no longer is.
+        _set_declined(entry["id"], requirement_name, False)
         # Recorded so `uninstall` can tell these from a file the user placed
         # themselves. Merged with whatever was recorded before, since a
         # multi-file BIOS can arrive a piece at a time.
@@ -1244,6 +1326,11 @@ def uninstall(entry, requirement_name):
         if not state[entry["id"]]:
             del state[entry["id"]]
         _write_state(state)
+
+    # Removed on purpose, so sharing must not put it back. Recorded whether or
+    # not another emulator holds it today: one may come to later.
+    if removed or foreign:
+        _set_declined(entry["id"], requirement_name, True)
 
     decky.logger.info(
         "Removed %d firmware file(s) for %s from %s (%d not installed by us)",

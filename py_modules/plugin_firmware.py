@@ -115,20 +115,6 @@ class CollapsedLog:
         self._last, self._count = "", 0
 
 
-def _same_bytes(one, other):
-    """Whether two files hold the same bytes. Not `filecmp`: decky's bundled
-    Python has not been shown to carry it, and a BIOS is small enough to read."""
-    if os.path.getsize(one) != os.path.getsize(other):
-        return False
-    with open(one, "rb") as first, open(other, "rb") as second:
-        while True:
-            left, right = first.read(65536), second.read(65536)
-            if left != right:
-                return False
-            if not left:
-                return True
-
-
 class Firmware(plugin_base.PluginContext):
     """Firmware endpoints. See the module docstring."""
 
@@ -157,6 +143,70 @@ class Firmware(plugin_base.PluginContext):
         if retroarch:
             entries.append(retroarch)
         return entries
+
+    async def _firmware_entry_for_core(self, core_id):
+        """The firmware entry behind a game's core id, and a name to call it.
+
+        A standalone emulator's catalog entry, or RetroArch's narrowed to that
+        one core -- it is the core that will not start, and only its files are
+        wanted. `(None, "")` when neither declares anything.
+        """
+        core_id = str(core_id or "")
+        if emulators.is_emulator_id(core_id):
+            emulator = await self._run(emulators.find, emulators.emulator_id(core_id))
+            entry = emulator_catalog.find((emulator or {}).get("id", ""))
+            name = (entry or {}).get("name", "")
+        else:
+            if self._install and not self._cores:
+                self._cores = await self._run(ra_cores.list_cores, self._install)
+            core = next((c for c in self._cores if c["id"] == core_id), None)
+            entry = (
+                await self._run(ra_firmware.for_core, self._install, self._cores, core_id)
+                if core
+                else None
+            )
+            name = (core or {}).get("short_name") or core_id
+        if not entry or not entry.get("firmware"):
+            return None, ""
+        return entry, name
+
+    async def _share_firmware(self, core_ids):
+        """Share BIOS files already on the Deck with these cores and emulators.
+
+        Called when a game is saved, for its core, and when a BIOS is installed,
+        for every core the library uses -- the two moments something new can be
+        shared. See `emu_firmware.share_held` for why this needs no press and
+        how a removal is respected. Never raises: it rides on a save or an
+        install, and neither may fail because of it.
+        """
+        try:
+            entries = []
+            for core_id in sorted({str(core_id or "") for core_id in core_ids} - {""}):
+                entry, _name = await self._firmware_entry_for_core(core_id)
+                if entry:
+                    entries.append(entry)
+            if not entries:
+                return
+            retroarch = await self._retroarch_firmware()
+
+            def _share():
+                done = []
+                for entry in entries:
+                    shared = emu_firmware.installed_elsewhere(self._sharing_entries(retroarch))
+                    done += emu_firmware.share_held(entry, shared)
+                return done
+
+            done = await self._run(_share)
+            if done:
+                decky.logger.info("Shared firmware already on the Deck: %s", ", ".join(done))
+        except Exception:
+            decky.logger.exception("Could not share firmware")
+
+    async def _share_firmware_with_library(self):
+        library = await self._run(store.get_library)
+        await self._share_firmware(
+            [(game or {}).get("core_id") for game in library.values()]
+        )
 
     async def firmware_dir(self):
         """Where the user's own BIOS files, keys and firmware are collected."""
@@ -310,7 +360,7 @@ class Firmware(plugin_base.PluginContext):
             # The same file sent twice -- once from its row, once with the ROMs
             # -- is not a conflict. Refusing it left an Install button that
             # could never work, over a file already where it needed to be.
-            if os.path.isfile(target) and _same_bytes(source, target):
+            if os.path.isfile(target) and emu_firmware.same_bytes(source, target):
                 os.remove(source)
                 return {"ok": True}
             if os.path.exists(target):
@@ -348,23 +398,8 @@ class Firmware(plugin_base.PluginContext):
         `.info` files are those rules, written down.
         """
         retroarch = await self._retroarch_firmware()
-        if emulators.is_emulator_id(core_id):
-            emulator = await self._run(emulators.find, emulators.emulator_id(core_id))
-            if not emulator:
-                return {"ok": True, "missing": []}
-            entry = emulator_catalog.find(emulator.get("id", ""))
-            name = (entry or {}).get("name", "")
-        else:
-            core = next((c for c in self._cores if c["id"] == core_id), None)
-            entry = (
-                await self._run(ra_firmware.for_core, self._install, self._cores, core_id)
-                if core
-                else None
-            )
-            # The core, not "RetroArch": it is the core that will not start.
-            name = (core or {}).get("short_name") or core_id
-
-        if not entry or not entry.get("firmware"):
+        entry, name = await self._firmware_entry_for_core(core_id)
+        if not entry:
             return {"ok": True, "missing": []}
 
         def _unmet():
@@ -457,7 +492,11 @@ class Firmware(plugin_base.PluginContext):
             shared = emu_firmware.installed_elsewhere(self._sharing_entries(retroarch))
             return emu_firmware.install(entry, requirement, shared=shared)
 
-        return await self._run(_install)
+        result = await self._run(_install)
+        if result.get("ok"):
+            # A BIOS just arrived: whatever else in use wants it gets it too.
+            await self._share_firmware_with_library()
+        return result
 
 
     async def _import_firmware(self, entry, requirement):

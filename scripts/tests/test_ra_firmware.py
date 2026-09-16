@@ -192,6 +192,15 @@ try:
           _offer["elsewhere"], [{"name": "scph5501.bin", "from": "DuckStation"}])
     _shared_result = emu_firmware.install(_ps1_entry, "scph5501.bin", shared=_shared)
     check("and installing it shares it", _shared_result["linked"], ["scph5501.bin"])
+    # Named differently on each side is still one file kept by the other.
+    with io.open(os.path.join(_inbox, "SCPH5501.BIN"), "wb") as _handle:
+        _handle.write(b"made up")
+    _upper = emulator_catalog.find("duckstation")
+    emu_firmware.uninstall(_upper, "PS1 BIOS")
+    emu_firmware.install(_upper, "PS1 BIOS", shared=[])
+    _shared = emu_firmware.installed_elsewhere(list(emulator_catalog.CATALOG) + [_ps1_entry])
+    check("a copy in other capitals still counts as kept elsewhere",
+          emu_firmware.status(_ps1_entry, shared=_shared)[0]["kept_by"], ["DuckStation"])
 finally:
     emu_firmware._write_state(_saved_state)
     sysenv.user_home = _real_home

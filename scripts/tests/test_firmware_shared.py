@@ -44,6 +44,8 @@ SECOND = _entry("second", "Second Emulator", ".var/app/org.example.Second/system
 OTHER = _entry("other", "Other Emulator", ".var/app/org.example.Other/bios",
                match=r"(?i)^unrelated\.bin$")
 CATALOG = [FIRST, SECOND, OTHER]
+# Wants the same file and has never had it, for the automatic share.
+OTHER_WANTS = _entry("third", "Third Emulator", ".var/app/org.example.Third/bios")
 
 
 section("firmware -- one dump, every emulator that wants it")
@@ -112,8 +114,43 @@ try:
     _result = emu_firmware.install(SECOND, "Dummy BIOS", shared=_shared)
     check("and is what installing uses", (_result["copied"], _result["linked"]),
           (["DUMMY-BIOS.BIN"], []))
+
+    # A different dump under the same name is not "kept elsewhere": removing
+    # this one would be the end of it.
+    check("a different file of the same name is not another copy",
+          emu_firmware.status(SECOND, shared=emu_firmware.installed_elsewhere(CATALOG))[0]["kept_by"],
+          [])
+
+    # Removed on purpose, so sharing leaves it out -- otherwise the next game
+    # saved would put it straight back.
+    emu_firmware.uninstall(SECOND, "Dummy BIOS")
+    _shared = emu_firmware.installed_elsewhere(CATALOG)
+    check("a removed share is not put back unasked",
+          emu_firmware.share_held(SECOND, _shared), [])
+    check("but is still offered on its row",
+          [item["name"] for item in emu_firmware.status(SECOND, shared=_shared)[0]["elsewhere"]],
+          ["dummy-bios.bin"])
+    check("and installing it takes the refusal back",
+          emu_firmware.install(SECOND, "Dummy BIOS", shared=_shared)["linked"],
+          ["dummy-bios.bin"])
+
+    # Shared without a press for an emulator that has never declined it.
+    check("a file another emulator holds is shared unasked",
+          emu_firmware.share_held(OTHER_WANTS, emu_firmware.installed_elsewhere(
+              CATALOG + [OTHER_WANTS])), ["dummy-bios.bin"])
+    check("nothing is done twice",
+          emu_firmware.share_held(OTHER_WANTS, emu_firmware.installed_elsewhere(
+              CATALOG + [OTHER_WANTS])), [])
+    with io.open(os.path.join(_inbox, "dummy-bios.bin"), "wb") as _handle:
+        _handle.write(b"sent, not held")
+    _fresh = _entry("fresh", "Fresh Emulator", ".var/app/org.example.Fresh/bios")
+    emu_firmware.share_held(_fresh, emu_firmware.installed_elsewhere(CATALOG + [_fresh]))
+    check("a file waiting in the transfer folder is left for the user",
+          os.path.isfile(os.path.join(_inbox, "dummy-bios.bin")), True)
 finally:
     emu_firmware._write_state(_saved_state)
+    if os.path.isfile(emu_firmware.DECLINED_PATH):
+        os.remove(emu_firmware.DECLINED_PATH)
     sysenv.user_home = _real_home
 
 

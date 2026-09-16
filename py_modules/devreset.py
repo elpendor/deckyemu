@@ -128,6 +128,7 @@ def _state_files():
         # folder looked like beforehand. Left behind, a reset would answer
         # "already installed" for a folder it had just emptied.
         (os.path.join(settings, "firmware_handoff.json"), "Firmware handed to an emulator to install"),
+        (os.path.join(settings, "firmware_declined.json"), "Shared firmware you removed"),
         (os.path.join(settings, "ps3_content_ids.json"), "Recorded PS3 content ids"),
         # Which Steam collections this plugin made. Left behind, a reset would
         # go on claiming shelves for games it no longer has any record of --

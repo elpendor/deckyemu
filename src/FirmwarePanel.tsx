@@ -479,9 +479,11 @@ export function FirmwarePanel({ reloadKey = 0 }: Props) {
             } else if (elsewhere.length) {
               // Named with where it is, so the file is not a mystery arrival
               // and nobody goes looking for a dump the Deck already has.
-              description = `Ready to install: ${elsewhere
-                .map((item) => `${item.name}, already installed for ${item.from}`)
-                .join("; ")}`;
+              // Only after a shared copy was removed, or for an emulator no
+              // game uses yet: otherwise sharing already happened on its own.
+              description = `Also on the Deck for ${[
+                ...new Set(elsewhere.map((item) => item.from)),
+              ].join(", ")}: ${elsewhere.map((item) => item.name).join(", ")}`;
             } else {
               description = [requirement.note, requirement.expects]
                 .filter(Boolean)

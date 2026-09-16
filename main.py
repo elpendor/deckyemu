@@ -350,6 +350,9 @@ class Plugin(
             ("upgrade emulator recipes", self._upgrade_emulator_recipes),
             ("upgrade emulator setups", self._upgrade_emulator_setups),
             ("re-file split firmware records", self._resplit_firmware_records),
+            # Every start, so a library that predates sharing gets it too. Safe
+            # to repeat: a share somebody removed is recorded and left alone.
+            ("share firmware already on the Deck", self._share_firmware_with_library),
             ("fetch the cloud transfer tool", self._fetch_cloud_tool),
             ("forget settings that no longer exist", self._forget_removed_settings),
             # Every start rather than on a version change: what it trims is
@@ -1859,6 +1862,7 @@ class Plugin(
         if collection is not None:
             entry["collection"] = collection
         await self._run(store.remember_game, app_id, entry)
+        await self._share_firmware([core_id])
 
         # Keyed on the content extension so a zipped SNES ROM remembers the same
         # core as a loose one.
@@ -2005,6 +2009,7 @@ class Plugin(
         platform = entry["platform"]
         collection = entry["collection"]
         await self._run(store.remember_game, app_id, entry)
+        await self._share_firmware([core_id])
 
         return {
             "ok": True,
