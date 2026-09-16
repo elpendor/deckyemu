@@ -84,10 +84,15 @@ will not start.
 
 Installing **moves** the file rather than copying it, so `~/deckyemu/firmware`
 does not accumulate a second copy of every BIOS you have ever sent — a PS3
-firmware update is a couple of hundred megabytes. Removing a requirement moves
-the file back there, so installing it again needs no second trip to a PC. The
-one thing to know is that after installing, the transfer folder is empty: your
-only copy is the one the emulator is now using.
+firmware update is a couple of hundred megabytes. The thing to know is that after
+installing, the transfer folder is empty: your only copy is the one the emulator
+is now using, and removing it from that emulator deletes it.
+
+**A file one emulator already has is offered to the others.** When a second
+emulator wants a BIOS the first already holds, its row reads *Ready to install*
+and names where the file is, so there is nothing to send again. Installing it
+shares the same file between the two rather than making a copy, and removing it
+from one leaves the other's in place — the remove dialog says so.
 
 A few cannot be installed for you, because the emulator unpacks them itself:
 RPCS3's `PS3UPDAT.PUP`, a Switch firmware archive, and xemu's BIOS files. Those

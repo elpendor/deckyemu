@@ -20,6 +20,13 @@ whole panel to explain which duplicates were safe to delete. One file in one
 place is the simpler arrangement, and the cost is stated where it lands: the
 confirm dialog says the file is gone and has to be sent again.
 
+**A file one emulator holds is offered to the others.** Moving it out of the
+transfer folder meant a second emulator wanting the same PS1 BIOS found nothing
+and asked for it again, while it sat in the first one's folder. So a requirement
+with nothing sent looks at `installed_elsewhere`, and installing from there puts
+a hard link in place -- the one kind of second name a sandboxed emulator can read
+(see `_link_or_copy`).
+
 **Nothing is ever overwritten.** A file already present at the destination is
 reported rather than replaced, because the user may have put a better dump there
 by hand.
@@ -367,6 +374,97 @@ def imported(spec, fallback=""):
     return [fallback or os.path.basename(marker)]
 
 
+def _plain(requirement):
+    """Whether a requirement is a file put in a folder, and nothing more.
+
+    Only those can be shared. A firmware an emulator unpacked for itself is a
+    layout of its own, not a file another emulator could read.
+    """
+    return bool(requirement.get("dest")) and not any(
+        requirement.get(key)
+        for key in ("import", "gui_install", "manual", "detect", "removes")
+    )
+
+
+def installed_elsewhere(entries, state=None):
+    """Every file already in place for some emulator, and which one holds it.
+
+    What lets a BIOS sent once serve every emulator that wants it. Installing
+    moves the file out of the transfer folder, so without this the second
+    emulator asking for a PS1 BIOS finds nothing, and the only way forward is
+    sending the same dump again.
+
+    Read from the destinations rather than from the record, so a file placed by
+    hand counts as much as one this plugin moved. Entries that are not installed
+    are worth asking too: an emulator removed with its data kept still has the
+    file, and it is still the user's.
+    """
+    state = read_state() if state is None else state
+    found = []
+    for entry in entries:
+        for requirement in entry.get("firmware") or []:
+            if not _plain(requirement):
+                continue
+            destination = _destination(requirement)
+            ours = _recorded(entry.get("id", ""), requirement.get("name", ""), state)
+            for name in _installed_at(requirement, destination, ours):
+                path = os.path.join(destination, name)
+                if os.path.isfile(path):
+                    found.append({
+                        "name": name,
+                        "size": _size_of(path),
+                        "path": path,
+                        "entry_id": entry.get("id", ""),
+                        "owner": entry.get("name", ""),
+                    })
+    return found
+
+
+def _elsewhere(entry, requirement, destination, installed, shared):
+    """The files in `shared` this requirement would accept, one per name.
+
+    A file already sitting at this requirement's own destination is not
+    "elsewhere", whichever entry recorded it -- two requirements can share a
+    folder, as Ryujinx's keys and firmware do.
+    """
+    if not shared or not _plain(requirement):
+        return []
+    here = os.path.normpath(destination) if destination else ""
+    candidates = {}
+    for item in shared:
+        if item["entry_id"] == entry.get("id", ""):
+            continue
+        if os.path.normpath(os.path.dirname(item["path"])) == here:
+            continue
+        if _dest_name(requirement, item["name"]) in installed:
+            continue
+        candidates.setdefault(item["name"], item)
+    accepted = set(_matching(requirement, list(candidates.values())))
+    return [item for name, item in candidates.items() if name in accepted]
+
+
+def _link_or_copy(source, target):
+    """Put `source` at `target` as the same file, or as a copy if it cannot be.
+
+    A hard link rather than a symlink, and that is not a matter of taste. Each
+    emulator is a flatpak that sees its own data folder and not the others', so
+    a symlink from DuckStation's folder into RetroArch's points at a path the
+    sandbox cannot open -- unless something granted it the whole home, which
+    EmuDeck does, so it would work on exactly the Decks it was tested on. A hard
+    link is a second name for the same bytes, readable wherever the name is.
+
+    It costs no space and needs no reconciling, and removing one name leaves the
+    other working. The copy is for a destination on another filesystem, where a
+    link cannot exist; a BIOS is small enough that it costs nothing to speak of.
+    """
+    try:
+        os.link(source, target)
+        return "linked"
+    except OSError:
+        shutil.copy2(source, target)
+        return "copied"
+
+
 def find_requirement(entry, requirement_name):
     """One named requirement out of a catalog entry, or None.
 
@@ -389,7 +487,7 @@ def matching(spec, files=None):
     return _matching(spec, available() if files is None else files)
 
 
-def status(entry, files=None, state=None):
+def status(entry, files=None, state=None, shared=None):
     """What `entry` still needs, and what is already here for it.
 
     Returns a list of requirement dicts the UI can render without knowing any of
@@ -398,7 +496,9 @@ def status(entry, files=None, state=None):
 
     `files` and `state` are both here so a caller asking about every installed
     emulator reads the transfer folder and the install record once between them
-    rather than once per requirement.
+    rather than once per requirement. `shared` is `installed_elsewhere` over the
+    whole catalog, for the same reason; left out, nothing is offered from
+    another emulator.
     """
     files = available() if files is None else files
     state = read_state() if state is None else state
@@ -440,6 +540,25 @@ def status(entry, files=None, state=None):
             # existed could never be undone -- but the user is told first.
             foreign = [name for name in installed if name not in ours]
 
+        # Only asked when nothing is in place and nothing was sent: a file in
+        # the transfer folder is the user's latest word and is installed first.
+        elsewhere = (
+            _elsewhere(entry, requirement, destination, installed, shared)
+            if not installed and not matched
+            else []
+        )
+        # Who else holds a file of the same name, so the remove dialog can say
+        # whether this is the last copy. By name, not by inode: a copy made
+        # where a link could not be is as much "another copy" as a link is.
+        here = os.path.normpath(destination) if destination else ""
+        kept_by = sorted({
+            item["owner"]
+            for item in shared or ()
+            if item["name"] in installed
+            and item["entry_id"] != entry.get("id", "")
+            and os.path.normpath(os.path.dirname(item["path"])) != here
+        })
+
         report.append(
             {
                 "name": requirement.get("name", ""),
@@ -457,6 +576,12 @@ def status(entry, files=None, state=None):
                 "waiting": [name for name in matched if name not in installed],
                 "installed": installed,
                 "foreign": foreign,
+                # Already in place for another emulator, and one press from
+                # being in place for this one too.
+                "elsewhere": [
+                    {"name": item["name"], "from": item["owner"]} for item in elsewhere
+                ],
+                "kept_by": kept_by,
                 # An imported requirement is installable the moment its file is
                 # here; there is no destination folder to have resolved first.
                 "can_install": bool(importer)
@@ -679,8 +804,13 @@ def remove(names, directory=None):
     return {"ok": True, "removed": removed, "missing": missing}
 
 
-def install(entry, requirement_name, files=None):
+def install(entry, requirement_name, files=None, shared=None):
     """Move everything matching one requirement into place.
+
+    What was sent comes first. Only when nothing in the transfer folder matches
+    is a file already installed for another emulator used, from `shared` (see
+    `installed_elsewhere`), and that one is linked rather than moved -- the
+    emulator it came from still needs it.
 
     Returns a result dict. Moves rather than copies -- see the module docstring
     for why, and note that this said the opposite for a long time while the code
@@ -707,7 +837,13 @@ def install(entry, requirement_name, files=None):
         return {"ok": False, "error": "No install location is known for %s." % requirement_name}
 
     matched = _matching(requirement, files)
+    borrowed = []
     if not matched:
+        installed = _installed_at(
+            requirement, destination, _recorded(entry["id"], requirement_name)
+        )
+        borrowed = _elsewhere(entry, requirement, destination, installed, shared)
+    if not matched and not borrowed:
         return {
             "ok": False,
             "error": "Nothing in the firmware folder looks like %s yet." % requirement_name,
@@ -753,25 +889,46 @@ def install(entry, requirement_name, files=None):
             return {"ok": False, "error": "Could not move %s: %s" % (name, error)}
         copied.append(landed)
 
-    if copied:
+    linked = []
+    shared_from = []
+    for item in borrowed:
+        landed = _dest_name(requirement, item["name"])
+        target = os.path.join(destination, landed)
+        if os.path.exists(target):
+            kept.append(landed)
+            continue
+        try:
+            _link_or_copy(item["path"], target)
+        except OSError as error:
+            return {"ok": False, "error": "Could not share %s: %s" % (item["name"], error)}
+        linked.append(landed)
+        if item["owner"] not in shared_from:
+            shared_from.append(item["owner"])
+
+    placed = copied + linked
+    if placed:
         # Recorded so `uninstall` can tell these from a file the user placed
         # themselves. Merged with whatever was recorded before, since a
         # multi-file BIOS can arrive a piece at a time.
         state = read_state()
         for_entry = state.setdefault(entry["id"], {})
         previous = for_entry.get(requirement_name, [])
-        for_entry[requirement_name] = sorted(set(previous) | set(copied))
+        for_entry[requirement_name] = sorted(set(previous) | set(placed))
         _write_state(state)
 
-    configured, config_error = _configure(requirement, destination, copied or kept)
+    configured, config_error = _configure(requirement, destination, placed or kept)
 
     decky.logger.info(
-        "Installed %d firmware file(s) for %s into %s (%d already there)",
-        len(copied), entry.get("id"), destination, len(kept),
+        "Installed %d firmware file(s) for %s into %s (%d shared, %d already there)",
+        len(placed), entry.get("id"), destination, len(linked), len(kept),
     )
     return {
         "ok": True,
         "copied": copied,
+        # Put in place from another emulator's folder rather than from what was
+        # sent, and which emulators those were.
+        "linked": linked,
+        "shared_from": shared_from,
         "kept": kept,
         "dest": destination,
         # Which setting now points at the file. Empty for the emulators that
@@ -1028,10 +1185,12 @@ def _uninstall_tree(entry, requirement):
 def uninstall(entry, requirement_name):
     """Remove a requirement's files from where the emulator reads them.
 
-    This deletes. Installing moved the file rather than copying it, so there is
-    no second copy anywhere and the file is gone -- supplying it again means
-    sending it from another device again. The confirm dialog says so, because
-    that is not what a trash button next to "In place" would otherwise imply.
+    This deletes. Installing moved the file rather than copying it, so unless
+    another emulator holds the same file (`kept_by` in `status`, and a shared
+    install is a hard link, so its copy survives this) it is gone, and supplying
+    it again means sending it from another device. The confirm dialog says which,
+    because that is not what a trash button next to "In place" would otherwise
+    imply.
 
     Files this plugin did not install are deleted too, because one that predates
     the record would otherwise be stuck forever, but they are counted separately

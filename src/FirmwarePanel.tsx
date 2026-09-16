@@ -169,6 +169,7 @@ export function FirmwarePanel({ reloadKey = 0 }: Props) {
           }
           const moved = result.copied?.length ?? 0;
           const kept = result.kept?.length ?? 0;
+          const shared = result.linked?.length ?? 0;
           toaster.toast({
             title: `${requirement.name} installed`,
             // An imported requirement was unpacked rather than copied, so what
@@ -178,9 +179,11 @@ export function FirmwarePanel({ reloadKey = 0 }: Props) {
             body: requirement.imported
               ? `${(result.installed ?? []).join(", ")} is installed.` +
                 (result.deleted?.length ? ` ${result.deleted.join(", ")} is no longer needed and has been deleted.` : "")
-              : kept
-                ? `${moved} file(s) moved into place; ${kept} already there and left alone.`
-                : `${moved} file(s) moved into place.`,
+              : shared
+                ? `${(result.linked ?? []).join(", ")} shared from ${(result.shared_from ?? []).join(", ")}, which keeps it too.`
+                : kept
+                  ? `${moved} file(s) moved into place; ${kept} already there and left alone.`
+                  : `${moved} file(s) moved into place.`,
           });
           load();
         } finally {
@@ -291,6 +294,7 @@ export function FirmwarePanel({ reloadKey = 0 }: Props) {
   const confirmUninstall = useCallback(
     (entryId: string, emulatorName: string, requirement: FirmwareState) => {
       const foreign = requirement.foreign.length;
+      const keptBy = requirement.kept_by ?? [];
       openModal(
         <ConfirmModal
           strTitle={`Remove ${requirement.name} from ${emulatorName}?`}
@@ -312,8 +316,12 @@ export function FirmwarePanel({ reloadKey = 0 }: Props) {
                     ? "Installing it again is one press: it is downloaded, not sent."
                     : "Installing it again means sending the file from another device.")
               : `${requirement.installed.join(", ")} will be deleted from ${requirement.dest}. ` +
-                "There is no other copy — installing moved it — so you would have to send it " +
-                "from another device again. " +
+                (keptBy.length
+                  ? // Removing one name of a shared file leaves the other, so
+                    // the warning about sending it again would be untrue.
+                    `${keptBy.join(", ")} keeps its copy, so installing it here again is one press. `
+                  : "There is no other copy — installing moved it — so you would have to send it " +
+                    "from another device again. ") +
                 (foreign
                   ? `${foreign} of these was not put there by DeckyEmu, so it may be a file you placed yourself. `
                   : "")
@@ -372,6 +380,7 @@ export function FirmwarePanel({ reloadKey = 0 }: Props) {
             const key = `${emulator.id}/${requirement.name}`;
             const ready = requirement.waiting.length > 0;
             const done = requirement.installed.length > 0;
+            const elsewhere = requirement.elsewhere ?? [];
 
             // A requirement the emulator has to import itself never gets a
             // button, so the arrival of the file must not read as "ready" — the
@@ -407,6 +416,12 @@ export function FirmwarePanel({ reloadKey = 0 }: Props) {
               description = requirement.imported
                 ? `Ready: ${requirement.waiting.join(", ")}. ${emulator.name} unpacks it itself — a few seconds, nothing to press.`
                 : `Ready to install: ${requirement.waiting.join(", ")}`;
+            } else if (elsewhere.length) {
+              // Named with where it is, so the file is not a mystery arrival
+              // and nobody goes looking for a dump the Deck already has.
+              description = `Ready to install: ${elsewhere
+                .map((item) => `${item.name}, already installed for ${item.from}`)
+                .join("; ")}`;
             } else {
               description = [requirement.note, requirement.expects]
                 .filter(Boolean)
@@ -466,7 +481,7 @@ export function FirmwarePanel({ reloadKey = 0 }: Props) {
                           </DialogButton>
                         )}
                       </>
-                    ) : ready && requirement.can_install ? (
+                    ) : (ready || elsewhere.length > 0) && requirement.can_install ? (
                       // Same button either way. Whether the file is moved into
                       // place, unpacked by the emulator unattended, or handed
                       // to its window to confirm is the emulator's business,

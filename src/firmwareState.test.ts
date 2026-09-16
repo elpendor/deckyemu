@@ -25,6 +25,14 @@ describe("firmwareState", () => {
     expect(firmwareState(req([], ["keys.txt"]))).toBe("waiting");
   });
 
+  // A BIOS another emulator already holds is one press away, the same as one
+  // just sent -- calling it missing would ask for a file the Deck already has.
+  it("is waiting when another emulator already holds the file", () => {
+    expect(
+      firmwareState({ ...req(), elsewhere: [{ name: "scph5501.bin", from: "DuckStation" }] }),
+    ).toBe("waiting");
+  });
+
   /*
    * Importing reads the source file rather than moving it, so a satisfied
    * requirement routinely still has its .PUP sitting in the transfer folder.

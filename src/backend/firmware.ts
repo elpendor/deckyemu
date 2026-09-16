@@ -35,6 +35,16 @@ export interface FirmwareState {
   installed: string[];
   /** Of those, the ones this plugin did not put there. */
   foreign: string[];
+  /**
+   * Nothing is in place or waiting, but another emulator already holds a file
+   * this one accepts. Installing links it rather than asking for it again.
+   */
+  elsewhere?: Array<{ name: string; from: string }>;
+  /**
+   * Other emulators holding a file of the same name as one installed here, so
+   * removing it from this one is not the end of it.
+   */
+  kept_by?: string[];
   can_install: boolean;
   /**
    * Whether taking it back out is offered. For an imported requirement this
@@ -435,6 +445,10 @@ export const installFirmware = callable<
     ok: boolean;
     error?: string;
     copied?: string[];
+    /** Put in place from another emulator's folder, not from what was sent. */
+    linked?: string[];
+    /** The emulators those came from. */
+    shared_from?: string[];
     kept?: string[];
     installed?: string[];
     deleted?: string[];

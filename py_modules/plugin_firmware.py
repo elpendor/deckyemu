@@ -134,6 +134,7 @@ class Firmware(plugin_base.PluginContext):
             # of times to draw one panel.
             files = emu_firmware.available()
             state = emu_firmware.read_state()
+            shared = emu_firmware.installed_elsewhere(emulator_catalog.CATALOG, state)
             present_entries = [
                 entry
                 for entry in emulator_catalog.CATALOG
@@ -143,7 +144,7 @@ class Firmware(plugin_base.PluginContext):
                 {
                     "id": entry["id"],
                     "name": entry["name"],
-                    "requirements": emu_firmware.status(entry, files, state),
+                    "requirements": emu_firmware.status(entry, files, state, shared),
                 }
                 for entry in present_entries
             ]
@@ -194,9 +195,15 @@ class Firmware(plugin_base.PluginContext):
 
         def _unmet():
             files = emu_firmware.available()
+            shared = emu_firmware.installed_elsewhere(emulator_catalog.CATALOG)
             return [
-                {"name": item["name"], "waiting": bool(item["waiting"])}
-                for item in emu_firmware.status(entry, files)
+                {
+                    "name": item["name"],
+                    # Either way it is one press on the settings page, not a
+                    # file to go and find.
+                    "waiting": bool(item["waiting"] or item["elsewhere"]),
+                }
+                for item in emu_firmware.status(entry, files, shared=shared)
                 # `detectable` is the important one and was learned the hard
                 # way: Ryujinx's firmware had nowhere named to look, so it read
                 # as absent forever and this warned about it under a Switch
@@ -268,7 +275,11 @@ class Firmware(plugin_base.PluginContext):
         if spec and spec.get("import"):
             return await self._import_firmware(entry, spec)
 
-        return await self._run(emu_firmware.install, entry, requirement)
+        def _install():
+            shared = emu_firmware.installed_elsewhere(emulator_catalog.CATALOG)
+            return emu_firmware.install(entry, requirement, shared=shared)
+
+        return await self._run(_install)
 
 
     async def _import_firmware(self, entry, requirement):

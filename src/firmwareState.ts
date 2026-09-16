@@ -24,6 +24,7 @@ export type FirmwareRowState = "installed" | "waiting" | "missing";
 export interface FirmwareCounts {
   installed: string[];
   waiting: string[];
+  elsewhere?: Array<{ name: string; from: string }>;
 }
 
 /**
@@ -36,7 +37,10 @@ export interface FirmwareCounts {
  */
 export function firmwareState(requirement: FirmwareCounts): FirmwareRowState {
   if (requirement.installed.length > 0) return "installed";
-  if (requirement.waiting.length > 0) return "waiting";
+  // Held by another emulator is as close as sent: one press puts it in place.
+  if (requirement.waiting.length > 0 || (requirement.elsewhere?.length ?? 0) > 0) {
+    return "waiting";
+  }
   return "missing";
 }
 
