@@ -90,6 +90,29 @@ export function closeModalsOnPanelOpen(visible: boolean): void {
   closeOpenModals();
 }
 
+/**
+ * How long the panel must stay visible before that counts as it being opened.
+ *
+ * Closing a Steam dropdown inside one of our modals reports the panel visible
+ * for about a millisecond and hidden again -- recorded on the device from its
+ * own `visibilitychange` events, 2026-09-16. Acting on that flash closed the
+ * game editor every time an emulator was picked, but only when the editor had
+ * been opened from the panel. A person opening Quick Access keeps it open far
+ * longer than this.
+ */
+export const PANEL_SETTLE_MS = 250;
+
+/**
+ * `closeModalsOnPanelOpen`, once the panel has stayed visible for
+ * `PANEL_SETTLE_MS`. Returns the cancel, for an effect to hand back: the panel
+ * hiding again before then is exactly the flash to ignore.
+ */
+export function closeModalsWhenPanelSettles(visible: boolean): () => void {
+  if (!visible) return () => {};
+  const timer = setTimeout(() => closeModalsOnPanelOpen(true), PANEL_SETTLE_MS);
+  return () => clearTimeout(timer);
+}
+
 /** How many are open. For checks; nothing in the plugin asks. */
 export function openModalCount(): number {
   return open.size;

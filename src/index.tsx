@@ -42,7 +42,7 @@ import { repairGameLayouts } from "./repairLayouts";
 import { keepDeckyRoutesWorking, type DeckyRouterHook } from "./repairRoutes";
 import { AddedGamesPanel } from "./AddedGamesPanel";
 import { ErrorBoundary } from "./ErrorBoundary";
-import { closeModalsOnPanelOpen } from "./modalStack";
+import { closeModalsWhenPanelSettles } from "./modalStack";
 import { OrphanModal } from "./OrphanModal";
 import { shortcutNudge, type ShortcutCounts } from "./shortcutNudge";
 import { CloudStatusPanel } from "./CloudStatusPanel";
@@ -210,7 +210,10 @@ function Content() {
    * is itself what hides this panel, so running this on the way down would
    * dismiss the modal the user just asked for, about a frame after it appeared.
    */
-  useEffect(() => closeModalsOnPanelOpen(visible), [visible]);
+  //
+  // **And only once it stays visible.** A dropdown closing inside one of our
+  // modals flashes the panel visible for a millisecond; see PANEL_SETTLE_MS.
+  useEffect(() => closeModalsWhenPanelSettles(visible), [visible]);
 
   const nudge = shortcutNudge(health);
   const badge = updateBadge(update);

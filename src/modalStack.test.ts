@@ -36,8 +36,14 @@ const showModal = vi.fn((_modal: unknown, _parent: unknown, props: any) => {
 
 vi.mock("@decky/ui", () => ({ showModal: (...args: unknown[]) => (showModal as any)(...args) }));
 
-const { openModal, closeOpenModals, closeModalsOnPanelOpen, openModalCount } =
-  await import("./modalStack");
+const {
+  openModal,
+  closeOpenModals,
+  closeModalsOnPanelOpen,
+  closeModalsWhenPanelSettles,
+  openModalCount,
+  PANEL_SETTLE_MS,
+} = await import("./modalStack");
 
 beforeEach(() => {
   closeOpenModals();
@@ -159,5 +165,29 @@ describe("every modal in the plugin goes through here", () => {
         && name !== "modalStack.ts")
       .filter((name) => /\bshowModal\s*\(/.test(readFileSync(`src/${name}`, "utf-8")));
     expect(stray).toEqual([]);
+  });
+});
+
+describe("closeModalsWhenPanelSettles", () => {
+  // Measured on the device: closing a dropdown in the game editor reported the
+  // panel visible for about a millisecond, and the editor closed on every pick.
+  it("ignores a flash of visibility", () => {
+    vi.useFakeTimers();
+    openModal(null);
+    const cancel = closeModalsWhenPanelSettles(true);
+    vi.advanceTimersByTime(1);
+    cancel();
+    vi.advanceTimersByTime(PANEL_SETTLE_MS * 2);
+    expect(closes).toHaveLength(0);
+    vi.useRealTimers();
+  });
+
+  it("closes the stack once the panel stays open", () => {
+    vi.useFakeTimers();
+    openModal(null);
+    closeModalsWhenPanelSettles(true);
+    vi.advanceTimersByTime(PANEL_SETTLE_MS);
+    expect(closes).toHaveLength(1);
+    vi.useRealTimers();
   });
 });
