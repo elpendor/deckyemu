@@ -22,11 +22,12 @@ the frontend's job through `SteamClient.Apps.RemoveShortcut` -- editing Steam's
 file underneath a running Steam would be overwritten at best.
 """
 
-import glob
 import os
 import struct
 
 import decky
+
+import findfiles
 
 import launchers
 import sysenv
@@ -108,8 +109,9 @@ def shortcuts_files():
     its own userdata directory and its own shortcuts.
     """
     home = sysenv.user_home()
-    pattern = os.path.join(home, ".steam", "steam", "userdata", "*", "config", "shortcuts.vdf")
-    return sorted(glob.glob(pattern))
+    return findfiles.under_each(
+        os.path.join(home, ".steam", "steam", "userdata"), "config", "shortcuts.vdf"
+    )
 
 
 def _exe_path(entry):

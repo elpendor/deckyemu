@@ -1,6 +1,5 @@
 import asyncio
 import functools
-import glob
 import inspect
 import os
 import posixpath
@@ -14,6 +13,7 @@ import cheevos
 import emulator_catalog
 import emulators
 import fileserver
+import findfiles
 import gameicon
 import httpshim
 import installer
@@ -2260,7 +2260,7 @@ class Plugin(
         """Launcher scripts in our own directory that no registry entry claims."""
         return sorted(
             path
-            for path in glob.glob(os.path.join(launchers.LAUNCHER_DIR, "*.sh"))
+            for path in findfiles.in_directory(launchers.LAUNCHER_DIR, ".sh")
             if os.path.normpath(path) not in referenced
         )
 

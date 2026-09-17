@@ -6,13 +6,14 @@ AppImage in ~/Applications. Each keeps its cores somewhere different, and the
 flatpak additionally needs its sandbox opened up to reach ROMs on an SD card.
 """
 
-import glob
 import os
 import posixpath
 import shutil
 import subprocess
 
 import decky
+
+import findfiles
 
 import fileserver
 import sysenv
@@ -245,15 +246,18 @@ def detect_all():
             )
         )
 
-    for pattern in ("RetroArch*.AppImage", "retroarch*.AppImage"):
-        for appimage in sorted(glob.glob(os.path.join(user_home(), "Applications", pattern))):
-            installs.append(
-                _build_install(
-                    "appimage",
-                    os.path.join(user_home(), ".config", "retroarch"),
-                    exe=appimage,
-                )
+    # One pass rather than two patterns: the match is case-blind now, so
+    # `RetroArch` and `retroarch` are the same search.
+    for appimage in findfiles.in_directory(
+        os.path.join(user_home(), "Applications"), ".appimage", "retroarch"
+    ):
+        installs.append(
+            _build_install(
+                "appimage",
+                os.path.join(user_home(), ".config", "retroarch"),
+                exe=appimage,
             )
+        )
 
     return installs
 

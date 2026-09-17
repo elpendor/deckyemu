@@ -721,7 +721,8 @@ def _resolve_asset(api_url, pattern, label, failure=None):
         # worse than saying little: a rate-limited address was reported as the
         # project having moved off GitHub, which is a confident wrong answer
         # about somebody else's repository and sends the reader nowhere useful.
-        # It cost an evening on xemu's hard disk image, which was never missing.
+        # xemu's hard disk image was reported as gone from the project when the
+        # address had merely been rate-limited; it was never missing.
         #
         # 451 is what the Ryujinx mirrors answer and it has no status branch of
         # its own, so it falls to the line below -- which is still the right

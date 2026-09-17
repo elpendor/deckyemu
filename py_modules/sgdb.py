@@ -7,7 +7,6 @@ purpose-made capsules, heroes and logos.
 
 import concurrent.futures
 import difflib
-import glob
 import json
 import os
 import re
@@ -15,6 +14,8 @@ import time
 import urllib.parse
 
 import decky
+
+import findfiles
 
 import net
 
@@ -74,7 +75,7 @@ def discover_existing_key():
     settings_root = os.path.join(decky.DECKY_HOME, "settings")
     candidates = []
     for name in ("decky-steamgriddb", "SteamGridDB", "steamgriddb"):
-        candidates.extend(glob.glob(os.path.join(settings_root, name, "*.json")))
+        candidates.extend(findfiles.in_directory(os.path.join(settings_root, name), ".json"))
 
     for path in candidates:
         try:

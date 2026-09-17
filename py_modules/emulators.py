@@ -558,7 +558,7 @@ def space_free(path):
     argument the shell outside it took care to keep together. A game at
     `.../GRAVITY RUSH (PCSA00011).pkg` reaches the emulator as three arguments
     and it reports the second word as unsupported content -- which reads as a
-    bad dump rather than as a quoting fault, and cost an evening the first time.
+    bad dump rather than as a quoting fault.
 
     A link rather than a rename, because the file is the user's and where they
     sent it is where they will look for it. Falls back to the original path if

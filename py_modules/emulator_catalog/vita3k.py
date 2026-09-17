@@ -18,7 +18,7 @@ _VITA3K_SETUP = {
     "version": 5,
     "path": _VITA3K_CONFIG,
     "sections": {
-        # The dialog that cost an evening. `confirm_missing_firmware_warning`
+        # The invisible dialog. `confirm_missing_firmware_warning`
         # in main_window.cpp pops "Firmware is not fully installed" whenever
         # vs0 or sa0 looks empty, with Cancel as the *default* button -- and
         # gamescope only composites windows Steam launched, so from a shortcut

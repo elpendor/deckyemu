@@ -7,12 +7,13 @@ thumbnails.libretro.com. That makes it the reliable bridge from "the core the
 user picked" to "where this game's boxart lives".
 """
 
-import glob
 import os
 import re
 import zipfile
 
 import decky
+
+import findfiles
 
 # RetroArch transparently decompresses these for most cores, but no core's
 # `supported_extensions` lists them -- so matching on the archive extension
@@ -158,7 +159,7 @@ def list_cores(install):
     cores = {}
 
     for core_dir in install.get("core_dirs", []):
-        for so_path in glob.glob(os.path.join(core_dir, "*.so")):
+        for so_path in findfiles.in_directory(core_dir, ".so"):
             core_id = _core_id(so_path)
             # First core dir wins: user-downloaded cores shadow bundled ones.
             if core_id in cores:

@@ -1,9 +1,9 @@
 /**
  * Getting text off the clipboard, on a device with no keyboard worth using.
  *
- * Every hard part of this was learned once, painfully, for the SteamGridDB key,
- * and is needed again for a Vita licence key. Both are long random strings that
- * nobody will type on an on-screen keyboard.
+ * What this rests on was measured for the SteamGridDB key and is needed again
+ * for a Vita licence key. Both are long random strings that nobody will type on
+ * an on-screen keyboard.
  *
  * Two facts it rests on:
  *

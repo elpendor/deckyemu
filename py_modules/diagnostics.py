@@ -31,7 +31,6 @@ the report listing somebody's library. Titles and ROM paths are struck by value
 too, in their plain and percent-encoded forms.
 """
 
-import glob
 import json
 import time
 import os
@@ -39,6 +38,8 @@ import re
 import urllib.parse
 
 import decky
+
+import findfiles
 
 import releases
 import hardware
@@ -196,7 +197,7 @@ def _log_tail(lines=LOG_LINES):
     """The end of the newest log file, or a line saying why there is none."""
     try:
         paths = sorted(
-            glob.glob(os.path.join(decky.DECKY_PLUGIN_LOG_DIR, "*.log")),
+            findfiles.in_directory(decky.DECKY_PLUGIN_LOG_DIR, ".log"),
             key=os.path.getmtime,
         )
     except OSError as error:

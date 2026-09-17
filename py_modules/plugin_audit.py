@@ -14,11 +14,12 @@ those games or forget them.
 Mixed into `Plugin` rather than called by it -- see plugin_firmware for why.
 """
 
-import glob
 import json
 import os
 
 import decky
+
+import findfiles
 
 import plugin_base
 
@@ -391,7 +392,9 @@ class Audit(plugin_base.PluginContext):
         found = []
         ours = os.path.normpath(decky.DECKY_PLUGIN_SETTINGS_DIR)
 
-        for path in glob.glob(os.path.join(decky.DECKY_HOME, "settings", "*", "library.json")):
+        for path in findfiles.under_each(
+            os.path.join(decky.DECKY_HOME, "settings"), "library.json"
+        ):
             if os.path.normpath(os.path.dirname(path)) == ours:
                 continue
             try:

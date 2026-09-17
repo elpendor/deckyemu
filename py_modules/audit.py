@@ -2,8 +2,8 @@
 
 **Decky keeps five logs and rotates the rest away.** That is the right call for
 a log that is mostly progress lines, and the wrong one for the only question
-that matters after data goes missing: what removed it, and when. Measured,
-expensively -- a storage was found holding 23 files where it had held 608 six
+that matters after data goes missing: what removed it, and when. Measured -- a
+storage was found holding 23 files where it had held 608 six
 hours earlier, and by the time anyone looked the logs covering those six hours
 had already been rotated away. The answer was not recoverable from the Deck at
 all.

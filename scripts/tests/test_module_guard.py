@@ -132,7 +132,7 @@ section("the standard library the sandbox actually has")
 PROVEN_STDLIB = frozenset((
     "asyncio", "base64", "collections", "concurrent", "ctypes", "difflib", "email",
     "functools",
-    "glob", "hashlib", "html", "http", "inspect", "io", "json", "os",
+    "hashlib", "html", "http", "importlib", "inspect", "io", "json", "os",
     "socketserver",
     "posixpath", "re", "secrets", "shlex", "shutil", "socket", "ssl", "stat",
     "struct", "subprocess", "sys", "threading", "time", "typing", "urllib",
@@ -176,7 +176,12 @@ PROVEN_SUBMODULES = frozenset((
 #: own stdlib, which sits on `sys.path` behind decky's bundle -- `glob` came
 #: from `/usr/lib/python3.13/glob.py` on a Deck running decky v3.2.9, whose
 #: bundle has no `glob`. That is luck, not a guarantee, so a module missing from
-#: the bundle still does not belong in either list above.
+#: the bundle still does not belong in either list above. `glob` is therefore
+#: *not* listed: `findfiles` replaced every use of it with `os.scandir`, which
+#: is built into the interpreter. Read off the device rather than off the
+#: archive: `struct` is bundled (the bundle reports its own as a bare
+#: `struct.py`, a path-less `__file__`), and `difflib` is the one left coming
+#: from SteamOS. `httpshim.borrowed` names any of them at every start.
 
 
 def _guarded(tree):

@@ -31,6 +31,7 @@ either way.
 
 import email.parser
 import email.utils
+import os
 import socket
 import threading
 from typing import Any
@@ -268,6 +269,42 @@ UNAVAILABLE = (
 )
 
 
+def borrowed():
+    """Log every module loaded from outside decky's bundle.
+
+    decky's executable carries only the standard library its build saw
+    imported, and SteamOS's own Python sits on `sys.path` behind it -- so an
+    import can quietly resolve to `/usr/lib/python3.13/...`, work for a year,
+    and fail the day either side changes. `http.server` was that failure, and it
+    stopped the whole plugin loading.
+
+    Nothing here acts on it. It is one line in the log, so a later breakage can
+    be read rather than investigated.
+    """
+    import sys
+
+    inside = getattr(sys, "_MEIPASS", "")
+    outside = []
+    for name, module in sorted(sys.modules.items()):
+        if name.startswith("_") or "." in name:
+            continue
+        origin = getattr(module, "__file__", None)
+        if not origin or (inside and origin.startswith(inside)):
+            continue
+        # A bare name is how the bundle reports its own: `struct.py` rather than
+        # a path. Measured on a Deck -- `struct` reads as bundled this way, and
+        # `difflib` as `/usr/lib/python3.13/difflib.py`, which is the case this
+        # line exists to name.
+        if not os.path.isabs(origin):
+            continue
+        # The plugin's own modules live outside the bundle by definition.
+        if decky.DECKY_PLUGIN_DIR and origin.startswith(decky.DECKY_PLUGIN_DIR):
+            continue
+        outside.append("%s=%s" % (name, origin))
+    if outside:
+        decky.logger.info("Loaded from outside decky's bundle: %s", "; ".join(outside))
+
+
 def report():
     """One log line saying what this Python is and what it carries.
 
@@ -281,24 +318,20 @@ def report():
     for name in ("http.server", "socketserver", "email", "urllib.request",
                  "aiohttp", "ssl", "ctypes", "sqlite3", "xml.etree.ElementTree"):
         try:
-            # `__import__` rather than importlib: this file may not import a
-            # module the sandbox has not been shown to carry, which is the very
-            # thing it exists to survive.
-            __import__(name)
-        except Exception:  # noqa: BLE001 -- any failure means "not usable"
+            # `find_spec`, not an import: asking must not answer the question.
+            # Importing each name put `socketserver` into `sys.modules` from
+            # SteamOS's Python, and `borrowed` below then reported a module
+            # nothing in the plugin uses. `importlib` is frozen into every
+            # CPython, so it is here whatever decky bundled.
+            import importlib.util
+
+            if importlib.util.find_spec(name) is None:
+                continue
+        except Exception:  # noqa: BLE001 -- a parent that will not import counts as missing
             continue
         carried.append(name)
     decky.logger.info(
         "Python %s in this sandbox carries: %s",
         sys.version.split()[0], ", ".join(carried) or "none of the ones checked",
     )
-    # And where a couple of them came from, because that is not always decky's
-    # bundle: measured on a Deck, `glob` resolves to SteamOS's own
-    # /usr/lib/python3.13/glob.py, reached through `sys.path`. Nothing here
-    # depends on that -- see `_Request` -- and the next runtime change should
-    # not need a build to explain itself.
-    where = []
-    for name in ("glob", "email.parser"):
-        module = sys.modules.get(name)
-        where.append("%s=%s" % (name, getattr(module, "__file__", None) or "frozen"))
-    decky.logger.info("Loaded from: %s", "; ".join(where))
+    borrowed()
