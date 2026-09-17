@@ -15,6 +15,7 @@ import emulator_catalog
 import emulators
 import fileserver
 import gameicon
+import httpshim
 import installer
 import handoff
 import launchers
@@ -351,6 +352,9 @@ class Plugin(
             ("upgrade emulator setups", self._upgrade_emulator_setups),
             ("re-file split firmware records", self._resplit_firmware_records),
             # Before sharing, which matches by content once this is loaded.
+            # First, and cheap: when a decky build changes its Python again,
+            # the log should already say what went missing.
+            ("note what this Python carries", lambda: self._run(httpshim.report)),
             ("load the BIOS checksum list", self._refresh_bios_dat),
             # Every start, so a library that predates sharing gets it too. Safe
             # to repeat: a share somebody removed is recorded and left alone.

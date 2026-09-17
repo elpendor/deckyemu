@@ -1,0 +1,97 @@
+#!/usr/bin/env python3
+"""Serving files where the sandbox has no http.server.
+
+    python scripts/tests/test_httpshim.py
+
+Decky Loader v3.2.9 shipped a Python without `http.server`, and `fileserver`
+imported it at the top -- so the whole plugin failed to load, library and
+launchers and all, over a module only the transfer server needs. The import is
+allowed to fail now, and what it gave us is rebuilt from `socketserver` and
+`email`, which that same Python does carry.
+
+These checks run against the stand-in directly, whatever the host happens to
+have, because the host always has the real one and would never exercise it.
+"""
+
+import os
+import sys
+import threading
+import urllib.error
+import urllib.request
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from harness import check, section, summary  # noqa: E402  -- installs the decky stub
+
+import httpshim  # noqa: E402
+
+section("the stand-in HTTP server, for a sandbox without http.server")
+
+UPLOAD = b"x" * 100_000
+
+
+class _Handler(httpshim._Request):  # noqa: SLF001 -- the stand-in under test
+    def log_message(self, fmt, *args):
+        pass
+
+    def do_GET(self):  # noqa: N802 -- the name the dispatcher looks for
+        body = b"got " + self.path.encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "text/plain")
+        self.send_header("X-Sent-Header", self.headers.get("X-Ask-For") or "none")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_PUT(self):  # noqa: N802
+        sent = self.rfile.read(int(self.headers.get("Content-Length") or 0))
+        body = b"whole" if sent == UPLOAD else b"short"
+        self.send_response(200)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+
+_server = httpshim._Server(("127.0.0.1", 0), _Handler)  # noqa: SLF001
+threading.Thread(target=_server.serve_forever, daemon=True).start()
+_url = "http://127.0.0.1:%d" % _server.server_address[1]
+
+try:
+    # The query string stays on the path: the token and the filename a transfer
+    # is addressed to both live there.
+    _answer = urllib.request.urlopen(_url + "/token/pending/game.zip?fp=1")
+    check("a GET reaches the handler with the whole path",
+          _answer.read(), b"got /token/pending/game.zip?fp=1")
+    check("with the status and headers it set",
+          (_answer.status, _answer.headers.get("Content-Type")), (200, "text/plain"))
+
+    # Request headers are what an upload carries its offset and id in.
+    _request = urllib.request.Request(_url + "/x", headers={"X-Ask-For": "resume"})
+    check("a request header reaches the handler",
+          urllib.request.urlopen(_request).headers.get("X-Sent-Header"), "resume")
+
+    # The whole point: a phone sending a ROM, read from the body by length.
+    _put = urllib.request.Request(_url + "/upload/game.zip", data=UPLOAD, method="PUT")
+    check("a PUT body arrives whole", urllib.request.urlopen(_put).read(), b"whole")
+
+    # A method nothing implements is refused rather than hanging the connection.
+    try:
+        urllib.request.urlopen(urllib.request.Request(_url + "/x", method="DELETE"))
+        _code = 0
+    except urllib.error.HTTPError as error:
+        _code = error.code
+    check("a method the handler does not implement is refused", _code, 501)
+
+    # The URL a phone is given is built from this, and the port asked for is 0
+    # -- "any free one" -- so without it the server started and every read of
+    # its status raised AttributeError. Which is what shipped.
+    check("the port it actually got is published, as HTTPServer does",
+          _server.server_port, _server.server_address[1])
+    check("and it reports itself as ready", httpshim.available(), True)
+finally:
+    _server.shutdown()
+    _server.server_close()
+
+
+if __name__ == "__main__":
+    summary()

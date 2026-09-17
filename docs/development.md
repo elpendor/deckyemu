@@ -259,6 +259,8 @@ py_modules/                 Backend logic. Plain Python, stdlib only -- it runs
                             emulator reads it
   ra_firmware.py            RetroArch's BIOS rows, read off each core's .info
   bios_dat.py               Recognise a BIOS by checksum, from libretro's list
+  httpshim.py               http.server if this decky build carries it, or a
+                            stand-in built from socketserver and email if not
   emu_patch.py              Correct a bug inside an emulator's own binary, when
                             nothing else reaches it
   steam_layouts.py          The Steam Input layout an emulator needs, derived

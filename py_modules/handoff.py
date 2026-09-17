@@ -30,9 +30,10 @@ import secrets
 import threading
 import time
 import urllib.parse
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import decky
+
+import httpshim
 
 # The comparison, not the server: this is the one thing the two HTTP surfaces in
 # this plugin genuinely share, and it exists because compare_digest refuses a str
@@ -56,7 +57,7 @@ _served = False
 _started = 0.0
 
 
-class _Handler(BaseHTTPRequestHandler):
+class _Handler(httpshim.BASE):
     server_version = "DeckyEmuRelay"
     sys_version = ""
 
@@ -124,13 +125,13 @@ def serve(path):
     """Offer `path` on loopback. Returns its URL, or "" if it cannot be served."""
     global _server, _token, _path, _name, _served, _started
 
-    if not path or not os.path.isfile(path):
+    if not path or not os.path.isfile(path) or not httpshim.available():
         return ""
 
     stop()
 
     try:
-        server = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
+        server = httpshim.SERVER(("127.0.0.1", 0), _Handler)
     except OSError as error:
         decky.logger.warning("relay: could not listen: %s", error)
         return ""

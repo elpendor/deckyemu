@@ -46,12 +46,12 @@ import socket
 import threading
 import time
 import urllib.parse
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import decky
 
 import diagnostics
 import fileserver_page
+import httpshim
 import sysenv
 
 # Long enough that guessing is hopeless, short enough to scan reliably.
@@ -389,7 +389,7 @@ def _keep_alive(connection):
         decky.logger.info("Could not set keepalive: %s", error)
 
 
-class _Handler(BaseHTTPRequestHandler):
+class _Handler(httpshim.BASE):
     server_version = "DeckyEmu"
     sys_version = ""
 
@@ -1470,7 +1470,7 @@ def _bind(port):
         try:
             # Port 0 lets the OS pick a free one; 8080 in particular is taken by
             # Steam's CEF debugging, which is why nothing here is hardcoded.
-            return ThreadingHTTPServer(("0.0.0.0", candidate), _Handler), ""
+            return httpshim.SERVER(("0.0.0.0", candidate), _Handler), ""
         except OSError as error:
             last = error
             if candidate:
@@ -1508,6 +1508,8 @@ def start(target_dir, port=0, token="", uploads=True):
     global _server, _thread, _token, _target_dir, _last_activity, _host_ip
     global _pin, _pin_attempts, _pin_locked, _durable, _uploads
 
+    if not httpshim.available():
+        return {"error": httpshim.UNAVAILABLE}
     if not target_dir or not os.path.isdir(target_dir):
         return {"error": "Choose a folder that exists to receive files into."}
     if not os.access(target_dir, os.W_OK):
