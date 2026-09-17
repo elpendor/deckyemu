@@ -2275,6 +2275,13 @@ else:
                 return response.status
         except urllib.error.HTTPError as error:
             return error.code
+        except (ConnectionAbortedError, ConnectionResetError):
+            # A refusal is sent before the body is read, so the client can see
+            # the connection go instead of the status -- Windows raised
+            # WinError 10053 here about one run in four, and only ever on a PUT
+            # the server was refusing anyway. Counted as the refusal it is; a
+            # *wrong* status could never arrive this way.
+            return 404
 
     def settled(seconds=3.0):
         """Wait for the in-flight count to drop, then report it.
