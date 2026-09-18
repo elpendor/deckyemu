@@ -77,6 +77,13 @@ class Updates(plugin_base.PluginContext):
                 # CI writes the version it built, which is authoritative over a
                 # package.json that could have been edited since.
                 version = stamp.get("version") or version
+                # Code was deployed over this release, so the commit named here
+                # is not what is running. The version and the notes still
+                # describe the release underneath, which is worth keeping; the
+                # commit is not, and "dev" is how a build says do not compare
+                # me.
+                if stamp.get("deployed"):
+                    build = "dev"
             except (OSError, ValueError):
                 pass
             return {

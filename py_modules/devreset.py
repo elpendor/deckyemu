@@ -14,13 +14,14 @@ every setup block, silently, and the run you were about to trust is a lie.
 None of this is reachable in a release. Two independent gates, both off unless
 someone builds from source: the frontend tab is compiled out when the build
 stamp is not "dev", and `available()` below refuses when CI's build.json is
-present. CI asserts the first of those on every build.
+present and unmarked. CI asserts the first of those on every build.
 
 Actions are deliberately separate and deliberately not one button. Sent dumps
 cost a trip to another machine to replace, and emulator data holds save games;
 those are worth their own press and their own sentence about what goes.
 """
 
+import json
 import os
 import shutil
 
@@ -42,8 +43,23 @@ def available(plugin_root):
     on by anyone reading the docs, and this deletes save data. `build.json` is
     written only by the release workflow, so its absence is what "somebody
     built this themselves" looks like.
+
+    A deploy carries that stamp across so the Updates tab keeps the version it
+    is about, and marks it `deployed` -- the files beside it are no longer the
+    ones CI built. Without that mark every deploy onto a released install
+    inherited the release's answer and switched this off, which is the state
+    these actions exist for.
+
+    A stamp that cannot be read refuses, because the safe answer to "is this a
+    release?" is yes.
     """
-    return not os.path.isfile(os.path.join(plugin_root, "build.json"))
+    try:
+        with open(os.path.join(plugin_root, "build.json"), "r", encoding="utf-8") as handle:
+            return bool(json.load(handle).get("deployed"))
+    except FileNotFoundError:
+        return True
+    except (OSError, ValueError):
+        return False
 
 
 # ------------------------------------------------------------------ inventory

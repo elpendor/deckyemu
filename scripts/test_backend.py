@@ -6306,8 +6306,31 @@ check("every emulator the plugin downloads says where its data lives",
 _stamp_root = os.path.join(TMP, "stamproot")
 os.makedirs(_stamp_root, exist_ok=True)
 check("a build from source may reset", devreset.available(_stamp_root), True)
-io.open(os.path.join(_stamp_root, "build.json"), "w").close()
+_stamp_file = os.path.join(_stamp_root, "build.json")
+with io.open(_stamp_file, "w", encoding="utf-8") as _handle:
+    _json.dump({"version": "1.2.3", "commit": "abc123"}, _handle)
 check("a build CI stamped may not", devreset.available(_stamp_root), False)
+# A deploy replaces the code and keeps the stamp, so the stamp says so. Without
+# this the reset actions switched themselves off on every Deck deployed to,
+# which is every Deck this is developed on.
+with io.open(_stamp_file, "w", encoding="utf-8") as _handle:
+    _json.dump({"version": "1.2.3", "commit": "abc123", "deployed": True}, _handle)
+check("a release with our own code deployed over it may", devreset.available(_stamp_root), True)
+# And the version row stops naming a commit that is not what is running.
+_root_for_version = sysenv.PLUGIN_ROOT
+sysenv.PLUGIN_ROOT = _stamp_root
+check("which the version row reports as a development build",
+      run(plugin.plugin_version())["build"], "dev")
+check("while still naming the release underneath",
+      run(plugin.plugin_version())["version"], "1.2.3")
+sysenv.PLUGIN_ROOT = _root_for_version
+with io.open(_stamp_file, "w", encoding="utf-8") as _handle:
+    _json.dump({"version": "1.2.3", "commit": "abc123"}, _handle)
+# A stamp nothing can read is treated as a release: the safe answer to "is this
+# a release?" is yes, because being wrong the other way deletes save data.
+io.open(_stamp_file, "w", encoding="utf-8").write("{not json")
+check("an unreadable stamp may not", devreset.available(_stamp_root), False)
+io.open(_stamp_file, "w", encoding="utf-8").write("{}")
 _root_before = sysenv.PLUGIN_ROOT
 sysenv.PLUGIN_ROOT = _stamp_root
 check("and the endpoint refuses on a stamped build",
