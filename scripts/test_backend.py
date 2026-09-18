@@ -6485,7 +6485,18 @@ for _path in sorted(_glob_tests.glob(os.path.join(os.path.dirname(os.path.abspat
     _spec = _importlib.spec_from_file_location(
         "deckyemu_tests_" + os.path.basename(_path)[:-3], _path)
     _module = _importlib.module_from_spec(_spec)
-    _spec.loader.exec_module(_module)
+    try:
+        _spec.loader.exec_module(_module)
+    except SystemExit:
+        # **A suite that skips itself must not end this run.** A standalone file
+        # says "nothing to do here" with `sys.exit(0)` -- `test_switch_nsz`
+        # does, on any machine without libzstd -- and executed here that lands
+        # as a SystemExit in the middle of the loop. It took everything after
+        # it with it: the suites later in the alphabet, the rest of this file,
+        # and `summary()`, so the run exited 0 having quietly stopped. A
+        # rename this file had not caught up with sat on `main` for a day
+        # behind it, and two pushes reported green.
+        print("SKIPPED the rest of %s" % os.path.basename(_path))
 
 import zipfile as _zip_motion  # noqa: E402
 import decky  # noqa: E402
@@ -7096,7 +7107,7 @@ with _zip_motion.ZipFile(_zip, "w") as _z:
     _z.writestr("SteamDeckGyroDSUSetup/README.md", "docs")
 _out = os.path.join(TMP, "extracted")
 os.makedirs(_out, exist_ok=True)
-_got, _err = emu_install._extract_tool(_zip, _out, r"^sdgyrodsu$")
+_got, _err = emu_install._extract_member(_zip, _out, r"^sdgyrodsu$")
 check("the named binary comes out", os.path.basename(_got), "sdgyrodsu")
 check("and the scripts beside it do not", sorted(os.listdir(_out)), ["sdgyrodsu"])
 check(
@@ -7104,9 +7115,9 @@ check(
     os.path.dirname(_got),
     _out,
 )
-_, _none = emu_install._extract_tool(_zip, _out, r"^nothing-like-this$")
+_, _none = emu_install._extract_member(_zip, _out, r"^nothing-like-this$")
 check("an archive without it is an error, not an empty install", bool(_none), True)
-_, _many = emu_install._extract_tool(_zip, _out, r"^.*$")
+_, _many = emu_install._extract_member(_zip, _out, r"^.*$")
 check(
     "and a pattern matching several is refused rather than guessed",
     "expected one" in _many,

@@ -167,6 +167,12 @@ try:
           any(any("gyro" in part for part in call) for call in _calls), True)
 finally:
     launchers.subprocess.run = _real_run
+    # **Put the fake server back where it was: absent.** These suites share one
+    # temporary tree and run in one process under `test_backend`, so a file left
+    # here is a file the next suite finds. This one stood in for a fetched
+    # motion server, and two checks further on assert that a server nobody
+    # fetched is simply not there.
+    os.remove(_gyro)
 
 
 section("only a port puts keys on the pad")
