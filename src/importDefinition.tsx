@@ -1,10 +1,78 @@
 import { ConfirmModal } from "@decky/ui";
 import { toaster } from "@decky/api";
 
-import { importEmulatorDefinition, previewEmulatorDefinition } from "./backend";
+import {
+  importEmulatorDefinition,
+  previewEmulatorDefinition,
+  type DefinitionPreview,
+} from "./backend";
 import { DANGER_TEXT } from "./danger";
 import { COLUMN, MUTED } from "./dialogStyle";
 import { openModal } from "./modalStack";
+import { ScrollList, ScrollRow } from "./ScrollList";
+
+/**
+ * One definition, as the confirmation describes it.
+ *
+ * A row in a list of nine keeps only what has to be agreed to: the name, that
+ * it replaces something, and the two facts this dialog exists for -- what gets
+ * downloaded and where it may write. The system, the summary and what you have
+ * to supply are context rather than consent, and nine copies of them is what
+ * pushed the warning off the bottom of the screen. They are all on the entry's
+ * own row in the tab it lands in.
+ *
+ * A file holding one definition shows them: there is nothing to scroll and
+ * nothing to crowd out.
+ */
+function rowFor(entry: DefinitionPreview, alone: boolean) {
+  return (
+    <div>
+      <div>
+        <b>{entry.name}</b>
+        {alone && entry.system ? ` · ${entry.system}` : ""}
+        {entry.replaces ? " (already imported)" : ""}
+      </div>
+      {alone && entry.summary && <div>{entry.summary}</div>}
+      {/* The two facts worth reading before agreeing. */}
+      <div style={MUTED}>
+        Installs: {entry.installs || "nothing — you supply it yourself"} · May write
+        to: {entry.writes.join(", ") || "nothing"}
+      </div>
+      {alone && entry.needs && <div style={MUTED}>You supply: {entry.needs}</div>}
+    </div>
+  );
+}
+
+/**
+ * The entry list, bounded so the dialog itself never scrolls.
+ *
+ * A file may hold a dozen definitions, and with the whole body scrolling the
+ * warning below the list is what goes off the bottom -- which is the one part
+ * that must be read before agreeing. So the list scrolls inside this and
+ * everything after it stays put.
+ *
+ * `38vh` rather than a pixel height: rows here are one to three lines, unlike
+ * the fixed-height rows in `OptionalFilesModal`, whose comment records what
+ * happens when the cap is too generous -- the list outgrows the dialog frame
+ * and both scroll.
+ */
+const LIST = {
+  display: "flex",
+  flexDirection: "column" as const,
+  gap: "8px",
+  // Set here rather than per row, so it cascades to the name line and leaves
+  // the muted line on its own 13px. A name is not a heading here -- the row is
+  // a record of what is about to happen, and at body size nine of them is most
+  // of the screen.
+  fontSize: "14px",
+  // About three rows. A row is a 14px name line, a 13px muted line that wraps
+  // to two when the paths are long, and the 8px gap -- so this shows three and
+  // usually clips a fourth, which is its own signal that there is more below.
+  // A height rather than a fraction of the screen: the dialog has a fixed
+  // amount of room left after the warning and the buttons, and `38vh` of rows
+  // was most of it.
+  maxHeight: "150px",
+};
 
 /**
  * Importing definitions: read the file, show what each will do, store them.
@@ -68,22 +136,17 @@ export function importDefinition(name: string, onImported?: () => void): void {
         onOK={go}
         strDescription={
           <div style={{ ...COLUMN, gap: "10px" }}>
-            {entries.map((entry) => (
-              <div key={entry.id}>
-                <div>
-                  <b>{entry.name}</b>
-                  {entry.system ? ` · ${entry.system}` : ""}
-                  {entry.replaces ? " (replaces the one already imported)" : ""}
-                </div>
-                {only && entry.summary && <div>{entry.summary}</div>}
-                {/* The two facts worth reading before agreeing. */}
-                <div style={MUTED}>
-                  Installs: {entry.installs || "nothing — you supply it yourself"} ·
-                  May write to: {entry.writes.join(", ") || "nothing"}
-                </div>
-                {entry.needs && <div style={MUTED}>You supply: {entry.needs}</div>}
-              </div>
-            ))}
+            {/* One entry is left as plain text: there is nothing to scroll, and
+                a focusable row would take the focus the OK button has today. */}
+            {only ? (
+              rowFor(only, true)
+            ) : (
+              <ScrollList style={LIST}>
+                {entries.map((entry) => (
+                  <ScrollRow key={entry.id}>{rowFor(entry, false)}</ScrollRow>
+                ))}
+              </ScrollList>
+            )}
 
             {problems.length > 0 && (
               <div style={MUTED}>
@@ -96,10 +159,9 @@ export function importDefinition(name: string, onImported?: () => void): void {
                 cannot tell you whether its author meant well, and this file did
                 not come from the plugin. */}
             <div style={DANGER_TEXT}>
-              <b>You are responsible for what you import.</b> This file was written by
-              whoever gave it to you, not by this plugin, and nobody here has reviewed
-              or tested it. It can make your Deck download and run software.{" "}
-              <b>Open the .json in a text editor and read it before continuing.</b>
+              <b>You are responsible for what you import.</b> Nobody here wrote or
+              reviewed this file, and it can make your Deck download and run
+              software. <b>Read the .json before continuing.</b>
             </div>
 
             {/* Said here because this is where it lands, the same rule firmware

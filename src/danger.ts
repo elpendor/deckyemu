@@ -48,6 +48,10 @@ export const DANGER_CSS = `
  * different kind of thing before any of it has been read.
  */
 export const DANGER_TEXT = {
+  // Smaller than body text, larger than MUTED. The bar and the tint are what
+  // make this a different kind of thing, not the size -- and a dialog listing
+  // nine definitions has no height to spare for a paragraph set in body text.
+  fontSize: "14px",
   padding: "8px 10px",
   borderLeft: "4px solid rgb(214, 58, 58)",
   borderRadius: "4px",
