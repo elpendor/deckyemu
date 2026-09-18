@@ -112,6 +112,11 @@ OPTIONAL = {
              "else is not offered, one that cannot be read still is. A "
              "compressed format keeps nothing at a fixed offset, so declaring "
              "one alongside an `id` is refused -- see COMPRESSED_EXTENSIONS.",
+    "first_run": "Arguments for the run that sets the port up, as {'args': "
+                 "'{rom}', 'unless': [<file names>]}. Passed only while none of "
+                 "those files exist in the program's own directory, which is "
+                 "how a port that builds something from the game asks for the "
+                 "game once and never again. See `launchers.first_run_argv`.",
     "plays": "The game this port plays, for the shortcut's name. Only used when "
              "nothing else identified the file -- a ROM whose filename libretro "
              "knows is named from that, as any other game is. Without it a data "
@@ -755,6 +760,7 @@ def validate(entry, known_platforms=(), imported=False):
     problems.extend(_validate_needs(entry_id, entry))
 
     problems.extend(_validate_hotkeys(entry_id, entry))
+    problems.extend(_validate_first_run(entry_id, entry))
 
     if entry.get("game_beside"):
         if not entry.get("port"):
@@ -849,6 +855,39 @@ def _validate_hotkeys(entry_id, entry):
                     bad("hotkey button %r is not a button name" % (button,))
                 elif not isinstance(key, str) or not _SAFE_KEY.match(key):
                     bad("hotkey %r sends %r, which is not a key name" % (button, key))
+    return problems
+
+
+def _validate_first_run(entry_id, entry):
+    """`first_run` names arguments and the files whose absence calls for them."""
+    spec = entry.get("first_run")
+    if not spec:
+        return []
+    problems = []
+
+    def bad(message):
+        problems.append("%s first_run: %s" % (entry_id, message))
+
+    if not entry.get("port"):
+        bad("only a port has a run that sets it up")
+    if not isinstance(spec, dict):
+        bad("must be an object with 'args' and 'unless'")
+        return problems
+    args = spec.get("args")
+    if not isinstance(args, str) or "{rom}" not in args:
+        bad("args %r has no {rom}, so the setup run would get no game" % (args,))
+    unless = spec.get("unless")
+    if not isinstance(unless, list) or not unless:
+        bad("'unless' lists the files this run creates, and is what stops it "
+            "happening twice")
+    else:
+        for name in unless:
+            if not isinstance(name, str) or not name or "/" in name or "'" in name:
+                bad("unless %r must be a file name in the program's own "
+                    "directory" % (name,))
+    unknown = sorted(set(spec) - {"args", "unless"})
+    if unknown:
+        bad("unknown key(s) %s" % ", ".join(repr(name) for name in unknown))
     return problems
 
 

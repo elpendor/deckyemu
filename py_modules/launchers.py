@@ -1214,6 +1214,36 @@ def game_beside_setup(emulator, rom_path):
             .replace("{rom}", shlex.quote(rom_path)))
 
 
+def first_run_argv(entry, rom_path):
+    """The shell that hands a port its game once, to set itself up, or "".
+
+    A port that builds its own archive from the game asks for it on the command
+    line: Ship of Harkinian extracts and skips its own "no archive, build one?"
+    question entirely. But asked again on a later launch it has something to
+    say -- "that archive exists, extract again?" -- so the argument is passed
+    only while the file it creates is missing.
+
+    `set --` rather than a variable, because a game's path has spaces in it and
+    an unquoted expansion would arrive as several arguments.
+    """
+    spec = (entry or {}).get("first_run") or {}
+    args, unless = spec.get("args") or "", spec.get("unless") or []
+    if not args or not unless or not rom_path:
+        return ""
+    tests = " && ".join("[ ! -f %s ]" % shlex.quote(name) for name in unless)
+    filled = " ".join(
+        shlex.quote(part.replace("{rom}", rom_path))
+        for part in shlex.split(args)
+    )
+    return "\n".join([
+        "# The run that sets this port up: it builds what it plays from the",
+        "# game, and wants the game on the command line to do it. Only while",
+        "# what it builds is missing -- see launchers.first_run_argv.",
+        "set --",
+        "if %s; then set -- %s; fi" % (tests, filled),
+    ])
+
+
 def preflight(rom_path, emulator, install, core_path, title_id=""):
     """The shell that refuses a launch whose pieces are missing, or "".
 
@@ -1565,6 +1595,12 @@ def write_launcher(
     # of this script, not a daemon, and never left behind.
     keys = hotkey_helper(entry, path=launcher_path(title, rom_path))
 
+    # Passed to the program when the block above decided to, and empty
+    # otherwise, so an ordinary launch is the command line it always was.
+    first_run = first_run_argv(entry, rom_path)
+    if first_run:
+        command = '%s "$@"' % command
+
     run = (
         [
             motion_server(server).replace(COMMAND_PLACEHOLDER, command),
@@ -1600,6 +1636,7 @@ def write_launcher(
             ran_marker(),
             game_config_setup(emulator, rom_path),
             game_beside_setup(emulator, rom_path),
+            first_run,
         ]
         + run
         + [""]
