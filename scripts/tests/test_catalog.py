@@ -72,7 +72,8 @@ check("every module in the package is in the catalog",
       sorted(name[:-3] for name in os.listdir(os.path.dirname(emulator_catalog.__file__))
              if name.endswith(".py")
              and name not in ("__init__.py", "schema.py", "steam_pad.py",
-                              "deck_gyro.py", "imported.py", "cloud.py", "ports.py")))
+                              "deck_gyro.py", "imported.py", "cloud.py", "ports.py",
+                              "hotkeys.py")))
 
 # Stated in the package docstring as the thing no entry may depend on: the
 # derived extension list can come back empty from a stale libretro index, so

@@ -112,6 +112,17 @@ OPTIONAL = {
              "else is not offered, one that cannot be read still is. A "
              "compressed format keeps nothing at a fixed offset, so declaring "
              "one alongside an `id` is refused -- see COMPRESSED_EXTENSIONS.",
+    "menu_key": "The key that opens this port's own menu, e.g. 'esc'. Reached by "
+                "holding Select and pressing Start, the gesture RetroArch uses, "
+                "through the helper in `hotkeys.py`. Ports only: an emulator's "
+                "menu is its own business and usually has a pad binding.",
+    "menu_modifier": "The button held to reach this port's keys, when Select is "
+                     "wrong for it -- a port of a console that uses Select, "
+                     "since the pad is taken from the game while the chord is "
+                     "held. A gptokeyb2 button name; Select ('back') by default.",
+    "hotkeys": "Further keys to put on the pad while Select is held, as "
+               "{button: key} in `gptokeyb2`'s names, e.g. {'y': 'f5'}. "
+               "`menu_key` is the same thing for the one every port needs.",
     "game_beside": "True when the program looks for its game in the directory it "
                    "runs in, rather than taking a path. The launcher runs it "
                    "with its own install folder as the working directory and "
@@ -668,7 +679,7 @@ def validate(entry, known_platforms=(), imported=False):
         if extract is not None:
             if not isinstance(extract, str) or not extract:
                 bad("source extract must be a regex naming one file inside the "
-                    "archive, e.g. '^soh\.appimage$'")
+                    r"archive, e.g. '^soh\.appimage$'")
             else:
                 try:
                     re.compile(extract)
@@ -738,6 +749,8 @@ def validate(entry, known_platforms=(), imported=False):
     problems.extend(_validate_game_config(entry_id, entry))
     problems.extend(_validate_needs(entry_id, entry))
 
+    problems.extend(_validate_hotkeys(entry_id, entry))
+
     if entry.get("game_beside"):
         if not entry.get("port"):
             bad("game_beside describes how a port finds its one game; an "
@@ -790,6 +803,45 @@ COMPRESSED_EXTENSIONS = frozenset({
 #: How many bytes of a file `needs.id` may look at. A disc's id sits in its
 #: first sector; anything further in is a different kind of check.
 MAX_ID_OFFSET = 4096
+
+
+#: A `gptokeyb2` key or button name: lowercase, and no spaces to split on.
+_SAFE_KEY = re.compile(r"^[a-z0-9_]+$")
+
+
+def _validate_hotkeys(entry_id, entry):
+    """`menu_key` and `hotkeys` name buttons and keys, and belong to a port."""
+    menu_key = entry.get("menu_key")
+    hotkeys = entry.get("hotkeys")
+    modifier = entry.get("menu_modifier")
+    if not menu_key and not hotkeys and not modifier:
+        return []
+    problems = []
+
+    def bad(message):
+        problems.append("%s: %s" % (entry_id, message))
+
+    if not entry.get("port"):
+        bad("menu_key and hotkeys put a port's own keyboard shortcuts on the "
+            "pad; an emulator binds its menu itself")
+    if menu_key is not None and (not isinstance(menu_key, str)
+                                 or not _SAFE_KEY.match(menu_key)):
+        bad("menu_key %r is not a key name gptokeyb2 would know, e.g. 'esc'"
+            % (menu_key,))
+    if modifier is not None and (not isinstance(modifier, str)
+                                 or not _SAFE_KEY.match(modifier)):
+        bad("menu_modifier %r is not a button name gptokeyb2 would know, e.g. "
+            "'back'" % (modifier,))
+    if hotkeys is not None:
+        if not isinstance(hotkeys, dict):
+            bad("hotkeys maps a button to a key, so it must be an object")
+        else:
+            for button, key in hotkeys.items():
+                if not isinstance(button, str) or not _SAFE_KEY.match(button):
+                    bad("hotkey button %r is not a button name" % (button,))
+                elif not isinstance(key, str) or not _SAFE_KEY.match(key):
+                    bad("hotkey %r sends %r, which is not a key name" % (button, key))
+    return problems
 
 
 def _validate_needs(entry_id, entry):

@@ -1286,6 +1286,14 @@ class Emulators(plugin_base.PluginContext):
                 "Could not fetch the motion server for %s: %s", entry["id"], motion_error
             )
 
+        # The helper that puts a port's own menu key on the pad, fetched on the
+        # same rule and for the same reason as the motion server above.
+        _keys, keys_error = await self._run(emu_install.ensure_hotkey_helper, entry)
+        if keys_error:
+            decky.logger.warning(
+                "Could not fetch the hotkey helper for %s: %s", entry["id"], keys_error
+            )
+
         await self._prime_emulator_config(entry, saved)
         result = await self._run(emu_config.apply_setup, entry)
         if not result.get("ok"):

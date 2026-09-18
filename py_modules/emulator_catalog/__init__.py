@@ -118,6 +118,7 @@ from . import (
     xenia,
 )
 from . import cloud
+from . import hotkeys  # noqa: F401  -- re-exported; emu_install reads the spec
 from . import schema
 from .schema import validate  # noqa: F401  -- re-exported for tests and callers
 

@@ -394,6 +394,10 @@ class Plugin(
             # Every start rather than on a version change: what it trims is
             # written by playing, not by upgrading. See `LAUNCH_LOG_CAP` for why
             # the capping happens here instead of in the launcher.
+            # A hotkey helper whose launcher was killed outright: nothing ran
+            # to stop it, and it types into whatever is open next.
+            ("stop stray hotkey helpers",
+             lambda: self._run(launchers.stop_stray_helpers)),
             ("trim oversized launch logs",
              lambda: self._run(launchers.sweep_launch_logs)),
         ):

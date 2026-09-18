@@ -844,6 +844,8 @@ def install_appimage(entry, asset, on_progress=None):
 
 
 def _remove_others(directory, keep):
+    """Clear a folder of everything but `keep`, which may be one name or several."""
+    keeping = {keep} if isinstance(keep, str) else set(keep)
     try:
         names = os.listdir(directory)
     except OSError:
@@ -852,7 +854,7 @@ def _remove_others(directory, keep):
         # The record describes the build being kept, so it survives too. It is
         # rewritten immediately after this either way; deleting it here would
         # only widen the window where an interrupted install looks unknown.
-        if name in (keep, BUILD_RECORD):
+        if name in keeping or name == BUILD_RECORD:
             continue
         path = os.path.join(directory, name)
         try:
@@ -943,6 +945,11 @@ def install_tool(name, asset, on_progress=None, extract=""):
     is deleted once the file is out of it, so `installed_tool` cannot answer
     with it: that returns the first file in the directory, and a leftover zip
     sorting before the binary would be handed to a launcher as the tool.
+
+    A list of patterns takes several members, for a helper that is a binary and
+    a library it is linked against. The first pattern names the binary: it is
+    what is returned, made executable, and what `installed_tool` must answer
+    with.
     """
     if not emulator_catalog.is_safe_id(name):
         return "", "Invalid tool name."
@@ -956,22 +963,31 @@ def install_tool(name, asset, on_progress=None, extract=""):
     if not ok:
         return "", error or "Download failed."
 
+    kept = []
     if extract:
-        member, error = _extract_member(path, target_dir, extract)
+        patterns = [extract] if isinstance(extract, str) else list(extract)
+        for pattern in patterns:
+            member, error = _extract_member(path, target_dir, pattern)
+            if error:
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
+                return "", error
+            kept.append(member)
         try:
             os.remove(path)
         except OSError:
             pass
-        if error:
-            return "", error
-        path = member
+        path = kept[0]
 
     try:
         os.chmod(path, 0o755)
     except OSError as error:
         return "", "Downloaded but could not make it executable: %s" % error
 
-    _remove_others(target_dir, keep=os.path.basename(path))
+    _remove_others(target_dir, keep=[os.path.basename(one) for one in kept]
+                   or os.path.basename(path))
     decky.logger.info("Installed tool %s to %s", name, path)
     return path, ""
 
@@ -1118,6 +1134,18 @@ def ensure_tool(spec, now=None):
 def ensure_motion_server(entry, now=None):
     """Fetch this emulator's motion server if it is not here yet. (path, error)."""
     return ensure_tool(((entry or {}).get("motion") or {}).get("server") or {}, now)
+
+
+def ensure_hotkey_helper(entry, now=None):
+    """Fetch the hotkey helper if this entry needs keys and it is not here yet.
+
+    Same rule as the motion server: the launcher names the binary when it is
+    written, so one arriving later reaches a game only when its launcher is
+    rewritten. A port with no keys declared asks for nothing.
+    """
+    if not emulator_catalog.hotkeys.bindings_for(entry):
+        return "", ""
+    return ensure_tool(emulator_catalog.hotkeys.KEYBOARD_SERVER, now)
 
 
 def ensure_cloud_tool(now=None):

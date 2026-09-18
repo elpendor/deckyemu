@@ -12,6 +12,7 @@ import json
 import os
 import re
 import shlex
+import subprocess
 import stat
 import time
 
@@ -21,6 +22,7 @@ import cheevos
 import emu_config
 import emu_install
 import emulator_catalog
+from emulator_catalog import hotkeys
 import emulators
 import ra_detect
 import sysenv
@@ -206,7 +208,10 @@ LAUNCH_GATE_DIR = os.path.join(decky.DECKY_PLUGIN_RUNTIME_DIR, "launch")
 #  32  a program that reads its game from its own config is told which game by
 #      the launcher, not when the game was added. Two games on one such program
 #      wrote the same key, so the second added repointed the first.
-FORMAT_VERSION = 32
+#  33  the hotkey helper is told which button is its own, because the one it
+#      picks by default is half of the gesture it is there to provide: Start
+#      plus that button quits it, hardcoded, so the first press was the last.
+FORMAT_VERSION = 33
 
 # One file per OSD mode rather than one shared file. Games can override the
 # global setting individually, and a single file would mean the last game
@@ -660,6 +665,30 @@ def motion_server(binary):
         "fi",
         "",
     ])
+
+
+def stop_stray_helpers():
+    """Kill a hotkey helper that outlived its game. Returns how many went.
+
+    Its launcher stops it on every ending a script can see, and on the one it
+    cannot -- SIGKILL -- nothing runs at all. So a stray is possible, and a
+    stray types into whatever is open. Swept at startup as well as before each
+    launch, because the launch that would have cleared it may never come.
+    """
+    binary = emu_install.installed_tool(hotkeys.KEYBOARD_SERVER["name"])
+    if not binary:
+        return 0
+    try:
+        found = subprocess.run(["pkill", "-c", "-f", "^%s " % re.escape(binary)],
+                               capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError) as error:
+        decky.logger.warning("Could not look for stray hotkey helpers: %s", error)
+        return 0
+    killed = int((found.stdout or "0").strip() or 0)
+    if killed:
+        decky.logger.info("Stopped %d hotkey helper(s) left over from a killed launch",
+                          killed)
+    return killed
 
 
 def read_launch_log(launcher, limit=8000):
@@ -1519,9 +1548,13 @@ def write_launcher(
     # has been fetched. Every other launcher is written exactly as it was --
     # the wrapper below costs the `exec` (see `motion_server`), and nothing that
     # does not need it should pay that.
-    server = emu_install.motion_server(
-        emulator_catalog.find((emulator or {}).get("id") or "")
-    ) if emulator else ""
+    entry = emulator_catalog.find((emulator or {}).get("id") or "") if emulator else {}
+    server = emu_install.motion_server(entry) if emulator else ""
+
+    # A port whose menu opens with a key, and the helper that puts that key on
+    # the pad. Same shape as the motion server and for the same reasons: a child
+    # of this script, not a daemon, and never left behind.
+    keys = hotkey_helper(entry, path=launcher_path(title, rom_path))
 
     run = (
         [
@@ -1532,6 +1565,12 @@ def write_launcher(
         ]
         if server else ["exec %s" % command]
     )
+    if keys:
+        # Before the command and never behind an `exec`, so the trap that stops
+        # it can run. A launcher that already wraps for motion is wrapped once:
+        # the helper joins the same block.
+        run = [keys] + (run if server else [command, "_dke_status=$?",
+                                            'exit "$_dke_status"'])
 
     body = "\n".join(
         [
@@ -1599,6 +1638,74 @@ def gui_launcher_path(emulator, title=""):
     return os.path.join(
         LAUNCHER_DIR, "open-%s.sh" % _slug((emulator or {}).get("id") or title)
     )
+
+
+#: What runs the hotkey helper beside a port, and stops it with the game.
+#:
+#: The trap is the whole of it: Steam's reaper waits for every descendant, so a
+#: helper still alive when the game exits keeps the library entry on "Running"
+#: with nothing on screen to stop. The same rule `motion_server` follows.
+#:
+#: A missing helper costs the menu gesture, never the game.
+_HOTKEYS = """# The port's own menu, on the pad: hold Select, press Start.
+# See emulator_catalog/hotkeys.py. Dies with the game, never outlives it.
+_dke_keys={binary}
+if [ -x "$_dke_keys" ]; then
+  # A helper from a launch that was killed outright. The trap below covers
+  # every ordinary ending, but SIGKILL runs nothing, and what survives reads
+  # the pad and types into whatever opens next. Measured: TERM leaves nothing,
+  # KILL leaves it running.
+  pkill -f "^$_dke_keys " 2>/dev/null
+  LD_LIBRARY_PATH="$(dirname "$_dke_keys")${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"     "$_dke_keys" {program} -H {hotkey} -c {config} >/dev/null 2>&1 &
+  _dke_keys_pid=$!
+  trap 'kill "$_dke_keys_pid" 2>/dev/null' EXIT INT TERM
+fi"""
+
+
+def hotkey_helper(entry, path=""):
+    """The shell that puts a port's menu key on the pad, or "".
+
+    Empty for everything that declares no keys, and for a port whose helper has
+    not been fetched yet -- which is a launcher exactly as it was, so what is
+    missing is the gesture rather than the game.
+    """
+    bindings = hotkeys.bindings_for(entry)
+    if not bindings:
+        return ""
+    binary = emu_install.installed_tool(hotkeys.KEYBOARD_SERVER["name"])
+    if not binary:
+        return ""
+    config = write_hotkey_config(entry["id"], bindings, hotkeys.modifier_for(entry))
+    if not config:
+        return ""
+    return (_HOTKEYS
+            .replace("{binary}", shlex.quote(binary))
+            .replace("{config}", shlex.quote(config))
+            .replace("{hotkey}", shlex.quote(hotkeys.HOTKEY_BUTTON))
+            # What the helper watches to know the game is gone. It is told the
+            # launcher rather than the program: the program is an AppImage whose
+            # real process is named something else entirely once it mounts.
+            .replace("{program}", shlex.quote(os.path.basename(path or "game"))))
+
+
+def write_hotkey_config(entry_id, bindings, modifier=hotkeys.MODIFIER):
+    """Write this port's hotkey config and return its path, or "".
+
+    In the runtime directory rather than beside the program: it is derived from
+    the entry, rewritten whenever a launcher is, and nothing of the user's is in
+    it.
+    """
+    directory = os.path.join(decky.DECKY_PLUGIN_RUNTIME_DIR, "hotkeys")
+    try:
+        os.makedirs(directory, exist_ok=True)
+        path = os.path.join(directory, "%s.ini" % entry_id)
+        with open(path, "w", encoding="utf-8", newline="\n") as handle:
+            handle.write(hotkeys.config_text(bindings, modifier))
+    except OSError as error:
+        decky.logger.warning("Could not write the hotkey config for %s: %s",
+                             entry_id, error)
+        return ""
+    return path
 
 
 def _gui_working_dir(emulator):
