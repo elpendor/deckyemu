@@ -32,6 +32,11 @@ of your own, where closing a game copies that emulator's saves up on their own.
 with its own wide artwork, beside games bought from
 Steam.](docs/images/a-game-in-steam.jpg)
 
+**Run a native port** where one exists. Some games have been rebuilt to run on
+the Deck with no emulator at all: import a list of them, point one at the dump
+you already own, and it lands in Steam like any other game — artwork and all,
+with its own menu on Select+Start.
+
 Everything happens with a controller, from the Quick Access panel. The one
 exception is [Decky Loader](https://github.com/SteamDeckHomebrew/decky-loader)
 itself, which is installed from Desktop Mode: that is the only trip you make.
@@ -40,11 +45,12 @@ keyboard, a desktop or a second device.
 
 DeckyEmu ships no games, no BIOS files and no encryption keys, and downloads
 none of them. It installs emulators from their own publishers and points them at
-files you already have. It also fetches three helpers that are not emulators:
+files you already have. It also fetches four helpers that are not emulators:
 [the PS4 package extractor](docs/emulators.md#unpacking-a-ps4-package), if you
 add a PlayStation 4 `.pkg`,
 [a motion server](docs/emulators.md#motion-controls), if you install an emulator
-that uses one, and a copy of rclone, if you switch on cloud saves.
+that uses one, a hotkey helper, if you add a native port, and a copy of rclone,
+if you switch on cloud saves.
 
 ## Quick start
 
@@ -114,11 +120,7 @@ symptom-by-symptom list for when one of them misbehaves.
   one-at-a-time flow asks per game: no matching core, several possible cores,
   wrong artwork. Getting those wrong in bulk is what makes it tedious to undo.
 
-## Thanks
-
-Parts of this were settled by reading other people's work instead of guessing,
-and each of those saved a round of it. Two are not readings at all — they are
-software this plugin downloads and runs.
+## Credits
 
 - **[EmuDeck](https://github.com/EmuDeck)** and
   **[RetroDECK](https://github.com/RetroDECK/RetroDECK)** publish controller
@@ -136,17 +138,22 @@ software this plugin downloads and runs.
   shadPS4 expects. GPL-2.0, fetched from its own release page the first time a
   PS4 package is added.
 - **[SteamDeckGyroDSU](https://github.com/kmicki/SteamDeckGyroDSU)** is the
-  other one: the motion server behind gyro in Cemu, Ryujinx, Azahar and any
-  definition you import that asks for it. It reads the Deck's own sensors and
+  motion server behind gyro in Cemu, Ryujinx, Azahar and any definition you
+  import that asks for it. It reads the Deck's own sensors and
   serves them over the cemuhook protocol on `127.0.0.1:26760`, which is what
   lets those emulators have motion while the controller stays Steam's — no
   layout, back button or stick curve is given up for it. MIT, fetched from its
   own release page when you install an emulator that wants it.
-- **[rclone](https://github.com/rclone/rclone)** is the third: the transfer tool
-  behind cloud saves. The storage is yours and so is the account — rclone talks
-  to some seventy services and this plugin has an account with none of them, so
-  nothing here ever holds your credentials. MIT, fetched from its own release
+- **[rclone](https://github.com/rclone/rclone)** is the transfer tool behind
+  cloud saves. The storage is yours and so is the account — rclone talks to some
+  seventy services and this plugin has an account with none of them, so nothing
+  here ever holds your credentials. MIT, fetched from its own release
   page when you switch cloud saves on.
+- **[gptokeyb2](https://github.com/PortsMaster/gptokeyb2)** for reaching a
+  native port's own menu. A port opens its menu with a keyboard key and Game
+  Mode has no keyboard; this turns Select+Start into that key, which is how
+  PortMaster does it. GPL-2.0, fetched from its own release page when you add a
+  port.
 - **[unifideck](https://github.com/mubaraknumann/unifideck)** for the reason the
   update button works in Game Mode: the Quick Access panel is a popup window
   there, so Decky's global websocket sits on its opener rather than on `window`.

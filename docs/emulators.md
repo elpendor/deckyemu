@@ -54,7 +54,7 @@ something goes wrong and only one of them has builds you can move between.
 Several emulators are not playable as they ship — a keyboard is bound instead of
 a controller, or they start in a window — so installing one also writes a
 controller configuration and turns fullscreen on. Those values are not guesses;
-where they came from is under [Thanks](../README.md#thanks).
+where they came from is under [Credits](../README.md#credits).
 
 The same pass turns off whatever an emulator draws over the game. On a desktop a
 menu bar that slides in, a notification in the corner or a mouse pointer are
