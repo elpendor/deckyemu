@@ -24,6 +24,7 @@ asset pattern must be anchored rather than a substring match: installing the
 wrong architecture fails at exec time with nothing that names the cause.
 """
 
+import hashlib
 import json
 import os
 import re
@@ -694,6 +695,7 @@ def resolve_release_list(repo, pattern, host="", limit=30):
                 "name": name,
                 "url": url,
                 "size": asset.get("size") or 0,
+                "digest": asset.get("digest") or "",
                 "published": (release.get("published_at") or "")[:10],
                 "prerelease": bool(release.get("prerelease")),
             })
@@ -755,11 +757,50 @@ def _resolve_asset(api_url, pattern, label, failure=None):
                 "url": url,
                 "tag": payload.get("tag_name") or "",
                 "size": asset.get("size") or 0,
+                "digest": asset.get("digest") or "",
             },
             "",
         )
 
     return None, "No download in the latest release of %s matched what was expected." % label
+
+
+#: How GitHub states an asset's checksum, e.g. "sha256:5c73...".
+_DIGEST_RE = re.compile(r"^sha256:([0-9a-f]{64})$", re.IGNORECASE)
+
+
+def _digest_matches(path, digest):
+    """Whether the file at `path` is what the release said it would be. (ok, error).
+
+    **This is an integrity check, not an authenticity one.** The checksum comes
+    down in the same API response as the download URL, so whoever could swap one
+    could swap the other. What it catches is a download that arrived wrong --
+    truncated, or a CDN serving a stale object -- which otherwise reaches the
+    user as an emulator that will not start and says nothing about why.
+
+    An asset with no digest passes: GitHub only began publishing them recently,
+    and a self-hosted forge an imported definition names may publish none at all.
+    Refusing those would be refusing to install from anywhere but github.com.
+    """
+    stated = _DIGEST_RE.match((digest or "").strip())
+    if not stated:
+        return True, ""
+    wanted = stated.group(1).lower()
+    reader = hashlib.sha256()
+    try:
+        with open(path, "rb") as handle:
+            for block in iter(lambda: handle.read(1024 * 1024), b""):
+                reader.update(block)
+    except OSError as error:
+        return False, "Could not read the download: %s" % error
+    got = reader.hexdigest()
+    if got != wanted:
+        decky.logger.warning("Digest mismatch for %s: wanted %s, got %s",
+                             path, wanted, got)
+        return False, ("The download does not match the checksum the release "
+                       "published, so it arrived damaged or altered. Nothing "
+                       "was installed.")
+    return True, ""
 
 
 def install_appimage(entry, asset, on_progress=None):
@@ -782,6 +823,16 @@ def install_appimage(entry, asset, on_progress=None):
     )
     if not ok:
         return "", error or "Download failed."
+
+    # Before anything is unpacked or made executable, because a damaged archive
+    # is worth refusing rather than half-extracting.
+    whole, damaged = _digest_matches(path, asset.get("digest", ""))
+    if not whole:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+        return "", damaged
 
     # A release that ships the program inside an archive. The archive is not the
     # thing to run, and without this it would be made executable and handed to

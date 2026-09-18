@@ -238,4 +238,6 @@ survive a reset that clears emulators.
 | A game opens the emulator but no game | `args` — see *Getting it right* |
 | It starts in a window | `fullscreen_args` is wrong, or the emulator uses a setting instead of a flag |
 | Installed but dies immediately | The `asset` pattern took the wrong architecture |
+| Refused: does not match the checksum | The download arrived damaged. Where the release publishes a checksum it is verified before anything is unpacked; try again |
+| Nothing in the download is named like… | The `extract` pattern matched no file. The message lists what the archive held — take the name from there, not from the project's readme |
 | Firmware row says missing when it is not | `detect.path` or `dest` does not match where the emulator really keeps it |
