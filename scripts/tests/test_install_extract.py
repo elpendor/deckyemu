@@ -176,6 +176,39 @@ finally:
     net.download = _real_download
 
 
+section("a pattern that names nothing says what was in there")
+
+# The pattern belongs to whoever wrote the definition, the archive to whoever
+# cut the release, and the two drift: PaperBoat's readme says
+# `paperboat.appimage` while its zip ships `Paperboat.AppImage`. The install
+# stopped with "the download did not contain what was expected", which is true
+# of every possible mistake and points at none of them.
+_MISNAMED = os.path.join(TMP, "release", "Misnamed.zip")
+with zipfile.ZipFile(_MISNAMED, "w") as _bundle:
+    _bundle.writestr("Program.AppImage", NEWBUILD)
+    _bundle.writestr("readme.txt", "hello")
+
+_nothing, _why = emu_install._unpack_release(
+    _MISNAMED, emu_install.emulators_dir("misnamed-port"), r"^program\.appimage$")
+check("the pattern that missed is quoted back", r"^program\.appimage$" in _why, True)
+check("and so is what the archive actually held",
+      "Program.AppImage" in _why and "readme.txt" in _why, True)
+
+# The same answer on the one-file path, which has its own reader.
+_single, _single_why = emu_install._extract_member(
+    _MISNAMED, emu_install.emulators_dir("misnamed-port"), r"^program\.appimage$")
+check("taking a single file out says the same", "Program.AppImage" in _single_why, True)
+
+# A long archive is summarised rather than printed whole: this goes in a toast.
+_MANY = os.path.join(TMP, "release", "Many.zip")
+with zipfile.ZipFile(_MANY, "w") as _bundle:
+    for _n in range(20):
+        _bundle.writestr("file%02d.bin" % _n, "x")
+_, _many_why = emu_install._unpack_release(
+    _MANY, emu_install.emulators_dir("many-port"), r"^nothing$")
+check("a long listing is cut short", _many_why.endswith("..."), True)
+
+
 section("an extract pattern has to be one")
 
 _bad = dict(_ENTRY, source=dict(_ENTRY["source"], extract="^(unclosed"))

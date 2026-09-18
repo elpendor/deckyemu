@@ -119,6 +119,13 @@ import it and read what comes back.
   "asset": "^…\\.AppImage$" }
 ```
 
+A release that ships the program inside a zip adds `"extract"`, a regex matching
+the file to run, and `"unpack": true` where the whole archive must come out
+because the program has data folders beside it. **Take that name from the
+release asset, not from the project's readme**: they drift, and a pattern that
+matches nothing leaves a folder that looks installed and an entry that never
+appears. If an install fails, the error lists what the archive actually held.
+
 Add `"host": "git.example.com"` to a `github` source for a project that left
 GitHub and self-hosts the same releases API — its old repository answers HTTP
 451 there, so no asset pattern reaches it. `host` is a host name, not a URL.

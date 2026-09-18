@@ -915,6 +915,21 @@ def installed_tool(name):
     return ""
 
 
+def _nothing_matched(pattern, names):
+    """The error for an `extract` pattern that named no member of the archive.
+
+    It lists what was in there, because the pattern belongs to whoever wrote the
+    definition and the archive belongs to whoever cut the release, and the two
+    drift: PaperBoat's readme says `paperboat.appimage` while its zip ships
+    `Paperboat.AppImage`. "The download did not contain what was expected" sent
+    somebody to read the plugin's source to learn that the P was capital.
+    """
+    listed = ", ".join(sorted(names)[:8]) or "nothing"
+    if len(names) > 8:
+        listed += ", ..."
+    return "Nothing in the download is named like %s. It holds: %s." % (pattern, listed)
+
+
 def _unpack_release(archive, destination, pattern):
     """Unpack a whole zip, and return the member `pattern` names. (path, error).
 
@@ -929,6 +944,7 @@ def _unpack_release(archive, destination, pattern):
         return "", "Bad extract pattern: %s" % error
 
     found = ""
+    seen = []
     try:
         with zipfile.ZipFile(archive) as bundle:
             for info in bundle.infolist():
@@ -948,12 +964,13 @@ def _unpack_release(archive, destination, pattern):
                 mode = info.external_attr >> 16
                 if mode:
                     os.chmod(target, mode & 0o777)
+                seen.append(os.path.basename(relative))
                 if matcher.match(os.path.basename(relative)):
                     found = target
     except (OSError, zipfile.BadZipFile, ValueError) as error:
         return "", "Could not unpack the download: %s" % error
     if not found:
-        return "", "The download did not contain what was expected."
+        return "", _nothing_matched(pattern, seen)
     return found, ""
 
 
@@ -975,15 +992,19 @@ def _extract_member(archive, destination, pattern):
         return "", "Bad extract pattern: %s" % error
 
     found = []
+    seen = []
     try:
         with zipfile.ZipFile(archive) as bundle:
             for info in bundle.infolist():
                 name = os.path.basename(info.filename)
-                if info.is_dir() or not name or not matcher.match(name):
+                if info.is_dir() or not name:
+                    continue
+                seen.append(name)
+                if not matcher.match(name):
                     continue
                 found.append(info)
         if len(found) != 1:
-            return "", ("The download did not contain what was expected."
+            return "", (_nothing_matched(pattern, seen)
                         if not found else
                         "The download contained %d files matching %r; expected "
                         "one." % (len(found), pattern))
