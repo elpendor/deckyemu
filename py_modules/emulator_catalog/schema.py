@@ -112,6 +112,11 @@ OPTIONAL = {
              "else is not offered, one that cannot be read still is. A "
              "compressed format keeps nothing at a fixed offset, so declaring "
              "one alongside an `id` is refused -- see COMPRESSED_EXTENSIONS.",
+    "game_picker": "True when the port asks for its game through a file picker "
+                   "rather than taking a path. The picker is answered with the "
+                   "game that was chosen when the shortcut was made -- see "
+                   "`launchers.picker_shim`. Only for a port that asks through "
+                   "zenity, which is what the Deck has.",
     "first_run": "Arguments for the run that sets the port up, as {'args': "
                  "'{rom}', 'unless': [<file names>]}. Passed only while none of "
                  "those files exist in the program's own directory, which is "
@@ -781,6 +786,10 @@ def validate(entry, known_platforms=(), imported=False):
 
     problems.extend(_validate_hotkeys(entry_id, entry))
     problems.extend(_validate_first_run(entry_id, entry))
+
+    if entry.get("game_picker") and not entry.get("port"):
+        bad("game_picker answers a port's own file picker; an emulator is "
+            "handed a path")
 
     beside = entry.get("game_beside")
     if beside:
