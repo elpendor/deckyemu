@@ -783,6 +783,21 @@ def install_appimage(entry, asset, on_progress=None):
     if not ok:
         return "", error or "Download failed."
 
+    # A release that ships the program inside an archive. The archive is not the
+    # thing to run, and without this it would be made executable and handed to
+    # Steam, which fails at exec time with nothing naming why.
+    extract = (entry.get("source") or {}).get("extract") or ""
+    if extract:
+        member, failure = _extract_member(path, target_dir, extract)
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+        if failure:
+            return "", failure
+        path = member
+        asset = dict(asset, name=os.path.basename(member))
+
     try:
         os.chmod(path, 0o755)
     except OSError as error:
@@ -864,7 +879,7 @@ def installed_tool(name):
     return ""
 
 
-def _extract_tool(archive, destination, pattern):
+def _extract_member(archive, destination, pattern):
     """Pull one file out of a downloaded zip by basename. Returns (path, error).
 
     Members are written by basename into `destination`, never by the path the
@@ -872,9 +887,9 @@ def _extract_tool(archive, destination, pattern):
     honour a directory inside it. Same rule, and the same reason, as the
     firmware unpacker.
 
-    One file, because a tool is one binary. An archive matching the pattern
-    twice is a pattern that does not say what was meant, and taking the first of
-    them would decide it silently.
+    One file, because a tool is one binary and so is an emulator's build. An
+    archive matching the pattern twice is a pattern that does not say what was
+    meant, and taking the first of them would decide it silently.
     """
     try:
         matcher = re.compile(pattern)
@@ -928,7 +943,7 @@ def install_tool(name, asset, on_progress=None, extract=""):
         return "", error or "Download failed."
 
     if extract:
-        member, error = _extract_tool(path, target_dir, extract)
+        member, error = _extract_member(path, target_dir, extract)
         try:
             os.remove(path)
         except OSError:

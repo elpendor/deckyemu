@@ -655,6 +655,20 @@ def validate(entry, known_platforms=(), imported=False):
                 "from the release. Anchor it: releases carry aarch64 builds "
                 "beside x86_64 ones and .zsync files beside the real ones, and "
                 "the wrong pick fails at exec time with nothing naming why")
+        # A release that ships the program inside an archive rather than as
+        # the file to run. `extract` names what to take out of it, and without
+        # it the archive itself would be made executable and handed to Steam.
+        extract = source.get("extract")
+        if extract is not None:
+            if not isinstance(extract, str) or not extract:
+                bad("source extract must be a regex naming one file inside the "
+                    "archive, e.g. '^soh\.appimage$'")
+            else:
+                try:
+                    re.compile(extract)
+                except re.error as failure:
+                    bad("source extract %r is not a valid regex: %s"
+                        % (extract, failure))
         # Optional, and empty means GitHub. Present means a project that left
         # GitHub and self-hosts the same releases API.
         host = source.get("host") or ""
