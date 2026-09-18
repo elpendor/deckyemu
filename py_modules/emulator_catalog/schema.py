@@ -273,7 +273,17 @@ def owned_roots(entry):
     source = entry.get("source") or {}
     if source.get("kind") == "flatpak" and source.get("id"):
         return [".var/app/%s" % source["id"]]
-    return [path for path in (entry.get("data") or ()) if isinstance(path, str)]
+    # `root` as well as `data`: an imported entry declares the directories it
+    # owns under `root` and is confined to them, and reading only `data` meant
+    # nothing an imported entry owned was ever backed up or cleared. It said it
+    # owned the directory in the one field that is mandatory for it.
+    roots = entry.get("root")
+    roots = [roots] if isinstance(roots, str) else list(roots or ())
+    found = []
+    for path in list(entry.get("data") or ()) + roots:
+        if isinstance(path, str) and path and path not in found:
+            found.append(path)
+    return found
 
 
 

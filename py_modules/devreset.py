@@ -29,6 +29,7 @@ import decky
 
 import emu_install
 import emulator_catalog
+from emulator_catalog import schema
 import emulators
 import fileserver
 import romshelf
@@ -119,12 +120,11 @@ def _emulator_data_dirs(entry_ids=None):
     for entry in emulator_catalog.CATALOG:
         if entry_ids is not None and entry["id"] not in entry_ids:
             continue
-        source = entry["source"]
-        if source["kind"] == "flatpak":
-            relatives = [os.path.join(".var", "app", source["id"])]
-        else:
-            relatives = list(entry.get("data") or ())
-        for relative in relatives:
+        # The same answer the backup reads out of, rather than a second copy
+        # of the rule: this one knew only `data`, so an imported entry -- which
+        # declares what it owns as `root` -- was left standing by a reset that
+        # said it had deleted emulator data.
+        for relative in schema.owned_roots(entry):
             path = os.path.join(home, *relative.split("/"))
             if os.path.isdir(path):
                 found.append((entry["name"], path))

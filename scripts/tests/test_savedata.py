@@ -75,7 +75,28 @@ _whole = {
     "platform": "Sony - PlayStation 2",
 }
 
-emulator_catalog.CATALOG = (_declares, _whole)
+# An imported entry -- a port, or an emulator somebody sent -- says what it
+# owns in `root`, because that is the field it is confined to writing inside.
+# Read only `data` and nothing it owns is ever offered: its saves were missing
+# from the backup while the program sat in the list of things installed.
+_drop(".local/share/SomeStudio/Imported/saves/slot1.bin")
+_drop(".local/share/SomeStudio/Imported/config.json", "{}")
+# The cache half of the same XDG layout, which an imported entry lists beside
+# the rest. Shader caches and thumbnails are not saves, and are the largest
+# thing in the tree.
+_drop(".cache/imported/shaders/huge.bin", "x" * 8192)
+
+_imported = {
+    "id": "aardvark-port",
+    "name": "Aardvark Port",
+    "source": {"kind": "github", "repo": "someone/aardvark"},
+    "root": [".local/share/SomeStudio/Imported", ".cache/imported"],
+    "imported": True,
+    "port": True,
+    "platform": "Sony - PlayStation 2",
+}
+
+emulator_catalog.CATALOG = (_declares, _whole, _imported)
 
 _listed = {source["id"]: source for source in savedata.sources()}
 
@@ -86,6 +107,38 @@ check("and is not reported as a whole-directory backup",
       _listed["pretendo"]["whole"], False)
 check("so the games and firmware beside them are not counted",
       _listed["pretendo"]["files"], 1)
+
+# A declared save can be one file: a memory card, a record of achievements.
+# `os.walk` over a file yields nothing, so this used to back up none of it and
+# say nothing about that.
+_drop(".local/share/SomeStudio/Imported/achievements.json", "{}")
+_named_file = dict(_imported, id="file-port", name="File Port",
+                   saves=[".local/share/SomeStudio/Imported/saves",
+                          ".local/share/SomeStudio/Imported/achievements.json"])
+emulator_catalog.CATALOG = (_declares, _whole, _imported, _named_file)
+_with_file = {source["id"]: source for source in savedata.sources()}
+check("a file named as a save is carried, not skipped",
+      _with_file["file-port"]["files"], 2)
+check("and it is what the entry named",
+      sorted(os.path.basename(path) for path in _with_file["file-port"]["paths"]),
+      ["achievements.json", "saves"])
+emulator_catalog.CATALOG = (_declares, _whole, _imported)
+
+check("an imported entry's own directory is offered too",
+      _listed["aardvark-port"]["paths"],
+      [os.path.join(_home, ".local", "share", "SomeStudio", "Imported")])
+check("with everything in it, since it declared no saves directory",
+      (_listed["aardvark-port"]["whole"], _listed["aardvark-port"]["files"]), (True, 2))
+# Not the cache directory it also owns. A reset still clears that one -- see
+# `owned_roots`, which is what the reset reads.
+check("but not the cache directory it owns",
+      any(".cache" in path for path in _listed["aardvark-port"]["paths"]), False)
+
+# By name, the way the restore list reads. RetroArch used to be pinned first,
+# which made a sorted list look unsorted.
+check("the list is in name order",
+      [source["name"] for source in savedata.sources()],
+      ["Aardvark Port", "Plain", "Pretendo"])
 
 check("an emulator that declares none offers everything it keeps",
       _listed["plain"]["whole"], True)
@@ -102,7 +155,7 @@ _destination = os.path.join(TMP, "backups", "saves.zip")
 _result = savedata.build(_destination)
 check("the build reports success", _result["ok"], True)
 check("and names the emulators it took from",
-      sorted(_result["emulators"]), ["Plain", "Pretendo"])
+      sorted(_result["emulators"]), ["Aardvark Port", "Plain", "Pretendo"])
 check("and the archive is really there", os.path.isfile(_destination), True)
 check("with nothing half-written left beside it",
       os.path.isfile(_destination + savedata._PARTIAL), False)
@@ -113,7 +166,10 @@ with zipfile.ZipFile(_destination) as _bundle:
 
 check("every file is stored under the root it came from",
       [name for name in _members if name.startswith("files/")],
-      ["files/plain-dev.plainly.plain/config/plain/memcards/card1.mcd",
+      ["files/aardvark-port-imported/achievements.json",
+       "files/aardvark-port-imported/config.json",
+       "files/aardvark-port-imported/saves/slot1.bin",
+       "files/plain-dev.plainly.plain/config/plain/memcards/card1.mcd",
        "files/plain-dev.plainly.plain/config/plain/settings.ini",
        "files/pretendo-home/00000001/savedata/GAME01/SAVE"])
 # Restoring has to put files back where they were, and working that out from the
@@ -122,7 +178,8 @@ check("every file is stored under the root it came from",
 check("the manifest names the absolute directory behind each root",
       sorted((root["key"], os.path.basename(root["path"]))
              for root in _manifest["roots"]),
-      [("plain-dev.plainly.plain", "dev.plainly.Plain"),
+      [("aardvark-port-imported", "Imported"),
+       ("plain-dev.plainly.plain", "dev.plainly.Plain"),
        ("pretendo-home", "home")])
 check("and records the layout version so a restore can refuse an unknown one",
       _manifest["format"], savedata.FORMAT)
@@ -230,14 +287,15 @@ os.remove(os.path.join(_home, ".config", "pretendo", "dev_hdd0", "home",
 _described = savedata.describe(_destination)
 check("the archive is recognised as one of ours", _described["ok"], True)
 _by_id = {entry["id"]: entry for entry in _described["sources"]}
-check("and it says which emulators are in it", sorted(_by_id), ["plain", "pretendo"])
+check("and it says which emulators are in it", sorted(_by_id),
+      ["aardvark-port", "plain", "pretendo"])
 check("and how many of those files are already on this device",
       (_by_id["pretendo"]["files"], _by_id["pretendo"]["present"]), (1, 0))
 check("counting the ones that are", _by_id["plain"]["present"], 2)
 
 _result = savedata.restore(_destination)
 check("the missing save is written back", _result["written"], 1)
-check("and the files already here are left alone", _result["skipped"], 2)
+check("and the files already here are left alone", _result["skipped"], 5)
 check("so the save is really there again",
       os.path.isfile(os.path.join(_home, ".config", "pretendo", "dev_hdd0", "home",
                                   "00000001", "savedata", "GAME01", "SAVE")),

@@ -112,6 +112,13 @@ def _walk(root, skip_top=()):
     """
     found = []
     root = os.path.normpath(root)
+
+    # A declared save can be one file rather than a directory -- a memory card,
+    # a record of achievements -- and `os.walk` over a file yields nothing at
+    # all. Silently backing up none of it is the worst answer available.
+    if os.path.isfile(root):
+        return [(root, os.path.basename(root))]
+
     for current, directories, files in os.walk(root, followlinks=False):
         relative = os.path.relpath(current, root)
         if relative == ".":
@@ -193,6 +200,23 @@ def _retroarch_source():
     return {"id": "retroarch", "name": "RetroArch", "roots": roots, "whole": False}
 
 
+def relative_of(path, home):
+    """`path` as the home-relative form the catalog declared it in."""
+    return os.path.relpath(path, home).replace(os.sep, "/")
+
+
+def _is_cache_root(relative):
+    """Whether a declared directory is the cache half of an XDG layout.
+
+    `.cache/<name>` holds shader caches, thumbnails and game lists: rebuilt on
+    demand, large, and not a save. Excluded from a backup for exactly the reason
+    `_SKIP_TOP` excludes a flatpak's `cache` -- but *not* from `owned_roots`,
+    because a reset that leaves a stale cache behind is a reset that did not
+    happen.
+    """
+    return relative == ".cache" or relative.startswith(".cache/")
+
+
 def _catalog_sources():
     """The catalog emulators that are installed, and what to take from each."""
     home = sysenv.user_home()
@@ -212,8 +236,16 @@ def _catalog_sources():
                 for relative in declared
             ]
         else:
-            roots = [(os.path.basename(path), path) for path in owned]
-        roots = [(label, path) for label, path in roots if os.path.isdir(path)]
+            # A root that *is* a cache directory, rather than one holding a
+            # `cache` folder. An imported entry lists the XDG directories it
+            # owns, and `.cache/<name>` is one of them -- so the whole of an
+            # emulator's shader cache and game-list thumbnails arrived in the
+            # backup, and in the pending upload count, as saves. The same
+            # definition as `_SKIP_TOP`, applied one level up.
+            roots = [(os.path.basename(path), path) for path in owned
+                     if not _is_cache_root(relative_of(path, home))]
+        roots = [(label, path) for label, path in roots
+                 if os.path.isdir(path) or os.path.isfile(path)]
         if not roots:
             continue
         found.append({
@@ -226,16 +258,20 @@ def _catalog_sources():
 
 
 def _all_sources():
-    """Every emulator with something to back up, RetroArch first.
+    """Every emulator and port with something to back up, by name.
 
-    RetroArch leads for the same reason it leads the setup page: it is the main
-    path, and the one whose absence from a backup somebody would notice first.
+    By name because that is how the restore list reads and how a list of a dozen
+    things is looked through. RetroArch used to lead, on the reasoning that it
+    leads the setup page -- but nothing here is missing for the reader to
+    notice, and a list that is alphabetical except for one row reads as a list
+    that is not sorted.
     """
     found = []
     libretro = _retroarch_source()
     if libretro:
         found.append(libretro)
-    return found + _catalog_sources()
+    return sorted(found + _catalog_sources(),
+                  key=lambda source: source["name"].casefold())
 
 
 def sources():
