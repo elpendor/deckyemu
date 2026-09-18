@@ -30,6 +30,7 @@ import { DANGER_CLASS, DANGER_CSS, DANGER_TEXT } from "./danger";
 import { FileName } from "./FileName";
 import { logError } from "./logError";
 import { openModal } from "./modalStack";
+import { ScrollList, ScrollRow } from "./ScrollList";
 import {
   missingCount,
   missingIds,
@@ -83,9 +84,6 @@ type Picked =
   | { kind: "cloud"; remote: string; label: string; stamp: string }
   /** Not a source: the list of what one storage's copies have replaced. */
   | { kind: "earlier"; remote: string; label: string };
-
-/** What a row does when it is pressed: nothing. See the emulator list. */
-const noop = () => {};
 
 /**
  * What to call one storage on screen.
@@ -906,7 +904,7 @@ export function RestoreSavesModal({ closeModal }: Props) {
               the device, so three is ~315px, and 38vh of the Deck's 800
               is close to it while still scaling with the window.
               */}
-          <Focusable style={{ maxHeight: "38vh", overflowY: "auto" }}>
+          <ScrollList style={{ maxHeight: "38vh" }}>
           {(contents ?? []).map((entry) => {
             const said = sourceLine(entry, humanSize(entry.bytes));
             return (
@@ -925,11 +923,7 @@ export function RestoreSavesModal({ closeModal }: Props) {
               // There is nothing to do to an emulator here -- the row is a
               // statement of what the storage holds -- so activating one does
               // nothing on purpose. The handler is what makes the row reachable.
-              <Focusable
-                key={entry.id}
-                focusWithinClassName="gpfocuswithin"
-                onActivate={noop}
-              >
+              <ScrollRow key={entry.id}>
                 {/* Dimmed when there is nothing to restore from it.
                     Emphasis by contrast rather than by decoration: what a
                     person is looking for here is the row that will change, and
@@ -940,10 +934,10 @@ export function RestoreSavesModal({ closeModal }: Props) {
                 <div style={{ opacity: said.missing > 0 || !entry.installed ? 1 : 0.5 }}>
                   <Field label={entry.name} description={said.line} />
                 </div>
-              </Focusable>
+              </ScrollRow>
             );
           })}
-          </Focusable>
+          </ScrollList>
 
         </>
       )}

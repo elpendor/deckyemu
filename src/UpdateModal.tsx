@@ -1,6 +1,7 @@
 import { DialogButton, Focusable, ModalRoot } from "@decky/ui";
 
 import { UpdatePanel } from "./UpdatePanel";
+import { ScrollList } from "./ScrollList";
 
 interface Props {
   closeModal?: () => void;
@@ -22,9 +23,9 @@ export function UpdateModal({ closeModal }: Props) {
       <div style={{ fontSize: "18px", fontWeight: 600, marginBottom: "8px" }}>Updates</div>
       {/* Scrolled, because ModalRoot does not scroll its own content and an
           unfolded changelog runs well past the screen. */}
-      <Focusable style={{ maxHeight: "58vh", overflowY: "auto" }}>
+      <ScrollList style={{ maxHeight: "58vh" }}>
         <UpdatePanel onHandedOff={closeModal} releaseOnly />
-      </Focusable>
+      </ScrollList>
       <Focusable style={{ display: "flex", gap: "8px", marginTop: "12px" }}>
         <DialogButton onClick={() => closeModal?.()} style={{ flex: 1 }}>
           Close

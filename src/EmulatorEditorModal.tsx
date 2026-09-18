@@ -10,6 +10,7 @@ import {
 import { FileSelectionType, openFilePicker, toaster } from "@decky/api";
 
 import { SwitchLabel } from "./SwitchLabel";
+import { ScrollList } from "./ScrollList";
 import { WorkaroundInfo } from "./WorkaroundInfo";
 import { adoptedSystemId, initialSystemId, systemFields } from "./systemChoice";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -299,7 +300,7 @@ export function EmulatorEditorModal({ emulator, onSaved, closeModal }: Props) {
         {emulator ? `Edit ${emulator.name}` : "Add an emulator"}
       </div>
 
-      <Focusable style={{ ...FIELD_GAP, gap: "14px", maxHeight: "58vh", overflowY: "auto" }}>
+      <ScrollList style={{ ...FIELD_GAP, gap: "14px", maxHeight: "58vh" }}>
         <div style={FIELD_GAP}>
           <Label hint="Shown when choosing how to run a ROM.">Name</Label>
           <TextField value={name} onChange={(event) => setName(event.target.value)} />
@@ -387,7 +388,7 @@ export function EmulatorEditorModal({ emulator, onSaved, closeModal }: Props) {
         {/* Only for an emulator that exists: there is nothing to correct about
             one that has not been registered yet. */}
         {emulator?.id && <Workarounds emulatorId={emulator.id} />}
-      </Focusable>
+      </ScrollList>
 
       {error && (
         <div style={{ color: "#e35d5d", fontSize: "13px", marginTop: "10px" }}>{error}</div>

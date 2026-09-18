@@ -1,6 +1,7 @@
-import { Field, Focusable, ModalRoot } from "@decky/ui";
+import { Field, ModalRoot } from "@decky/ui";
 
 import type { OptionalFile } from "./backend";
+import { ScrollList, ScrollRow } from "./ScrollList";
 
 /**
  * Every optional file the cores in use could read, and which cores those are.
@@ -14,8 +15,6 @@ import type { OptionalFile } from "./backend";
  * its rows can take focus -- which a plain `Field` cannot, so each row carries
  * an `onActivate` that does nothing.
  */
-const noop = () => {};
-
 interface Props {
   emulatorName: string;
   files: OptionalFile[];
@@ -35,18 +34,18 @@ export function OptionalFilesModal({ emulatorName, files, closeModal }: Props) {
       {/* Four rows. A row is 64px measured over CEF on the device; at 55vh the
           list was 294px and pushed the dialog 28px past its own frame, so the
           whole dialog scrolled as well as the list. */}
-      <Focusable style={{ maxHeight: "256px", overflowY: "auto" }}>
+      <ScrollList style={{ maxHeight: "256px" }}>
         {files.map((file) => (
-          <Focusable key={file.name} focusWithinClassName="gpfocuswithin" onActivate={noop}>
+          <ScrollRow key={file.name}>
             <Field
               label={file.name}
               description={[file.label, file.cores.length ? `Read by ${file.cores.join(", ")}` : ""]
                 .filter(Boolean)
                 .join(". ")}
             />
-          </Focusable>
+          </ScrollRow>
         ))}
-      </Focusable>
+      </ScrollList>
     </ModalRoot>
   );
 }

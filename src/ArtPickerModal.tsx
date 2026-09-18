@@ -14,6 +14,7 @@ import {
   type ArtCandidates,
 } from "./backend";
 import { callWithRetry } from "./timeout";
+import { ScrollList } from "./ScrollList";
 
 interface Props {
   romPath: string;
@@ -182,15 +183,7 @@ export function ArtPickerModal({
       )}
 
       {!searching && (
-        <Focusable
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: "4px",
-            maxHeight: "45vh",
-            overflowY: "auto",
-          }}
-        >
+        <ScrollList style={{ gap: "4px", maxHeight: "45vh" }}>
           {rows.map((row) => (
             <DialogButton
               key={row.key}
@@ -209,7 +202,7 @@ export function ArtPickerModal({
               <span style={{ fontSize: "12px", opacity: 0.6 }}>{row.sublabel}</span>
             </DialogButton>
           ))}
-        </Focusable>
+        </ScrollList>
       )}
     </ModalRoot>
   );

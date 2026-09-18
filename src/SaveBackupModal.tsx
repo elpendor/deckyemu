@@ -19,6 +19,7 @@ import {
   type SaveSource,
 } from "./backend";
 import { logError } from "./logError";
+import { ScrollList } from "./ScrollList";
 import { HandoffCode } from "./HandoffCode";
 import { MUTED } from "./dialogStyle";
 import { backupSummary, defaultSelection, listNames, totals } from "./saveBackup";
@@ -277,7 +278,7 @@ export function SaveBackupModal({ closeModal }: Props) {
                 the device, so three is ~315px, and 38vh of the Deck's 800
                 is close to it while still scaling with the window.
                 */}
-            <Focusable style={{ maxHeight: "38vh", overflowY: "auto" }}>
+            <ScrollList style={{ maxHeight: "38vh" }}>
               {sources.map((source) => (
                 <ToggleField
                   key={source.id}
@@ -310,7 +311,7 @@ export function SaveBackupModal({ closeModal }: Props) {
                   onChange={(on) => toggle(source.id, on)}
                 />
               ))}
-            </Focusable>
+            </ScrollList>
             {/* A bar rather than a spinner, because the question while this
                 runs is not whether it is doing something but how much longer.
 
