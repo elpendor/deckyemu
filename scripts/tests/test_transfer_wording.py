@@ -80,7 +80,7 @@ section("a file moves between the lists as it does on the Deck")
 # page's script moves a finished upload into the received list rather than
 # leaving it under a heading that then means nothing.
 check("a completed upload is moved into the received list",
-      "already.insertBefore(job.row, already.firstChild)" in _page, True)
+      "receive(job.row)" in _page, True)
 check("newest first, matching the order the server lists what it already had",
       "firstChild" in _page, True)
 # Two things change a list -- a file joining the queue and a file leaving it --
@@ -90,13 +90,18 @@ _settle = _page.partition("function settle(job) {")[2].partition("\n}")[0]
 check("and the headings follow whatever the lists actually hold",
       (_page.count("reflowHeadings()") >= 3, "reflowHeadings()" in _settle), (True, True))
 # A failure did not arrive, so it must not be filed as though it had. Asserted
-# by where the move sits rather than by what comes before what: the page's one
-# move into Received is in `finish`, and only a 200 reaches it. Every other
-# ending -- a retry, a give-up -- goes the other way.
+# by there being one move into Received and by who calls it. It used to sit in
+# `finish` and this read "the move is in `finish`" -- a link fetched from the
+# page is a second way a file arrives, so the rule became a function that both
+# endings call once they have succeeded.
 _finish = _page.partition("function finish(job) {")[2].partition("\n}")[0]
-check("the only move is the one that ran on a 200",
-      (_page.count("already.insertBefore"), "already.insertBefore" in _finish),
-      (1, True))
+check("there is one move into the received list",
+      _page.count("already.insertBefore"), 1)
+check("a completed upload takes it", "receive(job.row)" in _finish, True)
+# The fetch reaches it only past its own refusal: `if (!said.ok) ... return`.
+_fetch = _page.partition("linkForm.addEventListener")[2].partition("\n});")[0]
+check("and a fetched link only after the Deck said it worked",
+      _fetch.index("if (!said.ok)") < _fetch.index("receive(row)"), True)
 # Asserted as "every call to it is guarded by a 200" rather than by matching
 # the line verbatim, which is how this was written and what broke when a second
 # terminal status was added beside it -- the guard was still there and still

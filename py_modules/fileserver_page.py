@@ -210,6 +210,16 @@ const receivedHeading = document.getElementById('receivedHeading');
 //
 // A failed one stays put. It did not arrive, and moving it under Received --
 // or hiding it -- would be the page claiming something the Deck does not have.
+// **The one move into Received.** Both an upload finishing and a link being
+// fetched end here, so "what counts as arrived" is decided once: a caller that
+// has not succeeded does not call it. There used to be a single caller and the
+// rule was "the move lives in `finish`"; the second caller is why it is a
+// function.
+function receive(row) {
+  already.insertBefore(row, already.firstChild);
+  reflowHeadings();
+}
+
 function reflowHeadings() {
   arrivingHeading.style.display = queue.children.length ? '' : 'none';
   if (already.children.length) receivedHeading.style.display = '';
@@ -253,8 +263,7 @@ linkForm.addEventListener('submit', async (event) => {
   row.className = 'done';
   row.innerHTML = '<div class="row"><div class="name"></div><div class="size">on the Deck</div></div>';
   row.querySelector('.name').textContent = said.name;
-  already.insertBefore(row, already.firstChild);
-  reflowHeadings();
+  receive(row);
 });
 
 function humanSize(n) {
@@ -490,7 +499,7 @@ function finish(job) {
   job.size.textContent = humanSize(job.file.size);
   job.row.className = 'done';
   // Newest first, matching the order the server lists what it already had.
-  already.insertBefore(job.row, already.firstChild);
+  receive(job.row);
   settle(job);
 }
 
