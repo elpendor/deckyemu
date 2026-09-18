@@ -39,10 +39,31 @@ _SYSTEM_CA_FILES = (
 _fallback_context = None
 _fallback_checked = False
 
+# Held while that discovery is made. Artwork probes several candidate names at
+# once, so without it the threads race: `_fallback_checked` went up before
+# `_fallback_context` was assigned, every thread already inside a cert failure
+# read "somebody has dealt with this" while the context was still None, and gave
+# up instead of retrying. Five thumbnail probes died that way on the first
+# lookup of every session, in every log, reported as "no artwork found".
+_fallback_lock = threading.Lock()
+
+
+def _ensure_fallback_context():
+    """The OS trust store context, discovered once. None if there is none.
+
+    Callers arriving during the discovery wait for it and get the answer, rather
+    than concluding from `_fallback_checked` alone that there is nothing to wait
+    for.
+    """
+    global _fallback_context, _fallback_checked
+    with _fallback_lock:
+        if not _fallback_checked:
+            _fallback_checked = True
+            _fallback_context = _system_ca_context()
+        return _fallback_context
+
 
 def _system_ca_context():
-    global _fallback_checked
-    _fallback_checked = True
     for path in _SYSTEM_CA_FILES:
         if not os.path.isfile(path):
             continue
@@ -67,20 +88,17 @@ def _is_cert_error(error):
 
 def _urlopen(request, timeout=DEFAULT_TIMEOUT):
     """urlopen that retries against the OS trust store on a cert failure."""
-    global _fallback_context
-
     if _fallback_context is not None:
         return urllib.request.urlopen(request, timeout=timeout, context=_fallback_context)
 
     try:
         return urllib.request.urlopen(request, timeout=timeout)
     except (urllib.error.URLError, ssl.SSLError) as error:
-        if not _is_cert_error(error) or _fallback_checked:
+        if not _is_cert_error(error):
             raise
-        context = _system_ca_context()
+        context = _ensure_fallback_context()
         if context is None:
             raise
-        _fallback_context = context
         return urllib.request.urlopen(request, timeout=timeout, context=context)
 
 
@@ -169,8 +187,6 @@ def _once(method, url, headers=None, timeout=DEFAULT_TIMEOUT):
     caller can decide what it means. None means the request failed outright, which
     is the case worth logging.
     """
-    global _fallback_context
-
     parsed = urllib.parse.urlsplit(url)
     if parsed.scheme not in ("http", "https") or not parsed.netloc:
         decky.logger.warning("Refusing to probe non-HTTP url %s", url)
@@ -199,13 +215,14 @@ def _once(method, url, headers=None, timeout=DEFAULT_TIMEOUT):
             return response.status, urllib.parse.urljoin(url, location) if location else ""
         except (ssl.SSLError, OSError) as error:
             _discard(key)
-            if _is_cert_error(error) and not _fallback_checked:
+            if _is_cert_error(error) and not attempt:
                 # The frozen interpreter's CA bundle is too old for this host. Same
                 # fallback _urlopen makes, and it has to be made here too or the
-                # pooled path would fail where the urllib one recovers.
-                context = _system_ca_context()
-                if context is not None:
-                    _fallback_context = context
+                # pooled path would fail where the urllib one recovers. Only on
+                # the first attempt: a cert error on the retry is one the OS
+                # store could not fix either, and it has to be logged rather
+                # than looked up again and swallowed.
+                if _ensure_fallback_context() is not None:
                     continue
             if attempt:
                 decky.logger.warning("%s failed for %s: %s", method, url, error)
