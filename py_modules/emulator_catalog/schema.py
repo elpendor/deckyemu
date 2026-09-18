@@ -112,6 +112,11 @@ OPTIONAL = {
              "else is not offered, one that cannot be read still is. A "
              "compressed format keeps nothing at a fixed offset, so declaring "
              "one alongside an `id` is refused -- see COMPRESSED_EXTENSIONS.",
+    "game_beside": "True when the program looks for its game in the directory it "
+                   "runs in, rather than taking a path. The launcher runs it "
+                   "with its own install folder as the working directory and "
+                   "links the chosen game in there first. Like `game_config`, "
+                   "this means `args` carries no `{rom}` and may be empty.",
     "game_config": "Where the game file goes when the program reads it from its "
                    "own config rather than the command line, as {'format': "
                    "'json-flat', 'path': <file relative to home>, 'keys': "
@@ -611,7 +616,8 @@ def validate(entry, known_platforms=(), imported=False):
     for field in REQUIRED:
         # A game read from the program's own config needs nothing on the
         # command line, so its arguments may be empty.
-        if field == "args" and entry.get("game_config") and "args" in entry:
+        if (field == "args" and "args" in entry
+                and (entry.get("game_config") or entry.get("game_beside"))):
             continue
         if not entry.get(field):
             bad("missing required field %r -- %s" % (field, REQUIRED[field]))
@@ -631,7 +637,7 @@ def validate(entry, known_platforms=(), imported=False):
 
     args = entry.get("args") or ""
     if (args and "{rom}" not in args and not entry.get("installed_args")
-            and not entry.get("game_config")):
+            and not entry.get("game_config") and not entry.get("game_beside")):
         bad("args %r has no {rom} -- the emulator would start with no game" % args)
     if "{rom}" in (entry.get("fullscreen_args") or ""):
         bad("fullscreen_args must not contain {rom}; it is appended to args")
@@ -731,6 +737,14 @@ def validate(entry, known_platforms=(), imported=False):
 
     problems.extend(_validate_game_config(entry_id, entry))
     problems.extend(_validate_needs(entry_id, entry))
+
+    if entry.get("game_beside"):
+        if not entry.get("port"):
+            bad("game_beside describes how a port finds its one game; an "
+                "emulator is handed a path")
+        if entry.get("game_config"):
+            bad("has both 'game_beside' and 'game_config'; a program finds its "
+                "game one way")
 
     seed = entry.get("seed")
     if seed:

@@ -41,6 +41,8 @@ _ENTRY = {
     "args": "{rom}",
 }
 
+NEWBUILD = "#!/bin/sh\nexit 0\n"
+
 _ARCHIVE = os.path.join(TMP, "release", "Packaged-Linux.zip")
 os.makedirs(os.path.dirname(_ARCHIVE), exist_ok=True)
 with zipfile.ZipFile(_ARCHIVE, "w") as _bundle:
@@ -83,6 +85,45 @@ try:
 finally:
     net.download = _real_download
     emulator_catalog.reload_imported()
+
+
+section("a folder the program lives in is not swept")
+
+# A port that reads the directory it runs in keeps its settings, the archive it
+# built from the user's game and its save files beside the build. The sweep that
+# clears a previous build would take all three, and an update would look like a
+# port that had forgotten everything.
+_BESIDE = dict(_ENTRY, id="beside-port", port=True, game_beside=True)
+_FOLDER = emu_install.emulators_dir(_BESIDE["id"])
+
+net.download = _fake_download
+try:
+    emu_install.install_appimage(
+        _BESIDE, {"name": "Packaged-Linux.zip", "url": "https://example.test/a.zip",
+                  "tag": "1.0.0"})
+    for _name in ("shipdata.json", "game.archive"):
+        with io.open(os.path.join(_FOLDER, _name), "w", encoding="utf-8") as _handle:
+            _handle.write("kept")
+    os.makedirs(os.path.join(_FOLDER, "Save"), exist_ok=True)
+    with io.open(os.path.join(_FOLDER, "Save", "slot1.sav"), "w", encoding="utf-8") as _handle:
+        _handle.write("a save")
+
+    # The next release, installed over it.
+    with zipfile.ZipFile(_ARCHIVE, "w") as _bundle:
+        _bundle.writestr("packaged.appimage", NEWBUILD)
+    _path, _error = emu_install.install_appimage(
+        _BESIDE, {"name": "Packaged-Linux.zip", "url": "https://example.test/b.zip",
+                  "tag": "1.1.0"})
+    check("updating it succeeds", _error, "")
+    _after = sorted(os.listdir(_FOLDER))
+    check("its settings survive the update", "shipdata.json" in _after, True)
+    check("so does what it built from the game", "game.archive" in _after, True)
+    check("and so do the saves",
+          os.path.isfile(os.path.join(_FOLDER, "Save", "slot1.sav")), True)
+    check("while the build itself is the new one",
+          emu_install.installed_build(_BESIDE), "1.1.0")
+finally:
+    net.download = _real_download
 
 
 section("an extract pattern has to be one")

@@ -1140,6 +1140,42 @@ def game_config_setup(emulator, rom_path):
             .replace("{path}", shlex.quote(path)))
 
 
+#: Put the game where a program that reads its own directory will find it.
+#:
+#: Links rather than copies, because the game is already filed under `roms/` and
+#: a second copy of a 32MB cartridge -- or a 1.4GB disc -- is a second thing to
+#: keep in step. The link is remade every launch, so a game whose file moved is
+#: corrected by starting it.
+#:
+#: Every link in that directory goes first. The program looks for *a* game
+#: rather than a named one, so a link left by the last game played would still
+#: be sitting there beside this one. Only links: the build, its config and
+#: anything it generated are real files and are not touched.
+_GAME_BESIDE = """find {dir} -maxdepth 1 -type l -delete 2>/dev/null
+ln -sfn {rom} {dir}/{name} || echo "deckyemu: could not put the game beside the program" >&2
+cd {dir} || exit 1"""
+
+
+def game_beside_setup(emulator, rom_path):
+    """The shell that runs a program in its own folder with the game in it, or "".
+
+    For a program that looks for its game in the directory it runs in rather
+    than taking a path -- see `game_beside` in the schema.
+    """
+    if not emulator or not rom_path:
+        return ""
+    entry = emulator_catalog.find(emulator.get("id") or "") or {}
+    if not entry.get("game_beside"):
+        return ""
+    directory = os.path.dirname(emulator.get("target") or "")
+    if not directory:
+        return ""
+    return (_GAME_BESIDE
+            .replace("{dir}", shlex.quote(directory))
+            .replace("{name}", shlex.quote(os.path.basename(rom_path)))
+            .replace("{rom}", shlex.quote(rom_path)))
+
+
 def preflight(rom_path, emulator, install, core_path, title_id=""):
     """The shell that refuses a launch whose pieces are missing, or "".
 
@@ -1515,6 +1551,7 @@ def write_launcher(
             log_capture(path),
             ran_marker(),
             game_config_setup(emulator, rom_path),
+            game_beside_setup(emulator, rom_path),
         ]
         + run
         + [""]
@@ -1564,6 +1601,19 @@ def gui_launcher_path(emulator, title=""):
     )
 
 
+def _gui_working_dir(emulator):
+    """`cd` into the program's own folder, for one that reads it, or "".
+
+    No game is linked in: this opens the interface, and the game belongs to a
+    launch. What the program finds beside it is its own -- which is the point.
+    """
+    entry = emulator_catalog.find((emulator or {}).get("id") or "") or {}
+    if not entry.get("game_beside"):
+        return ""
+    directory = os.path.dirname((emulator or {}).get("target") or "")
+    return "cd %s || exit 1" % shlex.quote(directory) if directory else ""
+
+
 def write_gui_launcher(emulator, title, args=(), allow=(), errand=""):
     """Write (or overwrite) the launcher that opens an emulator's interface.
 
@@ -1591,6 +1641,11 @@ def write_gui_launcher(emulator, title, args=(), allow=(), errand=""):
             "",
             sysenv.SHELL_PREAMBLE,
             "",
+            # A program that reads the directory it runs in has to open in its
+            # own folder, or its window comes up knowing nothing: no settings,
+            # and no archive it built from the user's game, because both are
+            # files beside the build. It would then offer to start again.
+            _gui_working_dir(emulator),
             "exec %s" % " ".join(shlex.quote(arg) for arg in argv),
             "",
         ]

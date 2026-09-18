@@ -302,7 +302,7 @@ class Startup(plugin_base.PluginContext):
                 emulator["splits_args"] = bool(entry.get("splits_args"))
             # Every start: it decides what the launcher is handed, and there is
             # no user edit of it to preserve.
-            emulator["game_in_config"] = bool(entry.get("game_config"))
+            emulator["game_in_config"] = emulator_catalog.finds_its_game(entry)
 
             # Every start, unlike the recipe fields above, for the reason
             # `layout` is: a workaround the user switched off has to stop
@@ -353,7 +353,8 @@ class Startup(plugin_base.PluginContext):
             if fresh:
                 emulator["catalog_recipe"] = recipe
                 emulator["catalog_args"] = (
-                    entry.get("args") if entry.get("game_config") else (entry.get("args") or "{rom}"))
+                    entry.get("args") if emulator_catalog.finds_its_game(entry)
+                    else (entry.get("args") or "{rom}"))
                 emulator["catalog_fullscreen_args"] = entry.get("fullscreen_args") or ""
 
             # Saved only when something actually moved. This pass now runs over

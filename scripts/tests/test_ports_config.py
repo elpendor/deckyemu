@@ -11,6 +11,7 @@ file rather than a nested object. So an entry can say where the game goes
 The entry and every path here are made up.
 """
 
+import io
 import json
 import os
 import sys
@@ -123,6 +124,63 @@ try:
               launchers.game_config_setup(record, ""), "")
     finally:
         emulator_catalog.find = _real_find
+
+    section("a program that looks in the directory it runs in")
+
+    # Ship-of-Harkinian style: no path argument and no config key. It reads the
+    # folder it was started in, and writes its own settings there too.
+    _beside = dict(PORT)
+    del _beside["game_config"]
+    _beside["game_beside"] = True
+    _installed = "/home/deck/deckyemu/emulators/some-port/SomePort.AppImage"
+    _record = to_emulator(_beside, _installed, {})
+    check("its record takes no game on the command line",
+          (_record["game_in_config"], _record["args"]), (True, ""))
+
+    emulator_catalog.find = lambda entry_id: _beside if entry_id == PORT["id"] else None
+    try:
+        _shell = launchers.game_beside_setup(_record, "/home/deck/roms/n64/Some Game.n64")
+        check("the game is linked in beside the program",
+              "ln -sfn '/home/deck/roms/n64/Some Game.n64' "
+              "/home/deck/deckyemu/emulators/some-port/'Some Game.n64'" in _shell, True)
+        check("after the last game's link is taken away",
+              _shell.index("-delete") < _shell.index("ln -sfn"), True)
+        check("and the program is started in that folder",
+              _shell.strip().endswith("cd /home/deck/deckyemu/emulators/some-port || exit 1"),
+              True)
+        check("a port that takes a path gets none of it",
+              launchers.game_beside_setup(dict(_record, id="takes-a-path"), "/r/a.iso"), "")
+    finally:
+        emulator_catalog.find = _real_find
+
+    # The window button on the port's row opens the same program with no game.
+    # It has to open in that folder too, or it comes up with no settings and no
+    # archive and offers to start over.
+    emulator_catalog.find = lambda entry_id: _beside if entry_id == PORT["id"] else None
+    try:
+        _gui = io.open(launchers.write_gui_launcher(_record, "Some Port"),
+                       encoding="utf-8").read()
+        check("its own window opens in the same folder",
+              "cd /home/deck/deckyemu/emulators/some-port || exit 1" in _gui, True)
+        check("and no game is linked in for it",
+              "ln -sfn" in _gui, False)
+    finally:
+        emulator_catalog.find = _real_find
+
+    section("a program finds its game one way")
+
+    _both = dict(PORT, game_beside=True)
+    check("declaring both ways is refused",
+          any("one way" in problem
+              for problem in schema.validate(_both, known_platforms=(), imported=True)),
+          True)
+    _not_a_port = dict(_beside)
+    del _not_a_port["port"]
+    _not_a_port["args"] = "{rom}"
+    check("and an emulator does not find its own game",
+          any("is handed a path" in problem
+              for problem in schema.validate(_not_a_port, known_platforms=(), imported=True)),
+          True)
 
 finally:
     sysenv.user_home = _real_home

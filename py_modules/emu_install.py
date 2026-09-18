@@ -808,7 +808,21 @@ def install_appimage(entry, asset, on_progress=None):
 
     # A previous build in the same folder is now dead weight, and leaving it
     # means the folder grows by a couple of hundred megabytes per update.
-    _remove_others(target_dir, keep=asset["name"])
+    #
+    # Except where the folder is also the program's own data directory. A port
+    # that reads the directory it runs in keeps its settings, the archive it
+    # built from the user's game, and its *save files* right there -- so the
+    # sweep, which deletes everything that is not the new build, would take all
+    # three. Then only the build named by the record it is replacing goes.
+    if entry.get("game_beside"):
+        previous = (read_build_record(entry["id"]) or {}).get("asset") or ""
+        if previous and previous != asset["name"]:
+            try:
+                os.remove(os.path.join(target_dir, previous))
+            except OSError:
+                pass
+    else:
+        _remove_others(target_dir, keep=asset["name"])
 
     # After the cleanup, or it would be swept away with the old build. Written
     # even when the tag is empty: "installed, build unknown" is a different state

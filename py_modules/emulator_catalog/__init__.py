@@ -402,6 +402,15 @@ def _resolved_for_install(entry):
     return resolve_workarounds(entry, default_disabled(entry))
 
 
+def finds_its_game(entry):
+    """Whether this program takes no game path on the command line.
+
+    Two ways to reach the same record flag: the game goes into the program's
+    own config, or the program looks in the directory it runs in.
+    """
+    return bool(entry.get("game_config") or entry.get("game_beside"))
+
+
 def to_emulator(entry, target, database_extensions):
     """Shape a catalog entry as the emulator dict `emulators.save` expects.
 
@@ -414,15 +423,16 @@ def to_emulator(entry, target, database_extensions):
         "name": entry["name"],
         "kind": "flatpak" if entry["source"]["kind"] == "flatpak" else "path",
         "target": target,
-        # A game read from the program's own config is not passed at all.
-        "args": entry.get("args") if entry.get("game_config") else (entry.get("args") or "{rom}"),
-        "game_in_config": bool(entry.get("game_config")),
+        # A game the program finds for itself is not passed at all -- out of
+        # its own config, or out of the directory it runs in.
+        "args": entry.get("args") if finds_its_game(entry) else (entry.get("args") or "{rom}"),
+        "game_in_config": finds_its_game(entry),
         # Recorded so a corrected recipe can reach an emulator already
         # installed. Launch arguments are written once at install time, and
         # PCSX2's needed fixing after the fact -- without this the only routes
         # were reinstalling the emulator or retyping the arguments by hand.
         "catalog_recipe": entry.get("recipe", 1),
-        "catalog_args": entry.get("args") if entry.get("game_config") else (entry.get("args") or "{rom}"),
+        "catalog_args": entry.get("args") if finds_its_game(entry) else (entry.get("args") or "{rom}"),
         "catalog_fullscreen_args": entry.get("fullscreen_args") or "",
         # Which binary inside the flatpak to run, when it is not the one the
         # manifest names, and anything its environment has to be told. Empty
