@@ -99,6 +99,7 @@ import it and read what comes back.
 | `args` | How to launch a game. `{rom}` is where the ROM path goes. |
 | `fullscreen_args` | The switch that starts fullscreen. Omit if it has none. |
 | `root` | The directory under your home the emulator owns, or a list. Everything the definition writes must sit inside one. A list because emulators following the XDG layout split them: settings under `~/.config/<name>`, saves and keys under `~/.local/share/<name>`. |
+| `saves` | Where it keeps save data, relative to home, so the backup carries it off the device. Each path must sit inside a `root`. Omit it and the whole of that directory is backed up — right for an emulator that only reads ROMs off the disk, wrong for one that installs games into itself. |
 | `platform` **or** `databases` | What it plays. `databases` takes libretro system names, e.g. `["Sony - PlayStation"]`, and buys extensions, boxart and collection grouping at once. `platform` is for systems libretro has no database for. One or the other, never both. |
 | `firmware` | Files you must supply — see [below](#firmware-and-keys). |
 | `note` | A caveat shown in the panel. |
@@ -106,10 +107,26 @@ import it and read what comes back.
 | `installed_args` | How to start a title the emulator has already installed, when a file path will not do it. `{title}` is the title id. |
 | `command`, `env` | The binary to run inside a flatpak when it is not the one the manifest names, and any environment it needs. |
 | `aliases` | Extra names to match when suggesting arguments for a hand-registered binary. |
+| `cannot_open` | Extensions to subtract from the list `databases` derives. That derivation describes a *system*; this is for a format this particular emulator does not read. |
+| `changes_disc` | `true` when the later discs of a multi-disc game are reachable once the first is running, so only the first is added. |
+| `splits_args` | `true` when the emulator's own launcher word-splits what it is handed, so a path with a space in it arrives as several. |
+| `game_content` | Where it reads each game's updates and DLC: `{"format": "ryujinx", "path": <directory relative to home>}`. Gives the game editor a row for adding them. |
+| `motion` | How it reaches the Deck's gyro: `{"server": {…}}`. The server is fetched the way a helper is and serves the sensors over cemuhook, so the controller stays Steam's. |
+| `seed` | Files a flatpak ships where the application cannot find them, as `{source inside the flatpak's files directory: destination relative to home}`. Flatpak sources only. |
+| `recipe` | Version of the launch arguments. Bump it when you correct `args` or `fullscreen_args`, or the correction reaches nobody who already installed it. |
+| `source_moved` | `{"recipe": <number>, "note": <sentence>}`, set when `source` starts naming a different place, so an install that came from the old one is told. |
+| `verified` | `true` once the launch arguments were confirmed against the emulator rather than read off its help text. Left out, the panel says so — several emulators ignore an argument they do not know, silently. |
 | `workarounds` | Corrections for bugs in the emulator itself, each one a switch. The panel calls them **fixes**; the key keeps its older name because it is written into records already on people's devices. Unlike everything above, one is *temporary*: it must name the upstream issue or pull request that will retire it, say what it costs in the user's terms, and it is off by default. Ordinary configuration that is simply how this emulator has to run does not belong here — it belongs in `env`, `layout` or `setup`. The fields are in `py_modules/emulator_catalog/schema.py`; note that an imported definition may not use one that patches the emulator's files. |
 | `port` | `true` for a native port of one game rather than an emulator for a system. It is listed under **Ports** instead of **Emulators**; installing, setup and launching work the same. |
 | `needs` | For a `port`, the one file it plays: `{"what": <a line shown wherever the port is>, "extensions": [...], "id": {"at": <byte offset>, "is": [...]}, "sha1": [...]}`. A port covers one game, so the extensions its system's cores declare are wrong for it in both directions. `id` reads bytes at a fixed offset and decides whether to offer the port at all; a file that reads as another game is not offered, one that cannot be read still is. `sha1` lists the dumps the port actually accepts — most of these projects publish that list — and is checked only once `id` has matched, so a wrong dump is named while you are still looking at the file rather than by the port itself after a long first launch. Neither may be declared beside a compressed extension, since neither survives compression. |
 | `game_config` | For a program that reads its game from its own settings file instead of the command line. `{"format": "json-flat", "path": <file under a root>, "keys": {key: value}}` — `{rom}` in a value becomes the game's path, written each time a game is saved onto it. With this, `args` may be empty. |
+| `first_run` | Arguments for the run that sets a port up: `{"args": "{rom}", "unless": [<file names>]}`. Passed only while none of those files exist beside the program — how a port that builds its own archive from your dump asks for it once and never again. |
+| `game_beside` | `true` for a program that looks for its game in the directory it runs in instead of taking a path: the game is linked in and the program runs there. `{"as": <name>}` where it insists on one filename. |
+| `game_picker` | `true` when the port asks for its game through a file picker rather than a path. The picker is answered with the game the shortcut was made for, since there is no navigating one with a controller. |
+| `menu_key` | The key that opens the port's own menu, e.g. `esc`. Reached by holding Select and pressing Start. |
+| `menu_modifier` | The button held instead of Select, for a port of a console that uses Select — the pad is taken from the game while the chord is held. |
+| `hotkeys` | Further keys on the pad while that button is held, as `{button: key}` in `gptokeyb2`'s names, e.g. `{"y": "f5"}`. |
+| `plays` | The game a port plays, for the shortcut's name. Used only when nothing else identified the file — a ROM libretro knows is named from that, like any other game. |
 
 ### `source`
 
@@ -130,6 +147,28 @@ appears. If an install fails, the error lists what the archive actually held.
 Add `"host": "git.example.com"` to a `github` source for a project that left
 GitHub and self-hosts the same releases API — its old repository answers HTTP
 451 there, so no asset pattern reaches it. `host` is a host name, not a URL.
+
+## Several at once: a ports list
+
+A native port is a definition with `"port": true`, and they come in batches, so
+they can be sent as one file instead of one each. A `.deckyports.json` holds
+them under `ports`:
+
+```jsonc
+{
+  "format": 1,
+  "ports": [ { "id": "…", "name": "…", … }, … ]
+}
+```
+
+Every entry is validated exactly as a single definition is, marked `port`, and
+stored as its own file — so one bad entry costs only itself, sending the list
+again updates what it holds, and an imported emulator that is not a port is
+never overwritten by one. The transfer panel shows what each port installs,
+where it may write and what you have to supply, before anything is stored.
+
+A port entry is where `needs`, `first_run`, `game_beside`, `game_picker` and
+`menu_key` belong; the fields table above says what each does.
 
 ## Firmware and keys
 

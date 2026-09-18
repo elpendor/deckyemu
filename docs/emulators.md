@@ -457,6 +457,31 @@ author meant well. Read the file first; it is a few lines of plain text.
 See [emulator-definitions.md](emulator-definitions.md) for the format,
 a worked example, and what to check when one does not work.
 
+## Native ports
+
+Some games have been rebuilt to run on the Deck directly, with no emulator. A
+port plays one game and needs the disc or cartridge dump you already own; it
+builds its own copy of the assets from that file the first time it runs.
+
+They live under **Ports**, and this plugin ships none — you import a list, the
+same way you import a definition. Send a `.deckyports.json` over **Transfer**
+and press **Import**: each port in it is checked on its own, so one bad entry
+costs only itself.
+
+After that a port behaves like everything else. It is offered under **Run with**
+for a file it recognises, its game is filed under **Ports** rather than the
+system, and its saves are backed up with the rest.
+
+Three things differ from an emulator:
+
+- **The first launch takes minutes and may ask a question.** It is building its
+  own archive from your dump. The screen may stay black while it works.
+- **Its menu opens with Select+Start**, because a port is a PC program whose
+  menu wants a keyboard key and Game Mode has none.
+- **It plays one game.** A port is only offered for a file that identifies as
+  that game, and where the port publishes the dumps it accepts, a file that is
+  not one of them is named as such before you add it.
+
 ## Removing an emulator
 
 **Remove** on its row uninstalls it and forgets its registration. Games you have
