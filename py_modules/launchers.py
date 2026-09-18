@@ -1815,6 +1815,22 @@ def write_hotkey_config(entry_id, bindings, modifier=hotkeys.MODIFIER):
     return path
 
 
+def refresh_hotkey_configs():
+    """Rewrite every port's hotkey config from the catalog.
+
+    The config is the only place a port's `menu_key` lands, and it is written
+    when a launcher is. So correcting one -- Starship's menu opens with F1, not
+    the Esc it was first given -- would reach only games added afterwards, while
+    the ones already in the library went on sending the wrong key. Rewriting the
+    file is enough: the launcher names it and the helper reads it at every
+    launch, so nothing on disk has to change.
+    """
+    for entry in emulator_catalog.CATALOG:
+        bindings = hotkeys.bindings_for(entry)
+        if bindings:
+            write_hotkey_config(entry["id"], bindings, hotkeys.modifier_for(entry))
+
+
 def _gui_working_dir(emulator):
     """`cd` into the program's own folder, for one that reads it, or "".
 

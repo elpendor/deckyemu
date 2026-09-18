@@ -178,6 +178,11 @@ class Startup(plugin_base.PluginContext):
         catalog last supplied. Anything edited in the emulator editor is the
         user's and is left alone, which is the same rule `emu_config` uses.
         """
+        # A port's menu key lives in its own file rather than in the record
+        # below, so it is carried across here instead: cheap, and it reaches a
+        # game already in the library without rewriting its launcher.
+        await self._run(launchers.refresh_hotkey_configs)
+
         changed = []
         # Read once for the whole pass, and only because something below needs
         # it: this is what `extensions_for` derives a libretro-backed emulator's

@@ -111,6 +111,25 @@ _written = os.path.join(decky.DECKY_PLUGIN_RUNTIME_DIR,
 check("the config is written where the launcher names it", os.path.isfile(_written), True)
 
 
+section("a corrected key reaches a game already added")
+
+# The config is written when a launcher is, and nothing rewrites launchers. So
+# a key found to be wrong -- Starship's menu is F1, and it was first given Esc
+# -- would have reached only games added afterwards. The file is rewritten from
+# the catalog instead, which the launcher already names.
+_corrected = dict(_PORT, menu_key="f1")
+_real_catalog = emulator_catalog.CATALOG
+emulator_catalog.CATALOG = (_corrected,)
+try:
+    launchers.refresh_hotkey_configs()
+finally:
+    emulator_catalog.CATALOG = _real_catalog
+with io.open(_written, encoding="utf-8") as _handle:
+    _after = _handle.read()
+check("the file the launcher reads holds the new key",
+      "start = f1" in _after, True)
+
+
 section("a helper that outlived its game")
 
 # The trap in the launcher covers every ending a script can see. SIGKILL runs
