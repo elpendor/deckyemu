@@ -73,10 +73,11 @@ check("a modifier that is not a button is refused",
           for problem in schema.validate(dict(_PORT, menu_modifier="Select Button"),
                                          known_platforms=(), imported=True)),
       True)
-# The grab is what makes the choice matter, so it is checked with it.
-check("the pad is taken only while it is held",
-      "exclusive = true" in hotkeys.config_text({"start": "esc"}).split("[controls:hotkey]")[1],
-      True)
+# An EVIOCGRAB on the pad the game was given. Where that is the physical one,
+# Steam loses its own buttons and does not get them back when the grab goes --
+# the Steam button stayed dead until the machine was restarted.
+check("nothing is ever grabbed",
+      "exclusive" in hotkeys.config_text({"start": "esc"}), False)
 
 
 section("the launcher runs it beside the game")

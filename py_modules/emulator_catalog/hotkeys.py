@@ -57,10 +57,13 @@ def config_text(bindings, modifier=MODIFIER):
         "",
         "[controls:hotkey]",
         "overlay = parent",
-        # Take the pad while Select is held, so the game does not also see the
-        # Start that opens the menu. An EVIOCGRAB, dropped the moment Select
-        # comes up, so nothing is held past the gesture.
-        "exclusive = true",
+        # **Nothing is grabbed.** Taking the pad while the chord is held would
+        # stop the game seeing the Start that opens its menu, which is tidier --
+        # and on a Deck it is an EVIOCGRAB on whatever pad the game was given.
+        # Where that is the physical one, Steam loses its own buttons, and does
+        # not get them back when the grab is released: the Steam button stayed
+        # dead until the machine was restarted. A duplicated Start press is not
+        # worth a chance of that.
     ]
     lines += ["%s = %s" % (button, key) for button, key in sorted(bindings.items())]
     return "\n".join(lines) + "\n"

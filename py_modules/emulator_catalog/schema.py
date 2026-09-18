@@ -249,7 +249,24 @@ ALLOWED = set(REQUIRED) | set(OPTIONAL)
 #: for". Each of these is a capability an entry could ask for that has nothing
 #: to do with running an emulator, and a definition wanting one is either
 #: mistaken or hostile:
+#: Environment variables an imported entry may not set, and why.
+#:
+#: These take the Deck's physical pad away from Steam and give it to the game.
+#: A bundled entry does it deliberately for the two emulators that read motion
+#: through SDL; a file from outside does not get to, because what it costs is
+#: not the game's -- it is every button Steam reads for itself.
+FORBIDDEN_ENV_WHEN_IMPORTED = (
+    "SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD",
+    "SDL_GAMECONTROLLER_IGNORE_DEVICES",
+)
+
 FORBIDDEN_WHEN_IMPORTED = {
+    "layout": "pins a Steam Input layout on every game of this emulator. "
+              "Applying one reconfigures the controller, and a Deck was left "
+              "with no Steam button and no Quick Access -- Steam stopped "
+              "polling the pad after adopting the binding, and pinned it again "
+              "at every start, so restarting did not clear it. A file from "
+              "outside does not get to touch what Game Mode itself is holding",
     "removes": "deletes directory trees under the home directory -- an imported "
                "entry does not get to name what gets deleted, and nothing about "
                "installing an emulator requires it",
@@ -1057,6 +1074,12 @@ def _validate_imported(entry, entry_id):
     for field, why in FORBIDDEN_WHEN_IMPORTED.items():
         if entry.get(field):
             bad("%r is not allowed in an imported entry: it %s" % (field, why))
+
+    for name in sorted(entry.get("env") or {}):
+        if name in FORBIDDEN_ENV_WHEN_IMPORTED:
+            bad("env %r is not allowed in an imported entry: it hands the "
+                "Deck's own pad to the program, and Steam reads its own "
+                "buttons from that pad" % name)
 
     roots = entry.get("root")
     roots = [roots] if isinstance(roots, str) else list(roots or ())
