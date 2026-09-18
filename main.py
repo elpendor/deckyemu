@@ -96,11 +96,12 @@ def _is_port(core_id):
 def _sift_ports(cores, rom_path):
     """(cores, ids), dropping the ports whose game this file cannot be.
 
-    `ids` are the ports the file itself identified as its game. Asked of the
-    catalog rather than of the registered emulator: what a port wants is a
+    `ids` are the ports the file itself identified as its game, and the third
+    answer names the ports that play this game but not this dump of it. Asked of
+    the catalog rather than of the registered emulator: what a port wants is a
     property of the recipe, and the record holds only what launching needs.
     """
-    kept, identified = [], set()
+    kept, identified, refused = [], set(), []
     for core in cores:
         if not _is_port(core["id"]):
             kept.append(core)
@@ -111,8 +112,13 @@ def _sift_ports(cores, rom_path):
             continue
         if verdict == port_lists.ITS_GAME:
             identified.add(core["id"])
+        elif verdict == port_lists.WRONG_DUMP:
+            # Still offered. The port is the right one for this game and the
+            # user may know better than we do; what it is not is the confident
+            # answer, and the warning below is the half worth reading.
+            refused.append(entry.get("name") or core["id"])
         kept.append(core)
-    return kept, identified
+    return kept, identified, refused
 
 
 def _title_id_for(rom_path):
@@ -870,7 +876,8 @@ class Plugin(
         # format, and where the recipe says what the file itself should read as,
         # this is where a disc of a different game drops out -- and where one
         # that reads as the right game is recognised. See `ports.verdict`.
-        matching, identified = await self._run(_sift_ports, matching, rom_path)
+        matching, identified, wrong_dump = await self._run(
+            _sift_ports, matching, rom_path)
         # An arcade ROM set is matched on `zip`, which twenty-two cores claim
         # because most of them simply unpack an archive to reach the one game
         # inside. Asked once and used twice below: for the ordering, and for
@@ -1169,6 +1176,18 @@ class Plugin(
         # screen reads as a broken emulator, a missing BIOS or a dead pad long
         # before it reads as a bad file. Said only when we are certain -- see
         # xbox_disc, which stays silent about every .iso that is not an Xbox one.
+        # A port that plays this game but refuses this dump of it. Said here
+        # rather than left to the port, which says it after the game has been
+        # added and a first launch has spent minutes building an archive from a
+        # file it will not accept.
+        if wrong_dump:
+            result["dump_warning"] = (
+                "%s plays this game but not this dump of it -- its own list of "
+                "supported dumps does not have this one. You can still add it, "
+                "and it will refuse the file when it starts."
+                % (", ".join(sorted(wrong_dump)))
+            )
+
         if extension in ("iso", "xiso"):
             disc = await self._run(xbox_disc.inspect, rom_path)
             # `certain` matters: a root that could not be read to the end proves

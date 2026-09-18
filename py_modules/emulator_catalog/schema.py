@@ -111,7 +111,11 @@ OPTIONAL = {
              "optional and reads bytes at `at`: a file that reads as something "
              "else is not offered, one that cannot be read still is. A "
              "compressed format keeps nothing at a fixed offset, so declaring "
-             "one alongside an `id` is refused -- see COMPRESSED_EXTENSIONS.",
+             "one alongside an `id` is refused -- see COMPRESSED_EXTENSIONS. "
+             "`sha1` lists the dumps the port actually accepts, which these "
+             "projects publish: it is checked only once `id` has already "
+             "matched, so a wrong dump is refused when the game is added rather "
+             "than by the port itself after a long extraction.",
     "game_picker": "True when the port asks for its game through a file picker "
                    "rather than taking a path. The picker is answered with the "
                    "game that was chosen when the shortcut was made -- see "
@@ -860,6 +864,10 @@ COMPRESSED_EXTENSIONS = frozenset({
 MAX_ID_OFFSET = 4096
 
 
+#: A SHA-1 as the ports publish theirs, in either case.
+_SHA1 = re.compile(r"^[0-9a-fA-F]{40}$")
+
+
 #: A `gptokeyb2` key or button name: lowercase, and no spaces to split on.
 _SAFE_KEY = re.compile(r"^[a-z0-9_]+$")
 
@@ -998,7 +1006,23 @@ def _validate_needs(entry_id, entry):
                     "unidentified and be offered anyway. Drop the id, or drop "
                     "those extensions." % ", ".join(repr(one) for one in packed))
 
-    unknown = sorted(set(spec) - {"what", "extensions", "id"})
+    digests = spec.get("sha1")
+    if digests is not None:
+        if not isinstance(digests, list) or not digests:
+            bad("'sha1' must be a non-empty list of the dumps this port accepts")
+        elif not all(isinstance(value, str) and _SHA1.match(value) for value in digests):
+            bad("every entry in 'sha1' must be a 40-character SHA-1")
+        packed = sorted(
+            extension for extension in (extensions if isinstance(extensions, list) else ())
+            if isinstance(extension, str) and extension.lower() in COMPRESSED_EXTENSIONS
+        )
+        if packed:
+            bad("declares a 'sha1' and the compressed format(s) %s. The hash "
+                "would be of the archive, never of the dump inside it, so every "
+                "such file would be refused. Drop the hashes, or drop those "
+                "extensions." % ", ".join(repr(one) for one in packed))
+
+    unknown = sorted(set(spec) - {"what", "extensions", "id", "sha1"})
     if unknown:
         bad("unknown key(s) %s" % ", ".join(repr(name) for name in unknown))
     return problems

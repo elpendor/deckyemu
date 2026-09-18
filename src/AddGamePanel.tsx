@@ -962,6 +962,16 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
         </PanelSectionRow>
       )}
 
+      {/* The same kind of warning, for the same reason: the port publishes the
+          dumps it takes and this is not one of them. Without it the refusal
+          arrives from the port itself, after the game is in the library and a
+          first launch has spent minutes on an archive it throws away. */}
+      {probe?.dump_warning && (
+        <PanelSectionRow>
+          <Field label="Not a dump this port takes" description={probe.dump_warning} />
+        </PanelSectionRow>
+      )}
+
       {/* The emulator itself is not ready, whatever the game is.
           This is the same kind of warning as the two below it and by far the
           most common failure they were missing: a PS2, PS1, Wii U, 3DS or

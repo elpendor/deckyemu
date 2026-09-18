@@ -177,6 +177,7 @@ export interface RomProbe {
    * other kind of .iso; the backend only speaks when it is certain.
    */
   disc_warning?: string;
+  dump_warning?: string;
   /**
    * Set when a `.zip` turns out to be a PS Vita release rather than a zipped
    * ROM. `.zip` belongs to everyone — every zipped SNES and NES ROM has it —

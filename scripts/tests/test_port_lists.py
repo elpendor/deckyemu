@@ -135,8 +135,52 @@ try:
               ports.verdict(_no_id, _another), ports.UNKNOWN)
         check("and what it wants is said in its own words",
               ports.wanted_file(_entry), "the game's own disc image")
+
+        # These ports publish the dumps they take and check the hash
+        # themselves -- after the game is added, and after a first launch has
+        # spent minutes building an archive from a file it then refuses. Said
+        # here instead, while the user is still looking at the file.
+        import hashlib
+        with open(_its_game, "rb") as _handle:
+            _real = hashlib.sha1(_handle.read()).hexdigest()
+        _hashed = dict(_entry)
+        _hashed["needs"] = dict(_entry["needs"], sha1=[_real.upper()])
+        check("a dump the port lists is its game", ports.verdict(_hashed, _its_game),
+              ports.ITS_GAME)
+
+        _strict = dict(_entry)
+        _strict["needs"] = dict(_entry["needs"], sha1=["0" * 40])
+        check("the right game dumped another way is told apart from the wrong game",
+              ports.verdict(_strict, _its_game), ports.WRONG_DUMP)
+        # And still refused outright when it is not even the same game: the
+        # cheap check runs first, so nothing reads a 40MB cartridge to find out.
+        check("a different game is refused before any hashing",
+              ports.verdict(_strict, _another), ports.NOT_ITS_GAME)
+
+        _gone = os.path.join(_folder, "vanished.iso")
+        check("a file that cannot be read is not called a bad dump",
+              ports.verdict(_strict, _gone), ports.UNKNOWN)
     finally:
         shutil.rmtree(_folder, ignore_errors=True)
+
+    section("hashes only where they could mean something")
+
+    _packed = dict(_port("packed-port", "Packed Port"), port=True)
+    _packed["needs"] = dict(_packed["needs"], extensions=["iso", "rvz"],
+                            sha1=["0" * 40])
+    del _packed["needs"]["id"]
+    from emulator_catalog import schema as _schema
+    check("a hash beside a compressed format is refused",
+          any("never of the dump inside it" in problem
+              for problem in _schema.validate(_packed, known_platforms=(), imported=True)),
+          True)
+    _bad = dict(_port("bad-hash-port", "Bad Hash Port"), port=True)
+    _bad["needs"] = dict(_bad["needs"], sha1=["not a hash"])
+    check("and so is something that is not a SHA-1",
+          any("40-character SHA-1" in problem
+              for problem in _schema.validate(_bad, known_platforms=(), imported=True)),
+          True)
+
 
     section("an id that could never be read is refused")
 
