@@ -4712,6 +4712,72 @@ _plain = run(plugin.resolve_game(_plain_set, "emu:rpcs3"))
 check("a set with no subtitle keeps its whole name", _plain["title"], "Scud Race")
 check("and searches for it unchanged", _plain["matched_name"], "Scud Race")
 
+section("a port's own artwork, and what happens when it has none")
+
+# A port has its own SteamGridDB entry, with covers drawn for the port, and
+# preferring it is right. An entry with *no* artwork is not an answer, though,
+# and taking one as final is what made this fault recur: `port_id or
+# search_game(...)` turned "prefer the port" into "exclude the game", so every
+# miss cost the SteamGridDB lookup entirely rather than costing the preference.
+#
+# These ports are named after ordinary words -- Lighthouse, Starship, Ghostship
+# -- and SteamGridDB is user-contributed, so a stranger's game of that name is
+# the normal case rather than the unlucky one. Two fixes went into the matching
+# rule before the amplifier behind them was the thing that needed changing.
+_ARTLESS_PORT = {
+    "id": "wordy-port",
+    "name": "Wordy Port",
+    "summary": "A native port of one game.",
+    "source": {"kind": "github", "repo": "someone/wordy", "asset": "^Wordy\.AppImage$"},
+    "args": "",
+    "port": True,
+    "root": ".local/share/Wordy",
+    "platform": "Nintendo GameCube",
+}
+
+_PORT_SGDB_ID, _GAME_SGDB_ID = 999, 4242
+
+import emulator_catalog  # noqa: E402
+
+_art_real = (sgdb.search_exact, sgdb.art_urls, sgdb.search_game, sgdb.game_name)
+_catalog_real = emulator_catalog.CATALOG
+_download_real = plugin._download_art
+_settings_before = {key: store.get_settings().get(key)
+                    for key in ("sgdb_api_key", "art_source")}
+
+
+async def _fake_download(urls):
+    return {slot: {"data": "x", "kind": "png"} for slot, url in (urls or {}).items() if url}
+
+
+emulator_catalog.CATALOG = _catalog_real + (_ARTLESS_PORT,)
+sgdb.search_exact = lambda key, name: _PORT_SGDB_ID
+sgdb.search_game = lambda key, title, databases, matched: _GAME_SGDB_ID
+sgdb.game_name = lambda key, game_id: "The Game Itself"
+sgdb.art_urls = lambda key, game_id: (
+    {} if game_id == _PORT_SGDB_ID else {"capsule": "https://example.test/capsule.png"})
+plugin._download_art = _fake_download
+store.set_settings({"sgdb_api_key": SAMPLE_KEY, "art_source": "auto"})
+try:
+    _fell_through = run(plugin.resolve_game(add_rom, "emu:wordy-port"))
+    check("an artless port entry does not stop the game being looked up",
+          _fell_through["art_source"], "steamgriddb")
+    check("and the artwork that arrives is named for the game, not the port",
+          _fell_through["art_game_name"], "The Game Itself")
+
+    # The preference itself is unchanged: a port that does have artwork keeps
+    # winning, and the name shown beside it is the port's.
+    sgdb.art_urls = lambda key, game_id: {"capsule": "https://example.test/%s.png" % game_id}
+    _preferred = run(plugin.resolve_game(add_rom, "emu:wordy-port"))
+    check("a port with artwork is still preferred over the game",
+          _preferred["art_game_name"], "Wordy Port")
+finally:
+    sgdb.search_exact, sgdb.art_urls, sgdb.search_game, sgdb.game_name = _art_real
+    emulator_catalog.CATALOG = _catalog_real
+    plugin._download_art = _download_real
+    store.set_settings(_settings_before)
+
+
 _ps3_prepared = run(plugin.prepare_shortcut(
     "Braid", "emu:rpcs3", _ps3_eboot, "Sony - PlayStation 3"))
 check("preparing the shortcut is the ordinary path", _ps3_prepared["ok"], True)

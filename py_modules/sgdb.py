@@ -246,6 +246,57 @@ def _autocomplete(api_key, term):
     return payload.get("data") or []
 
 
+def _exact_key(value):
+    """A name reduced to what two spellings of the *same* name share.
+
+    Punctuation goes and case goes, so "Zelda 64: Recompiled" is the name
+    "Zelda 64 Recompiled". Spaces stay, because a space is what separates two
+    different names: `_normalize_title` drops them, which made "Ghost Ship" --
+    somebody else's game -- an exact match for the port called "Ghostship", and
+    a Super Mario 64 shortcut wore its cover.
+    """
+    text = _TAG_RE.sub("", value or "").lower()
+    return " ".join(re.sub(r"[^a-z0-9]+", " ", text).split())
+
+
+def search_exact(api_key, name):
+    """The SteamGridDB game whose name *is* `name`, or 0.
+
+    For a native port, which has its own entry there with artwork made for it
+    rather than for the game it plays -- and a name that is the program's, not a
+    filename. So the fuzzy scoring the rest of this module does is wrong here in
+    both directions: it would accept a near miss, and near misses are the norm
+    for these names. "Starship" returns three unrelated games; "Dusklight" also
+    matches "Pitch Black: A Dusklight Story".
+
+    Exact, case-insensitive, punctuation and spacing ignored -- "Zelda 64:
+    Recompiled" is the same name as "Zelda 64 Recompiled". A port either has an
+    entry under its own name or it does not, and the caller falls back to
+    searching for the game.
+
+    Several entries can carry the same name, and then none of them is the
+    answer: "Starship" is three games, and the first of them was picked and its
+    artwork -- none -- used for a port of something else. An ambiguous name is
+    no match.
+    """
+    if not api_key or not name:
+        return 0
+    wanted = _exact_key(name)
+    if not wanted:
+        return 0
+    matches = [candidate for candidate in _autocomplete(api_key, name)
+               if _exact_key(candidate.get("name", "")) == wanted]
+    if len(matches) > 1:
+        decky.logger.info("SteamGridDB: %r names %d entries, so none of them "
+                          "is this port", name, len(matches))
+        return 0
+    if matches:
+        decky.logger.info("SteamGridDB: %r is its own entry (%s)",
+                          name, matches[0].get("id"))
+        return matches[0].get("id") or 0
+    return 0
+
+
 def search_candidates(api_key, title, databases=None, matched_name="", limit=10):
     """Scored SteamGridDB candidates, best first.
 

@@ -102,6 +102,10 @@ const NAME_SOURCE_LABELS: Record<ResolvedGame["title_source"], string> = {
   libretro: "",
   steamgriddb: "Named by SteamGridDB, which also supplied the artwork. Check it before adding.",
   filename: "Named from the filename - nothing recognised this game.",
+  // A port plays one game, so its own name is the answer when the file's name
+  // is not. Said out loud because the name is not the file's and the field
+  // above stays editable.
+  port: "Named after the port, which is the game it plays.",
 };
 
 interface Props {

@@ -293,7 +293,7 @@ export interface ResolvedGame {
    * because SteamGridDB's search does sometimes answer with a different game in
    * the same series.
    */
-  title_source: "libretro" | "steamgriddb" | "filename";
+  title_source: "libretro" | "steamgriddb" | "filename" | "port";
   /**
    * `icon` is not applied like the other four. Steam draws a shortcut's icon
    * from a file path, so it is written to disk and handed over separately --

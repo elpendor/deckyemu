@@ -1317,27 +1317,65 @@ class Plugin(
 
         art = {}
         source_used = "none"
+        port_id = 0
+        port_entry = (emulator_catalog.find(emulators.emulator_id(core_id))
+                      if _is_port(core_id) else None)
         # Which game SteamGridDB thinks this is, so a wrong match is visible in
         # the UI rather than silently producing art for another game.
         art_game_name = ""
 
         want_sgdb = api_key and art_source in ("auto", "sgdb")
         if want_sgdb:
-            # The system and the libretro-matched name both help: SteamGridDB's
-            # own search happily returns a modern sequel for an 8-bit title.
-            game_id = await self._run(
-                sgdb.search_game,
-                api_key,
-                meta["title"],
-                databases,
-                meta["matched_name"],
-            )
-            if game_id:
-                urls = await self._run(sgdb.art_urls, api_key, game_id)
+            # **A port is looked up under its own name first.** It has an entry
+            # of its own, with artwork drawn for the port rather than scanned
+            # from the original box, and that is what is actually running.
+            # Exact-match only -- see `sgdb.search_exact` -- so a port with no
+            # entry falls through to the game below rather than taking whatever
+            # its name half-matched.
+            if port_entry:
+                port_id = await self._run(
+                    sgdb.search_exact, api_key, port_entry.get("name", "")
+                )
+
+            if port_id:
+                urls = await self._run(sgdb.art_urls, api_key, port_id)
                 art = await self._download_art(urls)
                 if art:
+                    # One of the three values the panel knows. It compares this
+                    # string exactly, so a fourth spelling -- "steamgriddb
+                    # (port)", which read better in the log -- fell through to
+                    # the libretro branch and labelled SteamGridDB art libretro.
                     source_used = "steamgriddb"
-                    art_game_name = await self._run(sgdb.game_name, api_key, game_id)
+                    art_game_name = (port_entry or {}).get("name", "")
+                else:
+                    # **An entry with no artwork is not an answer.** A port
+                    # named after an ordinary word gets one: "Lighthouse" and
+                    # "Starship" each matched a game nobody here has heard of,
+                    # both artless, and taking the id as final meant the game
+                    # itself was never looked up at all -- so Banjo wore a
+                    # libretro box scan while SteamGridDB had a capsule for it.
+                    # Preferring the port is the rule; excluding the
+                    # game is not.
+                    port_id = 0
+
+            # The system and the libretro-matched name both help: SteamGridDB's
+            # own search happily returns a modern sequel for an 8-bit title.
+            if not art:
+                game_id = await self._run(
+                    sgdb.search_game,
+                    api_key,
+                    meta["title"],
+                    databases,
+                    meta["matched_name"],
+                )
+                if game_id:
+                    urls = await self._run(sgdb.art_urls, api_key, game_id)
+                    art = await self._download_art(urls)
+                    if art:
+                        source_used = "steamgriddb"
+                        art_game_name = await self._run(
+                            sgdb.game_name, api_key, game_id
+                        )
 
         if not art and art_source in ("auto", "libretro") and meta["boxart_url"]:
             art = await self._download_art({"capsule": meta["boxart_url"]})
@@ -1361,9 +1399,33 @@ class Plugin(
         # different game in the same series. That last one is why the source is
         # reported rather than the name silently swapped -- see `title_source`,
         # which the panel shows beside a field that stays editable.
+        # The port's name is shown beside its artwork but never becomes the
+        # game's: a cover drawn for Ship of Harkinian does not make the game
+        # "Ship of Harkinian". It is still whatever the disc holds.
         chosen, title_source = libretro_meta.choose_title(
-            meta["match_kind"], meta["title"], art_game_name
+            meta["match_kind"], meta["title"], "" if port_id else art_game_name
         )
+
+        # A port's shortcut says both: the game, because that is what somebody
+        # looks for, and the port, because that is what runs and what the
+        # artwork is of. It also keeps two dumps on one port apart, which the
+        # port's name alone would not.
+        #
+        # Unless nothing identified the file, and the name is the filename
+        # tidied up. A port plays one known game, so its own name beats a stem:
+        # a data file called `spawn.mpq` was named "spawn", not for its game.
+        port_name = (port_entry or {}).get("name", "") if port_entry else ""
+        if port_name and title_source == "filename":
+            # The entry may name the game it plays, and then the shortcut reads
+            # like every other port's -- "Diablo (DevilutionX)" rather than the
+            # port on its own, which is what a data file with no game in its
+            # name would otherwise give.
+            plays = (port_entry or {}).get("plays", "")
+            chosen = "%s (%s)" % (plays, port_name) if plays else port_name
+            title_source = "port"
+        elif port_name and port_name.lower() not in chosen.lower():
+            chosen = "%s (%s)" % (chosen, port_name)
+
         meta = dict(meta, title=chosen)
 
         decky.logger.info(

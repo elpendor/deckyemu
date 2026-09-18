@@ -112,6 +112,11 @@ OPTIONAL = {
              "else is not offered, one that cannot be read still is. A "
              "compressed format keeps nothing at a fixed offset, so declaring "
              "one alongside an `id` is refused -- see COMPRESSED_EXTENSIONS.",
+    "plays": "The game this port plays, for the shortcut's name. Only used when "
+             "nothing else identified the file -- a ROM whose filename libretro "
+             "knows is named from that, as any other game is. Without it a data "
+             "file nothing recognises leaves the shortcut named after the port "
+             "alone, which reads differently from every other port's game.",
     "menu_key": "The key that opens this port's own menu, e.g. 'esc'. Reached by "
                 "holding Select and pressing Start, the gesture RetroArch uses, "
                 "through the helper in `hotkeys.py`. Ports only: an emulator's "
@@ -814,7 +819,8 @@ def _validate_hotkeys(entry_id, entry):
     menu_key = entry.get("menu_key")
     hotkeys = entry.get("hotkeys")
     modifier = entry.get("menu_modifier")
-    if not menu_key and not hotkeys and not modifier:
+    plays = entry.get("plays")
+    if not menu_key and not hotkeys and not modifier and not plays:
         return []
     problems = []
 
@@ -828,6 +834,8 @@ def _validate_hotkeys(entry_id, entry):
                                  or not _SAFE_KEY.match(menu_key)):
         bad("menu_key %r is not a key name gptokeyb2 would know, e.g. 'esc'"
             % (menu_key,))
+    if plays is not None and (not isinstance(plays, str) or not plays.strip()):
+        bad("plays %r must be the name of the game this port plays" % (plays,))
     if modifier is not None and (not isinstance(modifier, str)
                                  or not _SAFE_KEY.match(modifier)):
         bad("menu_modifier %r is not a button name gptokeyb2 would know, e.g. "
