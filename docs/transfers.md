@@ -116,6 +116,22 @@ transfer is running.
 - It is plain HTTP on a local network: fine for moving ROMs around a house, not
   something to expose beyond one.
 
+## Fetching a definition by link
+
+The transfer page has a box for an address, under the file picker. Paste a link
+and press **Fetch**: the Deck downloads it into the same folder your files land
+in, and it appears with an **Import** button like anything else you sent. A
+shortened link works — what it redirects to is what counts.
+
+It is there because the page is open on a device with a keyboard, which the
+Deck is not.
+
+Two things it will not do. It **downloads, it does not import** — you still see
+what the definition installs and where it may write, and you still confirm it on
+the Deck. And it takes **definitions only**: what arrives is capped at a
+definition's size and then has to be one, or it is deleted. A box that fetched
+anything would be a downloader for games, which this plugin is not.
+
 ## Unpacking a zip
 
 Pick the zip the way you would pick any game — **Add a game**, then the file

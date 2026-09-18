@@ -128,6 +128,19 @@ _STYLE = """
   label.pick span { display: block; margin-top: 3px; font-size: 13px;
                     color: var(--muted); }
   input[type=file] { display: none; }
+  /* The link box. Deliberately quieter than the file picker: sending files is
+     what this page is for, and a definition is the occasional errand. */
+  form.link { display: flex; gap: 8px; }
+  form.link input { flex: 1; min-width: 0; padding: 10px 12px; font: inherit;
+                    font-size: 15px; color: var(--text); background: var(--card);
+                    border: 1px solid var(--line); border-radius: 10px; }
+  form.link input:focus { outline: none; border-color: var(--accent); }
+  form.link button { padding: 10px 16px; font: inherit; font-size: 15px;
+                     font-weight: 600; color: var(--text); background: var(--card);
+                     border: 1px solid var(--line); border-radius: 10px;
+                     cursor: pointer; }
+  form.link button:disabled { opacity: .55; cursor: default; }
+  p.linkNote { margin: 6px 0 0; font-size: 13px; color: var(--muted); }
   /* `minmax(0, 1fr)` rather than the implicit `1fr`, and `min-width: 0` on the
      row: a grid item defaults to `min-width: auto`, which means it refuses to
      shrink below the width of its own content. The name inside already clips
@@ -201,6 +214,48 @@ function reflowHeadings() {
   arrivingHeading.style.display = queue.children.length ? '' : 'none';
   if (already.children.length) receivedHeading.style.display = '';
 }
+
+// A definition fetched by address. The Deck does the downloading, so there is
+// no progress to show and no resuming to do -- it either has the file or it
+// says why not. The answer lands in the same Received list an upload lands in,
+// because on the Deck it is the same file in the same folder.
+const linkForm = document.getElementById('linkForm');
+const linkUrl = document.getElementById('linkUrl');
+const linkGo = document.getElementById('linkGo');
+const linkNote = document.getElementById('linkNote');
+const LINK_HELP = linkNote.textContent;
+
+linkForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const url = linkUrl.value.trim();
+  if (!url) return;
+  linkGo.disabled = true;
+  linkNote.textContent = 'Fetching...';
+  let said;
+  try {
+    const answer = await fetch(FETCH_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: url }),
+    });
+    said = await answer.json();
+  } catch (e) {
+    said = { ok: false, error: 'The Deck did not answer.' };
+  }
+  linkGo.disabled = false;
+  if (!said.ok) {
+    linkNote.textContent = said.error || 'That did not work.';
+    return;
+  }
+  linkUrl.value = '';
+  linkNote.textContent = LINK_HELP;
+  const row = document.createElement('li');
+  row.className = 'done';
+  row.innerHTML = '<div class="row"><div class="name"></div><div class="size">on the Deck</div></div>';
+  row.querySelector('.name').textContent = said.name;
+  already.insertBefore(row, already.firstChild);
+  reflowHeadings();
+});
 
 function humanSize(n) {
   if (n >= 1073741824) return (n / 1073741824).toFixed(1) + ' GB';
@@ -690,11 +745,28 @@ def upload_page(directory, arrived, token, durable, report):
   </div>
   <p class="dir">Saving into %(dir)s</p>
 %(keep)s
+  <!-- Two ways to send something and no labels read as one flow, so each says
+       what it takes. The same small heading the two lists below use: it is the
+       page's word for "what this is". -->
+  <h2>ROMs, BIOS files and keys</h2>
   <label class="pick" id="zone">
     <b>Choose files</b>
     <span>or drag them here</span>
     <input id="pick" type="file" multiple>
   </label>
+
+  <!-- A definition can also be fetched by address, and this is the only place
+       with a keyboard worth typing one on: the Deck is in Game Mode. It
+       downloads into the same folder the files land in and stops there -- the
+       plugin still shows what it would install and asks. -->
+  <h2>Emulator and port definitions</h2>
+  <form class="link" id="linkForm">
+    <input id="linkUrl" type="url" inputmode="url" autocomplete="off"
+           spellcheck="false" placeholder="https://example.com/ports.deckyemu.json">
+    <button id="linkGo" type="submit">Fetch</button>
+  </form>
+  <p class="linkNote" id="linkNote">An emulator or ports definition. A shortened
+    link is fine. It is downloaded, not imported: you confirm it on the Deck.</p>
 
   <!-- The same two words the panel on the Deck uses for the same two lists:
        a file is Arriving until it lands, then it is Received. Both sides of a
@@ -716,6 +788,8 @@ const UPLOAD_BASE = '/%(token)s/upload/';
 // Where to ask how much of a file the Deck already has, for carrying on from an
 // upload that was cut off. Same token, same reason it is absolute.
 const PENDING_BASE = '/%(token)s/pending/';
+// Where a pasted link is sent. Absolute, and for the reason above.
+const FETCH_URL = '/%(token)s/fetch';
 %(script)s
 </script>
 </body></html>""" % {

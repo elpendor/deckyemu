@@ -52,6 +52,7 @@ import decky
 import diagnostics
 import fileserver_page
 import httpshim
+import net
 import sysenv
 
 # Long enough that guessing is hopeless, short enough to scan reliably.
@@ -659,6 +660,23 @@ class _Handler(httpshim.BASE):
         exception through it. A verb that answers nothing unless
         `offer_cloud_setup` was called is the narrower thing.
         """
+        rest = self._authorised()
+        if rest is None:
+            self._deny()
+            return
+
+        # A link typed on the device that has a keyboard. Gated on `_uploads`
+        # for the reason PUT is: a server started to hand out a report must not
+        # also write into the ROM folder, and the token is the same one.
+        if rest == ["fetch"]:
+            with _state_lock:
+                uploads = _uploads
+            if not uploads:
+                self._deny()
+                return
+            self._fetch()
+            return
+
         with _state_lock:
             setup = dict(_cloud_setup)
             handler = _on_cloud_setup
@@ -666,8 +684,7 @@ class _Handler(httpshim.BASE):
             self._deny()
             return
 
-        rest = self._authorised()
-        if rest is None or rest != ["cloud"]:
+        if rest != ["cloud"]:
             self._deny()
             return
 
@@ -733,6 +750,35 @@ class _Handler(httpshim.BASE):
             # knows because it is the option somebody chose.
             json.dumps({"ok": bool(ok), "error": error or "", "url": url or ""}),
             "application/json",
+        )
+
+    def _fetch(self):
+        """Answer `POST /<token>/fetch` with what the link turned into."""
+        _touch()
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            self._send(400, "A Content-Length is required.")
+            return
+        # A URL is a line of text. The cap is here because this reads a body
+        # into memory and how big it is belongs to whoever is sending.
+        if length <= 0 or length > 8 * 1024:
+            self._send(400, "That is not a link.")
+            return
+        try:
+            asked = json.loads(self.rfile.read(length).decode("utf-8"))
+        except (ValueError, UnicodeDecodeError):
+            self._send(400, "That is not a link.")
+            return
+        if not isinstance(asked, dict):
+            self._send(400, "That is not a link.")
+            return
+
+        name, error = fetch_definition(str(asked.get("url") or "").strip())
+        self._send(
+            200,
+            json.dumps({"ok": not error, "error": error, "name": name}),
+            "application/json; charset=utf-8",
         )
 
     def do_PUT(self):
@@ -977,23 +1023,124 @@ class _Handler(httpshim.BASE):
         # Nothing it raises may cost the upload: the bytes are on disk and the
         # sender is waiting for a 200, so a failed filing is a tidiness problem
         # and the original path is still a real file.
-        with _state_lock:
-            arrived = _on_arrival
-        if arrived:
-            try:
-                destination = arrived(destination) or destination
-                name = os.path.basename(destination)
-            except Exception as error:  # noqa: BLE001 - see above
-                decky.logger.warning("Arrival handler failed for %s: %s", name, error)
-
-        with _state_lock:
-            # The whole file, not this request's share of it: a resumed upload
-            # sends only the rest, and the list is about what the Deck now has.
-            _received.append({"name": name, "path": destination, "size": total, "at": _now()})
-            del _received[:-50]
+        name = _file_arrived(destination, total)
 
         decky.logger.info("Received %s (%d bytes) into %s", name, total, directory)
         self._reply(200, "ok")
+
+
+def _file_arrived(destination, total):
+    """File a completed arrival and list it. Returns the name it ended up under.
+
+    What the *plugin* wants done with it runs first, before anything is told the
+    file is here. This module owns sockets, tokens and the lockout; where a
+    particular kind of file belongs is policy and lives in `plugin_transfers` --
+    a save backup is moved out of the ROM inbox there, and everything else is
+    left where it landed.
+
+    Nothing the handler raises may cost the file: the bytes are on disk and the
+    sender is waiting for an answer, so a failed filing is a tidiness problem
+    and the original path is still a real file.
+    """
+    name = os.path.basename(destination)
+    with _state_lock:
+        arrived = _on_arrival
+    if arrived:
+        try:
+            destination = arrived(destination) or destination
+            name = os.path.basename(destination)
+        except Exception as error:  # noqa: BLE001 - see above
+            decky.logger.warning("Arrival handler failed for %s: %s", name, error)
+
+    with _state_lock:
+        # The whole file, not one request's share of it: a resumed upload sends
+        # only the rest, and the list is about what the Deck now has.
+        _received.append({"name": name, "path": destination, "size": total, "at": _now()})
+        del _received[:-50]
+    return name
+
+
+def fetch_definition(url):
+    """Download a definition named by a URL into the inbox. (name, error).
+
+    **The keyboard is on the other device, so the address is typed there.** The
+    page this answers is already open on a phone or a laptop -- that is how the
+    files get here -- and typing `https://...` on a trackpad in Game Mode is the
+    thing this plugin exists to avoid.
+
+    **It downloads, it does not import.** The file lands in the transfer folder
+    and stops, so the preview and the confirmation stay the only way in and this
+    adds no way to install anything that did not already exist.
+
+    **Definitions only.** A box that fetches any URL into the inbox is a
+    downloader for games, and this plugin ships no games and fetches none. What
+    is fetched is capped at a definition's size and then has to *be* one -- a
+    JSON object carrying an `id` or a `definitions` list -- or it is deleted
+    without ever having been under a name the inbox would show.
+    """
+    from emulator_catalog import imported  # deferred: it pulls in the catalog
+
+    if not net.is_web_url(url):
+        return "", "That is not an http:// or https:// address."
+
+    with _state_lock:
+        directory = _target_dir
+        uploads = _uploads
+    if not uploads:
+        return "", "This link does not accept files."
+    if not directory or not os.path.isdir(directory):
+        return "", "The upload folder is no longer there."
+
+    # **What arrived decides, not what the link was called.** The suffix was the
+    # test at first, read off the address before anything was fetched -- which
+    # refused every shortened link, because `bit.ly/abc123` says nothing about
+    # what it redirects to. Reading the file instead is both the fix and the
+    # stronger check: a name proves nothing, and one that ends in the suffix
+    # while holding something else used to pass.
+    raw = urllib.parse.unquote(
+        urllib.parse.urlsplit(url).path.rsplit("/", 1)[-1]).strip()
+    stem = safe_name(raw) if raw else ""
+    if stem.endswith(imported.SUFFIX):
+        stem = stem[:-len(imported.SUFFIX)]
+    name = (stem.rsplit(".", 1)[0] or "definitions") + imported.SUFFIX
+
+    destination = os.path.join(directory, name)
+    # Under a name nothing will pick up until it has been read: the inbox is
+    # browsed and listed, and a file that turns out not to be a definition must
+    # never have sat there looking like one.
+    partial = destination + ".part"
+    ok, error = net.download(url, partial, max_bytes=imported.MAX_BYTES)
+    if not ok:
+        _quiet_remove(partial)
+        # Not `error`: that is `str()` of a urllib exception, and
+        # `<urlopen error [Errno 111] Connection refused>` on a phone screen is
+        # the plugin thinking aloud. The detail belongs in the log, where
+        # somebody diagnosing it will look.
+        decky.logger.warning("Could not fetch %s: %s", url, error)
+        return "", "The Deck could not reach that address."
+    try:
+        with open(partial, "r", encoding="utf-8") as handle:
+            body = json.loads(handle.read(imported.MAX_BYTES))
+    except (OSError, ValueError, UnicodeDecodeError):
+        _quiet_remove(partial)
+        return "", "That link is not a definition. Send a file for anything else."
+    # An empty list is the right kind of file holding nothing, which the import
+    # is the place to say. This is asking what the file *is*.
+    if not isinstance(body, dict) or not (
+            body.get("id") or isinstance(body.get("definitions"), list)):
+        _quiet_remove(partial)
+        return "", "That link is not a definition. Send a file for anything else."
+
+    try:
+        total = os.path.getsize(partial)
+        os.replace(partial, destination)
+    except OSError as problem:
+        _quiet_remove(partial)
+        return "", "Could not finish the file: %s" % problem
+
+    name = _file_arrived(destination, total)
+    decky.logger.info("Fetched %s (%d bytes) from %s", name, total, url)
+    return name, ""
 
 
 def _quiet_remove(path):
