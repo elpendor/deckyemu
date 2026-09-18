@@ -181,6 +181,90 @@ def save(text, known_platforms=(), replace=False):
     return entry, ""
 
 
+#: The key a file uses when it carries several definitions rather than one.
+#:
+#: A definition may not have a field of this name -- `schema` refuses any it
+#: does not know -- so its presence at the top level is what tells the two
+#: shapes apart. No version sniffing, and a file written before this existed is
+#: still a definition on its own.
+LIST_KEY = "definitions"
+
+
+def parse_many(text, known_platforms=()):
+    """(entries, problems) for a file holding one definition or several.
+
+    One file per definition was the only shape for a while, and it is still the
+    common one -- so a bare object is read exactly as it always was, and every
+    file already on somebody's device goes on importing unchanged.
+
+    A file may instead hold a list, which is how somebody with a dozen of them
+    sends a dozen rather than pressing Import a dozen times. Each entry is
+    validated on its own and named if it fails, so one mistake costs its own
+    entry rather than the file.
+    """
+    try:
+        data = json.loads(text)
+    except ValueError as failure:
+        return [], ["That is not valid JSON: %s" % failure]
+    if not isinstance(data, dict):
+        return [], ["A definition has to be a JSON object, not a %s."
+                    % type(data).__name__]
+
+    if not isinstance(data.get(LIST_KEY), list):
+        entry, error = parse(text, known_platforms)
+        return ([], [error]) if error else ([entry], [])
+
+    version = data.get("format", FORMAT)
+    if not isinstance(version, int) or version > FORMAT:
+        return [], ["This file says format %s, and this version of the plugin "
+                    "understands up to %d. Update the plugin." % (version, FORMAT)]
+
+    entries, problems, seen = [], [], set()
+    for index, item in enumerate(data[LIST_KEY]):
+        if not isinstance(item, dict):
+            problems.append("Entry %d is not an object." % (index + 1))
+            continue
+        label = item.get("name") or item.get("id") or "Entry %d" % (index + 1)
+        entry, error = parse(json.dumps(item), known_platforms)
+        if error:
+            problems.append("%s was not loaded:\n%s" % (label, error))
+            continue
+        if entry["id"] in seen:
+            problems.append("%s appears twice in the file." % entry["id"])
+            continue
+        seen.add(entry["id"])
+        entry["_text"] = json.dumps(item, indent=2)
+        entries.append(entry)
+    return entries, problems
+
+
+def save_many(text, known_platforms=(), replace=False):
+    """Store every definition a file holds. Returns (saved, problems).
+
+    Each is kept as its own file under its own id, which is what makes removing
+    one, listing them and launching them the machinery that already exists. A
+    file sent again updates what it holds, once the user has agreed to replace
+    -- the same rule `save` follows, asked once for the whole file rather than
+    once per entry.
+    """
+    entries, problems = parse_many(text, known_platforms)
+    saved = []
+    for entry in entries:
+        body = entry.pop("_text", None) or text
+        stored, error = save(body, known_platforms, replace)
+        if error:
+            problems.append("%s was not imported: %s"
+                            % (entry.get("name") or entry["id"], error))
+            continue
+        saved.append(stored)
+    return saved, problems
+
+
+def already_imported(entry_id):
+    """Whether a definition with this id is already stored."""
+    return os.path.isfile(path_for(entry_id))
+
+
 def remove(entry_id):
     """Forget an imported definition. Returns (removed, error)."""
     path = path_for(entry_id)

@@ -218,21 +218,32 @@ export const importedEmulators = callable<
  * whether they trust its author -- so they see what it installs and where it
  * writes first.
  */
+export interface DefinitionPreview {
+  id: string;
+  name: string;
+  summary: string;
+  system: string;
+  /** True for a native port of one game rather than an emulator. */
+  port: boolean;
+  /** What it will download, or "" when you supply the binary yourself. */
+  installs: string;
+  /** Every directory it is allowed to write into. */
+  writes: string[];
+  /** For a port, the file it wants, in its own words. Empty otherwise. */
+  needs: string;
+  /** True when a definition with this id is already imported. */
+  replaces: boolean;
+}
+
 export const previewEmulatorDefinition = callable<
   [name: string],
   {
     ok: boolean;
     error?: string;
-    id?: string;
-    name?: string;
-    summary?: string;
-    system?: string;
-    /** What it will download, or "" when you supply the binary yourself. */
-    installs?: string;
-    /** Every directory it is allowed to write into. */
-    writes?: string[];
-    /** True when a definition with this id is already imported. */
-    replaces?: boolean;
+    /** One file may hold one definition or several; this is always a list. */
+    entries?: DefinitionPreview[];
+    /** Entries the file held that were refused, one line each. */
+    problems?: string[];
   }
 >("preview_emulator_definition");
 
@@ -255,10 +266,10 @@ export const listEmulatorDefinitions = callable<
   [],
   { ok: boolean; suffix: string; path: string; files: DefinitionFile[] }
 >("list_emulator_definitions");
-/** Imports a definition sitting in the transfer folder, by its filename. */
+/** Imports every definition a file in the transfer folder holds. */
 export const importEmulatorDefinition = callable<
   [name: string, replace?: boolean],
-  { ok: boolean; error?: string; id?: string; name?: string }
+  { ok: boolean; error?: string; imported?: string[]; problems?: string[] }
 >("import_emulator_definition");
 export const removeImportedEmulator = callable<
   [entryId: string],
@@ -639,40 +650,3 @@ export const installHelperTool = callable<[name: string], { ok: boolean; error?:
 export const removeHelperTool = callable<[name: string], { ok: boolean; error?: string }>(
   "remove_helper_tool",
 );
-
-/** A ports list sitting in the transfer folder. */
-export interface PortListFile {
-  name: string;
-  size: number;
-  at: number;
-}
-
-/** Ports lists waiting in the transfer folder. */
-export const listPortLists = callable<
-  [],
-  { ok: boolean; suffix: string; path: string; files: PortListFile[] }
->("list_port_lists");
-
-/** What one port in a list will install and where it may write. */
-export interface PortPreview {
-  id: string;
-  name: string;
-  summary: string;
-  installs: string;
-  writes: string[];
-  /** The file this port wants, in its own words. */
-  needs: string;
-  replaces: boolean;
-}
-
-/** Reads a ports list without storing it, for the confirmation. */
-export const previewPortList = callable<
-  [name: string],
-  { ok: boolean; error?: string; ports?: PortPreview[]; problems?: string[] }
->("preview_port_list");
-
-/** Imports every valid port in a list sitting in the transfer folder. */
-export const importPortListFile = callable<
-  [name: string],
-  { ok: boolean; error?: string; imported?: string[]; problems?: string[] }
->("import_port_list");

@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
-"""A list of native ports, sent as one file and imported like definitions.
+"""What a port wants, and whether a file is the game it plays.
 
-    python scripts/tests/test_port_lists.py
+    python scripts/tests/test_port_needs.py
 
-Every entry is validated by the same parse an imported definition gets, marked
-`port`, and kept as its own definition file -- so one bad entry costs only
-itself, a list sent again updates what it holds, and an imported emulator that
-is not a port is never overwritten by one.
+A port is an imported definition with `port` set -- stored, listed and removed
+by the machinery definitions already have, which `test_imported.py` covers,
+including sending several in one file.
+
+What has no equivalent for an emulator is here: an emulator covers a system and
+its cores say which extensions it reads, while a port covers one game, so the
+file itself has to be asked whether it is that game.
 
 Every port here is made up.
 """
@@ -48,58 +51,13 @@ def _port(port_id, name, **extra):
             "keys": {"backend.gamePath": "{rom}"},
         },
     }
+    entry["port"] = True
     entry.update(extra)
     return entry
 
 
-section("ports lists -- one file, many ports")
-
 _created = []
 try:
-    text = json.dumps({"format": 1, "ports": [
-        _port("first-port", "First Port"),
-        _port("second-port", "Second Port"),
-        {"id": "broken", "name": "Broken"},
-    ]})
-    found, problems = ports.parse(text, KNOWN)
-    check("every valid port is read", [entry["id"] for entry in found],
-          ["first-port", "second-port"])
-    check("and each is marked a port", all(entry.get("port") for entry in found), True)
-    check("an invalid entry is named rather than failing the list",
-          len(problems) == 1 and problems[0].startswith("Broken"), True)
-    check("something that is not a ports list says so",
-          ports.parse(json.dumps({"id": "x"}), KNOWN)[0], [])
-
-    saved, problems = ports.save(text, KNOWN)
-    _created += ["first-port", "second-port"]
-    check("saving keeps the valid ones", sorted(entry["id"] for entry in saved),
-          ["first-port", "second-port"])
-    emulator_catalog.reload_imported()
-    in_catalog = {entry["id"]: entry for entry in emulator_catalog.CATALOG}
-    check("and they reach the catalog as ports",
-          (bool(in_catalog["first-port"].get("port")), bool(in_catalog["second-port"].get("port"))),
-          (True, True))
-    listed = {item["id"]: item for item in emulator_catalog.listing({})}
-    check("the listing tells the tab it is a port", listed["first-port"]["port"], True)
-
-    # A list sent again is how it is updated.
-    renamed = json.dumps({"format": 1, "ports": [_port("first-port", "First Port Renamed")]})
-    check("sending a list again replaces the port", ports.is_replacing("first-port"), True)
-    saved, problems = ports.save(renamed, KNOWN)
-    emulator_catalog.reload_imported()
-    check("with its new details", emulator_catalog.find("first-port")["name"], "First Port Renamed")
-
-    # An imported emulator that is not a port is somebody else's, and stays.
-    plain = dict(_port("plain-emulator", "Plain Emulator"))
-    del plain["game_config"]
-    del plain["needs"]
-    plain["args"] = "{rom}"
-    imported.save(json.dumps(plain), KNOWN)
-    _created.append("plain-emulator")
-    saved, problems = ports.save(json.dumps({"ports": [_port("plain-emulator", "Plain Emulator")]}), KNOWN)
-    check("a port never overwrites an imported emulator of the same id",
-          (saved, any("already an imported emulator" in problem for problem in problems)),
-          ([], True))
     section("a port is offered for its own game and no other")
 
     # `port` is what `parse` marks an entry with, so a fixture used without it
@@ -212,6 +170,7 @@ try:
 
     _emulator = dict(_port("not-a-port", "Not A Port"))
     del _emulator["game_config"]
+    del _emulator["port"]
     _emulator["args"] = "{rom}"
     _problems = emulator_catalog.validate(_emulator, imported=True)
     check("an emulator with a needs block is refused",

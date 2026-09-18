@@ -2,7 +2,7 @@ import { ButtonItem, PanelSection, PanelSectionRow } from "@decky/ui";
 import { useCallback, useState } from "react";
 
 import { EmulatorCatalogPanel } from "./EmulatorCatalogPanel";
-import { ImportPortsModal } from "./ImportPortsModal";
+import { ImportDefinitionModal } from "./ImportDefinitionModal";
 import { RegisteredEmulatorsPanel } from "./RegisteredEmulatorsPanel";
 import { openModal } from "./modalStack";
 
@@ -16,8 +16,8 @@ interface Props {
  *
  * The list is the catalog filtered to ports, so installing, updating and
  * removing one are the rows and buttons that tab already has. What differs is
- * only where the entries come from: a ports list the user sends, since this
- * plugin ships none.
+ * only where the entries come from: a definition the user sends, since this
+ * plugin ships no ports.
  */
 export function PortsPanel({ onChanged }: Props) {
   // As on the emulators tab: installing above registers a port below.
@@ -35,10 +35,10 @@ export function PortsPanel({ onChanged }: Props) {
         <PanelSectionRow>
           <ButtonItem
             layout="below"
-            description="A .deckyports.json somebody gave you, sent with Transfer to Deck. You are shown what each port installs before anything happens."
-            onClick={() => openModal(<ImportPortsModal onImported={afterChange} />)}
+            description="A .deckyemu.json somebody gave you, sent with Transfer to Deck. One file can hold several. You are shown what each one installs before anything happens."
+            onClick={() => openModal(<ImportDefinitionModal onImported={afterChange} />)}
           >
-            Import a ports list
+            Import a definition
           </ButtonItem>
         </PanelSectionRow>
       </PanelSection>

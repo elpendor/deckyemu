@@ -463,10 +463,10 @@ Some games have been rebuilt to run on the Deck directly, with no emulator. A
 port plays one game and needs the disc or cartridge dump you already own; it
 builds its own copy of the assets from that file the first time it runs.
 
-They live under **Ports**, and this plugin ships none — you import a list, the
-same way you import a definition. Send a `.deckyports.json` over **Transfer**
-and press **Import**: each port in it is checked on its own, so one bad entry
-costs only itself.
+They live under **Ports**, and this plugin ships none — you import a definition,
+exactly as you would for an emulator. Send a `.deckyemu.json` over **Transfer**
+and press **Import**. One file can hold several, and each is checked on its own,
+so one bad entry costs only itself.
 
 After that a port behaves like everything else. It is offered under **Run with**
 for a file it recognises, its game is filed under **Ports** rather than the

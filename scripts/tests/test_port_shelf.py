@@ -87,10 +87,11 @@ section("a core entry built from a record knows which it is")
 
 import emulator_catalog  # noqa: E402
 import emulators  # noqa: E402
-from emulator_catalog import imported, ports  # noqa: E402
+from emulator_catalog import imported  # noqa: E402
 
-_LIST = json.dumps({"format": 1, "ports": [{
+_LIST = json.dumps({"format": 1, "definitions": [{
     "id": "shelf-port",
+    "port": True,
     "name": "Shelf Port",
     "summary": "A native port of one game.",
     "source": {"kind": "github", "repo": "someone/shelf-port",
@@ -105,7 +106,7 @@ _LIST = json.dumps({"format": 1, "ports": [{
 }]})
 
 try:
-    ports.save(_LIST, [])
+    imported.save_many(_LIST, [])
     emulator_catalog.reload_imported()
 
     _record = {"id": "shelf-port", "name": "Shelf Port", "kind": "path",

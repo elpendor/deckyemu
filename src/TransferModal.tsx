@@ -41,7 +41,6 @@ import { HandoffCode } from "./HandoffCode";
  * and the file looks like a ROM the picker cannot read.
  */
 const DEFINITION_SUFFIX = ".deckyemu.json";
-const PORT_LIST_SUFFIX = ".deckyports.json";
 
 /**
  * A ROM hack, which belongs to a game rather than being one.
@@ -59,7 +58,6 @@ import { requirementForFile, type RequirementMatch } from "./firmwareMatch";
 import { confirmUnknownDump } from "./confirmUnknownDump";
 import { confirmDiscardTransfer } from "./discardTransfer";
 import { importDefinition } from "./importDefinition";
-import { importPortList } from "./importPortList";
 import { installContentFor } from "./installContent";
 import { openPatchInstall } from "./installPatch";
 import { openRestoreSaves } from "./openRestore";
@@ -970,13 +968,6 @@ export function TransferModal({
                   {file.name.endsWith(DEFINITION_SUFFIX) ? (
                     <DialogButton
                       onClick={() => importDefinition(file.name, load)}
-                      style={ICON_BUTTON_WIDE}
-                    >
-                      Import
-                    </DialogButton>
-                  ) : file.name.endsWith(PORT_LIST_SUFFIX) ? (
-                    <DialogButton
-                      onClick={() => importPortList(file.name, load)}
                       style={ICON_BUTTON_WIDE}
                     >
                       Import

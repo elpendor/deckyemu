@@ -78,6 +78,80 @@ check("and a JSON array is not a definition",
       "has to be a JSON object" in imported.parse("[]", _KNOWN)[1], True)
 
 
+section("one file, one definition or several")
+
+# One file per definition was the only shape for a while and is still the common
+# one, so a bare object is read exactly as it always was -- every file already
+# on somebody's device goes on importing unchanged. A file may instead hold a
+# list, which is how somebody with a dozen sends a dozen.
+_one, _one_problems = imported.parse_many(json.dumps(_definition()), _KNOWN)
+check("a bare object is still one definition",
+      ([entry["id"] for entry in _one], _one_problems), (["testemu"], []))
+
+_many = json.dumps({"format": 1, "definitions": [
+    _definition(id="alpha-emu", name="Alpha"),
+    _definition(id="beta-emu", name="Beta"),
+    {"id": "broken", "name": "Broken"},
+]})
+_read, _read_problems = imported.parse_many(_many, _KNOWN)
+check("a list is read entry by entry",
+      [entry["id"] for entry in _read], ["alpha-emu", "beta-emu"])
+# The reason the list exists at all: a mistake in one entry costs that entry.
+# A single definition has nothing to lose but itself, so this is the shape
+# that needed the rule.
+check("and one bad entry is named rather than failing the file",
+      len(_read_problems) == 1 and _read_problems[0].startswith("Broken"), True)
+
+_twice = json.dumps({"definitions": [
+    _definition(id="alpha-emu"), _definition(id="alpha-emu", name="Again")]})
+check("an id used twice in one file is refused the second time",
+      any("appears twice" in problem for problem in imported.parse_many(_twice, _KNOWN)[1]),
+      True)
+
+# Which shape a file is comes from the key, not from a version: `definitions` is
+# a field no definition may carry, so schema refuses it and its presence at the
+# top level can only mean the list.
+check("the key that tells the shapes apart is not a field a definition may have",
+      any("unknown field" in problem for problem in
+          schema.validate(_definition(definitions=[]), _KNOWN, imported=True)),
+      True)
+check("a list from the future is refused rather than half-read",
+      "understands up to" in imported.parse_many(
+          json.dumps({"format": 99, "definitions": []}), _KNOWN)[1][0],
+      True)
+
+
+section("storing several, and replacing them")
+
+_saved, _save_problems = imported.save_many(_many, _KNOWN)
+check("every valid entry is stored", sorted(entry["id"] for entry in _saved),
+      ["alpha-emu", "beta-emu"])
+check("and the bad one is still reported", len(_save_problems), 1)
+
+emulator_catalog.reload_imported()
+check("they reach the catalog", sorted(
+    entry["id"] for entry in emulator_catalog.CATALOG if entry["id"].endswith("-emu")),
+    ["alpha-emu", "beta-emu"])
+
+# Sending a file again is how it is updated -- but nothing is overwritten
+# without the user having been told, which is what `replace` carries. The
+# preview reports which entries would be replaced, and the button says Replace.
+_again = json.dumps({"definitions": [_definition(id="alpha-emu", name="Alpha Renamed")]})
+check("a file already imported is not silently overwritten",
+      imported.save_many(_again, _KNOWN)[0], [])
+check("and the refusal names the id", any(
+    "alpha-emu" in problem for problem in imported.save_many(_again, _KNOWN)[1]), True)
+check("the preview can say so before any of it happens",
+      imported.already_imported("alpha-emu"), True)
+
+_replaced, _ = imported.save_many(_again, _KNOWN, replace=True)
+emulator_catalog.reload_imported()
+check("asked for, it replaces", emulator_catalog.find("alpha-emu")["name"], "Alpha Renamed")
+
+for _id in ("alpha-emu", "beta-emu"):
+    imported.remove(_id)
+emulator_catalog.reload_imported()
+
 section("a setup block has to name what it writes")
 
 # emu_config._files_of reads `files`, or else subscripts `path` and `sections`

@@ -7,7 +7,7 @@ import { COLUMN, MUTED } from "./dialogStyle";
 import { openModal } from "./modalStack";
 
 /**
- * Importing an emulator definition: read it, show what it will do, then store it.
+ * Importing definitions: read the file, show what each will do, store them.
  *
  * Out here because there are two ways in and they must not diverge. The
  * transfer dialog offers it on a file that has just arrived; the Emulators tab
@@ -19,16 +19,10 @@ import { openModal } from "./modalStack";
  * different code could describe something other than what happens, which would
  * be worse than showing nothing at all: the whole point is that somebody sees
  * what a file will install and where it may write *before* agreeing to it.
- */
-
-
-
-/**
- * Preview `name`, ask, and import it if the user agrees.
  *
- * `onImported` is for the list that opened this. The catalog itself reloads on
- * its own -- the backend emits when it changes, so a list open somewhere else
- * hears about it too -- and this is only for the caller's own state.
+ * One file may hold one definition or a dozen, and emulators and ports sit in
+ * the same file, so this handles a list of any length rather than having a
+ * second dialog for the second shape.
  */
 export function importDefinition(name: string, onImported?: () => void): void {
   void (async () => {
@@ -39,72 +33,83 @@ export function importDefinition(name: string, onImported?: () => void): void {
       toaster.toast({ title: "Could not import", body: preview.error ?? "" });
       return;
     }
+    const entries = preview.entries ?? [];
+    const problems = preview.problems ?? [];
+    const replacing = entries.some((entry) => entry.replaces);
+    const only = entries.length === 1 ? entries[0] : null;
 
     const go = () =>
       void (async () => {
-        const result = await importEmulatorDefinition(name, preview.replaces);
+        const result = await importEmulatorDefinition(name, replacing);
         if (!result.ok) {
           toaster.toast({ title: "Could not import", body: result.error ?? "" });
           return;
         }
+        const count = result.imported?.length ?? 0;
         toaster.toast({
-          title: `${result.name} imported`,
-          body: preview.installs
-            ? "Find it under Emulators and press install."
-            : "Find it under Emulators and point it at the binary.",
+          title: only
+            ? `${only.name} imported`
+            : `${count} definition${count === 1 ? "" : "s"} imported`,
+          body: only && !only.installs
+            ? "Find it under Emulators and point it at the binary."
+            : "Find them under Emulators and Ports, and press install.",
         });
         onImported?.();
       })();
 
     openModal(
       <ConfirmModal
-        strTitle={preview.replaces ? `Replace ${preview.name}?` : `Import ${preview.name}?`}
-        strOKButtonText={preview.replaces ? "Replace" : "Import"}
+        strTitle={
+          only
+            ? `${only.replaces ? "Replace" : "Import"} ${only.name}?`
+            : `Import ${entries.length} definitions?`
+        }
+        strOKButtonText={replacing ? "Replace" : "Import"}
         onOK={go}
         strDescription={
           <div style={{ ...COLUMN, gap: "10px" }}>
-            <div>
-              {preview.summary}
-              {preview.system ? ` · ${preview.system}` : ""}
-            </div>
+            {entries.map((entry) => (
+              <div key={entry.id}>
+                <div>
+                  <b>{entry.name}</b>
+                  {entry.system ? ` · ${entry.system}` : ""}
+                  {entry.replaces ? " (replaces the one already imported)" : ""}
+                </div>
+                {only && entry.summary && <div>{entry.summary}</div>}
+                {/* The two facts worth reading before agreeing. */}
+                <div style={MUTED}>
+                  Installs: {entry.installs || "nothing — you supply it yourself"} ·
+                  May write to: {entry.writes.join(", ") || "nothing"}
+                </div>
+                {entry.needs && <div style={MUTED}>You supply: {entry.needs}</div>}
+              </div>
+            ))}
 
-            {/* The two facts worth reading before agreeing. */}
-            <div>
-              <div>
-                <b>Installs:</b>{" "}
-                {preview.installs || "nothing — you supply the emulator yourself"}
+            {problems.length > 0 && (
+              <div style={MUTED}>
+                Not imported: {problems.map((problem) => problem.split("\n")[0]).join("; ")}
               </div>
-              <div>
-                <b>May write to:</b> {(preview.writes ?? []).join(", ") || "nothing"}
-              </div>
-            </div>
+            )}
 
             {/* Deliberately blunt, and deliberately not softened by the checks
                 that already ran. Those bound what a definition can reach; they
                 cannot tell you whether its author meant well, and this file did
                 not come from the plugin. */}
             <div style={DANGER_TEXT}>
-              <b>You are responsible for what you import.</b> This definition was
-              written by whoever gave it to you, not by this plugin, and nobody here
-              has reviewed or tested it. It can make your Deck download and run
-              software.{" "}
-              <b>Open the .json in a text editor and read it before continuing</b> — it
-              is a few lines, and every line is plain text.
+              <b>You are responsible for what you import.</b> This file was written by
+              whoever gave it to you, not by this plugin, and nobody here has reviewed
+              or tested it. It can make your Deck download and run software.{" "}
+              <b>Open the .json in a text editor and read it before continuing.</b>
             </div>
-
-            {preview.replaces && (
-              <div style={MUTED}>
-                A definition for {preview.id} is already imported and will be
-                overwritten.
-              </div>
-            )}
 
             {/* Said here because this is where it lands, the same rule firmware
                 follows for the same reason: the transfer folder is a staging
                 post, so importing takes the file out of it. Somebody who wants
                 to keep the .json has one on the device they sent it from. */}
             <div style={MUTED}>
-              The file is moved out of the transfer folder once it is imported.
+              {problems.length
+                ? "The file stays in the transfer folder, because some entries were not imported."
+                : "The file is moved out of the transfer folder once it is imported."}
             </div>
           </div>
         }

@@ -148,27 +148,30 @@ Add `"host": "git.example.com"` to a `github` source for a project that left
 GitHub and self-hosts the same releases API — its old repository answers HTTP
 451 there, so no asset pattern reaches it. `host` is a host name, not a URL.
 
-## Several at once: a ports list
+## Several in one file
 
-A native port is a definition with `"port": true`, and they come in batches, so
-they can be sent as one file instead of one each. A `.deckyports.json` holds
-them under `ports`:
+One file per definition is the usual shape and the one everything above
+describes. A file may instead hold a list, which is how somebody with a dozen
+sends a dozen instead of pressing **Import** a dozen times:
 
 ```jsonc
 {
   "format": 1,
-  "ports": [ { "id": "…", "name": "…", … }, … ]
+  "definitions": [
+    { "id": "some-emulator", … },
+    { "id": "some-port", "port": true, … }
+  ]
 }
 ```
 
-Every entry is validated exactly as a single definition is, marked `port`, and
-stored as its own file — so one bad entry costs only itself, sending the list
-again updates what it holds, and an imported emulator that is not a port is
-never overwritten by one. The transfer panel shows what each port installs,
-where it may write and what you have to supply, before anything is stored.
+Emulators and ports go in the same file or in separate ones, as you like — a
+port is a definition with `"port": true` and nothing else about it is different.
 
-A port entry is where `needs`, `first_run`, `game_beside`, `game_picker` and
-`menu_key` belong; the fields table above says what each does.
+Every entry is validated on its own and stored under its own id, so one bad
+entry costs only itself and the rest still import. An id already imported is
+refused unless you press **Replace**, and the confirmation says which entries
+that would be. A file with a refused entry stays in the transfer folder; one
+that imported cleanly is taken out of it.
 
 ## Firmware and keys
 

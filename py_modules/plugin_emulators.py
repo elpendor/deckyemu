@@ -24,7 +24,6 @@ import emu_config
 import emu_install
 import emu_patch
 import emulator_catalog
-from emulator_catalog import ports as port_lists
 import emulators
 import fileserver
 import installer
@@ -186,8 +185,51 @@ class Emulators(plugin_base.PluginContext):
         }
 
 
+    async def _read_definition_file(self, name):
+        """(text, error) for a definition file waiting in the transfer folder."""
+        path = await self._run(fileserver.inbox_path, name)
+        if not path:
+            return None, "%s is not in the transfer folder." % name
+        try:
+            text = await self._run(_read_text, path,
+                                   emulator_catalog.imported.MAX_BYTES)
+        except OSError as failure:
+            return None, "Could not read %s: %s" % (name, failure)
+        if text is None:
+            return None, "%s is too large to be a definition." % name
+        return text, ""
+
+    def _described(self, entry):
+        """One entry as the confirm dialog shows it."""
+        source = entry.get("source") or {}
+        kind = source.get("kind", "")
+        if kind == "flatpak":
+            installs = "Flathub: %s" % source.get("id", "")
+        elif kind == "github":
+            installs = "%s (%s)" % (source.get("repo", ""),
+                                    source.get("host") or "github.com")
+        else:
+            installs = ""
+        roots = entry.get("root")
+        return {
+            "id": entry["id"],
+            "name": entry.get("name", entry["id"]),
+            "summary": entry.get("summary", ""),
+            "system": entry.get("platform") or ", ".join(entry.get("databases") or []),
+            "port": bool(entry.get("port")),
+            # The two things worth reading before agreeing: what it will
+            # download, and everywhere it can write.
+            "installs": installs,
+            "writes": [roots] if isinstance(roots, str) else list(roots or ()),
+            # What the user has to supply, for a port. Shown before anything is
+            # stored, because a port they have no copy of the game for is one
+            # they would install and then have nothing to point at.
+            "needs": (entry.get("needs") or {}).get("what", ""),
+            "replaces": emulator_catalog.imported.already_imported(entry["id"]),
+        }
+
     async def preview_emulator_definition(self, name: str):
-        """What a definition says it will do, without storing it.
+        """What a definition file says it will do, without storing any of it.
 
         The panel shows this and makes the user confirm. A definition is not
         data the plugin reads, it is a list of actions the plugin performs, and
@@ -198,205 +240,70 @@ class Emulators(plugin_base.PluginContext):
         Deliberately the same parse the import does. A preview produced by
         different code could describe something other than what runs, which
         would be worse than no preview at all.
+
+        One file may hold one definition or several, and this answers the same
+        shape either way: a list of entries and the problems of any that were
+        refused.
         """
-        path = await self._run(fileserver.inbox_path, name)
-        if not path:
-            return {"ok": False, "error": "%s is not in the transfer folder." % name}
-
-        try:
-            text = await self._run(_read_text, path,
-                                   emulator_catalog.imported.MAX_BYTES)
-        except OSError as failure:
-            return {"ok": False, "error": "Could not read %s: %s" % (name, failure)}
-        if text is None:
-            return {"ok": False, "error": "%s is too large to be a definition." % name}
-
-        known = [label for label, _full, _short in platforms.NO_LIBRETRO_PLATFORMS]
-        entry, error = await self._run(emulator_catalog.imported.parse, text, known)
+        text, error = await self._read_definition_file(name)
         if error:
             return {"ok": False, "error": error}
 
-        source = entry.get("source") or {}
-        kind = source.get("kind", "")
-        if kind == "flatpak":
-            installs = "Flathub: %s" % source.get("id", "")
-        elif kind == "github":
-            installs = "%s (%s)" % (source.get("repo", ""),
-                                    source.get("host") or "github.com")
-        else:
-            installs = ""
-
+        known = [label for label, _full, _short in platforms.NO_LIBRETRO_PLATFORMS]
+        entries, problems = await self._run(
+            emulator_catalog.imported.parse_many, text, known
+        )
+        if not entries:
+            return {"ok": False, "error": "\n".join(problems)
+                    or "That file holds no definitions."}
         return {
             "ok": True,
             "error": "",
-            "id": entry["id"],
-            "name": entry.get("name", entry["id"]),
-            "summary": entry.get("summary", ""),
-            "system": entry.get("platform") or ", ".join(entry.get("databases") or []),
-            # The two things worth reading before agreeing: what it will
-            # download, and everywhere it can write.
-            "installs": installs,
-            "writes": [root for root in (
-                [entry["root"]] if isinstance(entry.get("root"), str)
-                else list(entry.get("root") or ())
-            )],
-            "replaces": await self._run(
-                os.path.isfile, emulator_catalog.imported.path_for(entry["id"])
-            ),
+            "entries": [self._described(entry) for entry in entries],
+            "problems": problems,
         }
 
-
     async def import_emulator_definition(self, name: str, replace: bool = False):
-        """Import a definition the user sent, named as it appears in the inbox.
+        """Import every definition a file the user sent holds.
 
         Taken from the transfer folder rather than a path the frontend supplies,
         so the file has to be one the user actually sent. Firmware arrives the
         same way, which is the point: adding an emulator this plugin does not
         ship is the same gesture as supplying a BIOS.
-        """
-        path = await self._run(fileserver.inbox_path, name)
-        if not path:
-            return {"ok": False, "error": "%s is not in the transfer folder." % name}
 
-        try:
-            text = await self._run(_read_text, path,
-                                   emulator_catalog.imported.MAX_BYTES)
-        except OSError as failure:
-            return {"ok": False, "error": "Could not read %s: %s" % (name, failure)}
-        if text is None:
-            return {"ok": False, "error": "%s is too large to be a definition." % name}
-
-        known = [label for label, _full, _short in platforms.NO_LIBRETRO_PLATFORMS]
-        entry, error = await self._run(
-            emulator_catalog.imported.save, text, known, replace
-        )
-        if error:
-            return {"ok": False, "error": error}
-
-        # The transfer folder is a staging post, not a store: a definition that
-        # has been imported is a duplicate of one the plugin now keeps under
-        # `emulators.d`, and leaving it means the Import list grows by one every
-        # time somebody uses it and never shrinks. Firmware settled this the same
-        # way and for the same reason -- one file in one place.
-        #
-        # Only after the save succeeded. A definition that was refused is still
-        # the user's only copy, and consuming it would leave them with the
-        # reasons it was refused and nothing to fix.
-        removed = await self._run(_discard, path)
-        if not removed:
-            # Not a failure: the import happened, and the plugin has its copy.
-            # Worth a line because the Import list will go on offering it.
-            decky.logger.warning("Imported %s but could not clear it from %s", name, path)
-
-        await self._run(emulator_catalog.reload_imported)
-        # A replaced definition has to reach the emulator already registered
-        # from it, now rather than at the next start. Registration copied the
-        # old one's formats and arguments, so a definition that stopped claiming
-        # `.nsz` went on being offered one until the plugin restarted. The
-        # startup pass is the one that carries a changed entry over, and it
-        # leaves anything edited in the emulator editor alone.
-        #
-        # The definition is saved by now, so a refresh that fails is logged
-        # rather than reported as a failed import; the next start runs it again.
-        try:
-            await self._upgrade_emulator_recipes()
-        except Exception as failure:  # noqa: BLE001
-            decky.logger.warning("Imported %s but could not apply it yet: %s",
-                                 entry["id"], failure)
-        decky.logger.info("Imported emulator definition %s (%s)", entry["id"], name)
-        # The catalog changed, and whoever is looking at it may not be whoever
-        # imported it: the transfer dialog can do this with the Emulators tab
-        # open behind it. Emitted rather than returned so the list reloads
-        # wherever it is, instead of only where the button was pressed.
-        await decky.emit("emulator_catalog_changed")
-        return {"ok": True, "error": "", "id": entry["id"], "name": entry["name"]}
-
-
-    async def list_port_lists(self):
-        """Ports lists waiting in the transfer folder, read off the folder."""
-        waiting = await self._run(fileserver.inbox_files, port_lists.SUFFIX)
-        return {
-            "ok": True,
-            "suffix": port_lists.SUFFIX,
-            "path": await self._run(fileserver.default_dir, False),
-            "files": [
-                {"name": item["name"], "size": item["size"], "at": item["at"]}
-                for item in waiting
-            ],
-        }
-
-    async def _read_port_list(self, name):
-        """(text, error) for a ports list in the transfer folder."""
-        path = await self._run(fileserver.inbox_path, name)
-        if not path:
-            return None, "%s is not in the transfer folder." % name
-        try:
-            text = await self._run(_read_text, path, port_lists.MAX_BYTES)
-        except OSError as failure:
-            return None, "Could not read %s: %s" % (name, failure)
-        if text is None:
-            return None, "%s is too large to be a ports list." % name
-        return text, ""
-
-    async def preview_port_list(self, name: str):
-        """What a ports list will install and where each port may write.
-
-        The same parse the import runs, for the reason a definition's preview
-        is: what is shown has to be what happens.
-        """
-        text, error = await self._read_port_list(name)
-        if error:
-            return {"ok": False, "error": error}
-        known = [label for label, _full, _short in platforms.NO_LIBRETRO_PLATFORMS]
-        ports, problems = await self._run(port_lists.parse, text, known)
-        if not ports:
-            return {"ok": False, "error": "\n".join(problems) or "The list holds no ports."}
-
-        described = []
-        for entry in ports:
-            source = entry.get("source") or {}
-            roots = entry.get("root")
-            described.append({
-                "id": entry["id"],
-                "name": entry.get("name", entry["id"]),
-                "summary": entry.get("summary", ""),
-                "installs": "%s (%s)" % (source.get("repo", ""), source.get("host") or "github.com")
-                if source.get("kind") == "github" else "",
-                "writes": [roots] if isinstance(roots, str) else list(roots or ()),
-                # What the user has to supply. Shown before anything is stored,
-                # because a port they have no copy of the game for is one they
-                # would install and then have nothing to point at.
-                "needs": port_lists.wanted_file(entry),
-                "replaces": await self._run(port_lists.is_replacing, entry["id"]),
-            })
-        return {"ok": True, "error": "", "ports": described, "problems": problems}
-
-    async def import_port_list(self, name: str):
-        """Import every valid port in a list the user sent.
-
-        The file is taken out of the transfer folder only when every port in it
-        was imported: a list with a refused entry is still the only copy, and
+        The file is taken out of the transfer folder only when every entry in it
+        was imported: a file with a refused entry is still the only copy, and
         the refusal is what tells its author what to fix.
         """
-        text, error = await self._read_port_list(name)
+        text, error = await self._read_definition_file(name)
         if error:
             return {"ok": False, "error": error}
+
         known = [label for label, _full, _short in platforms.NO_LIBRETRO_PLATFORMS]
-        saved, problems = await self._run(port_lists.save, text, known)
+        saved, problems = await self._run(
+            emulator_catalog.imported.save_many, text, known, replace
+        )
         if not saved:
-            return {"ok": False, "error": "\n".join(problems) or "The list holds no ports."}
+            return {"ok": False, "error": "\n".join(problems)
+                    or "That file holds no definitions."}
 
         if not problems:
             path = await self._run(fileserver.inbox_path, name)
             if path and not await self._run(_discard, path):
-                decky.logger.warning("Imported %s but could not clear it from %s", name, path)
+                decky.logger.warning("Imported %s but could not clear it from %s",
+                                     name, path)
 
         await self._run(emulator_catalog.reload_imported)
         try:
             await self._upgrade_emulator_recipes()
         except Exception as failure:  # noqa: BLE001
-            decky.logger.warning("Imported ports but could not apply them yet: %s", failure)
-        decky.logger.info("Imported %d port(s) from %s", len(saved), name)
+            decky.logger.warning("Imported %s but could not apply it yet: %s",
+                                 name, failure)
+        decky.logger.info("Imported %d definition(s) from %s", len(saved), name)
+        # The catalog changed, and whoever is looking at it may not be whoever
+        # imported it: the transfer dialog can do this with the Emulators tab
+        # open behind it. Emitted rather than returned so the list reloads
+        # wherever it is, instead of only where the button was pressed.
         await decky.emit("emulator_catalog_changed")
         return {
             "ok": True,
