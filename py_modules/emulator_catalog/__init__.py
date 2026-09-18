@@ -355,7 +355,18 @@ def extensions_for(entry, database_extensions):
     declares `m3u`, the flatpak PCSX2 cannot open one at all, and the multi-disc
     switch appeared for a two-disc PS2 game and wrote a playlist the emulator
     then could not read. Subtracted last, so it wins over both sources.
+
+    **A port answers for itself.** It plays one game, so the extensions its
+    system's cores declare are not an answer to "what does this run": they are
+    every format the system has, and the port would be offered for all of them.
+    `needs.extensions` is what it can open, and nothing is derived.
     """
+    needs = entry.get("needs") or {}
+    if entry.get("port") and needs.get("extensions"):
+        return sorted({
+            extension.lower() for extension in needs["extensions"] if extension
+        })
+
     found = set()
     for key in _system_keys(entry):
         found.update(
@@ -403,13 +414,15 @@ def to_emulator(entry, target, database_extensions):
         "name": entry["name"],
         "kind": "flatpak" if entry["source"]["kind"] == "flatpak" else "path",
         "target": target,
-        "args": entry.get("args") or "{rom}",
+        # A game read from the program's own config is not passed at all.
+        "args": entry.get("args") if entry.get("game_config") else (entry.get("args") or "{rom}"),
+        "game_in_config": bool(entry.get("game_config")),
         # Recorded so a corrected recipe can reach an emulator already
         # installed. Launch arguments are written once at install time, and
         # PCSX2's needed fixing after the fact -- without this the only routes
         # were reinstalling the emulator or retyping the arguments by hand.
         "catalog_recipe": entry.get("recipe", 1),
-        "catalog_args": entry.get("args") or "{rom}",
+        "catalog_args": entry.get("args") if entry.get("game_config") else (entry.get("args") or "{rom}"),
         "catalog_fullscreen_args": entry.get("fullscreen_args") or "",
         # Which binary inside the flatpak to run, when it is not the one the
         # manifest names, and anything its environment has to be told. Empty
@@ -649,6 +662,11 @@ def listing(database_extensions, installed_ids=()):
                 # here has run it -- and saying so is the honest half of letting
                 # one be imported at all.
                 "imported": bool(entry.get("imported")),
+                "port": bool(entry.get("port")),
+                # What a port wants, in its own words. A port covers one game,
+                # so its extensions are not a useful description of what it
+                # takes -- ".iso .gcm" is every disc the user owns.
+                "needs_what": (entry.get("needs") or {}).get("what", ""),
                 "source_file": entry.get("source_file", ""),
                 # Projected rather than passed through: the raw requirement
                 # carries a match pattern and a destination path, neither of

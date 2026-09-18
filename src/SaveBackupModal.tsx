@@ -259,7 +259,7 @@ export function SaveBackupModal({ closeModal }: Props) {
         )}
 
         {sources !== null && sources.length === 0 && (
-          <Field description="No installed emulator has any save data yet. Play something first, then come back." />
+          <Field description="No emulator or port here has any save data yet. Play something first, then come back." />
         )}
 
         {/* The list, until a backup exists. Once one does the screen is about

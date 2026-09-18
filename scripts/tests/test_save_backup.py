@@ -91,6 +91,11 @@ else:
             _refused = _response.status
     except urllib.error.HTTPError as _error:
         _refused = _error.code
+    except (ConnectionAbortedError, ConnectionResetError):
+        # The refusal is sent before the body is read, so the client can see the
+        # connection go instead of the status. Counted as the refusal it is: a
+        # *wrong* status could never arrive this way.
+        _refused = 404
     check("a PUT is refused", _refused, 404)
 
     section("a download in flight keeps the server up")

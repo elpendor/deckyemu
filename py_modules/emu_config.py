@@ -741,6 +741,14 @@ def _apply_plain_ini(path, sections, previous=None, superseded=(), quoted=False)
 # exact keyboard dict Ryujinx happens to ship this version.
 JSON_KEYS = "json-keys"
 
+# A JSON object whose keys are literal names that happen to contain dots --
+# `"backend.isoPath"` at the top level rather than `{"backend": {"isoPath"}}`.
+# Read by `json-keys` it would be written as a nested object the program never
+# looks at. Created when absent: a flat file of settings has no version field
+# or required structure to guess, and a program that reads one fills in
+# defaults for whatever is missing.
+JSON_FLAT = "json-flat"
+
 _CONTENT_KEY = "content"
 
 
@@ -822,19 +830,29 @@ def _json_at(data, key):
     return node, parts[-1]
 
 
-def _apply_json_keys(path, keys, previous=None, superseded=()):
+def _apply_json_flat(path, keys, previous=None, superseded=()):
+    """Set literal `keys` in a flat JSON object file, creating it if absent."""
+    return _apply_json_keys(path, keys, previous, superseded, flat=True)
+
+
+def _apply_json_keys(path, keys, previous=None, superseded=(), flat=False):
     """Set `keys` in a JSON object file. Same contract as the other handlers."""
     previous = previous or {}
     try:
         with open(path, "r", encoding="utf-8") as handle:
             data = json.load(handle)
     except FileNotFoundError:
+        if flat:
+            data = {}
+        else:
+            data = None
+    except (OSError, ValueError) as error:
+        return [], [], {}, "Could not read %s: %s" % (path, error)
+    if data is None:
         # Unlike the INI handlers, an absent file is not safe to invent here: a
         # config this emulator has never written has no version field, and
         # guessing the rest of the document is not something to do blind.
         return [], [], {}, ""
-    except (OSError, ValueError) as error:
-        return [], [], {}, "Could not read %s: %s" % (path, error)
     if not isinstance(data, dict):
         return [], [], {}, "%s is not a JSON object." % path
 
@@ -861,7 +879,7 @@ def _apply_json_keys(path, keys, previous=None, superseded=()):
         else:
             value, replaceable, rule = spec, None, None
 
-        container, leaf = _json_at(data, key)
+        container, leaf = (data, key) if flat else _json_at(data, key)
         if container is None:
             return [], [], {}, "%s: %s is not inside an object." % (path, key)
 
@@ -902,6 +920,7 @@ _HANDLERS = {
     YAML_KEYS: _apply_yaml_keys,
     WHOLE_FILE: _apply_whole_file,
     JSON_KEYS: _apply_json_keys,
+    JSON_FLAT: _apply_json_flat,
 }
 
 
@@ -1058,6 +1077,24 @@ def apply_file(path, fmt, sections, owner):
     state[owner] = dict(previous, **written)
     _write_state(state)
     return {"ok": True, "applied": applied, "skipped": skipped}
+
+
+def game_config_values(entry, rom_path):
+    """(path, keys) this game needs in the program's own config, or ("", {}).
+
+    The substitution alone, with nothing written. The launcher writes these
+    itself, immediately before starting the program -- see
+    `launchers.game_config_setup` for why that cannot happen when the game is
+    added -- and this is where the one copy of "which keys, holding what" lives.
+    """
+    spec = entry.get("game_config") or {}
+    if not spec or spec.get("format") != JSON_FLAT:
+        return "", {}
+    return (
+        os.path.join(sysenv.user_home(), spec["path"]),
+        {key: (value.replace("{rom}", rom_path) if isinstance(value, str) else value)
+         for key, value in (spec.get("keys") or {}).items()},
+    )
 
 
 def apply_setup(entry):

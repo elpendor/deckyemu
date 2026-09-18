@@ -205,8 +205,9 @@ def validate(emulator):
     if not emulator.get("extensions"):
         return "List at least one file extension, e.g. iso, rvz."
 
-    args = emulator.get("args") or ROM_PLACEHOLDER
-    if ROM_PLACEHOLDER not in args:
+    args = emulator.get("args") or ("" if emulator.get("game_in_config") else ROM_PLACEHOLDER)
+    # A program that reads its game from its own config is handed no path.
+    if ROM_PLACEHOLDER not in args and not emulator.get("game_in_config"):
         return "The arguments must include %s so the ROM can be passed in." % ROM_PLACEHOLDER
     try:
         shlex.split(args)
@@ -223,12 +224,20 @@ def validate(emulator):
 
 def save(emulator):
     """Add or update an emulator. Returns (saved_or_None, error)."""
+    # Settled before the arguments are: the editor never sends it, and a save
+    # from there must not turn a port's empty arguments back into `{rom}`.
+    in_config = emulator.get("game_in_config")
+    if in_config is None:
+        in_config = (find(usable_id(emulator.get("id"), emulator.get("name"))) or {}).get(
+            "game_in_config")
     entry = {
         "id": usable_id(emulator.get("id"), emulator.get("name")),
         "name": (emulator.get("name") or "").strip(),
         "kind": emulator.get("kind"),
         "target": (emulator.get("target") or "").strip(),
-        "args": (emulator.get("args") or ROM_PLACEHOLDER).strip() or ROM_PLACEHOLDER,
+        "game_in_config": bool(in_config),
+        "args": ((emulator.get("args") or "").strip() if in_config
+                 else (emulator.get("args") or ROM_PLACEHOLDER).strip() or ROM_PLACEHOLDER),
         "extensions": parse_extensions(emulator.get("extensions")),
         "databases": [db for db in (emulator.get("databases") or []) if db],
         # For systems libretro has no database for -- Switch, Wii U, PS3 and so
@@ -361,6 +370,21 @@ def emulator_id(core_id):
     return core_id[len(_PREFIX):] if is_emulator_id(core_id) else core_id
 
 
+def core_id(emulator_id):
+    """An emulator's id as the picker and the library spell it."""
+    return _PREFIX + (emulator_id or "")
+
+
+def is_port(emulator_id):
+    """Whether a registered id names a native port rather than an emulator.
+
+    Asked of the catalog because nothing in the record says it: a port is
+    installed, registered and launched exactly as an emulator is, and what it
+    *is* lives in the recipe it came from.
+    """
+    return bool((emulator_catalog.find(emulator_id or "") or {}).get("port"))
+
+
 def to_core_entry(emulator, system_name=""):
     """Shape an emulator like a libretro core.
 
@@ -401,6 +425,10 @@ def to_core_entry(emulator, system_name=""):
         # for one that cannot be handed a playlist, and it decides whether a
         # multi-disc set may be one entry at all.
         "changes_disc": bool(emulator.get("changes_disc")),
+        # Which kind of thing this is. Set here, where the entry is built,
+        # because three callers shaped one of these and only the two that
+        # remembered to add it filed a port as a port.
+        "port": is_port(emulator.get("id")),
         "has_info": True,
         "source": "emulator",
     }
@@ -760,7 +788,10 @@ def launch_argv(emulator, rom_path, fullscreen=True, title_id=""):
         ]
         rom_path = ""
     else:
-        tokens = shlex.split(emulator.get("args") or ROM_PLACEHOLDER)
+        # A program that reads its game from its own config gets no path here;
+        # defaulting its empty arguments to the path would hand it one anyway.
+        default = "" if emulator.get("game_in_config") else ROM_PLACEHOLDER
+        tokens = shlex.split(emulator.get("args") or default)
         # Substituted after splitting so a ROM path with spaces stays one argument.
         tokens = [token.replace(ROM_PLACEHOLDER, rom_path) for token in tokens]
 

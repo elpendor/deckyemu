@@ -24,6 +24,7 @@ import emu_config
 import emu_install
 import emu_patch
 import emulator_catalog
+from emulator_catalog import ports as port_lists
 import emulators
 import fileserver
 import installer
@@ -310,6 +311,99 @@ class Emulators(plugin_base.PluginContext):
         await decky.emit("emulator_catalog_changed")
         return {"ok": True, "error": "", "id": entry["id"], "name": entry["name"]}
 
+
+    async def list_port_lists(self):
+        """Ports lists waiting in the transfer folder, read off the folder."""
+        waiting = await self._run(fileserver.inbox_files, port_lists.SUFFIX)
+        return {
+            "ok": True,
+            "suffix": port_lists.SUFFIX,
+            "path": await self._run(fileserver.default_dir, False),
+            "files": [
+                {"name": item["name"], "size": item["size"], "at": item["at"]}
+                for item in waiting
+            ],
+        }
+
+    async def _read_port_list(self, name):
+        """(text, error) for a ports list in the transfer folder."""
+        path = await self._run(fileserver.inbox_path, name)
+        if not path:
+            return None, "%s is not in the transfer folder." % name
+        try:
+            text = await self._run(_read_text, path, port_lists.MAX_BYTES)
+        except OSError as failure:
+            return None, "Could not read %s: %s" % (name, failure)
+        if text is None:
+            return None, "%s is too large to be a ports list." % name
+        return text, ""
+
+    async def preview_port_list(self, name: str):
+        """What a ports list will install and where each port may write.
+
+        The same parse the import runs, for the reason a definition's preview
+        is: what is shown has to be what happens.
+        """
+        text, error = await self._read_port_list(name)
+        if error:
+            return {"ok": False, "error": error}
+        known = [label for label, _full, _short in platforms.NO_LIBRETRO_PLATFORMS]
+        ports, problems = await self._run(port_lists.parse, text, known)
+        if not ports:
+            return {"ok": False, "error": "\n".join(problems) or "The list holds no ports."}
+
+        described = []
+        for entry in ports:
+            source = entry.get("source") or {}
+            roots = entry.get("root")
+            described.append({
+                "id": entry["id"],
+                "name": entry.get("name", entry["id"]),
+                "summary": entry.get("summary", ""),
+                "installs": "%s (%s)" % (source.get("repo", ""), source.get("host") or "github.com")
+                if source.get("kind") == "github" else "",
+                "writes": [roots] if isinstance(roots, str) else list(roots or ()),
+                # What the user has to supply. Shown before anything is stored,
+                # because a port they have no copy of the game for is one they
+                # would install and then have nothing to point at.
+                "needs": port_lists.wanted_file(entry),
+                "replaces": await self._run(port_lists.is_replacing, entry["id"]),
+            })
+        return {"ok": True, "error": "", "ports": described, "problems": problems}
+
+    async def import_port_list(self, name: str):
+        """Import every valid port in a list the user sent.
+
+        The file is taken out of the transfer folder only when every port in it
+        was imported: a list with a refused entry is still the only copy, and
+        the refusal is what tells its author what to fix.
+        """
+        text, error = await self._read_port_list(name)
+        if error:
+            return {"ok": False, "error": error}
+        known = [label for label, _full, _short in platforms.NO_LIBRETRO_PLATFORMS]
+        saved, problems = await self._run(port_lists.save, text, known)
+        if not saved:
+            return {"ok": False, "error": "\n".join(problems) or "The list holds no ports."}
+
+        if not problems:
+            path = await self._run(fileserver.inbox_path, name)
+            if path and not await self._run(_discard, path):
+                decky.logger.warning("Imported %s but could not clear it from %s", name, path)
+
+        await self._run(emulator_catalog.reload_imported)
+        try:
+            await self._upgrade_emulator_recipes()
+        except Exception as failure:  # noqa: BLE001
+            decky.logger.warning("Imported ports but could not apply them yet: %s", failure)
+        decky.logger.info("Imported %d port(s) from %s", len(saved), name)
+        await decky.emit("emulator_catalog_changed")
+        return {
+            "ok": True,
+            "error": "",
+            "imported": [entry.get("name", entry["id"]) for entry in saved],
+            "problems": problems,
+        }
 
     async def remove_imported_emulator(self, entry_id: str):
         """Forget a user-supplied definition, and anything it installed.

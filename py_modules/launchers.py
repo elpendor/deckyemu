@@ -8,6 +8,7 @@ entirely and gives us one obvious place to look when a launch misbehaves.
 """
 
 import hashlib
+import json
 import os
 import re
 import shlex
@@ -17,6 +18,7 @@ import time
 import decky
 
 import cheevos
+import emu_config
 import emu_install
 import emulator_catalog
 import emulators
@@ -201,7 +203,10 @@ LAUNCH_GATE_DIR = os.path.join(decky.DECKY_PLUGIN_RUNTIME_DIR, "launch")
 #  31  the wait believes `cloud-on` only while it is fresh, so a dialog can
 #      wait for a person instead of for a clock. 30 gave somebody 30 seconds to
 #      read it and then started the game anyway.
-FORMAT_VERSION = 31
+#  32  a program that reads its game from its own config is told which game by
+#      the launcher, not when the game was added. Two games on one such program
+#      wrote the same key, so the second added repointed the first.
+FORMAT_VERSION = 32
 
 # One file per OSD mode rather than one shared file. Games can override the
 # global setting individually, and a single file would mean the last game
@@ -1089,6 +1094,52 @@ def _presence_label(emulator, core_path):
     return ""
 
 
+#: Written by the launcher, not when the game is added.
+#:
+#: A program that takes its game from its own config has one config, and every
+#: game on it writes the same key. Written at add time, the second game added
+#: silently repointed the first game's shortcut: both launchers start the same
+#: program, and the program reads whatever that key last said. So the key is set
+#: on the way in, by the launcher that knows which game it is for.
+#:
+#: Failure is not fatal here. The program starts either way, and what it does
+#: with a config it could not have is its own business to report -- refusing the
+#: launch would turn a game that might still work into one that cannot.
+_GAME_CONFIG = """python3 -c 'import json, os, sys
+path, keys = sys.argv[1], json.loads(sys.argv[2])
+try:
+    with open(path, encoding="utf-8") as handle:
+        data = json.load(handle)
+except Exception:
+    data = {}
+if not isinstance(data, dict):
+    data = {}
+data.update(keys)
+directory = os.path.dirname(path)
+if directory:
+    os.makedirs(directory, exist_ok=True)
+with open(path, "w", encoding="utf-8") as handle:
+    json.dump(data, handle, indent=4)
+' {path} {keys} || echo "deckyemu: could not write {path}" >&2"""
+
+
+def game_config_setup(emulator, rom_path):
+    """The shell that puts this game where the program will read it, or "".
+
+    Empty for everything that takes its game on the command line, which is every
+    emulator and most ports.
+    """
+    if not emulator or not rom_path:
+        return ""
+    entry = emulator_catalog.find(emulator.get("id") or "") or {}
+    path, keys = emu_config.game_config_values(entry, rom_path)
+    if not path or not keys:
+        return ""
+    return (_GAME_CONFIG
+            .replace("{keys}", shlex.quote(json.dumps(keys, sort_keys=True)))
+            .replace("{path}", shlex.quote(path)))
+
+
 def preflight(rom_path, emulator, install, core_path, title_id=""):
     """The shell that refuses a launch whose pieces are missing, or "".
 
@@ -1463,6 +1514,7 @@ def write_launcher(
             preflight(rom_path, emulator, install, core_path, title_id),
             log_capture(path),
             ran_marker(),
+            game_config_setup(emulator, rom_path),
         ]
         + run
         + [""]

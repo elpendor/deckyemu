@@ -102,11 +102,13 @@ import it and read what comes back.
 | `platform` **or** `databases` | What it plays. `databases` takes libretro system names, e.g. `["Sony - PlayStation"]`, and buys extensions, boxart and collection grouping at once. `platform` is for systems libretro has no database for. One or the other, never both. |
 | `firmware` | Files you must supply — see [below](#firmware-and-keys). |
 | `note` | A caveat shown in the panel. |
-| `setup` | Configuration written once, just after installing — controller bindings, or skipping a first-run wizard. Every path it writes must sit inside a `root`. The formats it understands are in `py_modules/emu_config.py`; this is the most involved field and the one most worth checking against a real install, since it edits a file the emulator owns. |
+| `setup` | Configuration written once, just after installing — controller bindings, or skipping a first-run wizard. Every path it writes must sit inside a `root`. The formats it understands are in `py_modules/emu_config.py` — `json-flat` is for a settings file whose keys contain dots at the top level, like `"backend.option": true`; this is the most involved field and the one most worth checking against a real install, since it edits a file the emulator owns. |
 | `installed_args` | How to start a title the emulator has already installed, when a file path will not do it. `{title}` is the title id. |
 | `command`, `env` | The binary to run inside a flatpak when it is not the one the manifest names, and any environment it needs. |
 | `aliases` | Extra names to match when suggesting arguments for a hand-registered binary. |
 | `workarounds` | Corrections for bugs in the emulator itself, each one a switch. The panel calls them **fixes**; the key keeps its older name because it is written into records already on people's devices. Unlike everything above, one is *temporary*: it must name the upstream issue or pull request that will retire it, say what it costs in the user's terms, and it is off by default. Ordinary configuration that is simply how this emulator has to run does not belong here — it belongs in `env`, `layout` or `setup`. The fields are in `py_modules/emulator_catalog/schema.py`; note that an imported definition may not use one that patches the emulator's files. |
+| `port` | `true` for a native port of one game rather than an emulator for a system. It is listed under **Ports** instead of **Emulators**; installing, setup and launching work the same. |
+| `game_config` | For a program that reads its game from its own settings file instead of the command line. `{"format": "json-flat", "path": <file under a root>, "keys": {key: value}}` — `{rom}` in a value becomes the game's path, written each time a game is saved onto it. With this, `args` may be empty. |
 
 ### `source`
 

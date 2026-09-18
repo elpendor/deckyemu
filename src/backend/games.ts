@@ -26,6 +26,11 @@ export interface Core {
    */
   database_labels: string[];
   extensions: string[];
+  /**
+   * A native port of one game, which is neither an emulator nor a core. Listed
+   * in its own group wherever the two are offered.
+   */
+  port?: boolean;
   has_info: boolean;
   /**
    * Whether the core publishes the memory map achievements are read from.

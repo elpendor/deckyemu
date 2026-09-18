@@ -94,11 +94,11 @@ const ACTIONS: {
   {
     id: "emulators",
     group: "emulators",
-    title: "Uninstall every emulator",
+    title: "Uninstall every emulator and port",
     what:
       "Each one this plugin installed, its registration, and everything that " +
-      "emulator owns — its configuration, the firmware it unpacked, games " +
-      "installed into it, and save games. An emulator that comes back still " +
+      "emulator or port owns — its configuration, the firmware it unpacked, " +
+      "games installed into it, and save games. One that comes back still " +
       "configured is the state this exists to get rid of, so the data goes with it.",
     cost:
       "A download each, and the data is not recoverable — save games are not " +

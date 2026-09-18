@@ -100,7 +100,15 @@ class Collections(plugin_base.PluginContext):
 
         Computed rather than read back from the entry, so switching between short
         and full names re-labels games that were already added.
+
+        A port is filed as one. Its entry declares a system so that the game
+        keeps the right name and artwork, but what runs it is not an emulator
+        for that system, and a shelf mixing the two says the wrong thing about
+        both. Read from the core rather than from the record, like the label
+        below, so a port removed and re-added lands in the same place.
         """
+        if (core or {}).get("port"):
+            return platforms.PORTS
         entry = entry or {}
         short = settings.get("platform_names", "short") == "short"
         label = cls._platform_label(core, entry.get("system", ""), short)

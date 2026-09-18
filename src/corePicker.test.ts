@@ -41,6 +41,22 @@ describe("coreOptions", () => {
     expect(headings(coreOptions([]))).toEqual([]);
   });
 
+  it("gives a port its own group, above the emulators", () => {
+    const options = coreOptions([
+      core("snes9x", "Snes9x", "Super Nintendo"),
+      core("emu:dolphin", "Dolphin", "GameCube"),
+      { ...core("emu:dusklight", "Dusklight", "GameCube"), port: true } as Core,
+    ]);
+    // A port is here because this file is the one game it plays, where the two
+    // groups below it claim the file's format.
+    expect(headings(options)).toEqual(["Ports", "Emulators", "RetroArch cores"]);
+  });
+
+  it("stays flat when a port is the only thing offered", () => {
+    const only = [{ ...core("emu:dusklight", "Dusklight"), port: true } as Core];
+    expect(headings(coreOptions(only))).toEqual([]);
+  });
+
   it("shortens inside the groups too", () => {
     // The grouped path builds its options separately, so it can drift from the
     // flat one -- which is the drift this module exists to prevent.

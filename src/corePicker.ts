@@ -57,17 +57,23 @@ export function coreOptions(cores: Core[]): DropdownOption[] {
     label: coreShortName(core.display_name),
   });
 
-  const emulators = cores.filter((core) => isEmulatorId(core.id));
+  const ports = cores.filter((core) => core.port);
+  const emulators = cores.filter((core) => isEmulatorId(core.id) && !core.port);
   const libretro = cores.filter((core) => !isEmulatorId(core.id));
 
-  if (emulators.length === 0 || libretro.length === 0) return cores.map(option);
-
-  // Emulators first: an emulator is the specific answer for a system, where the
-  // core list is long and mostly beside the point for any one file.
-  return [
+  const groups = [
+    // First, and before the emulators: a port is here because this file is the
+    // one game it plays, where everything below claims the file's format.
+    { label: "Ports", options: ports.map(option) },
+    // An emulator is the specific answer for a system, where the core list is
+    // long and mostly beside the point for any one file.
     { label: "Emulators", options: emulators.map(option) },
     { label: "RetroArch cores", options: libretro.map(option) },
-  ];
+  ].filter((group) => group.options.length > 0);
+
+  // One group is no grouping: a heading over the whole list says nothing, and
+  // Steam draws it as a row that cannot be picked.
+  return groups.length > 1 ? groups : cores.map(option);
 }
 
 /**

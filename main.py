@@ -25,6 +25,7 @@ import net
 import platforms
 import ps4_games
 import discset
+from emulator_catalog import ports as port_lists
 import plugin_accounts
 import plugin_audit
 import plugin_collections
@@ -83,6 +84,35 @@ def own_module_names(root):
         elif os.path.isfile(os.path.join(package, entry, "__init__.py")):
             names.add(entry)
     return names
+
+
+def _is_port(core_id):
+    """Whether a core id names a native port rather than an emulator."""
+    core_id = str(core_id or "")
+    return (emulators.is_emulator_id(core_id)
+            and emulators.is_port(emulators.emulator_id(core_id)))
+
+
+def _sift_ports(cores, rom_path):
+    """(cores, ids), dropping the ports whose game this file cannot be.
+
+    `ids` are the ports the file itself identified as its game. Asked of the
+    catalog rather than of the registered emulator: what a port wants is a
+    property of the recipe, and the record holds only what launching needs.
+    """
+    kept, identified = [], set()
+    for core in cores:
+        if not _is_port(core["id"]):
+            kept.append(core)
+            continue
+        entry = emulator_catalog.find(emulators.emulator_id(core["id"])) or {}
+        verdict = port_lists.verdict(entry, rom_path)
+        if verdict == port_lists.NOT_ITS_GAME:
+            continue
+        if verdict == port_lists.ITS_GAME:
+            identified.add(core["id"])
+        kept.append(core)
+    return kept, identified
 
 
 def _title_id_for(rom_path):
@@ -717,6 +747,8 @@ class Plugin(
                     if short
                     else (emulator.get("platform_full") or emulator.get("platform", ""))
                 )
+            # A port is not an emulator and not a core, and the picker says
+            # so in its own group. `to_core_entry` marks it.
             custom.append(emulators.to_core_entry(emulator, label))
 
         # A short label per declared database, so the picker can offer the
@@ -830,6 +862,11 @@ class Plugin(
             )
         matching = [] if archived else ra_cores.cores_for_extension(
             cores, match_extension)
+        # A port plays one game. Its extensions already narrow it to that game's
+        # format, and where the recipe says what the file itself should read as,
+        # this is where a disc of a different game drops out -- and where one
+        # that reads as the right game is recognised. See `ports.verdict`.
+        matching, identified = await self._run(_sift_ports, matching, rom_path)
         # An arcade ROM set is matched on `zip`, which twenty-two cores claim
         # because most of them simply unpack an archive to reach the one game
         # inside. Asked once and used twice below: for the ordering, and for
@@ -857,6 +894,11 @@ class Plugin(
         # is left exactly as it was.
         matching.sort(
             key=lambda core: (
+                # The file said which game it is, and exactly one thing here
+                # plays that game. Nothing below this is evidence about this
+                # file rather than about its shape, so nothing below outranks
+                # it.
+                core["id"] not in identified,
                 bool(folder_system)
                 and folder_system not in (core.get("databases") or []),
                 # Only for a ROM set, and then decisive. The cores that read one
@@ -867,6 +909,11 @@ class Plugin(
                 # evidence about this particular file rather than about the
                 # shape of it.
                 romset and not platforms.reads_rom_sets(core),
+                # A port that got this far on its extension alone is offered
+                # and not preselected: it claims a format, while the emulator
+                # above it plays the game as it was released. The port that
+                # named this file is already above, and never reaches here.
+                _is_port(core["id"]),
                 core["id"] != remembered,
             )
         )
@@ -1876,7 +1923,10 @@ class Plugin(
         # Off for a PS3 game, and it has to be: what boots is EBOOT.BIN, so
         # remembering this would file `.bin` under RPCS3 and then suggest a PS3
         # emulator for the next PS1 disc image somebody adds.
-        extension = await self._run(ra_cores.content_extension, rom_path) if remember_core else ""
+        # Never a port: remembering one would preselect it for every other file
+        # of its system.
+        extension = (await self._run(ra_cores.content_extension, rom_path)
+                     if remember_core and not _is_port(core_id) else "")
         if extension and core_id:
             settings = await self._run(store.get_settings)
             by_ext = dict(settings.get("last_core_by_ext", {}))
@@ -2399,7 +2449,16 @@ class Plugin(
         which the launcher and recipe-upgrade passes both read.
         """
         entries = await self._refresh_emulators()
-        return [dict(entry, from_catalog="catalog_recipe" in entry) for entry in entries]
+        return [
+            dict(entry,
+                 from_catalog="catalog_recipe" in entry,
+                 # Which tab this row belongs on. A port registers exactly as an
+                 # emulator does, so nothing in the record tells them apart --
+                 # the catalog does, and it is the same answer `list_cores`
+                 # gives the picker.
+                 port=emulators.is_port(entry["id"]))
+            for entry in entries
+        ]
 
     async def list_systems(self):
         """libretro system names an emulator can be mapped to, for artwork.

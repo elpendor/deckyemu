@@ -13,6 +13,7 @@ import { CollectionsPanel } from "./CollectionsPanel";
 import { DevPanel } from "./DevPanel";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { EmulatorsPanel } from "./EmulatorsPanel";
+import { PortsPanel } from "./PortsPanel";
 import { LibraryPanel } from "./LibraryPanel";
 import { RetroArchPanel } from "./RetroArchPanel";
 import { UpdatePanel } from "./UpdatePanel";
@@ -112,6 +113,11 @@ export function ManagePage() {
       title: "Emulators",
       route: tabRoute("emulators"),
       content: <EmulatorsPanel onChanged={rescan} />,
+    },
+    {
+      title: "Ports",
+      route: tabRoute("ports"),
+      content: <PortsPanel onChanged={rescan} />,
     },
     {
       title: "Artwork",

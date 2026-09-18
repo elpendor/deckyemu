@@ -12,6 +12,13 @@ anything.
 import posixpath
 import re
 
+#: What a game filed by what runs it rather than by its system is called.
+#:
+#: A port is a program that plays one game, so the system the game came out on
+#: describes the disc and not the thing on the shelf. A shelf of ports is the
+#: answer to "what is this", the way "GameCube" is for everything else.
+PORTS = "Ports"
+
 SHORT_NAMES = {
     # Nintendo
     "Nintendo - Nintendo Entertainment System": "NES",

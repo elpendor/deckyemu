@@ -59,6 +59,11 @@ import { ICON_BUTTON } from "./iconButton";
 interface Props {
   /** Re-read cores and emulators, so a new install becomes selectable. */
   onChanged: () => void;
+  /**
+   * List native ports instead of emulators. Same rows, same buttons: a port is
+   * a catalog entry installed and launched the same way.
+   */
+  ports?: boolean;
 }
 
 const MUTED = { fontSize: "12px", opacity: 0.6 };
@@ -134,14 +139,18 @@ function describe(entry: CatalogEmulator, build?: EmulatorBuild): string {
       ? "update available"
       : "";
 
-  const extensions = entry.extensions.map((extension) => `.${extension}`).join(" ");
+  // A port plays one game, so it says which file it wants. Its extensions are
+  // that game's format, which on their own read as every disc of the system.
+  const extensions = entry.needs_what
+    ? `needs ${entry.needs_what}`
+    : entry.extensions.map((extension) => `.${extension}`).join(" ");
   const parts = [entry.system, extensions, version, motion(entry)].filter(Boolean);
   return parts.join(" · ");
 }
 
 
 
-export function EmulatorCatalogPanel({ onChanged }: Props) {
+export function EmulatorCatalogPanel({ onChanged, ports = false }: Props) {
   const [entries, setEntries] = useState<CatalogEmulator[]>([]);
   const [loading, setLoading] = useState(true);
   // Which entry is installing, and how far along. Only one at a time: two
@@ -259,12 +268,12 @@ export function EmulatorCatalogPanel({ onChanged }: Props) {
         logError("could not read the imported definitions", problemError);
       }
       callWithRetry(listEmulatorCatalog)
-        .then(setEntries)
+        .then((all) => setEntries(all.filter((entry) => Boolean(entry.port) === ports)))
         .catch((loadError) => logError("could not read the catalog", loadError))
         .finally(() => setLoading(false));
     })();
     void loadBuilds();
-  }, [loadBuilds]);
+  }, [loadBuilds, ports]);
 
   // Where the "locate" picker starts. Read from the backend rather than
   // hardcoded, because the real home is not /home/deck on every install.
@@ -645,12 +654,16 @@ export function EmulatorCatalogPanel({ onChanged }: Props) {
     <PanelSection>
       <PanelSectionRow>
         <Field
-          label="Ready-made emulators"
+          label={ports ? "Ports" : "Ready-made emulators"}
           // Ends by pointing down the page. Somebody looking for an emulator
           // that is not here has no reason to expect a second list further
           // down, and finding it by accident is how the two came to look like
           // rival lists rather than one leading into the other.
-          description="For the systems RetroArch does not cover. The system, file types and launch arguments are all set up for you. Installing one also registers it below. Not here? Add your own there."
+          description={
+            ports
+              ? "Native versions of single games, from the lists you imported. Install one, then add your own copy of the game the usual way and pick it under Run with."
+              : "For the systems RetroArch does not cover. The system, file types and launch arguments are all set up for you. Installing one also registers it below. Not here? Add your own there."
+          }
           childrenContainerWidth="min"
         >
           {/* Every button in the rows below is an icon on its own. On a desktop
@@ -671,6 +684,23 @@ export function EmulatorCatalogPanel({ onChanged }: Props) {
       {loading && (
         <PanelSectionRow>
           <Field label="Loading..." />
+        </PanelSectionRow>
+      )}
+
+      {/* The ports list is empty until somebody imports one, which is what
+          every install starts as -- this plugin ships no ports. Without a row
+          saying so the tab is a heading and a button, and reads as a list that
+          failed to load. The emulators list is bundled and cannot be empty,
+          but it says the same thing if it ever is. */}
+      {!loading && entries.length === 0 && (
+        <PanelSectionRow>
+          <Field
+            description={
+              ports
+                ? "No ports yet. A ports list is a file somebody gives you: send it with Transfer to Deck, then import it below."
+                : "No emulators to install here."
+            }
+          />
         </PanelSectionRow>
       )}
 

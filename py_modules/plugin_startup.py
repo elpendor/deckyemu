@@ -203,7 +203,7 @@ class Startup(plugin_base.PluginContext):
             before = (emulator.get("args"), emulator.get("fullscreen_args"),
                       emulator.get("command"), dict(emulator.get("env") or {}),
                       emulator.get("installed_args"), emulator.get("layout"),
-                      emulator.get("splits_args"),
+                      emulator.get("splits_args"), bool(emulator.get("game_in_config")),
                       list(emulator.get("extensions") or []),
                       list(emulator.get("catalog_extensions") or []),
                       emulator.get("catalog_recipe"),
@@ -300,6 +300,9 @@ class Startup(plugin_base.PluginContext):
                 emulator["command"] = entry.get("command", "")
                 emulator["installed_args"] = entry.get("installed_args", "")
                 emulator["splits_args"] = bool(entry.get("splits_args"))
+            # Every start: it decides what the launcher is handed, and there is
+            # no user edit of it to preserve.
+            emulator["game_in_config"] = bool(entry.get("game_config"))
 
             # Every start, unlike the recipe fields above, for the reason
             # `layout` is: a workaround the user switched off has to stop
@@ -349,7 +352,8 @@ class Startup(plugin_base.PluginContext):
 
             if fresh:
                 emulator["catalog_recipe"] = recipe
-                emulator["catalog_args"] = entry.get("args") or "{rom}"
+                emulator["catalog_args"] = (
+                    entry.get("args") if entry.get("game_config") else (entry.get("args") or "{rom}"))
                 emulator["catalog_fullscreen_args"] = entry.get("fullscreen_args") or ""
 
             # Saved only when something actually moved. This pass now runs over
@@ -359,7 +363,7 @@ class Startup(plugin_base.PluginContext):
             after = (emulator.get("args"), emulator.get("fullscreen_args"),
                      emulator.get("command"), dict(emulator.get("env") or {}),
                      emulator.get("installed_args"), emulator.get("layout"),
-                     emulator.get("splits_args"),
+                     emulator.get("splits_args"), bool(emulator.get("game_in_config")),
                      list(emulator.get("extensions") or []),
                      list(emulator.get("catalog_extensions") or []),
                      emulator.get("catalog_recipe"),

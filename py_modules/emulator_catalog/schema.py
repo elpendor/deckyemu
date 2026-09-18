@@ -101,6 +101,23 @@ OPTIONAL = {
             "fault this exists for.",
     "note": "A caveat shown in the UI, e.g. that a system needs firmware "
             "the user must supply.",
+    "port": "True for a native port of one game rather than an emulator for a "
+            "system. Listed under Ports instead of Emulators; everything else "
+            "about it -- install, setup, launching -- is the same.",
+    "needs": "The one file a port wants, as {'what': <a line naming it>, "
+             "'extensions': [...], 'id': {'at': <offset>, 'is': [...]}}. A port "
+             "plays a single game, so it is offered for a file that answers to "
+             "this rather than for everything its system covers. `id` is "
+             "optional and reads bytes at `at`: a file that reads as something "
+             "else is not offered, one that cannot be read still is. A "
+             "compressed format keeps nothing at a fixed offset, so declaring "
+             "one alongside an `id` is refused -- see COMPRESSED_EXTENSIONS.",
+    "game_config": "Where the game file goes when the program reads it from its "
+                   "own config rather than the command line, as {'format': "
+                   "'json-flat', 'path': <file relative to home>, 'keys': "
+                   "{key: value}}. `{rom}` in a value is the game's path. "
+                   "Written each time a game is saved onto this entry. With "
+                   "it, `args` may be empty and carry no `{rom}`.",
     "source_moved": "Set when `source` starts naming a different place, as "
                     "{'recipe': <number>, 'note': <sentence>}. An install whose "
                     "recorded recipe is below that number was downloaded from "
@@ -156,6 +173,9 @@ SOURCE_KINDS = ("flatpak", "github", "byo")
 #: The shapes `game_content` can name, which is to say the ones `gamecontent`
 #: knows how to write. Ryujinx's two JSON files per game are the only one.
 GAME_CONTENT_FORMATS = ("ryujinx",)
+
+#: How `game_config` may write a game's path. Kept in step with `emu_config`.
+GAME_CONFIG_FORMATS = ("json-flat",)
 
 #: Keys a firmware spec may carry, as `emu_firmware` reads them.
 FIRMWARE_REQUIRED = ("name",)
@@ -217,6 +237,9 @@ FORBIDDEN_WHEN_IMPORTED = {
 }
 
 _SAFE_ID = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
+
+#: A file extension as everything downstream keys on it: no dot, lowercase.
+_SAFE_EXTENSION = re.compile(r"^[a-z0-9][a-z0-9_+-]*$")
 
 
 def _escapes(path):
@@ -576,6 +599,10 @@ def validate(entry, known_platforms=(), imported=False):
         say("%s: %s" % (entry_id, message))
 
     for field in REQUIRED:
+        # A game read from the program's own config needs nothing on the
+        # command line, so its arguments may be empty.
+        if field == "args" and entry.get("game_config") and "args" in entry:
+            continue
         if not entry.get(field):
             bad("missing required field %r -- %s" % (field, REQUIRED[field]))
 
@@ -593,7 +620,8 @@ def validate(entry, known_platforms=(), imported=False):
             "digits, - and _; must not start with - or _)" % entry["id"])
 
     args = entry.get("args") or ""
-    if args and "{rom}" not in args and not entry.get("installed_args"):
+    if (args and "{rom}" not in args and not entry.get("installed_args")
+            and not entry.get("game_config")):
         bad("args %r has no {rom} -- the emulator would start with no game" % args)
     if "{rom}" in (entry.get("fullscreen_args") or ""):
         bad("fullscreen_args must not contain {rom}; it is appended to args")
@@ -677,6 +705,9 @@ def validate(entry, known_platforms=(), imported=False):
                 bad("game_content path %r is outside every directory this entry "
                     "owns (%s)" % (path, ", ".join(roots) or "none"))
 
+    problems.extend(_validate_game_config(entry_id, entry))
+    problems.extend(_validate_needs(entry_id, entry))
+
     seed = entry.get("seed")
     if seed:
         if not isinstance(seed, dict):
@@ -701,6 +732,128 @@ def validate(entry, known_platforms=(), imported=False):
     for item in entry.get("firmware") or ():
         problems.extend(_validate_firmware(entry_id, item))
 
+    return problems
+
+
+#: Formats that keep the game's own header behind a container, so an id at a
+#: fixed offset cannot be read out of one.
+#:
+#: Declared here because the mistake is invisible otherwise: `needs.id` treats a
+#: file it cannot identify as one it might play, so a list naming a compressed
+#: format beside an id silently gets no check at all for those files -- and the
+#: port is offered for every disc of its system again, which is the behaviour
+#: the id exists to prevent. Refused at import instead, where the author can
+#: read why.
+COMPRESSED_EXTENSIONS = frozenset({
+    "rvz", "wia", "gcz", "ciso", "cso", "zso", "chd", "wbfs", "nsz", "xcz",
+    "pbp", "zip", "7z", "rar", "gz", "bz2", "xz", "zst", "squashfs",
+})
+
+#: How many bytes of a file `needs.id` may look at. A disc's id sits in its
+#: first sector; anything further in is a different kind of check.
+MAX_ID_OFFSET = 4096
+
+
+def _validate_needs(entry_id, entry):
+    """`needs` names the file a port wants, and only a port may have one.
+
+    An emulator covers a system, so the extensions its system's cores declare
+    are the right answer for it. A port covers one game, and that list is wrong
+    in both directions: too wide, because it offers the port for every disc the
+    user owns, and unanswerable, because nothing in the catalog says which disc.
+    """
+    spec = entry.get("needs")
+    if not spec:
+        return []
+    problems = []
+
+    def bad(message):
+        problems.append("%s needs: %s" % (entry_id, message))
+
+    if not entry.get("port"):
+        bad("only a port declares the file it wants; an emulator's extensions "
+            "come from the systems it runs")
+        return problems
+    if not isinstance(spec, dict):
+        bad("must be an object with 'what' and 'extensions'")
+        return problems
+
+    what = spec.get("what")
+    if not isinstance(what, str) or not what.strip():
+        bad("'what' must be a line naming the file, shown wherever the port is")
+    extensions = spec.get("extensions")
+    if not isinstance(extensions, list) or not extensions:
+        bad("'extensions' must be a non-empty list of file extensions")
+    else:
+        for extension in extensions:
+            if not isinstance(extension, str) or not _SAFE_EXTENSION.match(extension):
+                bad("extension %r is not a plain file extension without its dot"
+                    % extension)
+
+    identity = spec.get("id")
+    if identity is not None:
+        if not isinstance(identity, dict):
+            bad("'id' must be an object with 'at' and 'is'")
+        else:
+            at = identity.get("at")
+            if not isinstance(at, int) or isinstance(at, bool) or not 0 <= at <= MAX_ID_OFFSET:
+                bad("id 'at' must be a byte offset between 0 and %d" % MAX_ID_OFFSET)
+            values = identity.get("is")
+            if not isinstance(values, list) or not values:
+                bad("id 'is' must be a non-empty list of what those bytes may read as")
+            elif not all(isinstance(value, str) and value for value in values):
+                bad("every id in 'is' must be a non-empty string")
+            unknown = sorted(set(identity) - {"at", "is"})
+            if unknown:
+                bad("unknown id key(s) %s" % ", ".join(repr(name) for name in unknown))
+            packed = sorted(
+                extension for extension in (extensions if isinstance(extensions, list) else ())
+                if isinstance(extension, str)
+                and extension.lower() in COMPRESSED_EXTENSIONS
+            )
+            if packed:
+                bad("declares an 'id' and the compressed format(s) %s, which keep "
+                    "nothing at a fixed offset -- every such file would read as "
+                    "unidentified and be offered anyway. Drop the id, or drop "
+                    "those extensions." % ", ".join(repr(one) for one in packed))
+
+    unknown = sorted(set(spec) - {"what", "extensions", "id"})
+    if unknown:
+        bad("unknown key(s) %s" % ", ".join(repr(name) for name in unknown))
+    return problems
+
+
+def _validate_game_config(entry_id, entry):
+    """`game_config` has to name a format, a file and at least one key with `{rom}`.
+
+    The file is inside something the entry owns, like `game_content`: it is
+    written on every save, so "relative to home" is too wide a fence.
+    """
+    spec = entry.get("game_config")
+    if not spec:
+        return []
+    problems = []
+
+    def bad(message):
+        problems.append("%s game_config: %s" % (entry_id, message))
+
+    if not isinstance(spec, dict):
+        bad("must be an object with 'format', 'path' and 'keys'")
+        return problems
+    if spec.get("format") not in GAME_CONFIG_FORMATS:
+        bad("format %r is not one of %s" % (
+            spec.get("format"), ", ".join(repr(one) for one in GAME_CONFIG_FORMATS)))
+    path = spec.get("path")
+    if not isinstance(path, str) or not path or _escapes(path):
+        bad("path %r must be a file relative to home that does not escape it" % path)
+    keys = spec.get("keys")
+    if not isinstance(keys, dict) or not keys:
+        bad("keys must be an object of key: value")
+    elif not any(isinstance(value, str) and "{rom}" in value for value in keys.values()):
+        bad("no key carries {rom}, so the game's path would never be written")
+    unknown = sorted(set(spec) - {"format", "path", "keys"})
+    if unknown:
+        bad("unknown key(s) %s" % ", ".join(repr(name) for name in unknown))
     return problems
 
 
@@ -858,6 +1011,9 @@ def _written_paths(entry):
         found.append(("setup path", setup["path"]))
     for path in (setup.get("files") or {}):
         found.append(("setup file", path))
+    game_config = entry.get("game_config")
+    if isinstance(game_config, dict) and game_config.get("path"):
+        found.append(("game_config path", game_config["path"]))
     return found
 
 

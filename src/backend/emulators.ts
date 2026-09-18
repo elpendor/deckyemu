@@ -76,6 +76,12 @@ export interface CustomEmulator {
    */
   from_catalog: boolean;
   /**
+   * A native port of one game, which belongs on the Ports tab. Sent by the
+   * backend from the catalog; nothing in the record itself says so, because a
+   * port is registered exactly as an emulator is.
+   */
+  port?: boolean;
+  /**
    * Anything worth saying about fixes that are still switched on.
    *
    * Shown on the Emulators tab rather than left in the editor: the thing to do
