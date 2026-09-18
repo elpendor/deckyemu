@@ -23,6 +23,7 @@ from harness import check, section, summary  # noqa: E402
 
 import decky  # noqa: E402
 import emu_install  # noqa: E402
+import emulator_catalog  # noqa: E402
 import launchers  # noqa: E402
 from emulator_catalog import hotkeys, schema  # noqa: E402
 
@@ -117,6 +118,12 @@ section("a helper that outlived its game")
 check("the launcher clears a stray before starting its own",
       "pkill -f" in _shell, True)
 
+# Both helpers, because both are started the same way and leak the same way.
+_gyro = os.path.join(emu_install.tools_dir(
+    emulator_catalog.deck_gyro.DSU_SERVER["name"]), "sdgyrodsu")
+with io.open(_gyro, "w", encoding="utf-8") as _handle:
+    _handle.write("#!/bin/sh\nexit 0\n")
+
 _calls = []
 _real_run = launchers.subprocess.run
 
@@ -131,9 +138,13 @@ def _fake_run(args, **kwargs):
 
 launchers.subprocess.run = _fake_run
 try:
-    check("and the sweep reports what it stopped", launchers.stop_stray_helpers(), 2)
+    check("and the sweep reports what it stopped", launchers.stop_stray_helpers(), 4)
     check("asking only about our own binary",
           any("gptokeyb2" in part for part in _calls[0]), True)
+    # The motion server is started the same way and leaks the same way, and a
+    # survivor holds the DSU port so the next game gets no gyro at all.
+    check("and about the motion server, which has the same hole",
+          any(any("gyro" in part for part in call) for call in _calls), True)
 finally:
     launchers.subprocess.run = _real_run
 

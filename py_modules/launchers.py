@@ -652,6 +652,11 @@ def motion_server(binary):
         "# Steam's reaper waits for it, so a survivor hangs the library entry.",
         "_dke_motion=%s" % shlex.quote(binary),
         'if [ -x "$_dke_motion" ]; then',
+        '  # One left by a launch that was killed outright. The trap below',
+        '  # covers every ending a script can see; SIGKILL runs nothing, and a',
+        '  # survivor holds the DSU port, so the next game gets no motion at',
+        '  # all. Measured: TERM leaves nothing, KILL leaves it running.',
+        '  pkill -f "^$_dke_motion" 2>/dev/null',
         '  "$_dke_motion" >/dev/null 2>&1 &',
         "  _dke_motion_pid=$!",
         "  trap 'kill \"$_dke_motion_pid\" 2>/dev/null' EXIT INT TERM",
@@ -668,26 +673,30 @@ def motion_server(binary):
 
 
 def stop_stray_helpers():
-    """Kill a hotkey helper that outlived its game. Returns how many went.
+    """Kill helpers that outlived their game. Returns how many went.
 
-    Its launcher stops it on every ending a script can see, and on the one it
-    cannot -- SIGKILL -- nothing runs at all. So a stray is possible, and a
-    stray types into whatever is open. Swept at startup as well as before each
-    launch, because the launch that would have cleared it may never come.
+    A launcher stops the processes it started on every ending a script can see,
+    and on the one it cannot -- SIGKILL -- nothing runs at all. Both helpers
+    then cost something: a hotkey helper types into whatever is open next, and a
+    motion server holds the DSU port, so the next game has no gyro. Swept at
+    startup as well as before each launch, because the launch that would have
+    cleared it may never come.
     """
-    binary = emu_install.installed_tool(hotkeys.KEYBOARD_SERVER["name"])
-    if not binary:
-        return 0
-    try:
-        found = subprocess.run(["pkill", "-c", "-f", "^%s " % re.escape(binary)],
-                               capture_output=True, text=True, timeout=10)
-    except (OSError, subprocess.SubprocessError) as error:
-        decky.logger.warning("Could not look for stray hotkey helpers: %s", error)
-        return 0
-    killed = int((found.stdout or "0").strip() or 0)
+    killed = 0
+    for name in (hotkeys.KEYBOARD_SERVER["name"],
+                 emulator_catalog.deck_gyro.DSU_SERVER["name"]):
+        binary = emu_install.installed_tool(name)
+        if not binary:
+            continue
+        try:
+            found = subprocess.run(["pkill", "-c", "-f", "^%s" % re.escape(binary)],
+                                   capture_output=True, text=True, timeout=10)
+        except (OSError, subprocess.SubprocessError) as error:
+            decky.logger.warning("Could not look for stray %s processes: %s", name, error)
+            continue
+        killed += int((found.stdout or "0").strip() or 0)
     if killed:
-        decky.logger.info("Stopped %d hotkey helper(s) left over from a killed launch",
-                          killed)
+        decky.logger.info("Stopped %d helper(s) left over from a killed launch", killed)
     return killed
 
 
