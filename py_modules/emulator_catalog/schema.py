@@ -702,6 +702,9 @@ def validate(entry, known_platforms=(), imported=False):
         # A release that ships the program inside an archive rather than as
         # the file to run. `extract` names what to take out of it, and without
         # it the archive itself would be made executable and handed to Steam.
+        if source.get("unpack") and not source.get("extract"):
+            bad("source unpack takes the whole archive, so 'extract' has to "
+                "name the file to run out of it")
         extract = source.get("extract")
         if extract is not None:
             if not isinstance(extract, str) or not extract:
@@ -779,13 +782,28 @@ def validate(entry, known_platforms=(), imported=False):
     problems.extend(_validate_hotkeys(entry_id, entry))
     problems.extend(_validate_first_run(entry_id, entry))
 
-    if entry.get("game_beside"):
+    beside = entry.get("game_beside")
+    if beside:
         if not entry.get("port"):
             bad("game_beside describes how a port finds its one game; an "
                 "emulator is handed a path")
         if entry.get("game_config"):
             bad("has both 'game_beside' and 'game_config'; a program finds its "
                 "game one way")
+        # `{"as": "baserom.us.z64"}` for a program that will only read one
+        # name. True means the game keeps the name it arrived with.
+        if isinstance(beside, dict):
+            unknown = sorted(set(beside) - {"as"})
+            if unknown:
+                bad("unknown game_beside key(s) %s"
+                    % ", ".join(repr(name) for name in unknown))
+            name = beside.get("as")
+            if name is not None and (not isinstance(name, str) or not name
+                                     or "/" in name):
+                bad("game_beside 'as' %r must be the file name the program "
+                    "looks for" % (name,))
+        elif beside is not True:
+            bad("game_beside is true, or {'as': <the name the program wants>}")
 
     seed = entry.get("seed")
     if seed:

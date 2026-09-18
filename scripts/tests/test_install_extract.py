@@ -87,6 +87,56 @@ finally:
     emulator_catalog.reload_imported()
 
 
+section("a release that is a tree, not a file")
+
+# A binary with its own data folders beside it: everything comes out, and
+# `extract` names the one to run.
+_TREE = os.path.join(TMP, "release", "Tree-Linux.zip")
+with zipfile.ZipFile(_TREE, "w") as _bundle:
+    _bundle.writestr("treeport", NEWBUILD)
+    _bundle.writestr("lang/en.txt", "hello")
+    _bundle.writestr("mods/readme.txt", "mods go here")
+
+_TREE_ENTRY = {
+    "id": "tree-port",
+    "name": "Tree Port",
+    "source": {"kind": "github", "repo": "someone/tree",
+               "asset": "^Tree-Linux\.zip$", "unpack": True,
+               "extract": "^treeport$"},
+    "args": "{rom}",
+}
+
+net.download = _fake_download
+_real_archive = _ARCHIVE
+try:
+    _ARCHIVE = _TREE
+    _path, _error = emu_install.install_appimage(
+        _TREE_ENTRY, {"name": "Tree-Linux.zip", "url": "https://example.test/t.zip",
+                      "tag": "2.0.0"})
+    check("the install succeeds", _error, "")
+    check("and what runs is the file the entry named",
+          os.path.basename(_path), "treeport")
+    _folder = os.path.dirname(_path)
+    check("its data comes out beside it, in its own folders",
+          (os.path.isfile(os.path.join(_folder, "lang", "en.txt")),
+           os.path.isfile(os.path.join(_folder, "mods", "readme.txt"))),
+          (True, True))
+    check("and the archive does not stay", os.path.isfile(
+        os.path.join(_folder, "Tree-Linux.zip")), False)
+finally:
+    _ARCHIVE = _real_archive
+    net.download = _real_download
+
+# This comes off the network, so a member that climbs out of its own folder is
+# refused rather than written.
+_ESCAPE = os.path.join(TMP, "release", "Escape.zip")
+with zipfile.ZipFile(_ESCAPE, "w") as _bundle:
+    _bundle.writestr("../escaped.txt", "nope")
+_escaped, _why = emu_install._unpack_release(
+    _ESCAPE, emu_install.emulators_dir("escape-port"), "^anything$")
+check("a path that leaves its folder is refused", "leaves its own folder" in _why, True)
+
+
 section("a folder the program lives in is not swept")
 
 # A port that reads the directory it runs in keeps its settings, the archive it

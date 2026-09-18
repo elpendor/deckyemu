@@ -1203,14 +1203,19 @@ def game_beside_setup(emulator, rom_path):
     if not emulator or not rom_path:
         return ""
     entry = emulator_catalog.find(emulator.get("id") or "") or {}
-    if not entry.get("game_beside"):
+    beside = entry.get("game_beside")
+    if not beside:
         return ""
     directory = os.path.dirname(emulator.get("target") or "")
     if not directory:
         return ""
+    # A program that reads one name and no other -- sm64coopdx wants
+    # `baserom.us.z64` -- gets the link under that name. Otherwise the game
+    # keeps the name it arrived with, which is what the rest expect.
+    wanted = (beside.get("as") if isinstance(beside, dict) else "") or         os.path.basename(rom_path)
     return (_GAME_BESIDE
             .replace("{dir}", shlex.quote(directory))
-            .replace("{name}", shlex.quote(os.path.basename(rom_path)))
+            .replace("{name}", shlex.quote(wanted))
             .replace("{rom}", shlex.quote(rom_path)))
 
 

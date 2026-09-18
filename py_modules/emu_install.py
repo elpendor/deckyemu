@@ -786,8 +786,22 @@ def install_appimage(entry, asset, on_progress=None):
     # A release that ships the program inside an archive. The archive is not the
     # thing to run, and without this it would be made executable and handed to
     # Steam, which fails at exec time with nothing naming why.
-    extract = (entry.get("source") or {}).get("extract") or ""
-    if extract:
+    source = entry.get("source") or {}
+    extract = source.get("extract") or ""
+    if extract and source.get("unpack"):
+        # A release that is a tree rather than one file: a binary with its own
+        # data folders beside it. Everything comes out, and `extract` names the
+        # one to run.
+        member, failure = _unpack_release(path, target_dir, extract)
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+        if failure:
+            return "", failure
+        path = member
+        asset = dict(asset, name=os.path.basename(member))
+    elif extract:
         member, failure = _extract_member(path, target_dir, extract)
         try:
             os.remove(path)
@@ -814,7 +828,13 @@ def install_appimage(entry, asset, on_progress=None):
     # built from the user's game, and its *save files* right there -- so the
     # sweep, which deletes everything that is not the new build, would take all
     # three. Then only the build named by the record it is replacing goes.
-    if entry.get("game_beside"):
+    if source.get("unpack"):
+        # Everything here came out of the archive together: the binary, its
+        # language files, its mods folder. The sweep keeps one name, which for a
+        # tree means deleting the program's own data the moment it is installed.
+        # A new release is written over the top instead.
+        pass
+    elif entry.get("game_beside"):
         previous = (read_build_record(entry["id"]) or {}).get("asset") or ""
         if previous and previous != asset["name"]:
             try:
@@ -893,6 +913,48 @@ def installed_tool(name):
     except OSError:
         pass
     return ""
+
+
+def _unpack_release(archive, destination, pattern):
+    """Unpack a whole zip, and return the member `pattern` names. (path, error).
+
+    Members are written under `destination` by their own relative paths, which
+    is the difference from `_extract_member` and the reason each one is checked:
+    a name that is absolute, or that climbs out with `..`, is refused rather
+    than trusted. This comes off the network.
+    """
+    try:
+        matcher = re.compile(pattern)
+    except re.error as error:
+        return "", "Bad extract pattern: %s" % error
+
+    found = ""
+    try:
+        with zipfile.ZipFile(archive) as bundle:
+            for info in bundle.infolist():
+                name = info.filename
+                if info.is_dir() or not name:
+                    continue
+                relative = os.path.normpath(name).replace("\\", "/")
+                if relative.startswith("/") or relative.split("/")[0] == "..":
+                    return "", "The download holds a path that leaves its own folder."
+                target = os.path.join(destination, *relative.split("/"))
+                os.makedirs(os.path.dirname(target), exist_ok=True)
+                with bundle.open(info) as source, open(target, "wb") as handle:
+                    shutil.copyfileobj(source, handle)
+                # Everything keeps the mode the archive recorded, or a binary
+                # comes out unrunnable and its own data files come out writable
+                # when they were not.
+                mode = info.external_attr >> 16
+                if mode:
+                    os.chmod(target, mode & 0o777)
+                if matcher.match(os.path.basename(relative)):
+                    found = target
+    except (OSError, zipfile.BadZipFile, ValueError) as error:
+        return "", "Could not unpack the download: %s" % error
+    if not found:
+        return "", "The download did not contain what was expected."
+    return found, ""
 
 
 def _extract_member(archive, destination, pattern):
