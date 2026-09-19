@@ -295,14 +295,35 @@ def _last_launch():
     # most useful section, not a stale one, and the note is what stops a reader
     # hunting for a library entry that is not there any more.
     stem = os.path.splitext(os.path.basename(newest))[0]
-    if not os.path.isfile(os.path.join(launchers.LAUNCHER_DIR, "%s.sh" % stem)):
+    # A `.prev.log` is the same game, one run earlier. It cannot normally be the
+    # newest -- the run that rotated it wrote after it -- but the rotation fails
+    # open, so the name is taken apart rather than assumed.
+    game = stem[:-len(".prev")] if stem.endswith(".prev") else stem
+    if not os.path.isfile(os.path.join(launchers.LAUNCHER_DIR, "%s.sh" % game)):
         when += " -- this game has since been removed"
     if not said:
         # An ordinary answer, and worth saying rather than leaving blank: a
         # launcher written before format 12 captures nothing, and an emulator
         # that started cleanly may simply have had nothing to report.
-        return "%s -- the emulator said nothing." % when
-    return "%s\n\n%s" % (when, said)
+        report = "%s -- the emulator said nothing." % when
+    else:
+        report = "%s\n\n%s" % (when, said)
+
+    # **And the run before it, which is usually the one being asked about.** A
+    # game that fails is launched again within seconds, so by the time anybody
+    # sends a report the failure is one run back and the successful retry is
+    # what sits in front of them.
+    if stem == game:
+        before = launchers.read_launch_log(game, LAUNCH_TAIL, previous=True)
+        if before:
+            path = launchers.previous_launch_log_path(game)
+            try:
+                at = time.strftime("%Y-%m-%d %H:%M:%S",
+                                   time.localtime(os.path.getmtime(path)))
+            except OSError:
+                at = "earlier"
+            report += "\n\nThe run before it, %s:\n\n%s" % (at, before)
+    return report
 
 
 def _section(title, body):

@@ -54,6 +54,17 @@ else:
     check("what the emulator said is on disk",
           launchers.read_launch_log(_launcher), "core not found: bios.bin")
 
+    # **The retry is what erases the failure.** A game that dies is launched
+    # again within seconds, so truncating on the way in meant the run that
+    # worked wrote over the only account of the one that did not.
+    subprocess.run([_script], check=False, capture_output=True)
+    check("a second run keeps what the first one said",
+          launchers.read_launch_log(_launcher, previous=True),
+          "core not found: bios.bin")
+    check("and the newest run is still the one read by name",
+          launchers.read_launch_log(_launcher), "core not found: bios.bin")
+    os.remove(launchers.previous_launch_log_path(_launcher))
+
     # The tail, because what explains a failure is the last thing said before
     # it, and a verbose emulator's first lines are its own startup banner.
     with io.open(_log, "w", encoding="utf-8", newline="\n") as _handle:
@@ -112,6 +123,34 @@ check("the report says the game is gone",
       "since been removed" in diagnostics._last_launch(), True)
 
 os.remove(_its_log)
+
+section("the report carries the run before the last one")
+
+# Which is the run being asked about, nearly always: by the time anybody sends a
+# report, the failure is one run back and the retry that worked is in front of
+# them.
+_tried = os.path.join(launchers.LAUNCHER_DIR, "retry-game-abcd1234.sh")
+with io.open(_tried, "w", encoding="utf-8", newline="\n") as _handle:
+    _handle.write("#!/bin/sh\n")
+with io.open(launchers.previous_launch_log_path(_tried), "w",
+             encoding="utf-8", newline="\n") as _handle:
+    _handle.write("Vulkan device lost\n")
+with io.open(launchers.launch_log_path(_tried), "w",
+             encoding="utf-8", newline="\n") as _handle:
+    _handle.write("shutting down cleanly\n")
+
+_report = diagnostics._last_launch()
+check("the last run is in it", "shutting down cleanly" in _report, True)
+check("and so is the one before it", "Vulkan device lost" in _report, True)
+# The `.prev` in the name is not a game that was uninstalled -- the note is
+# derived from a launcher file existing, and the stem has to be taken apart for
+# that to hold.
+check("and neither is reported as a game that has gone",
+      "since been removed" in _report, False)
+
+os.remove(launchers.previous_launch_log_path(_tried))
+os.remove(launchers.launch_log_path(_tried))
+os.remove(_tried)
 
 if __name__ == "__main__":
     summary()

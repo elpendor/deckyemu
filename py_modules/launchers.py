@@ -212,7 +212,10 @@ LAUNCH_GATE_DIR = os.path.join(decky.DECKY_PLUGIN_RUNTIME_DIR, "launch")
 #  33  the hotkey helper is told which button is its own, because the one it
 #      picks by default is half of the gesture it is there to provide: Start
 #      plus that button quits it, hardcoded, so the first press was the last.
-FORMAT_VERSION = 33
+#  34  the previous run's output is kept beside the last one. A game that fails
+#      is launched again at once, and the retry was truncating the only account
+#      of what went wrong.
+FORMAT_VERSION = 34
 
 # One file per OSD mode rather than one shared file. Games can override the
 # global setting individually, and a single file would mean the last game
@@ -582,6 +585,17 @@ def launch_log_path(launcher):
     return os.path.join(LAUNCH_LOG_DIR, "%s.log" % stem)
 
 
+def previous_launch_log_path(launcher):
+    """Where the run before the last one is kept.
+
+    A `.prev.log` beside the log itself, which is what makes it free: the sweep
+    and the report both work from the directory listing and a name ending in
+    `.log`, so neither had to learn about this.
+    """
+    stem = os.path.splitext(os.path.basename(launcher))[0]
+    return os.path.join(LAUNCH_LOG_DIR, "%s.prev.log" % stem)
+
+
 def log_capture(launcher):
     """The shell that keeps what the emulator says, or "" if it cannot.
 
@@ -606,6 +620,14 @@ def log_capture(launcher):
         "# startup. Truncated here, so this is always the last run.",
         "_dke_log=%s" % shlex.quote(log),
         "mkdir -p %s 2>/dev/null" % shlex.quote(LAUNCH_LOG_DIR),
+        # **The run before this one is kept, because the retry is what erases
+        # it.** A game that fails and is launched again straight away is the
+        # ordinary way a person meets a failure, and truncating on the way in
+        # meant the working run wrote over the only account of the broken one.
+        # Twice now that has left a failure with nothing to read.
+        "_dke_prev=%s" % shlex.quote(previous_launch_log_path(launcher)),
+        'if [ -s "$_dke_log" ]; then mv -f "$_dke_log" "$_dke_prev" 2>/dev/null;'
+        " fi",
         'if : > "$_dke_log" 2>/dev/null; then exec >>"$_dke_log" 2>&1; fi',
         "",
     ])
@@ -701,14 +723,24 @@ def stop_stray_helpers():
     return killed
 
 
-def read_launch_log(launcher, limit=8000):
+def read_launch_log(launcher, limit=8000, previous=False):
     """The tail of what this launcher's game last said, or "".
 
     The tail rather than the whole file: what explains a failure is the last
     thing said before it, and a verbose emulator's first eight thousand
     characters are its own startup banner.
+
+    `previous` reads the run before that one. A flag rather than a stem ending
+    in `.prev`, because that reads back as the current log: the path is built by
+    replacing an extension, and `.prev` is an extension.
     """
-    path = launch_log_path(launcher)
+    path = (previous_launch_log_path(launcher) if previous
+            else launch_log_path(launcher))
+    return _read_tail(path, limit)
+
+
+def _read_tail(path, limit):
+    """The last `limit` characters of a log file, or "", on a line boundary."""
     try:
         size = os.path.getsize(path)
         with open(path, "r", encoding="utf-8", errors="replace") as handle:
@@ -745,7 +777,10 @@ def sweep_launch_logs():
         try:
             if not os.path.isfile(path) or os.path.getsize(path) <= LAUNCH_LOG_CAP:
                 continue
-            tail = read_launch_log(os.path.splitext(name)[0], LAUNCH_LOG_CAP // 2)
+            # By path, not by name: a `.prev.log` stem read back as the
+            # current log, so the sweep trimmed the wrong file and left the
+            # oversized one exactly as it found it.
+            tail = _read_tail(path, LAUNCH_LOG_CAP // 2)
             with open(path, "w", encoding="utf-8", newline="\n") as handle:
                 handle.write(tail)
             cut += 1
