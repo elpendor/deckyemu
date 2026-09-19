@@ -124,18 +124,20 @@ section("the standard library the sandbox actually has")
 # is present in the sandbox and `xml.etree` is not, so listing `xml` would have
 # allowed the exact import that broke.
 # `ctypes`: an .nsz unpacked through switch_nsz from the panel on 2026-09-14.
-# `socketserver` and `email`: logged as present on a Deck on 2026-09-17, by the
-# startup line `httpshim.report` writes -- which exists because `http.server`
-# was *dropped* from decky's Python in v3.2.9 and took the whole plugin down.
-# `http` stays proven and `http.server` is not: the submodule is exactly the
-# granularity this list cannot see, which is why httpshim imports it in a try.
+# `heapq` and `types`: what `vendored_difflib` imports, both read out of the
+# v3.2.9 archive on 2026-09-19 and in use by the borrowed difflib before it.
+# `email`: logged as present on a Deck on 2026-09-17, by the startup line
+# `httpshim.report` writes -- which exists because `http.server` was *dropped*
+# from decky's Python in v3.2.9 and took the whole plugin down. `http` stays
+# proven and `http.server` is not: the submodule is exactly the granularity
+# this list cannot see, which is why nothing imports it any more.
 PROVEN_STDLIB = frozenset((
-    "asyncio", "base64", "collections", "concurrent", "ctypes", "difflib", "email",
+    "asyncio", "base64", "collections", "concurrent", "ctypes", "email",
     "functools",
-    "hashlib", "html", "http", "importlib", "inspect", "io", "json", "os",
-    "socketserver",
+    "hashlib", "heapq", "html", "http", "importlib", "inspect", "io", "json", "os",
     "posixpath", "re", "secrets", "shlex", "shutil", "socket", "ssl", "stat",
-    "struct", "subprocess", "sys", "threading", "time", "typing", "urllib",
+    "struct", "subprocess", "sys", "threading", "time", "types", "typing",
+    "urllib",
     "zipfile",
 ))
 
@@ -165,8 +167,7 @@ for _root, _dirs, _names in os.walk(os.path.join(REPO_ROOT, "py_modules")):
 #: so many words, and the list still only held top-level names.
 #:
 #: Every name here has been seen working on a Deck. `http.server` is absent on
-#: purpose and must stay absent -- see `httpshim`, which imports it in a `try`
-#: and brings its own replacement.
+#: purpose and must stay absent -- `httpshim` is its replacement.
 PROVEN_SUBMODULES = frozenset((
     "concurrent.futures", "email.parser", "email.utils", "http.client",
     "urllib.error", "urllib.parse", "urllib.request",
@@ -180,16 +181,18 @@ PROVEN_SUBMODULES = frozenset((
 #: *not* listed: `findfiles` replaced every use of it with `os.scandir`, which
 #: is built into the interpreter. Read off the device rather than off the
 #: archive: `struct` is bundled (the bundle reports its own as a bare
-#: `struct.py`, a path-less `__file__`), and `difflib` is the one left coming
-#: from SteamOS. `httpshim.borrowed` names any of them at every start.
+#: `struct.py`, a path-less `__file__`). `difflib` and `socketserver` came from
+#: SteamOS the same way; the first is carried as `vendored_difflib` now, and
+#: nothing imports the second. `httpshim.borrowed` names any such module at
+#: every start.
 
 
 def _guarded(tree):
     """Imports inside a `try` that catches ImportError, which may be anything.
 
     An import whose failure is handled is not a hazard -- it is the shape this
-    list wants, and `httpshim` is the example: without this, the module written
-    *because* `http.server` can be missing would be the one thing failing here.
+    list wants: a module that may be missing belongs in a `try` with a way
+    round it, and failing here over that would argue against the fix.
     """
     safe = set()
     for node in ast.walk(tree):

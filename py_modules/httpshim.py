@@ -1,4 +1,4 @@
-"""`http.server`, or a small stand-in built from what the sandbox does carry.
+"""A small stand-in for `http.server`, built from what the sandbox does carry.
 
 **The standard library a plugin gets is decky's bundle, not Python's.** decky
 ships as a PyInstaller executable and a frozen build carries only the modules
@@ -13,7 +13,7 @@ and the path that pulled it in went. `fileserver` imported it at the top, so
 existed: the library, the launchers and every settings page, over a module only
 the transfer server needs.
 
-**So the import is allowed to fail, and what it provided is rebuilt.** Read out
+**So what it provided is rebuilt, and used even where it imports.** Read out
 of both released binaries: v3.2.8 packs 642 modules including `http.server`,
 v3.2.9 packs 398 and does not -- the 258 that went are mostly `distutils` and
 setuptools' own, which is what had been dragging `http.server` in. `socket`,
@@ -233,25 +233,11 @@ class _Server:
             pass
 
 
-#: Typed as Any because the two are genuinely different classes with the same
-#: shape; every caller goes through them and not through `http.server`.
+#: The stand-ins, always, even where `http.server` imports. decky has said it
+#: will pack it again, and preferring it then would switch every Deck back to a
+#: server nothing has been tested against since v3.2.9, on decky's schedule.
 BASE: Any = _Request
 SERVER: Any = _Server
-#: Whether these are the standard library's or the stand-ins above. Only for
-#: saying so in a log -- the plugin behaves the same either way.
-NATIVE = False
-
-try:
-    import http.server as _http_server
-
-    BASE = _http_server.BaseHTTPRequestHandler
-    SERVER = _http_server.ThreadingHTTPServer
-    NATIVE = True
-except ImportError as _error:  # pragma: no cover -- depends on the sandbox
-    decky.logger.info(
-        "No http.server here (%s), so the transfer server uses the built-in one.",
-        _error,
-    )
 
 
 def available():

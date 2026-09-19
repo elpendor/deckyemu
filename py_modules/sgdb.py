@@ -6,7 +6,6 @@ purpose-made capsules, heroes and logos.
 """
 
 import concurrent.futures
-import difflib
 import json
 import os
 import re
@@ -18,6 +17,7 @@ import decky
 import findfiles
 
 import net
+import vendored_difflib as difflib
 
 API_BASE = "https://www.steamgriddb.com/api/v2"
 

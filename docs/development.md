@@ -190,13 +190,18 @@ which files are *not* a panel, and why they sit where they do.
 ```
 main.py                     The Plugin class decky calls into. Mostly thin
                             wrappers, but the add and update flows are here.
-py_modules/                 Backend logic. Plain Python, stdlib only -- it runs
-                            on decky's frozen interpreter and cannot grow deps.
+py_modules/                 Backend logic. Plain Python, no third-party
+                            dependencies -- it runs on decky's frozen
+                            interpreter, which carries only the standard
+                            library its build packed. A module that build drops
+                            is carried here instead, as a `vendored_` file.
   ra_detect.py              Find RetroArch (flatpak/native/AppImage), build argv
   ra_cores.py               Scan cores, parse .info, match extensions, peek in zips
   unpack.py                 Extract a zip that arrived in the transfer folder
   libretro_meta.py          Name cleanup and libretro thumbnail resolution
   sgdb.py                   SteamGridDB search, scoring, era filtering, key discovery
+  vendored_difflib.py       CPython 3.11's difflib, which decky stopped bundling;
+                            the two above score names with it
   platforms.py              libretro database -> short name and folder name;
                             and which system a file extension names, for the
                             cores that cover several

@@ -13,7 +13,6 @@ Strategy, cheapest first:
 """
 
 import concurrent.futures
-import difflib
 import html
 import json
 import os
@@ -24,6 +23,7 @@ import urllib.parse
 import decky
 
 import net
+import vendored_difflib as difflib
 
 THUMB_HOST = "https://thumbnails.libretro.com"
 INDEX_CACHE_DIR = os.path.join(decky.DECKY_PLUGIN_RUNTIME_DIR, "thumb_index")
