@@ -136,7 +136,9 @@ import emulator_catalog  # noqa: E402
 with open(os.path.join(REPO_ROOT, "docs", "emulators.md"), encoding="utf-8") as _handle:
     _emulators_doc = _handle.read()
 
-_ROW = re.compile(r"^\| (\S[^|]*?) \| [^|]+ \| (Flathub|GitHub) — \[`([^`]+)`\]", re.M)
+# "Direct" is the third channel: a project with neither a flatpak nor a
+# releases API, installed from the update feed its own updater reads.
+_ROW = re.compile(r"^\| (\S[^|]*?) \| [^|]+ \| (Flathub|GitHub|Direct) — \[`([^`]+)`\]", re.M)
 _listed = {name.strip(): (channel, ident)
            for name, channel, ident in _ROW.findall(_emulators_doc)}
 
@@ -148,10 +150,26 @@ def _source_of(entry):
     source = entry.get("source") or {}
     if source.get("kind") == "flatpak":
         return "Flathub", source.get("id", "")
+    if source.get("kind") == "url":
+        # The feed's own address, minus the filename: what the table needs to
+        # show is whose site this comes from, and following it has to land
+        # somewhere a person can read.
+        parts = source.get("feed", "").split("/")
+        return "Direct", "/".join(parts[2:4]) if len(parts) > 3 else ""
     return "GitHub", source.get("repo", "")
 
 
-_expected = {entry["name"]: _source_of(entry) for entry in emulator_catalog.BUNDLED}
+# Only what the plugin installs. A `byo` entry describes an emulator the user
+# fetches themselves, so a row in this table saying where it comes *from* would
+# read as an offer to install it -- which is the one thing that entry cannot do.
+# They are covered in prose below the table instead.
+_expected = {entry["name"]: _source_of(entry) for entry in emulator_catalog.BUNDLED
+             if (entry.get("source") or {}).get("kind") != "byo"}
+
+_byo = [entry["name"] for entry in emulator_catalog.BUNDLED
+        if (entry.get("source") or {}).get("kind") == "byo"]
+check("a bring-your-own emulator is named in the page but not in the table",
+      [name for name in _byo if name not in _emulators_doc or name in _listed], [])
 
 check("every emulator the plugin installs is in the table",
       sorted(set(_expected) - set(_listed)), [])

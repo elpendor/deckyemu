@@ -104,6 +104,7 @@ import platforms
 
 from . import (
     azahar,
+    bigpemu,
     cemu,
     dolphin,
     duckstation,
@@ -140,6 +141,7 @@ _MODULES = (
     vita3k,
     xenia,
     supermodel,
+    bigpemu,
 )
 
 #: The entries written in this package. Never changes at runtime.
@@ -284,6 +286,12 @@ MANUAL_EXTENSIONS = {
     # bytes when the filename has nothing to offer, which is what lets an XBLA
     # container be paired with Xenia at all.
     "Microsoft - Xbox 360": ["iso", "xex", "zar", "stfs"],
+    # Cartridges are `j64`, `jag`, `rom`, `abs`, `cof` and `prg` -- six names
+    # for the same dumps, because the Jaguar scene never settled on one. The
+    # rest is Jaguar CD, which arrives as a `cue` beside its tracks or as a
+    # `cdi`. Taken from Virtual Jaguar's info file: the core is not worth
+    # running and its metadata is still the written-down list.
+    "Atari - Jaguar": ["j64", "jag", "rom", "abs", "cof", "prg", "bin", "cue", "cdi"],
 }
 
 # The catalog.

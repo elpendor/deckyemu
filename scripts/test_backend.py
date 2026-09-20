@@ -1622,6 +1622,13 @@ for _entry in emu_catalog.CATALOG:
     elif _source.get("kind") == "github":
         if not _source.get("repo") or not _source.get("asset"):
             failures.append("catalog entry %s has an incomplete github source" % _entry["id"])
+    elif _source.get("kind") == "url":
+        if not _source.get("feed") or not _source.get("select"):
+            failures.append("catalog entry %s has an incomplete url source" % _entry["id"])
+    elif _source.get("kind") == "byo":
+        # Nothing to check: the whole point is that the plugin installs nothing
+        # and the user points at a binary they fetched themselves.
+        pass
     else:
         failures.append("catalog entry %s has no usable source" % _entry["id"])
 print("PASS %-52s %r" % ("every catalog entry is coherent", True))
@@ -6369,9 +6376,12 @@ check("with a size and a label on each",
 # and Vita3K contributed 24KB of yaml while its 215MB of games and firmware sat
 # somewhere else entirely. A reset that misses most of what it claims to delete
 # is worse than none, because the next run inherits state nobody believes in.
+# `byo` is not downloaded, so there is no directory of this plugin's making to
+# describe: the build, its config and its saves are all wherever the user
+# unpacked them, and the reset tab is right to know nothing about it.
 check("every emulator the plugin downloads says where its data lives",
       [entry["id"] for entry in emu_catalog.CATALOG
-       if entry["source"]["kind"] != "flatpak" and not entry.get("data")],
+       if entry["source"]["kind"] not in ("flatpak", "byo") and not entry.get("data")],
       [])
 
 _stamp_root = os.path.join(TMP, "stamproot")

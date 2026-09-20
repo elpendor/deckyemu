@@ -110,6 +110,21 @@ for _entry in emulator_catalog.CATALOG:
             _disagree.append((_entry["id"], _target, _got, _want))
 check("every entry suggests its own arguments", _disagree, [])
 
+# Both were measured on a Deck, and both are invisible failures without a
+# check: the keyboard one puts Steam's keyboard over every launch, and the
+# missing hint that is *not* set here -- ALLOW_STEAM_VIRTUAL_GAMEPAD -- leaves
+# the emulator with no controller at all while every binding looks right.
+_bigpemu_env = emulator_catalog.find("bigpemu").get("env") or {}
+check("BigPEmu tells SDL it draws its own text entry, so Steam's keyboard stays down",
+      (_bigpemu_env.get("SDL_ENABLE_SCREEN_KEYBOARD"),
+       _bigpemu_env.get("SDL_IME_IMPLEMENTED_UI")), ("0", "1"))
+check("and it does not hide the virtual pad, which would hide the only pad there is",
+      "SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD" in _bigpemu_env, False)
+check("its controller binding is left to auto-assign rather than a stored device id",
+      emulator_catalog.find("bigpemu")["setup"]["files"][
+          ".bigpemu_userdata/BigPEmuConfig.bigpcfg"][
+          "BigPEmuConfig.Input.AutoAssign"]["value"], 1)
+
 check("RPCS3's fullscreen switch is the one the catalog installs",
       emulators.suggest_launch_options("net.rpcs3.RPCS3")["fullscreen_args"],
       "--fullscreen")
@@ -140,10 +155,10 @@ check("and no fullscreen switch swallows it",
 # drop the setup block and nothing errors, no test fails, and every game just
 # launches in a window on a handheld that has no way to un-window it.
 #
-# Dolphin and Azahar have no fullscreen flag at all, so their config is the only
-# route. Xenia is not in this list even though it also seeds one: it has a real
-# flag *and* a config key, because the config only takes effect once Xenia has
-# written a file to merge into, and the first launch happens before that.
+# Dolphin, Azahar and BigPEmu have no fullscreen flag at all, so their config is
+# the only route. Xenia is not in this list even though it also seeds one: it
+# has a real flag *and* a config key, because the config takes effect once Xenia
+# has written a file to merge into, and the first launch happens before that.
 def _mentions_fullscreen(value):
     if isinstance(value, dict):
         return any(_mentions_fullscreen(k) or _mentions_fullscreen(v)
@@ -153,10 +168,15 @@ def _mentions_fullscreen(value):
     return isinstance(value, str) and "fullscreen" in value.lower()
 
 
+# `byo` is exempt, and has to be: the plugin never installs that build, so it
+# knows no path to write a config into. BigPEmu is the case -- its config lives
+# in `UserData/` beside a binary the user unpacked wherever they liked -- and
+# under gamescope a window the size of the screen is fullscreen anyway.
 _no_switch = [entry["id"] for entry in emulator_catalog.CATALOG
-              if not (entry.get("fullscreen_args") or "")]
+              if not (entry.get("fullscreen_args") or "")
+              and (entry.get("source") or {}).get("kind") != "byo"]
 check("the entries with no fullscreen switch are the ones expected to have none",
-      sorted(_no_switch), ["azahar", "dolphin"])
+      sorted(_no_switch), ["azahar", "bigpemu", "dolphin"])
 check("and each of them sets fullscreen in the emulator's own config instead",
       [entry_id for entry_id in _no_switch
        if not _mentions_fullscreen(
