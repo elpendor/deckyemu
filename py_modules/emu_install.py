@@ -31,6 +31,7 @@ import re
 import shutil
 import subprocess
 import time
+import tarfile
 import zipfile
 
 import decky
@@ -605,6 +606,69 @@ _HOST_RE = re.compile(
 )
 
 
+#: The biggest a publisher's update feed may be. It is a few hundred bytes of
+#: plain text; anything larger is not the file we asked for.
+MAX_FEED_BYTES = 64 * 1024
+
+
+def resolve_feed_build(feed_url, want):
+    """The build `want` names in a publisher's own update feed. (asset, error).
+
+    **The feed is the one thing this kind of source has.** A project with no
+    releases API and no flatpak still has to tell its own updater where the
+    current build is, and BigPEmu's is a plain-text file its "Check for
+    Updates" reads:
+
+        BUILD_INFO 1
+        VERSION 1.221
+        Linux64 "http://.../BigPEmu_Linux64_v1221.tar.gz" "" C1B241BBFA5135CB ...
+
+    One line per platform: the download, an optional patch installer this
+    plugin never uses, then the file's 64-bit FNV-1a. So the feed answers all
+    three questions an install asks -- which version, from where, and whether
+    what arrived is what was meant.
+
+    The scheme is forced to https. The feed states its own URLs as http, the
+    same files serve fine over TLS, and a download this plugin makes is not
+    going over plain HTTP because somebody else's file says so.
+    """
+    if not net.is_web_url(feed_url):
+        return None, "That is not a usable address for an update feed."
+    payload, _content_type = net.get_bytes(feed_url, max_bytes=MAX_FEED_BYTES)
+    if not payload:
+        return None, "The project's update feed could not be read."
+    text = payload.decode("utf-8", "replace")
+
+    version = ""
+    for line in text.splitlines():
+        if line.startswith("VERSION "):
+            version = line.split(None, 1)[1].strip()
+            break
+    if not version:
+        return None, "The project's update feed named no version."
+
+    for line in text.splitlines():
+        if not line.startswith(want + " "):
+            continue
+        quoted = re.findall(r'"([^"]*)"', line)
+        if not quoted or not quoted[0]:
+            return None, "The update feed lists %s with no download." % want
+        url = re.sub(r"^http://", "https://", quoted[0].strip())
+        if not net.is_web_url(url):
+            return None, "The update feed's download address is not usable."
+        digest = ""
+        after = line.split('"')[-1].split()
+        if after and re.match(r"^[0-9A-Fa-f]{16}$", after[0]):
+            digest = "fnv1a64:" + after[0].lower()
+        return {
+            "name": url.rsplit("/", 1)[-1],
+            "url": url,
+            "digest": digest,
+            "tag": version,
+        }, ""
+    return None, "The project publishes no %s build." % want
+
+
 def resolve_release_asset(repo, pattern, host="", failure=None):
     """Newest release asset matching `pattern`, from GitHub or a self-hosted forge.
 
@@ -768,6 +832,29 @@ def _resolve_asset(api_url, pattern, label, failure=None):
 #: How GitHub states an asset's checksum, e.g. "sha256:5c73...".
 _DIGEST_RE = re.compile(r"^sha256:([0-9a-f]{64})$", re.IGNORECASE)
 
+#: The other digest a publisher hands us, and the reason it is here: BigPEmu's
+#: update feed states a 64-bit FNV-1a of each build and nothing else. Verified
+#: against the published value for the v1.221 Linux build before this was
+#: written -- it is the standard algorithm over the file's bytes, xor then
+#: multiply, and the site's own download page prints the same number.
+_FNV_RE = re.compile(r"^fnv1a64:([0-9a-f]{16})$", re.IGNORECASE)
+_FNV_PRIME = 1099511628211
+_FNV_OFFSET = 14695981039346656037
+_FNV_MASK = (1 << 64) - 1
+
+
+def _fnv1a64(path):
+    """The 64-bit FNV-1a of a file, as lowercase hex. "" if it cannot be read."""
+    value = _FNV_OFFSET
+    try:
+        with open(path, "rb") as handle:
+            for block in iter(lambda: handle.read(1024 * 1024), b""):
+                for byte in block:
+                    value = ((value ^ byte) * _FNV_PRIME) & _FNV_MASK
+    except OSError:
+        return ""
+    return "%016x" % value
+
 
 def _digest_matches(path, digest):
     """Whether the file at `path` is what the release said it would be. (ok, error).
@@ -782,18 +869,25 @@ def _digest_matches(path, digest):
     and a self-hosted forge an imported definition names may publish none at all.
     Refusing those would be refusing to install from anywhere but github.com.
     """
-    stated = _DIGEST_RE.match((digest or "").strip())
-    if not stated:
-        return True, ""
-    wanted = stated.group(1).lower()
-    reader = hashlib.sha256()
-    try:
-        with open(path, "rb") as handle:
-            for block in iter(lambda: handle.read(1024 * 1024), b""):
-                reader.update(block)
-    except OSError as error:
-        return False, "Could not read the download: %s" % error
-    got = reader.hexdigest()
+    weak = _FNV_RE.match((digest or "").strip())
+    if weak:
+        wanted = weak.group(1).lower()
+        got = _fnv1a64(path)
+        if not got:
+            return False, "Could not read the download."
+    else:
+        stated = _DIGEST_RE.match((digest or "").strip())
+        if not stated:
+            return True, ""
+        wanted = stated.group(1).lower()
+        reader = hashlib.sha256()
+        try:
+            with open(path, "rb") as handle:
+                for block in iter(lambda: handle.read(1024 * 1024), b""):
+                    reader.update(block)
+        except OSError as error:
+            return False, "Could not read the download: %s" % error
+        got = reader.hexdigest()
     if got != wanted:
         decky.logger.warning("Digest mismatch for %s: wanted %s, got %s",
                              path, wanted, got)
@@ -981,14 +1075,104 @@ def _nothing_matched(pattern, names):
     return "Nothing in the download is named like %s. It holds: %s." % (pattern, listed)
 
 
+def _safe_target(destination, name):
+    """Where `name` lands under `destination`, or "" if it tries to leave it.
+
+    Every archive here comes off the network, so a member that is absolute or
+    climbs out with `..` is refused rather than trusted. `..` inside the name
+    is not enough on its own -- `a/../b` is fine -- so the resolved path is
+    compared against the destination, which is what catches a symlink-free
+    escape however it was spelled.
+    """
+    relative = os.path.normpath(name).replace("\\", "/")
+    if relative.startswith("/") or relative.split("/")[0] == "..":
+        return ""
+    target = os.path.join(destination, *relative.split("/"))
+    root = os.path.realpath(destination)
+    if os.path.commonpath([root, os.path.realpath(os.path.dirname(target))]) != root:
+        return ""
+    return target
+
+
+def _common_prefix(names):
+    """The single folder every member sits in, or "".
+
+    A release tarball conventionally holds one directory -- `bigpemu/bigpemu`,
+    `bigpemu/Data/...` -- and unpacking that into a folder already named for
+    the emulator gives `emulators/bigpemu/bigpemu/bigpemu`. Measured on a Deck,
+    which is how this was noticed. Stripped only when *everything* is under the
+    same one, so an archive of loose files is left alone.
+    """
+    first = ""
+    for name in names:
+        head = name.replace("\\", "/").split("/")[0]
+        if "/" not in name.replace("\\", "/"):
+            return ""
+        if first and head != first:
+            return ""
+        first = head
+    return first
+
+
+def _unpack_tarball(archive, destination, pattern):
+    """`_unpack_release` for a .tar.gz. Same contract, same refusals.
+
+    Tar carries things zip cannot -- symlinks, hard links, devices, absolute
+    names -- and `extractall` honours all of them. Only regular files and
+    directories come out here, so a link pointing anywhere is simply not
+    written. Python 3.12 gained `filter="data"` for this; decky's runtime is
+    3.11, so the check is here rather than delegated.
+    """
+    try:
+        matcher = re.compile(pattern)
+    except re.error as error:
+        return "", "Bad extract pattern: %s" % error
+
+    found = ""
+    seen = []
+    try:
+        with tarfile.open(archive, "r:*") as bundle:
+            members = [m for m in bundle.getmembers() if m.isfile()]
+            strip = _common_prefix([m.name for m in members])
+            for member in members:
+                name = member.name
+                if strip:
+                    name = name.replace("\\", "/")[len(strip) + 1:]
+                    if not name:
+                        continue
+                target = _safe_target(destination, name)
+                if not target:
+                    return "", "The download holds a path that leaves its own folder."
+                os.makedirs(os.path.dirname(target), exist_ok=True)
+                source = bundle.extractfile(member)
+                if source is None:
+                    continue
+                with source, open(target, "wb") as handle:
+                    shutil.copyfileobj(source, handle)
+                # The mode the archive recorded, or the program comes out
+                # unrunnable -- a tarball is how the execute bit survives.
+                if member.mode:
+                    os.chmod(target, member.mode & 0o777)
+                seen.append(os.path.basename(target))
+                if matcher.match(os.path.basename(target)):
+                    found = target
+    except (OSError, tarfile.TarError, ValueError) as error:
+        return "", "Could not unpack the download: %s" % error
+    if not found:
+        return "", _nothing_matched(pattern, seen)
+    return found, ""
+
+
 def _unpack_release(archive, destination, pattern):
-    """Unpack a whole zip, and return the member `pattern` names. (path, error).
+    """Unpack a whole archive, and return the member `pattern` names. (path, error).
 
     Members are written under `destination` by their own relative paths, which
     is the difference from `_extract_member` and the reason each one is checked:
     a name that is absolute, or that climbs out with `..`, is refused rather
     than trusted. This comes off the network.
     """
+    if tarfile.is_tarfile(archive):
+        return _unpack_tarball(archive, destination, pattern)
     try:
         matcher = re.compile(pattern)
     except re.error as error:
@@ -1384,6 +1568,11 @@ def latest_tag(entry):
     and none of them is a call anybody is waiting on a screen for.
     """
     source = entry.get("source") or {}
+    if source.get("kind") == "url":
+        asset, error = resolve_feed_build(source.get("feed", ""), source.get("select", ""))
+        if not asset:
+            return "", error or "Could not read the project's update feed."
+        return asset.get("tag", ""), ""
     if source.get("kind") != "github":
         return "", ""
     asset, error = resolve_release_asset(

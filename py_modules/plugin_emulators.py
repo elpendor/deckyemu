@@ -588,7 +588,9 @@ class Emulators(plugin_base.PluginContext):
 
         for entry in emulator_catalog.CATALOG:
             source = entry.get("source") or {}
-            if source.get("kind") != "github":
+            # Both kinds this plugin downloads itself. A flatpak is checked by
+            # flatpak, and `byo` is not this plugin's to check at all.
+            if source.get("kind") not in ("github", "url"):
                 continue
             if not await self._run(emu_install.installed_appimage, entry["id"]):
                 continue
@@ -672,6 +674,26 @@ class Emulators(plugin_base.PluginContext):
                     }
                     for release in releases
                 ],
+            }
+
+        # **The one entry that can update but cannot go back.** A project with
+        # no releases API publishes only its current build: the feed states one
+        # version, the site has no changelog page, and nothing outside it keeps
+        # a list either -- the Wayback Machine has no snapshot and the AUR
+        # package tracks only what is current. Older files do stay on the
+        # server, but the only way to name one is a convention the publisher
+        # never documented and which already fails for one release.
+        #
+        # So this says there is no history rather than showing an empty list.
+        # An empty list reads as "this build is the only one that ever
+        # existed", which is a different and false claim.
+        if source.get("kind") == "url":
+            return {
+                "ok": False,
+                "error": "%s publishes only its current build, so there is nothing to "
+                         "go back to. Updating works; choosing an older build does "
+                         "not." % entry["name"],
+                "builds": [],
             }
 
         if source.get("kind") != "flatpak":
@@ -1054,13 +1076,21 @@ class Emulators(plugin_base.PluginContext):
             "emulator_install_progress", entry["id"], "Looking up the latest release", -1
         )
 
-        # `host` is empty for a project on GitHub and set for one that left it,
-        # whose old repository answers 451 there rather than 404 -- so no asset
-        # pattern reaches it and only the address can differ.
-        asset, error = await self._run(
-            emu_install.resolve_release_asset,
-            source["repo"], source["asset"], source.get("host", ""),
-        )
+        # A project with no releases API publishes its own feed instead, which
+        # is the only thing that knows where the current build is. Everything
+        # after this line is the same either way: download, verify, unpack.
+        if source.get("kind") == "url":
+            asset, error = await self._run(
+                emu_install.resolve_feed_build, source["feed"], source["select"],
+            )
+        else:
+            # `host` is empty for a project on GitHub and set for one that left
+            # it, whose old repository answers 451 there rather than 404 -- so
+            # no asset pattern reaches it and only the address can differ.
+            asset, error = await self._run(
+                emu_install.resolve_release_asset,
+                source["repo"], source["asset"], source.get("host", ""),
+            )
         if error:
             await decky.emit("emulator_install_done", entry["id"], False, error)
             return

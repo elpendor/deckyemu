@@ -92,6 +92,11 @@ OPTIONAL = {
              "backed up instead, which is right for an emulator that only "
              "reads ROMs off the disk and wrong for one that installs games "
              "into itself. See `savedata`.",
+    "saves_except": "Filenames inside `saves` that the backup leaves behind, "
+                    "for a config that shares a folder with the save files. "
+                    "Names only, matched wherever they appear: a config is not "
+                    "a save, and one that binds a controller by device id "
+                    "breaks the pad when restored onto another device.",
     "seed": "Files the package ships that the application cannot find, as "
             "{source under the flatpak's `files` directory: destination "
             "relative to home}. Copied after installing and again at startup, "
@@ -203,7 +208,13 @@ OPTIONAL = {
 #: describes is the point of importing one, and refusing it would only send the
 #: user to download the same build by hand -- see FORBIDDEN_WHEN_IMPORTED for
 #: what is actually withheld, which is everything that is not that.
-SOURCE_KINDS = ("flatpak", "github", "byo")
+#: `url` is the kind for a project with neither a flatpak nor a releases API:
+#: it publishes its own update feed, which is what its in-app updater reads.
+#: The entry names the feed and which line of it to take, and the plugin
+#: downloads, verifies and unpacks exactly as it does a release asset. The one
+#: thing such a project cannot offer is a list of past builds -- see
+#: `emulator_builds`, which says so rather than showing an empty list.
+SOURCE_KINDS = ("flatpak", "github", "byo", "url")
 
 #: The shapes `game_content` can name, which is to say the ones `gamecontent`
 #: knows how to write. Ryujinx's two JSON files per game are the only one.
@@ -700,6 +711,11 @@ def validate(entry, known_platforms=(), imported=False):
             % (kind, ", ".join(repr(k) for k in SOURCE_KINDS)))
     if kind == "flatpak" and not source.get("id"):
         bad("a flatpak source needs the application id")
+    if kind == "url":
+        if not str(source.get("feed") or "").startswith("https://"):
+            bad("a url source needs an https feed address")
+        if not source.get("select"):
+            bad("a url source needs the feed line to take")
     if kind == "github":
         if not source.get("repo"):
             bad("a release source needs 'repo', as owner/name")
@@ -755,6 +771,9 @@ def validate(entry, known_platforms=(), imported=False):
     # user's ssh keys. It has to be inside something the entry already owns,
     # which for anything but a flatpak means declaring `data` first.
     roots = owned_roots(entry)
+    for name in entry.get("saves_except") or ():
+        if not name or "/" in name or name in (".", ".."):
+            bad("saves_except %r is not a plain filename" % name)
     for path in entry.get("saves") or ():
         if _escapes(path):
             bad("saves path %r must be relative to home and must not escape it"

@@ -126,6 +126,8 @@ section("the standard library the sandbox actually has")
 # `ctypes`: an .nsz unpacked through switch_nsz from the panel on 2026-09-14.
 # `heapq` and `types`: what `vendored_difflib` imports, both read out of the
 # v3.2.9 archive on 2026-09-19 and in use by the borrowed difflib before it.
+# `tarfile`: read out of the same archive on 2026-09-20, for the emulator build
+# that arrives as a .tar.gz rather than a zip.
 # `email`: logged as present on a Deck on 2026-09-17, by the startup line
 # `httpshim.report` writes -- which exists because `http.server` was *dropped*
 # from decky's Python in v3.2.9 and took the whole plugin down. `http` stays
@@ -136,8 +138,8 @@ PROVEN_STDLIB = frozenset((
     "functools",
     "hashlib", "heapq", "html", "http", "importlib", "inspect", "io", "json", "os",
     "posixpath", "re", "secrets", "shlex", "shutil", "socket", "ssl", "stat",
-    "struct", "subprocess", "sys", "threading", "time", "types", "typing",
-    "urllib",
+    "struct", "subprocess", "sys", "tarfile", "threading", "time", "types",
+    "typing", "urllib",
     "zipfile",
 ))
 

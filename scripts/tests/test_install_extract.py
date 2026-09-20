@@ -18,6 +18,7 @@ Every project and file here is made up.
 import io
 import os
 import sys
+import tarfile
 import zipfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -135,6 +136,68 @@ with zipfile.ZipFile(_ESCAPE, "w") as _bundle:
 _escaped, _why = emu_install._unpack_release(
     _ESCAPE, emu_install.emulators_dir("escape-port"), "^anything$")
 check("a path that leaves its folder is refused", "leaves its own folder" in _why, True)
+
+
+section("a tarball, and the folder it carries")
+
+# A build published as a .tar.gz rather than a zip, which is what a project
+# with no release page hands out. Two things differ from the zip above: tar
+# records the execute bit, and a release tarball conventionally holds one
+# folder -- so unpacking it into a directory already named for the emulator
+# gave `emulators/bigpemu/bigpemu/bigpemu` on a Deck until the leading folder
+# was stripped.
+_TAR = os.path.join(TMP, "release", "Tarred-Linux.tar.gz")
+with tarfile.open(_TAR, "w:gz") as _bundle:
+    _staged = os.path.join(TMP, "release", "tarport")
+    os.makedirs(os.path.join(_staged, "Data"), exist_ok=True)
+    with io.open(os.path.join(_staged, "tarport"), "w", encoding="utf-8") as _handle:
+        _handle.write(NEWBUILD)
+    os.chmod(os.path.join(_staged, "tarport"), 0o755)
+    with io.open(os.path.join(_staged, "Data", "en.txt"), "w", encoding="utf-8") as _handle:
+        _handle.write("hello")
+    _bundle.add(_staged, arcname="tarport")
+
+_TAR_DIR = emu_install.emulators_dir("tar-port")
+_tarred, _why = emu_install._unpack_release(_TAR, _TAR_DIR, "^tarport$")
+check("the tarball unpacks", _why, "")
+check("the program lands directly in the emulator's folder, not a folder inside it",
+      os.path.relpath(_tarred, _TAR_DIR).replace("\\", "/"), "tarport")
+check("its data comes with it",
+      os.path.isfile(os.path.join(_TAR_DIR, "Data", "en.txt")), True)
+if os.name == "posix":
+    check("and the execute bit the archive recorded survives",
+          bool(os.stat(_tarred).st_mode & 0o111), True)
+
+# Only when everything is under the same folder. An archive of loose files has
+# no prefix to strip, and taking the first name for one would flatten it wrong.
+_LOOSE = os.path.join(TMP, "release", "Loose.tar.gz")
+with tarfile.open(_LOOSE, "w:gz") as _bundle:
+    for _name in ("looseport", "notes.txt"):
+        _path = os.path.join(TMP, "release", _name)
+        with io.open(_path, "w", encoding="utf-8") as _handle:
+            _handle.write("x")
+        _bundle.add(_path, arcname=_name)
+_LOOSE_DIR = emu_install.emulators_dir("loose-port")
+_loose, _why = emu_install._unpack_release(_LOOSE, _LOOSE_DIR, "^looseport$")
+check("an archive of loose files keeps its names", (_why, os.path.basename(_loose)),
+      ("", "looseport"))
+
+# Tar carries things zip cannot, and `extractall` would honour every one of
+# them. Nothing but regular files and directories is written.
+_LINKED = os.path.join(TMP, "release", "Linked.tar.gz")
+with tarfile.open(_LINKED, "w:gz") as _bundle:
+    _info = tarfile.TarInfo("escape")
+    _info.type = tarfile.SYMTYPE
+    _info.linkname = "/etc/passwd"
+    _bundle.addfile(_info)
+    _payload = os.path.join(TMP, "release", "linkedport")
+    with io.open(_payload, "w", encoding="utf-8") as _handle:
+        _handle.write("x")
+    _bundle.add(_payload, arcname="linkedport")
+_LINK_DIR = emu_install.emulators_dir("linked-port")
+_linked, _why = emu_install._unpack_release(_LINKED, _LINK_DIR, "^linkedport$")
+check("a symlink in the archive is not written",
+      (_why, os.path.lexists(os.path.join(_LINK_DIR, "escape"))), ("", False))
 
 
 section("a folder the program lives in is not swept")

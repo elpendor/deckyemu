@@ -9,7 +9,8 @@ Steam.](docs/images/adding-a-game.jpg)
 
 **Install an emulator** in one press — RetroArch and its cores, or Dolphin,
 PCSX2, DuckStation, PPSSPP, RPCS3, shadPS4, Vita3K, Ryujinx, Cemu, Azahar,
-xemu, Xenia Canary and Supermodel — along with the BIOS and firmware each one needs.
+xemu, Xenia Canary, Supermodel and BigPEmu — along with the BIOS and firmware each
+one needs.
 Bring your own instead, if you would rather.
 
 ![The Emulators tab in the settings page, listing Azahar, Cemu, Dolphin and
