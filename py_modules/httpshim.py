@@ -169,6 +169,12 @@ class _Request:
         decky.logger.info(fmt, *args)
 
 
+#: How long a stop waits for the accept loop to notice. It polls twice a second,
+#: so this is ten chances -- long enough that only a wedged loop reaches it, and
+#: short enough that nobody watches the plugin hang on a server nobody is using.
+_STOP_SECONDS = 5.0
+
+
 class _Server:
     """`ThreadingHTTPServer` in the twenty lines this plugin uses of it.
 
@@ -194,23 +200,33 @@ class _Server:
         # The transfer URL is built from this.
         self.server_name, self.server_port = self.server_address[:2]
         self._running = threading.Event()
+        # Set while no accept loop is running, which is the state a fresh server
+        # is in: `shutdown` on one that never served must not wait for a loop
+        # that was never started.
+        self._stopped = threading.Event()
+        self._stopped.set()
 
     def serve_forever(self, poll_interval=0.5):
         self._running.set()
+        self._stopped.clear()
         self.socket.settimeout(poll_interval)
-        while self._running.is_set():
-            try:
-                connection, address = self.socket.accept()
-            except TimeoutError:
-                continue
-            except OSError:
-                # The listening socket went while we were waiting on it, which
-                # is `server_close` from another thread and not an error.
-                break
-            thread = threading.Thread(
-                target=self._serve_one, args=(connection, address), daemon=True
-            )
-            thread.start()
+        try:
+            while self._running.is_set():
+                try:
+                    connection, address = self.socket.accept()
+                except TimeoutError:
+                    continue
+                except OSError:
+                    # The listening socket went while we were waiting on it,
+                    # which is `server_close` from another thread and not an
+                    # error.
+                    break
+                thread = threading.Thread(
+                    target=self._serve_one, args=(connection, address), daemon=True
+                )
+                thread.start()
+        finally:
+            self._stopped.set()
 
     def _serve_one(self, connection, address):
         try:
@@ -223,10 +239,32 @@ class _Server:
                 pass
 
     def shutdown(self):
+        """Stop serving, and **do not return until the accept loop has.**
+
+        The waiting is the whole of it, and leaving it out cost the one feature
+        that depends on it. `socketserver.shutdown` blocks until its loop has
+        exited; this cleared a flag and returned, so `server_close` ran while
+        another thread sat inside `accept()` on that socket -- and a closed
+        file descriptor that a blocked call still holds keeps the port
+        LISTENing until that call returns. The next bind to it got EADDRINUSE
+        with `SO_REUSEADDR` already set, which reads as the port being taken by
+        something else, so a remembered transfer link came back on a different
+        port every time: the address somebody bookmarked, silently not theirs
+        any more. Measured on the Deck, eight rebinds out of eight, and never
+        on Windows -- which is why a suite that passed there said nothing.
+
+        Bounded rather than indefinite: a loop that will not end must not take
+        the plugin's shutdown with it, and the caller closes the socket next
+        either way.
+        """
         self._running.clear()
+        self._stopped.wait(_STOP_SECONDS)
 
     def server_close(self):
+        # The same wait, because closing is what the port hangs on: a caller
+        # that closes without shutting down first is the case this is for.
         self._running.clear()
+        self._stopped.wait(_STOP_SECONDS)
         try:
             self.socket.close()
         except OSError:

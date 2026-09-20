@@ -53,7 +53,8 @@ class _Handler(httpshim._Request):  # noqa: SLF001 -- the stand-in under test
 
 
 _server = httpshim._Server(("127.0.0.1", 0), _Handler)  # noqa: SLF001
-threading.Thread(target=_server.serve_forever, daemon=True).start()
+_serving = threading.Thread(target=_server.serve_forever, daemon=True)
+_serving.start()
 _url = "http://127.0.0.1:%d" % _server.server_address[1]
 
 try:
@@ -91,6 +92,23 @@ try:
 finally:
     _server.shutdown()
     _server.server_close()
+
+# **A stop has to have stopped before it returns**, which is what
+# `socketserver.shutdown` guarantees and what this did not: it cleared a flag
+# and returned while another thread sat inside `accept()`. A socket closed
+# under a blocked call keeps the port LISTENing until that call comes back, so
+# the next bind to it fails with SO_REUSEADDR already set -- and the transfer
+# link somebody bookmarked came back on a different port. Checked here rather
+# than by rebinding, because a rebind succeeds on Windows either way: this is
+# the thing that was wrong, and it is wrong on every platform.
+check("a stop does not return until the accept loop has", _serving.is_alive(), False)
+
+# And then the port is free immediately, which is the feature this holds up: a
+# remembered address is only worth keeping if it can be served again.
+_again = httpshim._Server(("127.0.0.1", _server.server_port), _Handler)  # noqa: SLF001
+check("so the same port takes a server again straight away",
+      _again.server_port, _server.server_port)
+_again.server_close()
 
 
 if __name__ == "__main__":
