@@ -434,17 +434,24 @@ export function UpdatePanel({
     {/* The projects this plugin stands on are named nowhere else, and
         SteamGridDB's terms ask for it outright. Here rather than in
         Diagnostics because that tab is for when something is wrong, and this
-        is the tab that already answers "what is this and which version". */}
-    <PanelSection title="About">
-      <PanelSectionRow>
-        <ButtonItem
-          layout="below"
-          onClick={() => openModal(<AboutModal />)}
-        >
-          About DeckyEmu
-        </ButtonItem>
-      </PanelSectionRow>
-    </PanelSection>
+        is the tab that already answers "what is this and which version".
+
+        The tab only, for the same reason the check button is the tab's: the
+        dialog is the release on offer, opened by somebody who came for that,
+        and a second button under it opening a second dialog is not what they
+        asked for. */}
+    {!releaseOnly && (
+      <PanelSection title="About">
+        <PanelSectionRow>
+          <ButtonItem
+            layout="below"
+            onClick={() => openModal(<AboutModal />)}
+          >
+            About DeckyEmu
+          </ButtonItem>
+        </PanelSectionRow>
+      </PanelSection>
+    )}
     </>
   );
 }
