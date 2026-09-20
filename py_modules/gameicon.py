@@ -78,23 +78,64 @@ def _clear_own(app_id):
             pass
 
 
+#: The data URIs an icon may arrive as: PNG, and both spellings of `.ico`.
+#:
+#: JPEG stays refused. Steam would show one, but the name written into
+#: `shortcuts.vdf` has to say what the file holds, and `KINDS` has no JPEG.
+_ICON_URIS = (
+    "data:image/png",
+    "data:image/vnd.microsoft.icon",
+    "data:image/x-icon",
+)
+
+
 def _bytes_of(data_uri):
     """The bytes inside a `data:image/png;base64,...` URI, or b"".
 
-    The artwork pipeline carries images as PNG or JPEG data URIs, and a JPEG is
-    refused: Steam would show it, but the `.png` name written into
-    `shortcuts.vdf` would be lying about the file. `save` below checks the bytes
-    themselves, so a URI claiming PNG and holding something else is caught
-    there rather than written under the wrong name.
+    `.ico` as well as PNG, because SteamGridDB publishes games that have
+    nothing else -- refusing them here is what left those games on the plain
+    tile. `save` below checks the bytes themselves, so a URI claiming one thing
+    and holding another is caught there rather than written under the wrong
+    name.
     """
     text = str(data_uri or "")
     marker = ";base64,"
-    if not text.startswith("data:image/png") or marker not in text:
+    if not text.startswith(_ICON_URIS) or marker not in text:
         return b""
     try:
         return base64.b64decode(text.split(marker, 1)[1], validate=True)
     except (ValueError, TypeError):
         return b""
+
+
+def _png_inside_ico(payload):
+    """The largest PNG an `.ico` carries, or b"" if it carries none.
+
+    **Steam draws an `.ico` as nothing at all in Game Mode.** Written, recorded
+    in `shortcuts.vdf`, read back by the path it was given -- and the tile is
+    blank, where the same game's PNG showed. Measured with Diablo through
+    DevilutionX on 2026-09-19.
+
+    An `.ico` is a directory of images, and since Vista the big ones are
+    ordinarily PNG already -- that file holds three, up to 256 square. So the
+    one Steam can draw is usually inside the one it cannot, and unwrapping it
+    needs no decoding and no dependency. An icon that is every-entry BMP still
+    lands as `.ico`, which is no worse than before.
+    """
+    if not payload.startswith(b"\x00\x00\x01\x00") or len(payload) < 6:
+        return b""
+    count = int.from_bytes(payload[4:6], "little")
+    best = b""
+    for index in range(count):
+        entry = 6 + index * 16
+        if entry + 16 > len(payload):
+            break
+        size = int.from_bytes(payload[entry + 8:entry + 12], "little")
+        offset = int.from_bytes(payload[entry + 12:entry + 16], "little")
+        image = payload[offset:offset + size]
+        if image.startswith(b"\x89PNG\r\n\x1a\n") and len(image) > len(best):
+            best = image
+    return best
 
 
 def save(app_id, payload):
@@ -104,6 +145,7 @@ def save(app_id, payload):
     old icon goes first: a game that had a `.png` and now has an `.ico` would
     otherwise keep both, and `has_own` would go on finding the stale one.
     """
+    payload = _png_inside_ico(payload or b"") or payload
     suffix = _kind_of(payload or b"")
     path = _own_path(app_id, suffix) if suffix else ""
     if not path:

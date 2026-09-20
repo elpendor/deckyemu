@@ -108,6 +108,45 @@ check("and none of those left a file behind",
       False)
 
 
+section("an .ico is unwrapped, because Steam draws one as nothing at all")
+
+# Measured on a Deck: the file is written, the path is in shortcuts.vdf, and
+# the tile is blank -- where the same game's PNG drew fine. Since Vista the
+# large entries in an .ico are ordinarily PNG already, so the image Steam can
+# draw is usually inside the one it cannot.
+def _ico_of(*images):
+    """An .ico directory carrying `images`, in the order given."""
+    header = bytes((0, 0, 1, 0)) + len(images).to_bytes(2, "little")
+    offset = len(header) + 16 * len(images)
+    entries, body = b"", b""
+    for image in images:
+        entries += bytes((0, 0, 0, 0)) + (1).to_bytes(2, "little")
+        entries += (32).to_bytes(2, "little")
+        entries += len(image).to_bytes(4, "little") + offset.to_bytes(4, "little")
+        body += image
+        offset += len(image)
+    return header + entries + body
+
+
+_BIG = _PNG + b"\x00" * 40
+_wrapped = gameicon.save(_APP + 5, _ico_of(b"BM" + b"\x00" * 20, _PNG, _BIG))
+check("the PNG inside is what lands, under a .png name",
+      os.path.basename(_wrapped), "%s.png" % (_APP + 5))
+with open(_wrapped, "rb") as _handle:
+    # By length, not by value: these are whole PNGs, and a failing check prints
+    # what it got.
+    check("and the largest of them, which is the one worth having",
+          len(_handle.read()), len(_BIG))
+gameicon.forget(_APP + 5)
+
+# Nothing to unwrap is not a failure: it is the old behaviour, and Steam
+# showing nothing for it is no worse than what it showed before.
+_flat = gameicon.save(_APP + 6, _ico_of(b"BM" + b"\x00" * 20))
+check("an .ico with no PNG in it is still written as one",
+      os.path.basename(_flat), "%s.ico" % (_APP + 6))
+gameicon.forget(_APP + 6)
+
+
 section("an .ico counts too, because plenty of games have nothing else")
 
 # Adventures of Lolo 2 is the case: two icons on SteamGridDB, both .ico, and
@@ -126,8 +165,53 @@ check("swapping format replaces rather than accumulates",
       (os.path.basename(_swapped), os.path.isfile(_saved)),
       ("%s.png" % _APP, False))
 
+# What the download calls them matters as much. `get_data_uri` labelled
+# everything it did not recognise a PNG, so an `.ico` reached the add path
+# wearing the one mime that path accepted -- right by accident, and only while
+# nothing else looked at the label.
+import net  # noqa: E402 -- used only by the checks below
+
+# Put back afterwards, without fail: the whole backend suite runs in one
+# process, and a `net` left holding a stub answers for every check after this
+# one -- which is how a GitHub rate-limit check a thousand lines away started
+# failing over an icon test.
+_real_get_bytes = net.get_bytes
+_served = {"payload": _ICO, "type": "application/octet-stream"}
+try:
+    net.get_bytes = lambda url, headers=None, cap=None: (  # noqa: ARG005
+        _served["payload"], _served["type"])
+    check("a downloaded .ico is named for what it is",
+          net.get_data_uri("http://example.invalid/i.ico")[1], "ico")
+    _served["payload"] = _PNG
+    check("and a PNG still is too",
+          net.get_data_uri("http://example.invalid/i.png")[1], "png")
+finally:
+    net.get_bytes = _real_get_bytes
+
 check("bytes that are neither are refused rather than written under a guess",
       gameicon.save(_APP + 2, b"not an image at all"), "")
+
+# **And it has to survive the add path, not only `save`.** The lookup hands the
+# icon over as a data URI, and a URI holding an `.ico` used to be refused at
+# that boundary -- so a game whose only icons are `.ico` kept the shipped tile
+# on the way in and got a real one only from the Library tab's manual fetch.
+# Diablo through DevilutionX was the report: its port entry has six icons and
+# not one PNG.
+_APP3 = _APP + 3
+for _mime in ("image/vnd.microsoft.icon", "image/x-icon"):
+    _uri = "data:%s;base64,%s" % (_mime, base64.b64encode(_ICO).decode())
+    _path = gameicon.for_game(_APP3, _uri)
+    check("an .ico arriving as %s is written" % _mime,
+          os.path.basename(_path), "%s.ico" % _APP3)
+    gameicon.forget(_APP3)
+
+# The bytes decide the name, so a URI that claims one thing and carries another
+# is caught by `save` rather than written under the label it arrived with.
+check("a URI whose mime lies about the bytes still lands under the truth",
+      os.path.basename(gameicon.for_game(
+          _APP3, "data:image/png;base64," + base64.b64encode(_ICO).decode())),
+      "%s.ico" % _APP3)
+gameicon.forget(_APP3)
 
 # The regression this answers. The startup repair asks with nothing, and an
 # answer of "generic" for a game holding a real icon is how it came to write

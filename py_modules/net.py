@@ -586,9 +586,16 @@ def get_data_uri(url, headers=None, max_bytes=None):
         kind = "jpg"
     elif payload[:8] == b"\x89PNG\r\n\x1a\n":
         kind = "png"
+    # An icon, which only the icon slot ever asks for and which never reaches
+    # Steam's artwork API -- it is written to a file, where the name has to say
+    # what the bytes are. Labelled PNG, as everything unrecognised used to be,
+    # it arrived as a `.png` holding an `.ico`.
+    elif payload[:4] == b"\x00\x00\x01\x00":
+        kind = "ico"
     else:
         kind = "png"
 
-    mime = "image/jpeg" if kind == "jpg" else "image/png"
+    mime = {"jpg": "image/jpeg", "ico": "image/vnd.microsoft.icon"}.get(
+        kind, "image/png")
     encoded = base64.b64encode(payload).decode("ascii")
     return "data:%s;base64,%s" % (mime, encoded), kind

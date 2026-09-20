@@ -419,10 +419,12 @@ _ART_SLOTS = (
     ("logo", "logos", "?types=static", ""),
     # Steam draws the icon from a file on disk rather than from the art it
     # stores, so this one is fetched and written out rather than applied like
-    # the four above. PNG only *here* because this path carries images to the
-    # frontend as data URIs -- `icon_url` below, which writes a file, takes
-    # `.ico` as well.
-    ("icon", "icons", "?types=static&mimes=image/png", ""),
+    # the four above. PNG first and anything static second, which is the same
+    # order `icon_url` below settles on: plenty of games publish `.ico` and
+    # nothing else, and asking for PNG alone left them on the plain tile with
+    # nothing to say why. Diablo through DevilutionX was one -- its port entry
+    # has six icons, none of them PNG.
+    ("icon", "icons", "?types=static&mimes=image/png", "?types=static"),
 )
 
 
