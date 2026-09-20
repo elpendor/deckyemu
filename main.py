@@ -2244,13 +2244,6 @@ class Plugin(
             return {"ok": False, "error": error}
         return await self.sync_rom_patches(app_id)
 
-    async def reorder_rom_patches(self, app_id: int, order: list) -> dict:
-        """Put the list in `order`, which decides which hack wins a conflict."""
-        error = await self._run(rompatch.reorder, app_id, list(order or ()))
-        if error:
-            return {"ok": False, "error": error}
-        return await self.sync_rom_patches(app_id)
-
     async def sync_rom_patches(self, app_id: int, name: str = "") -> dict:
         """Write the switched-on patches beside the ROM.
 

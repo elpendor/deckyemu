@@ -37,16 +37,6 @@ import sysenv
 class DevReset(plugin_base.PluginContext):
     """Development-only resets. See the module docstring."""
 
-    async def dev_reset_available(self):
-        """Whether the reset tab may do anything. See py_modules/devreset.py.
-
-        The frontend tab is compiled out of a release build entirely, so this is
-        the second of two independent gates rather than the only one. It exists
-        because "compiled out" is a property of one artifact and these endpoints
-        are reachable by anything that can talk to the plugin.
-        """
-        return {"ok": True, "available": devreset.available(sysenv.PLUGIN_ROOT)}
-
     async def dev_reset_inventory(self):
         """What each reset would delete, with sizes, before anything happens."""
         if not devreset.available(sysenv.PLUGIN_ROOT):

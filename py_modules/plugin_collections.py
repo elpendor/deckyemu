@@ -37,7 +37,6 @@ import decky
 
 import plugin_base
 
-import emulators
 import libretro_meta
 import platforms
 import store
@@ -191,15 +190,6 @@ class Collections(plugin_base.PluginContext):
     # Per-game launch overrides. Only explicit overrides are stored, so a game
     # left alone keeps following the global setting when that setting changes.
     _OSD_MODES = ("keep", "startup", "all")
-
-    async def collection_name_for(self, core_id: str):
-        """What collection a game on `core_id` should go into right now.
-
-        Empty when collections are off; `_collection_name` owns that rule.
-        """
-        settings = await self._run(store.get_settings)
-        core = self._core_by_id(core_id)
-        return self._collection_name(settings, self._entry_platform(settings, core))
 
     async def plan_collection_migration(self, previous: Optional[dict] = None):
         """Moves needed to bring existing games in line with current settings.
