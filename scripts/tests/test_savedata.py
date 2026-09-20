@@ -85,6 +85,13 @@ _drop(".local/share/SomeStudio/Imported/config.json", "{}")
 # the rest. Shader caches and thumbnails are not saves, and are the largest
 # thing in the tree.
 _drop(".cache/imported/shaders/huge.bin", "x" * 8192)
+# A log and a shader cache inside the directory the saves are in, which is
+# where Azahar keeps both -- beside its NAND, not under `.cache`. The log is
+# truncated every time the emulator starts and a shader is written for every
+# game that runs, so counting them made opening an emulator once look like new
+# save data waiting to go up.
+_drop(".local/share/SomeStudio/Imported/log/run.txt", "started")
+_drop(".local/share/SomeStudio/Imported/shaders/precompiled.bin", "x" * 4096)
 
 _imported = {
     "id": "aardvark-port",
@@ -163,6 +170,13 @@ check("an imported entry's own directory is offered too",
       [os.path.join(_home, ".local", "share", "SomeStudio", "Imported")])
 check("with everything in it, since it declared no saves directory",
       (_listed["aardvark-port"]["whole"], _listed["aardvark-port"]["files"]), (True, 2))
+# Two, not four: the log and the shader cache beside them are no more a save
+# than the cache directory is, and both change on every run.
+check("and neither its log nor its shader cache",
+      sorted(name for _, name in savedata._walk(
+          os.path.join(_home, ".local", "share", "SomeStudio", "Imported"),
+          savedata._SKIP_TOP)),
+      ["achievements.json", "config.json", "saves/slot1.bin"])
 # Not the cache directory it also owns. A reset still clears that one -- see
 # `owned_roots`, which is what the reset reads.
 check("but not the cache directory it owns",

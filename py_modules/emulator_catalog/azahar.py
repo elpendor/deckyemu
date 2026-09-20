@@ -107,6 +107,16 @@ ENTRY = {
     # Config under one, the NAND, keys, installed titles and saves under
     # the other. Both, or a reset leaves the half that holds the games.
     "data": [".config/azahar-emu", ".local/share/azahar-emu"],
+    # No `saves` here, so the backup takes both of those whole -- the NAND, the
+    # installed titles and the save files all live under the second one and
+    # nothing separates them from the rest. The config is the one file in there
+    # that is not a save and must not travel: it binds the controller to this
+    # device and holds this screen's layout, and the plugin writes its own
+    # recommended settings into a fresh one anyway. It also explains a backup
+    # that keeps finding new save data -- Azahar rewrites this file with its
+    # own defaults every time it starts, including the few seconds of a setup
+    # window being opened.
+    "saves_except": ["qt-config.ini"],
     "databases": ["Nintendo - Nintendo 3DS"],
     "args": "{rom}",
     # Azahar has no fullscreen flag at all -- it is a config setting, which

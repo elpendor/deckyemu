@@ -89,8 +89,11 @@ section("flatpak's own plumbing is not save data")
 
 # It announced itself in a real backup, three times: "NOTICE: .ld.so/active:
 # Can't follow symlink without -L/--copy-links". Nothing behind it is a save.
-check("the linker cache is skipped like the flatpak cache",
-      sorted(savedata._SKIP_TOP), [".ld.so", "cache"])
+# Nor is a log, nor a shader cache kept beside the saves rather than under
+# `cache`, which is where Azahar keeps both -- and both change on every run, so
+# counting them made opening an emulator look like save data to upload.
+check("the linker cache, logs and shader caches are skipped like the flatpak cache",
+      sorted(savedata._SKIP_TOP), [".ld.so", "cache", "log", "shaders"])
 
 _whole = {"id": "duckstation", "name": "DuckStation", "whole": True,
           "roots": [("duckstation", "/home/deck/.var/app/org.duckstation.DuckStation")]}
@@ -100,7 +103,7 @@ _parts = {"id": "retroarch", "name": "RetroArch", "whole": False,
 check("a whole-directory copy leaves both of them behind",
       [argument for argument in cloudsync._excludes(_whole)
        if argument != "--exclude"],
-      ["cache/**", ".ld.so/**"])
+      ["cache/**", ".ld.so/**", "log/**", "shaders/**"])
 # An emulator that says where its saves are contributes only those, so there is
 # nothing to exclude and nothing to explain in the command line.
 check("while an emulator that names its save folders excludes nothing",

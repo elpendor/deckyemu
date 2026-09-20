@@ -92,7 +92,8 @@ OPTIONAL = {
              "backed up instead, which is right for an emulator that only "
              "reads ROMs off the disk and wrong for one that installs games "
              "into itself. See `savedata`.",
-    "saves_except": "Filenames inside `saves` that the backup leaves behind, "
+    "saves_except": "Filenames the backup leaves behind, inside `saves` or "
+                    "inside the directories an entry that declares none owns, "
                     "for a config that shares a folder with the save files. "
                     "Names only, matched wherever they appear: a config is not "
                     "a save, and one that binds a controller by device id "

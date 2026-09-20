@@ -94,7 +94,15 @@ def arrivals_dir(create=True):
 #: .ld.so/active: Can't follow symlink without -L/--copy-links". Nothing behind
 #: it is a save, and a line that reads like an error in the log of the feature
 #: whose whole job is not losing saves is worth the one word it costs to stop.
-_SKIP_TOP = ("cache", ".ld.so")
+#:
+#: `log` and `shaders` are the same thing under other names, and they are what
+#: makes a whole-directory emulator look like it has new saves constantly:
+#: Azahar truncates its log every time it starts and writes a precompiled
+#: shader for every game that runs, both inside the directory it keeps its NAND
+#: in. Opening an emulator once then showed up as save data to upload. Neither
+#: is anybody's save: a log is a record of the last run and a shader cache is
+#: rebuilt from the game.
+_SKIP_TOP = ("cache", ".ld.so", "log", "shaders")
 
 #: Written beside the archive while it is being built, and renamed over only once
 #: every file is in. Same suffix and same reason as `unpack`: something scanning
