@@ -24,10 +24,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const toast = vi.fn();
 const showLaunchConflict = vi.fn();
+const approveLaunch = vi.fn();
 vi.mock("@decky/api", () => ({ toaster: { toast: (...args: unknown[]) => toast(...args) } }));
 vi.mock("./LaunchConflictModal", () => ({
   showLaunchConflict: (...args: unknown[]) => showLaunchConflict(...args),
 }));
+// `./backend` for the reason `launchGate.test.ts` mocks it: its `callable()`
+// bindings run at import time and there is no decky behind them here.
+vi.mock("./backend", () => ({
+  approveLaunch: (...args: unknown[]) => approveLaunch(...args),
+}));
+vi.mock("./logError", () => ({ logError: vi.fn() }));
 
 const { playGame } = await import("./playGame");
 
@@ -56,6 +63,8 @@ function installSteam({
 beforeEach(() => {
   toast.mockClear();
   showLaunchConflict.mockClear();
+  approveLaunch.mockReset();
+  approveLaunch.mockResolvedValue({ ok: true });
 });
 
 afterEach(() => {
@@ -136,13 +145,36 @@ describe("playGame with another game running", () => {
     ]);
   });
 
-  it("dismisses and launches only once the dialog says to", () => {
+  it("dismisses and launches only once the dialog says to", async () => {
     // The same ordering as the plain path, moved to the far side of the
     // question: nothing may be left over the game once it is actually starting.
     const order = installSteam({ running: RUNNING });
     playGame(42, "A Game", () => order.push("dismiss"));
-    showLaunchConflict.mock.calls[0][0].onLaunch();
-    expect(order).toEqual(["dismiss", "RunGame(gid-42)"]);
+    await showLaunchConflict.mock.calls[0][0].onLaunch();
+    await vi.waitFor(() => expect(order).toEqual(["dismiss", "RunGame(gid-42)"]));
+  });
+
+  // **The dialog is asked once, by whichever side got there first.** The
+  // launcher script runs the same two-games check and knows nothing of this
+  // one, so a launch that is not approved bounces and `launchGate` puts the
+  // identical dialog up again. Two prompts for one press, measured on a device.
+  it("approves the launch, so the launcher does not ask the same question", async () => {
+    const order = installSteam({ running: RUNNING });
+    playGame(42, "A Game", () => order.push("dismiss"));
+    await showLaunchConflict.mock.calls[0][0].onLaunch();
+    await vi.waitFor(() => expect(order).toEqual(["dismiss", "RunGame(gid-42)"]));
+    expect(approveLaunch).toHaveBeenCalledWith(42);
+  });
+
+  it("and starts nothing when the approval fails, rather than bouncing", async () => {
+    // Launching regardless is the loop this is here to avoid: the gate refuses
+    // it, the dialog comes back, and the button never works.
+    approveLaunch.mockRejectedValue(new Error("no"));
+    const order = installSteam({ running: RUNNING });
+    playGame(42, "A Game", () => order.push("dismiss"));
+    await showLaunchConflict.mock.calls[0][0].onLaunch();
+    await vi.waitFor(() => expect(toast).toHaveBeenCalledTimes(1));
+    expect(order).toEqual(["dismiss"]);
   });
 
   it("names every running game, so closing them all is one decision", () => {

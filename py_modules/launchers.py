@@ -215,7 +215,10 @@ LAUNCH_GATE_DIR = os.path.join(decky.DECKY_PLUGIN_RUNTIME_DIR, "launch")
 #  34  the previous run's output is kept beside the last one. A game that fails
 #      is launched again at once, and the retry was truncating the only account
 #      of what went wrong.
-FORMAT_VERSION = 34
+#  35  an approval is honoured only while it is fresh. One left behind by a
+#      launch that never happened let the next one past the two-games gate
+#      without asking.
+FORMAT_VERSION = 35
 
 # One file per OSD mode rather than one shared file. Games can override the
 # global setting individually, and a single file would mean the last game
@@ -867,11 +870,13 @@ _dke_gate='{gate}'
 # are visible without asking Steam anything.
 _dke_self=$(tr '\0' '\n' < /proc/$PPID/cmdline 2>/dev/null | sed -n 's/^AppId=//p' | head -1)
 if [ -n "$_dke_self" ]; then
-  if [ -f "$_dke_gate/approved-$_dke_self" ]; then
-    # The panel asked and the answer was yes. One shot: taken now, so a later
-    # launch is judged on its own.
-    rm -f "$_dke_gate/approved-$_dke_self"
-  else
+  # The panel asked and the answer was yes. One shot, and only a recent one:
+  # taken now, so a later launch is judged on its own, and ignored past
+  # {approved} seconds, because an approval whose launch never happened would
+  # otherwise wave the *next* one through in silence.
+  _dke_ok=$(find "$_dke_gate/approved-$_dke_self" -newermt '-{approved} seconds' 2>/dev/null)
+  rm -f "$_dke_gate/approved-$_dke_self" 2>/dev/null
+  if [ -z "$_dke_ok" ]; then
     _dke_others=$(pgrep -af 'SteamLaunch AppId=' 2>/dev/null \
       | sed -n 's/.*AppId=\([0-9][0-9]*\).*/\1/p' \
       | grep -v "^$_dke_self\$" | sort -u | tr '\n' ' ')
@@ -1041,6 +1046,7 @@ def launch_gate():
     # Both waits count in steps rather than seconds, so the numbers written
     # into the script are the seconds divided by the step.
     return (_LAUNCH_GATE.replace("{gate}", LAUNCH_GATE_DIR)
+            .replace("{approved}", str(APPROVAL_SECONDS))
             + _CLOUD_GATE
             .replace("{onfile}", CLOUD_ON_FILE)
             .replace("{stale}", str(CLOUD_STALE_SECONDS))
@@ -1405,6 +1411,14 @@ def take_missing(app_id):
 #: one would put a dialog about a game on screen minutes after the user gave up
 #: on it.
 BOUNCE_SECONDS = 30
+
+#: How old an approval may be and still let a launch past the two-games gate.
+#:
+#: The panel writes it and launches in the same breath, so this only has to
+#: cover Steam getting the script running. A launch that failed in between
+#: leaves the file behind, and without a limit that stale yes answers a question
+#: nobody asked -- the next launch over a running game, started silently.
+APPROVAL_SECONDS = 30
 
 
 def take_bounce(app_id):

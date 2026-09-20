@@ -200,6 +200,20 @@ else:
         check("so the launch after it is judged again",
               "LAUNCHED" in _launch(111), False)
 
+        # **A yes goes stale.** The panel writes the token and launches in the
+        # same breath, so anything older is an approval whose launch never
+        # happened -- and honouring it would wave the *next* launch past the
+        # gate without asking, which reads as the warning being unreliable.
+        check("approving again writes a token", launchers.approve_launch(111), True)
+        _token = os.path.join(_dir, "approved-111")
+        _stale = time.time() - launchers.APPROVAL_SECONDS - 5
+        os.utime(_token, (_stale, _stale))
+        check("but an old one does not open the gate", "LAUNCHED" in _launch(111), False)
+        check("and is cleared rather than left to be found again",
+              os.path.exists(_token), False)
+        # The bounce note is still written, so the panel asks as it would have.
+        check("the launch is reported like any other", launchers.take_bounce(111), "222")
+
         # The gate is per game. A conflict for one must not hold up another.
         check("a different game is judged on its own", "LAUNCHED" in _launch(333), False)
     finally:

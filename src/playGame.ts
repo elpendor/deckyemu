@@ -1,6 +1,8 @@
 import { toaster } from "@decky/api";
 
+import { approveLaunch } from "./backend";
 import { showLaunchConflict } from "./LaunchConflictModal";
+import { logError } from "./logError";
 import { launchApp, runningGames } from "./steam";
 
 /** What `playGame` did, which is not always "launched". */
@@ -39,7 +41,9 @@ function launchNow(appId: number): PlayResult {
  * is the launch and nothing else -- Steam's own warning about running two games
  * at once belongs to its library button, so going straight to `RunGame` starts
  * a second game over the first in silence. `LaunchConflictModal` asks Steam's
- * question instead, and `dismiss` is held back until the user has answered:
+ * question instead, the answer is passed to the launcher as an approval -- it
+ * runs the same check and would otherwise ask again, in the same words -- and
+ * `dismiss` is held back until the user has answered:
  * closing the list first would take away the thing the dialog was opened from
  * and leave a cancel with nowhere to go back to. Returns "asked" in that case;
  * the launch happens later or not at all.
@@ -67,7 +71,27 @@ export function playGame(appId: number, title: string, dismiss?: () => void): Pl
       running: others,
       onLaunch: () => {
         dismiss?.();
-        launchNow(appId);
+        // **Answered here, so the launcher does not ask again.** The gate in
+        // the launcher script refuses a second game on its own, and it cannot
+        // know this question was already put -- so without the approval the
+        // launch bounces and `launchGate` opens the same dialog a second time.
+        // Measured on a device, launching over a running game from the panel.
+        void (async () => {
+          try {
+            await approveLaunch(appId);
+          } catch (error) {
+            // The gate would refuse the launch and ask again, which is the
+            // duplicate this exists to prevent. Nothing starting is the better
+            // of the two, and the toast says where to go instead.
+            logError("could not approve the launch", error);
+            toaster.toast({
+              title: "Could not start the game",
+              body: "The launch could not be approved. Try it from the library.",
+            });
+            return;
+          }
+          launchNow(appId);
+        })();
       },
     });
     return "asked";
