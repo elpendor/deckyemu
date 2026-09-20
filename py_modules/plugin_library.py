@@ -51,6 +51,15 @@ class Library(plugin_base.PluginContext):
                 gamecontent.forget, app_id,
                 await self._run(gamecontent.games_root_for, entry.get("core_id", "")))
             await self._run(rompatch.forget, app_id, entry.get("rom_path", ""))
+            # And the link a `game_beside` port keeps next to itself, which
+            # points at a ROM that is about to be deleted. The launcher clears
+            # those on the way in, so this only matters for the port whose last
+            # game just went -- there is no next launch to tidy up after it.
+            await self._run(
+                launchers.forget_beside,
+                await self._run(
+                    emulators.find, emulators.emulator_id(entry.get("core_id", ""))),
+                entry.get("rom_path", ""))
         # The icon only exists for games whose artwork lookup found one, and it
         # is named after the app id -- which Steam reuses, so a stale one would
         # end up on whatever game is added next under that id.

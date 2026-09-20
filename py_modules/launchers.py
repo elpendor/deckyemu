@@ -1236,25 +1236,64 @@ ln -sfn {rom} {dir}/{name} || echo "deckyemu: could not put the game beside the 
 cd {dir} || exit 1"""
 
 
+def beside_link(emulator, rom_path):
+    """Where a `game_beside` program expects this game, as (dir, name).
+
+    ("", "") for everything else. Split out because the launcher writes this
+    path and removal has to find the same one: two spellings of it would leave
+    a link nobody deletes.
+    """
+    if not emulator or not rom_path:
+        return "", ""
+    entry = emulator_catalog.find(emulator.get("id") or "") or {}
+    beside = entry.get("game_beside")
+    if not beside:
+        return "", ""
+    directory = os.path.dirname(emulator.get("target") or "")
+    if not directory:
+        return "", ""
+    # A program that reads one name and no other -- sm64coopdx wants
+    # `baserom.us.z64` -- gets the link under that name. Otherwise the game
+    # keeps the name it arrived with, which is what the rest expect.
+    wanted = (beside.get("as") if isinstance(beside, dict) else "") or         os.path.basename(rom_path)
+    return directory, wanted
+
+
+def forget_beside(emulator, rom_path):
+    """Remove the link put beside a program for `rom_path`. True if one went.
+
+    **Removing the game leaves the link pointing at nothing otherwise.** The
+    launcher clears the directory's links on the way in, so the next launch
+    would tidy it -- but a port whose only game has just been removed has no
+    next launch, and the program started by hand then finds a broken link where
+    its game used to be.
+
+    Only a link, and only one pointing at this game: the build, its config and
+    anything it generated are real files, and a link to some other game is that
+    game's to clear.
+    """
+    directory, name = beside_link(emulator, rom_path)
+    if not directory or not name:
+        return False
+    path = os.path.join(directory, name)
+    try:
+        if os.path.islink(path) and os.path.realpath(path) == os.path.realpath(rom_path):
+            os.remove(path)
+            return True
+    except OSError as error:
+        decky.logger.warning("Could not remove the link at %s: %s", path, error)
+    return False
+
+
 def game_beside_setup(emulator, rom_path):
     """The shell that runs a program in its own folder with the game in it, or "".
 
     For a program that looks for its game in the directory it runs in rather
     than taking a path -- see `game_beside` in the schema.
     """
-    if not emulator or not rom_path:
+    directory, wanted = beside_link(emulator, rom_path)
+    if not directory or not wanted:
         return ""
-    entry = emulator_catalog.find(emulator.get("id") or "") or {}
-    beside = entry.get("game_beside")
-    if not beside:
-        return ""
-    directory = os.path.dirname(emulator.get("target") or "")
-    if not directory:
-        return ""
-    # A program that reads one name and no other -- sm64coopdx wants
-    # `baserom.us.z64` -- gets the link under that name. Otherwise the game
-    # keeps the name it arrived with, which is what the rest expect.
-    wanted = (beside.get("as") if isinstance(beside, dict) else "") or         os.path.basename(rom_path)
     return (_GAME_BESIDE
             .replace("{dir}", shlex.quote(directory))
             .replace("{name}", shlex.quote(wanted))

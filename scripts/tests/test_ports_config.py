@@ -150,6 +150,44 @@ try:
               True)
         check("a port that takes a path gets none of it",
               launchers.game_beside_setup(dict(_record, id="takes-a-path"), "/r/a.iso"), "")
+
+        # **Removing the game has to take the link with it.** The launcher
+        # clears these on the way in, so a stale one normally lasts until the
+        # next launch -- but a port whose only game was just removed has no
+        # next launch, and started by hand it finds a broken link where its
+        # game used to be.
+        _dir = os.path.join(TMP, "beside-port")
+        os.makedirs(_dir, exist_ok=True)
+        _game = os.path.join(TMP, "Some Game.n64")
+        with io.open(_game, "wb") as _handle:
+            _handle.write(b"\x00" * 8)
+        _here = to_emulator(_beside, os.path.join(_dir, "SomePort.AppImage"), {})
+        _link = os.path.join(_dir, "Some Game.n64")
+        if os.name != "posix":
+            print("SKIP  the link beside the program needs a POSIX host")
+        else:
+            os.symlink(_game, _link)
+            check("the link goes when the game does",
+                  (launchers.forget_beside(_here, _game), os.path.lexists(_link)),
+                  (True, False))
+            # Somebody else's link is somebody else's to clear, and everything
+            # that is not a link is the program's own.
+            _other = os.path.join(TMP, "Another Game.n64")
+            with io.open(_other, "wb") as _handle:
+                _handle.write(b"\x00" * 8)
+            os.symlink(_other, _link)
+            check("a link to another game is left alone",
+                  (launchers.forget_beside(_here, _game), os.path.lexists(_link)),
+                  (False, True))
+            os.remove(_link)
+            with io.open(_link, "wb") as _handle:
+                _handle.write(b"\x00" * 8)
+            check("and a real file of that name is never removed",
+                  (launchers.forget_beside(_here, _game), os.path.isfile(_link)),
+                  (False, True))
+            os.remove(_link)
+        check("a port that takes a path has no link to forget",
+              launchers.forget_beside(dict(_here, id="takes-a-path"), _game), False)
     finally:
         emulator_catalog.find = _real_find
 
