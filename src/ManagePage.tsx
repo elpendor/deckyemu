@@ -6,6 +6,17 @@ import {
   SidebarNavigation,
 } from "@decky/ui";
 import { useCallback, useEffect, useState } from "react";
+import {
+  FaBoxOpen,
+  FaDownload,
+  FaEraser,
+  FaGamepad,
+  FaImage,
+  FaLayerGroup,
+  FaListUl,
+  FaStethoscope,
+} from "react-icons/fa";
+import { SiRetroarch } from "react-icons/si";
 
 import { getStatus, refreshRetroArch, type RetroArchStatus } from "./backend";
 import { ArtworkPanel } from "./ArtworkPanel";
@@ -99,6 +110,10 @@ export function ManagePage() {
   }
 
   const pages = [
+    // An icon each, the way Steam's own left-hand menu reads: the eye finds a
+    // shape faster than a word, and these tabs are returned to rather than read
+    // through. `SidebarNavigation` takes one per page and places it itself.
+    //
     // Ordered by how most people get here: RetroArch and its cores are the main
     // path and the only tab that matters before anything can be added, so it
     // leads. Custom emulators are the alternative to it, artwork and collections
@@ -106,41 +121,49 @@ export function ManagePage() {
     // maintenance you visit rarely.
     {
       title: "RetroArch",
+      icon: <SiRetroarch />,
       route: tabRoute("retroarch"),
       content: <RetroArchPanel status={status} onRefresh={rescan} reloadKey={resets} />,
     },
     {
       title: "Emulators",
+      icon: <FaGamepad />,
       route: tabRoute("emulators"),
       content: <EmulatorsPanel onChanged={rescan} />,
     },
     {
       title: "Ports",
+      icon: <FaBoxOpen />,
       route: tabRoute("ports"),
       content: <PortsPanel onChanged={rescan} />,
     },
     {
       title: "Artwork",
+      icon: <FaImage />,
       route: tabRoute("artwork"),
       content: <ArtworkPanel />,
     },
     {
       title: "Collections",
+      icon: <FaLayerGroup />,
       route: tabRoute("collections"),
       content: <CollectionsPanel />,
     },
     {
       title: "Library",
+      icon: <FaListUl />,
       route: tabRoute("library"),
       content: <LibraryPanel onRefresh={rescan} />,
     },
     {
       title: "Updates",
+      icon: <FaDownload />,
       route: tabRoute("updates"),
       content: <UpdatePanel />,
     },
     {
       title: "Diagnostics",
+      icon: <FaStethoscope />,
       route: tabRoute("diagnostics"),
       content: <DiagnosticsPanel />,
     },
@@ -151,6 +174,7 @@ export function ManagePage() {
       ? [
           {
             title: "Reset",
+      icon: <FaEraser />,
             route: tabRoute("reset"),
             content: <DevPanel onChanged={afterReset} />,
           },

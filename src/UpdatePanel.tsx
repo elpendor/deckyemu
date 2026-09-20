@@ -6,6 +6,7 @@ import {
   ToggleField,
 } from "@decky/ui";
 
+import { AboutModal } from "./AboutModal";
 import { clampNotes, countItems, parseNotes, type NoteItem } from "./releaseNotes";
 import { toaster } from "@decky/api";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -17,6 +18,7 @@ import {
   stageUpdate,
   type UpdateCheck,
 } from "./backend";
+import { openModal } from "./modalStack";
 import { OVER_THE_NETWORK, callWithRetry } from "./timeout";
 import { FRONTEND_VERSION } from "./version";
 import { canInstallUpdates, installUpdate } from "./updater";
@@ -428,6 +430,21 @@ export function UpdatePanel({
         )}
       </PanelSection>
     )}
+
+    {/* The projects this plugin stands on are named nowhere else, and
+        SteamGridDB's terms ask for it outright. Here rather than in
+        Diagnostics because that tab is for when something is wrong, and this
+        is the tab that already answers "what is this and which version". */}
+    <PanelSection title="About">
+      <PanelSectionRow>
+        <ButtonItem
+          layout="below"
+          onClick={() => openModal(<AboutModal />)}
+        >
+          About DeckyEmu
+        </ButtonItem>
+      </PanelSectionRow>
+    </PanelSection>
     </>
   );
 }
