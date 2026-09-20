@@ -925,8 +925,12 @@ def _local_files(source):
     """Every save file of one emulator, as `<root>/<relative>`: (size, mtime)."""
     listed = {}
     skip = savedata._SKIP_TOP if source.get("whole") else ()
+    # The same names the backup leaves behind. A config that shares a folder
+    # with the saves is not a save, and syncing one carries another device's
+    # controller bindings onto this one.
+    except_names = tuple(source.get("except") or ())
     for segment, path in _roots_of(source):
-        for absolute, relative in savedata._walk(path, skip):
+        for absolute, relative in savedata._walk(path, skip, except_names):
             try:
                 found = os.stat(absolute)
             except OSError:

@@ -96,6 +96,24 @@ _imported = {
     "platform": "Sony - PlayStation 2",
 }
 
+# An emulator whose config shares a folder with its saves. BigPEmu is the
+# case: `BigPEmuConfig.bigpcfg` sits beside the EEPROMs, and it binds the
+# controller by device id -- restored onto another Deck the pad is bound to
+# hardware that is not there, which reads as a dead pad with every binding
+# looking right. A config is not a save.
+_drop(".fussy_userdata/gameAAAA_eeprom.sav")
+_drop(".fussy_userdata/FussyConfig.cfg", "bindings for this Deck only")
+
+_excepting = {
+    "id": "fussy",
+    "name": "Fussy",
+    "source": {"kind": "url", "feed": "https://example.test/f.txt", "select": "Linux64"},
+    "data": [".fussy_userdata"],
+    "saves": [".fussy_userdata"],
+    "saves_except": ["FussyConfig.cfg"],
+    "platform": "Atari - Jaguar",
+}
+
 emulator_catalog.CATALOG = (_declares, _whole, _imported)
 
 _listed = {source["id"]: source for source in savedata.sources()}
@@ -122,6 +140,22 @@ check("a file named as a save is carried, not skipped",
 check("and it is what the entry named",
       sorted(os.path.basename(path) for path in _with_file["file-port"]["paths"]),
       ["achievements.json", "saves"])
+emulator_catalog.CATALOG = (_declares, _whole, _imported)
+
+# A config that shares its folder with the saves is left behind. It is not a
+# save, and this one binds a controller by device id: restored onto another
+# Deck the pad is bound to hardware that is not there, which reads as a dead
+# pad with every binding looking correct.
+emulator_catalog.CATALOG = (_declares, _whole, _imported, _excepting)
+_excepted = {source["id"]: source for source in savedata.sources()}
+check("the saves in the folder are carried", _excepted["fussy"]["files"], 1)
+_bundle_path = os.path.join(TMP, "backups", "excepting.zip")
+savedata.build(_bundle_path)
+with zipfile.ZipFile(_bundle_path) as _check_bundle:
+    _fussy = [name for name in _check_bundle.namelist() if "fussy" in name]
+check("the save file is in the archive",
+      [name.rsplit("/", 1)[-1] for name in _fussy], ["gameAAAA_eeprom.sav"])
+check("and the config is not", any("FussyConfig" in name for name in _fussy), False)
 emulator_catalog.CATALOG = (_declares, _whole, _imported)
 
 check("an imported entry's own directory is offered too",

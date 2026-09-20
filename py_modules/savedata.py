@@ -102,13 +102,20 @@ _SKIP_TOP = ("cache", ".ld.so")
 _PARTIAL = ".deckyemu-tmp"
 
 
-def _walk(root, skip_top=()):
+def _walk(root, skip_top=(), except_names=()):
     """Every file under `root`, as (absolute path, path relative to root).
 
     Symlinks are followed for their target's contents only when they point back
     inside the root: an emulator that symlinks its save directory onto an SD card
     is normal, and one that has a link to somewhere else in the home directory
     must not turn a save backup into a copy of that.
+
+    `except_names` are filenames to leave behind wherever they appear. **It
+    exists for a config that shares a folder with the saves**, which is not a
+    tidiness problem: BigPEmu keeps `BigPEmuConfig.bigpcfg` beside its EEPROMs,
+    and that file binds the controller by device id -- restore it onto another
+    Deck and the pad is bound to a controller that is not there, which reads as
+    a dead pad with every binding looking correct.
     """
     found = []
     root = os.path.normpath(root)
@@ -117,6 +124,8 @@ def _walk(root, skip_top=()):
     # a record of achievements -- and `os.walk` over a file yields nothing at
     # all. Silently backing up none of it is the worst answer available.
     if os.path.isfile(root):
+        if os.path.basename(root) in except_names:
+            return []
         return [(root, os.path.basename(root))]
 
     for current, directories, files in os.walk(root, followlinks=False):
@@ -129,6 +138,8 @@ def _walk(root, skip_top=()):
             if os.path.islink(path) and not os.path.realpath(path).startswith(root + os.sep):
                 continue
             if not os.path.isfile(path):
+                continue
+            if name in except_names:
                 continue
             found.append((path, posixpath.join(*relative.split(os.sep), name) if relative else name))
     return found
@@ -168,8 +179,11 @@ def links_skipped(root, skip_top=()):
     return found
 
 
-def _measure(root, skip_top=()):
-    files = _walk(root, skip_top)
+def _measure(root, skip_top=(), except_names=()):
+    # The same exclusions the build applies, or the panel counts files it is
+    # not going to carry -- and the count is what somebody reads as "this is
+    # everything".
+    files = _walk(root, skip_top, except_names)
     total = 0
     for path, _ in files:
         try:
@@ -253,6 +267,7 @@ def _catalog_sources():
             "name": entry["name"],
             "roots": roots,
             "whole": not declared,
+            "except": tuple(entry.get("saves_except") or ()),
         })
     return found
 
@@ -288,7 +303,7 @@ def sources():
         total = 0
         skip = _SKIP_TOP if source["whole"] else ()
         for _, path in source["roots"]:
-            count, size = _measure(path, skip)
+            count, size = _measure(path, skip, source.get("except", ()))
             files += count
             total += size
         # Named beside the count, because the count is what somebody reads as
@@ -354,7 +369,7 @@ def build(destination, ids=None):
                         "path": path,
                         "whole": source["whole"],
                     })
-                    for absolute, relative in _walk(path, skip):
+                    for absolute, relative in _walk(path, skip, source.get("except", ())):
                         try:
                             bundle.write(absolute, posixpath.join("files", key, relative))
                         except OSError as error:
