@@ -13,6 +13,7 @@ import {
   removeEventListener,
   toaster,
 } from "@decky/api";
+import type { ReactNode } from "react";
 import { useCallback, useEffect, useState } from "react";
 import {
   FaDownload,
@@ -50,7 +51,7 @@ import { emulatorRowActions } from "./emulatorActions";
 import { sourceLabel } from "./emulatorSource";
 import { byName } from "./order";
 import { openSetupShortcut } from "./setupShortcut";
-import { callWithRetry } from "./timeout";
+import { callWithRetry, OVER_THE_NETWORK } from "./timeout";
 import { logError } from "./logError";
 import { openModal } from "./modalStack";
 import { importProblems } from "./importProblems";
@@ -108,7 +109,7 @@ function nameWithSource(entry: CatalogEmulator) {
  * The extension list is the interesting part -- it is derived from libretro's
  * metadata rather than typed, so showing it is what makes it checkable.
  */
-function describe(entry: CatalogEmulator, build?: EmulatorBuild): string {
+function describe(entry: CatalogEmulator, build?: EmulatorBuild): ReactNode {
   // A bring-your-own entry with nothing located yet: the plugin knows how to
   // run this emulator but will not obtain it, and the row would otherwise look
   // like an install that has not happened.
@@ -144,8 +145,19 @@ function describe(entry: CatalogEmulator, build?: EmulatorBuild): string {
   const extensions = entry.needs_what
     ? `needs ${entry.needs_what}`
     : entry.extensions.map((extension) => `.${extension}`).join(" ");
-  const parts = [entry.system, extensions, version, motion(entry)].filter(Boolean);
-  return parts.join(" · ");
+  const parts = [entry.system, extensions, motion(entry)].filter(Boolean);
+  // **First and bold, or it is not read.** Everything else on this line is
+  // what the emulator *is* -- the system, the file types -- and those never
+  // change, so a reader skims them. An update is the one thing on the row that
+  // is news and the one thing that wants acting on, and joined into the middle
+  // of that run in the same grey it disappeared.
+  if (!version) return parts.join(" · ");
+  return (
+    <>
+      <span style={{ fontWeight: 700 }}>{version}</span>
+      {parts.length ? ` · ${parts.join(" · ")}` : ""}
+    </>
+  );
 }
 
 
@@ -213,7 +225,15 @@ export function EmulatorCatalogPanel({ onChanged, ports = false }: Props) {
     setChecking(true);
     setCheckNote("");
     try {
-      const result = await callWithRetry(checkEmulatorUpdates);
+      // **Over the network, and it has to say so.** This asks each project's
+      // release API in turn -- a dozen or more calls on a Deck with this many
+      // emulators -- so the default two-second attempt expires long before the
+      // answer arrives, reports "could not check for updates", and then tries
+      // again up to eight times. Each retry starts the whole sweep afresh, so
+      // one press could spend a hundred and sixty requests against GitHub's
+      // sixty-an-hour budget for the address, and the rate limiting that
+      // followed looked like GitHub being unreachable.
+      const result = await callWithRetry(checkEmulatorUpdates, OVER_THE_NETWORK);
       await loadBuilds();
       // The failures first, and kept even when something was checked
       // successfully: "everything is up to date" alongside a project that could

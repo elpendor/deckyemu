@@ -138,7 +138,7 @@ export interface CatalogEmulator {
    * not install or link to. The user points at a binary they obtained
    * themselves and the entry supplies everything else.
    */
-  kind: "flatpak" | "github" | "byo";
+  kind: "flatpak" | "github" | "byo" | "url";
   /** A native port of one game, listed under Ports rather than Emulators. */
   port?: boolean;
   /** The file a port wants, in its own words. Empty for an emulator. */

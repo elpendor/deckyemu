@@ -56,6 +56,11 @@ export function EmulatorVersionModal({ closeModal, emulator, onChanged }: Props)
   // than state because the done handler must not re-subscribe every time this
   // changes, and nothing renders from it.
   const action = useRef<"update" | "switch">("update");
+  // Which build the action in flight is landing on, so the heading can move the
+  // moment it succeeds. Reading it back instead costs a round trip per listed
+  // build, which is a second or more of the dialog still naming the build that
+  // has just been replaced.
+  const landing = useRef("");
   // Which build's details are open, and what came back. One at a time: each is a
   // call of its own, and twelve of them to draw the dialog would be twenty
   // seconds of nothing happening.
@@ -142,6 +147,15 @@ export function EmulatorVersionModal({ closeModal, emulator, onChanged }: Props)
             ? "It is now on the newest build."
             : "It is on the build you chose, and held there."),
       });
+      // Not a guess: the change reported success, so the build that was asked
+      // for is the one installed. The reload that follows says the same thing
+      // and corrects this if anything else moved with it.
+      const landed = landing.current;
+      if (landed) {
+        setBuilds((rows) =>
+          rows?.map((row) => ({ ...row, current: row.commit === landed })) ?? rows,
+        );
+      }
       void loadBuilds();
       onChanged();
     };
@@ -165,8 +179,10 @@ export function EmulatorVersionModal({ closeModal, emulator, onChanged }: Props)
       what: string,
       kind: "update" | "switch",
       call: () => Promise<{ ok: boolean; error?: string }>,
+      lands = "",
     ) => {
       action.current = kind;
+      landing.current = lands;
       setBusy(what);
       setError("");
       setPercent(0);
@@ -226,6 +242,15 @@ export function EmulatorVersionModal({ closeModal, emulator, onChanged }: Props)
    *
    * Falls back to the prop only until the list arrives.
    */
+  /*
+   * Read from the refreshed list rather than the prop, which is a snapshot
+   * taken when the modal opened. Changing build reloads the list -- the new
+   * build comes back marked `current` -- but nothing replaces the prop, so the
+   * heading went on naming the build that had just been replaced until the
+   * modal was closed and opened again.
+   */
+  const installed = builds?.find((build) => build.current)?.commit || emulator.build;
+
   const onNewest = builds?.length
     ? Boolean(builds[0].current)
     : emulator.update_state === "current";
@@ -234,8 +259,8 @@ export function EmulatorVersionModal({ closeModal, emulator, onChanged }: Props)
     <ModalRoot closeModal={closeModal}>
       <h1 style={{ marginBottom: 0 }}>{emulator.name}</h1>
       <div style={{ opacity: 0.7, fontSize: "13px", marginBottom: "12px" }}>
-        {emulator.build
-          ? `Build ${emulator.build}`
+        {installed
+          ? `Build ${installed}`
           : emulator.channel === "github"
             ? "Installed before builds were recorded"
             : "Build unknown"}
@@ -272,7 +297,16 @@ export function EmulatorVersionModal({ closeModal, emulator, onChanged }: Props)
       {!running && !onNewest && (
         <PanelSectionRow>
           <DialogButton
-            onClick={() => void start("Updating", "update", () => updateEmulator(emulator.id))}
+            onClick={() =>
+              void start(
+                "Updating",
+                "update",
+                () => updateEmulator(emulator.id),
+                // The newest build is the first row, which is where an update
+                // lands by definition.
+                builds?.[0]?.commit ?? "",
+              )
+            }
           >
             Update to the newest build
           </DialogButton>
@@ -352,7 +386,14 @@ export function EmulatorVersionModal({ closeModal, emulator, onChanged }: Props)
             >
               <Focusable style={{ display: "flex", alignItems: "center", gap: "14px" }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: "15px", lineHeight: 1.25 }}>{buildDate(build.date)}</div>
+                  {/* The date names the build, and the description sits under
+                      it as a subtitle. A build with no date -- one listed from
+                      release notes rather than a release API -- is named by its
+                      version instead, or the heading is blank and the row reads
+                      as a stray paragraph. */}
+                  <div style={{ fontSize: "15px", lineHeight: 1.25 }}>
+                    {buildDate(build.date) || build.commit}
+                  </div>
                   <div
                     style={{
                       fontSize: "12px",
@@ -371,7 +412,15 @@ export function EmulatorVersionModal({ closeModal, emulator, onChanged }: Props)
                           }),
                     }}
                   >
-                    {build.subject || build.commit.slice(0, 12)}
+                    {build.subject ||
+                      // A build listed from a release API is named by its date
+                      // above, so the hash is what identifies it here. One
+                      // listed from release notes is named by its version
+                      // already, and repeating that reads as a fault -- what is
+                      // missing is the notes, and why is worth a sentence.
+                      (buildDate(build.date)
+                        ? build.commit.slice(0, 12)
+                        : "Its release notes come inside the build.")}
                   </div>
                 </div>
 
@@ -391,8 +440,11 @@ export function EmulatorVersionModal({ closeModal, emulator, onChanged }: Props)
                   disabled={running}
                   style={{ ...ICON_BUTTON_WIDE, flexShrink: 0 }}
                   onClick={() =>
-                    void start("Switching", "switch", () =>
-                      rollbackEmulator(emulator.id, build.commit),
+                    void start(
+                      "Switching",
+                      "switch",
+                      () => rollbackEmulator(emulator.id, build.commit),
+                      build.commit,
                     )
                   }
                 >

@@ -25,6 +25,11 @@ export function sourceLabel(kind: CatalogEmulator["kind"]): string {
       return "Flathub";
     case "github":
       return "GitHub";
+    case "url":
+      // Not a platform, which is the point: this one comes from the project's
+      // own site, through the update feed its own updater reads. Neither
+      // mirrored nor repacked, and the docs table says "Direct" too.
+      return "Direct";
     default:
       return "";
   }
