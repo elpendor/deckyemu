@@ -297,6 +297,24 @@ emu_install._remove_others(_dir, keep="Vita3K-x86_64.AppImage")
 check("but the previous build does not survive",
       _os.path.exists(_os.path.join(_dir, "Vita3K-old.AppImage")), False)
 
+# What a device has seen is remembered where the build cannot take it away.
+# The record is the only place that survives a rollback, and it is written when
+# a history is *read*, not only after an install -- a Deck that rolled back
+# before anything was remembered would otherwise be stranded on the old build's
+# own list forever.
+emu_install.write_build_record(_ID, "1.17", "bigpemu", ["1.17", "1.16"])
+_ROLLED_BACK_NOTES = """Version 1.17
+Version 1.15
+"""
+check("reading a history remembers what came with it",
+      emu_install.remember_versions({"id": _ID}, _ROLLED_BACK_NOTES, ["1.221"]),
+      ["1.17", "1.16", "1.15", "1.221"])
+check("and it is on disk for the next time the dialog opens",
+      emu_install.read_build_record(_ID).get("versions"),
+      ["1.17", "1.16", "1.15", "1.221"])
+check("without disturbing which build is installed",
+      emu_install.read_build_record(_ID).get("tag"), "1.17")
+
 check("a bad id records nothing", emu_install.write_build_record("../etc", "v1", "x"), None)
 check("and reads back nothing", emu_install.read_build_record("../etc"), {})
 
@@ -305,6 +323,138 @@ for _bad in ("", "-leading", "a" * 65, "v1 --system", "v1/../x", "$(id)"):
     check("a bad tag is refused %r" % _bad, emu_install.valid_tag(_bad), False)
 for _good in ("v0.2.0", "1.22.2", "v2026.08.10-1", "release_5"):
     check("a real tag is accepted %r" % _good, emu_install.valid_tag(_good), True)
+
+
+section("a feed-installed emulator -- the history ships inside the build")
+
+# The publisher has no releases API and no changelog page, so the only list of
+# past versions anywhere is the release notes in the build's own ReadMe. It
+# needs no network, and it grows by itself: every build carries its own notes.
+_FEED_ENTRY = {
+    "id": "feedemu",
+    "name": "FeedEmu",
+    "source": {
+        "kind": "url",
+        "feed": "https://example.test/build_info.txt",
+        "select": "Linux64",
+        "notes": "ReadMe.txt",
+        "build_name": "https://example.test/builds/FeedEmu_Linux64_v{version}.tar.gz",
+    },
+}
+_NOTES = "\n".join([
+    "Title: FeedEmu", "Release Notes", "-------------",
+    "Version 1.221", " - did a thing",
+    "Version 1.22", " - did another",
+    "Version 1.21", "Version 1.19",
+])
+
+_asked = []
+
+
+def _probe(url):
+    """Stands in for the HEAD: the size, or 0 when the build has gone.
+
+    One request answers both questions, which is why the listing asks for a
+    size rather than a yes -- the dialog shows what a rollback would download,
+    and a second request per build would double the wait.
+    """
+    _asked.append(url)
+    # 1.19's file has been taken down, which is the case the probe exists for.
+    return 0 if "v119" in url else 8_900_000
+
+
+_builds, _error = emu_install.feed_history(_FEED_ENTRY, _NOTES, _probe)
+check("the notes are the list of versions", _error, "")
+check("newest first, as the dialog renders them",
+      [build["tag"] for build in _builds], ["1.221", "1.22", "1.21"])
+# The convention is the publisher's, undocumented, and relied on by the AUR and
+# EmuDeck as well: the version with its dots removed.
+check("a version becomes an address by losing its dots",
+      _builds[1]["url"].rsplit("/", 1)[-1], "FeedEmu_Linux64_v122.tar.gz")
+# **Guessed addresses have to be confirmed.** A build taken down must not be
+# offered and then 404 halfway through an install.
+check("one that is no longer published is dropped",
+      any(build["tag"] == "1.19" for build in _builds), False)
+check("and every one offered was asked about first", len(_asked), 4)
+# The size comes from that same request. Without it the dialog falls through to
+# asking for build details, which only a flatpak can answer -- and every row
+# then read "Could not read this build. It needs the network."
+check("each build carries what it would download",
+      [build["size"] for build in _builds], [8_900_000] * 3)
+# And what changed, from the same notes that named the version. Without it the
+# row reads as the version number twice: once as the date column's fallback and
+# once as its own description.
+check("and what changed in it, in the author's words",
+      _builds[0]["notes"], "did a thing")
+check("with each release taking only its own lines",
+      _builds[1]["notes"], "did another")
+# No checksum, unlike an install: the feed states one for the current build
+# only. Empty rather than wrong.
+check("a past build carries no checksum to verify against",
+      [build["digest"] for build in _builds], ["", "", ""])
+
+# The newest release is listed from the feed rather than guessed, and carries
+# the checksum the feed states: choosing it here downloads what an update
+# would, verified the same way. The older rows still carry none.
+_with_newest, _ = emu_install.feed_history(
+    _FEED_ENTRY, _NOTES, lambda url: 8_900_000, ["1.23"],
+    {"tag": "1.23", "url": "https://example.invalid/feed/odd-name.tar.gz",
+     "name": "odd-name.tar.gz", "digest": "fnv1a64:c1b241bbfa5135cb"},
+)
+# A release the installed build has never heard of carries no notes: they come
+# inside each download. Empty, not the version number again -- the row is
+# headed by that already.
+check("a release newer than the installed build carries no notes",
+      _with_newest[0]["notes"], "")
+
+check("the current release is offered at the address the feed states",
+      _with_newest[0]["url"], "https://example.invalid/feed/odd-name.tar.gz")
+check("with the checksum that came with it",
+      _with_newest[0]["digest"], "fnv1a64:c1b241bbfa5135cb")
+check("while the builds before it still carry none",
+      [build["digest"] for build in _with_newest[1:]], ["", "", "", ""])
+
+# **Going back must not take away the way forward.** The list comes from the
+# notes inside the installed build, so an older build's notes end at itself:
+# roll back to 1.19 and the newest thing on offer was 1.19, with no route back
+# to the build that was just replaced. Every version seen before is remembered
+# and merged in.
+_rolled_back = """Version 1.19
+ - an older build
+Version 1.18
+"""
+_after, _why = emu_install.feed_history(
+    _FEED_ENTRY, _rolled_back, lambda url: 8_900_000,
+    remembered=["1.221", "1.22", "1.21"],
+)
+check("an older build still offers the ones that came after it",
+      [build["tag"] for build in _after], ["1.221", "1.22", "1.21", "1.19", "1.18"])
+# Ordering is the version's own: the part after the dot reads as a fraction, or
+# 1.1 sorts below 1.09 and 1.221 below 1.22.
+_ordered, _ = emu_install.feed_history(
+    _FEED_ENTRY, """Version 1.1
+Version 1.09
+Version 1.221
+Version 1.22
+""",
+    lambda url: 1,
+)
+check("and newest first however the numbers are spelled",
+      [build["tag"] for build in _ordered], ["1.221", "1.22", "1.1", "1.09"])
+
+# Some releases run to thirty lines and the row shows the first few. Cut at a
+# word and marked as cut, because a line ending mid-word reads as a rendering
+# fault rather than as a paragraph that carries on.
+check("a long release note is cut at a word", emu_install._clip("a " * 400, 60)[-4:],
+      "a...")
+check("and a short one is left exactly as written",
+      emu_install._clip("did a thing", 60), "did a thing")
+
+check("a build with no notes lists nothing rather than guessing",
+      emu_install.feed_history(_FEED_ENTRY, "", _probe)[1],
+      "No release notes came with this build, so its past builds are not listed.")
+check("and an entry that names no notes is simply not offered a history",
+      emu_install.feed_history({"source": {"kind": "url"}}, _NOTES, _probe), ([], ""))
 
 
 if __name__ == "__main__":

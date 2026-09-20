@@ -669,6 +669,189 @@ def resolve_feed_build(feed_url, want):
     return None, "The project publishes no %s build." % want
 
 
+#: How many past builds a feed-installed emulator offers to go back to.
+#: The same ceiling the releases list uses, for the same reason: a dialog is
+#: read, not scrolled through.
+FEED_HISTORY_LIMIT = 12
+
+
+def _versions_named(notes_text):
+    """Every version heading in a set of release notes, in the order written."""
+    found = []
+    for line in (notes_text or "").splitlines():
+        match = re.match(r"^Version\s+([0-9][0-9.]*)\s*$", line)
+        if match and match.group(1) not in found:
+            found.append(match.group(1))
+    return found
+
+
+def _clip(text, limit):
+    """`text` no longer than `limit`, cut at a word and marked as cut.
+
+    A slice alone ends mid-word, which reads as a rendering fault rather than
+    as a paragraph that carries on.
+    """
+    if len(text) <= limit:
+        return text
+    return text[:limit].rsplit(" ", 1)[0].rstrip(" ,;:.") + "..."
+
+
+def _merged(known, *more):
+    """One list of versions, in the order they were first met, without repeats."""
+    out = [version for version in (known or ()) if version]
+    for group in more:
+        for version in group or ():
+            if version and version not in out:
+                out.append(version)
+    return out
+
+
+def remember_versions(entry, notes_text, extra=()):
+    """Every version this device has ever seen of `entry`, merged and stored.
+
+    **The history goes backwards with the build.** The list of past releases is
+    read out of the notes inside the installed build, so going back to 1.17
+    leaves a device whose notes end at 1.17 -- and a dialog that offers no way
+    back to the build it just replaced. What has been seen is therefore kept in
+    the build record, which does not move when the build does.
+
+    Called wherever a history is read rather than only after an install, so a
+    device that has never installed anything since still remembers the list its
+    current build named the first time the dialog was opened.
+    """
+    record = read_build_record(entry["id"])
+    known = _merged(record.get("versions"), _versions_named(notes_text), extra)
+    if known != list(record.get("versions") or ()):
+        write_build_record(entry["id"], record.get("tag", ""),
+                           record.get("asset", ""), known)
+    return known
+
+
+def feed_history(entry, notes_text, probe=None, remembered=(), newest=None):
+    """Past builds of a feed-installed emulator, newest first. (builds, error).
+
+    **The publisher's own list, and it ships inside the download.** A project
+    with no releases API has no history to query -- but this one writes its
+    release notes into the `ReadMe.txt` beside the binary, one `Version 1.22`
+    heading per release, which is the only enumeration of them that exists
+    anywhere. Third-party sites carry shorter copies of the same list; the file
+    on disk is the author's, needs no network, and grows by itself because
+    every build ships its own notes.
+
+    The address of an old build is the version with its dots removed -- a
+    convention the author never documented, which the AUR's PKGBUILD and
+    EmuDeck both rely on as well. That is safe *here* and nowhere else: the
+    notes say which versions are real, so the guess is only ever made about a
+    release that exists, and `probe` confirms the file before it is offered.
+    Without the list the same guess invents 1.20, which was never released.
+
+    No checksum on a past build: the feed states one for the current release
+    only, and `newest` is that release -- passed in, so the row for it carries
+    the address and the checksum the publisher stated rather than the guess the
+    older rows have to make. Said plainly in the dialog rather than papered
+    over.
+    """
+    source = entry.get("source") or {}
+    pattern = source.get("build_name") or ""
+    if not pattern:
+        return [], ""
+
+    # The heading, and everything under it until the next one: that is what
+    # changed in that release, in the author's own words. A Flathub build shows
+    # its whole changelog the same way, so the dialog already knows what to do
+    # with a paragraph.
+    seen = list(remembered or ())
+    notes = {}
+    current = ""
+    for line in (notes_text or "").splitlines():
+        found = re.match(r"^Version\s+([0-9][0-9.]*)\s*$", line)
+        if found:
+            current = found.group(1)
+            if current not in seen:
+                seen.append(current)
+            notes.setdefault(current, [])
+            continue
+        if current and line.strip():
+            notes[current].append(line.strip().lstrip("- ").strip())
+    if not seen:
+        return [], "No release notes came with this build, so its past builds are not listed."
+
+    # Newest first, and a version is its own ordering: the part after the dot
+    # is read as a fraction so 1.221 sits above 1.22, which sits above 1.19.
+    # Comparing it as a whole number would put 1.1 below 1.09.
+    def _order(version):
+        head, _, tail = version.partition(".")
+        try:
+            return (int(head), float("0." + tail) if tail else 0.0)
+        except ValueError:
+            return (0, 0.0)
+
+    seen.sort(key=_order, reverse=True)
+
+    builds = []
+    for version in seen[:FEED_HISTORY_LIMIT]:
+        # The current release is the one build whose address does not have to
+        # be guessed: the feed states it, along with a checksum. Taking it from
+        # there means the newest row downloads exactly what an update would,
+        # verified the same way, and keeps working if the naming convention
+        # the older rows rely on ever changes.
+        stated = newest if newest and newest.get("tag") == version else None
+        url = (stated["url"] if stated
+               else pattern.replace("{version}", version.replace(".", "")))
+        # One request answers both questions: whether the build is still
+        # published, and what it weighs. A release listing carries the size
+        # already; here it has to be asked for, and asking twice would double
+        # the wait for a dialog that lists a dozen builds.
+        size = probe(url) if probe else 0
+        if not size:
+            continue
+        builds.append({
+            "tag": version,
+            "name": url.rsplit("/", 1)[-1],
+            "url": url,
+            "size": size,
+            "digest": stated["digest"] if stated else "",
+            "published": "",
+            "prerelease": False,
+            # Capped, because some releases here run to thirty lines and the
+            # row shows this in full once opened. The first few say what the
+            # release was for, which is what somebody choosing a build needs.
+            "notes": _clip(" ".join(notes.get(version, ())[:6]), 600),
+        })
+    if not builds:
+        return [], "None of the past builds named in the release notes are still published."
+    return builds, ""
+
+
+def read_build_notes(entry):
+    """The release notes shipped with the installed build, or "".
+
+    Read off the disk rather than fetched: the file came down with the build,
+    so listing past versions costs no network at all.
+    """
+    source = entry.get("source") or {}
+    name = source.get("notes") or ""
+    if not name or not emulator_catalog.is_safe_id(entry.get("id")):
+        return ""
+    path = os.path.join(emulators_dir(entry["id"], create=False), name)
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as handle:
+            return handle.read(512 * 1024)
+    except OSError:
+        return ""
+
+
+def build_size(url):
+    """How big a past build is, or 0 if it is no longer published.
+
+    Kept as its own function so the listing can be tested without the network:
+    `feed_history` takes the probe rather than calling one. Zero means both
+    "gone" and "unreadable", which is the same answer for this purpose -- a
+    build that cannot be sized cannot be offered honestly either.
+    """
+    return net.head_size(url)
+
+
 def resolve_release_asset(repo, pattern, host="", failure=None):
     """Newest release asset matching `pattern`, from GitHub or a self-hosted forge.
 
@@ -992,7 +1175,15 @@ def install_appimage(entry, asset, on_progress=None):
     # After the cleanup, or it would be swept away with the old build. Written
     # even when the tag is empty: "installed, build unknown" is a different state
     # from "not installed", and only a record can tell them apart.
-    write_build_record(entry["id"], asset.get("tag", ""), asset["name"])
+    #
+    # The versions carried over are the ones already known plus whatever the
+    # build just installed names in its notes. **Going back must not lose the
+    # way forward**: an older build's notes end at itself, so without this a
+    # rollback to 1.19 left a dialog whose newest offer was 1.19.
+    keep_versions = _merged(read_build_record(entry["id"]).get("versions"),
+                            _versions_named(read_build_notes(entry)),
+                            [asset.get("tag", "")])
+    write_build_record(entry["id"], asset.get("tag", ""), asset["name"], keep_versions)
 
     # Patched builds are derived from the build that was just installed, and the
     # cleanup above has already taken the previous ones -- which is the point.
@@ -1075,6 +1266,27 @@ def _nothing_matched(pattern, names):
     return "Nothing in the download is named like %s. It holds: %s." % (pattern, listed)
 
 
+def _replace(target):
+    """Take a file out of the way so the new one can be written over it.
+
+    **An archive's own permissions outlive the file.** BigPEmu ships its data
+    read-only -- `strings_en.txt` arrives as `r-xr-xr-x` -- so unpacking a
+    second build over the first failed with "Permission denied" the moment it
+    reached one: the first install created the files, and `open(..., "wb")`
+    cannot reopen a read-only one. Every install worked and every *change of
+    build* failed, which is the shape that hides until somebody rolls back.
+
+    Removing rather than chmod-ing, because the new file should inherit
+    nothing from the old one.
+    """
+    try:
+        os.remove(target)
+    except FileNotFoundError:
+        pass
+    except OSError as error:
+        decky.logger.warning("Could not replace %s: %s", target, error)
+
+
 def _safe_target(destination, name):
     """Where `name` lands under `destination`, or "" if it tries to leave it.
 
@@ -1144,6 +1356,7 @@ def _unpack_tarball(archive, destination, pattern):
                 if not target:
                     return "", "The download holds a path that leaves its own folder."
                 os.makedirs(os.path.dirname(target), exist_ok=True)
+                _replace(target)
                 source = bundle.extractfile(member)
                 if source is None:
                     continue
@@ -1191,6 +1404,9 @@ def _unpack_release(archive, destination, pattern):
                     return "", "The download holds a path that leaves its own folder."
                 target = os.path.join(destination, *relative.split("/"))
                 os.makedirs(os.path.dirname(target), exist_ok=True)
+                # Same reason as the tarball path: a zip records modes too, and
+                # a read-only file from the last build cannot be written over.
+                _replace(target)
                 with bundle.open(info) as source, open(target, "wb") as handle:
                     shutil.copyfileobj(source, handle)
                 # Everything keeps the mode the archive recorded, or a binary
@@ -1506,13 +1722,23 @@ def read_build_record(entry_id):
     return record if isinstance(record, dict) else {}
 
 
-def write_build_record(entry_id, tag, asset_name):
-    """Record which release an AppImage came from. Best effort."""
+def write_build_record(entry_id, tag, asset_name, versions=()):
+    """Record which release an AppImage came from. Best effort.
+
+    `versions` is the list of releases that build knew about, and it is kept
+    for one reason: **the notes go backwards with the build.** BigPEmu's
+    history comes out of the ReadMe inside the installed build, so rolling back
+    to 1.19 leaves a Deck whose only list ends at 1.19 -- with no way back to
+    1.22 from the dialog that put it there. The remembered list is merged in,
+    so a build never loses sight of the ones that came after it.
+    """
     if not emulator_catalog.is_safe_id(entry_id):
         return
+    kept = [version for version in versions if version]
     try:
         with open(build_record_path(entry_id), "w", encoding="utf-8") as handle:
-            json.dump({"tag": tag or "", "asset": asset_name or ""}, handle, indent=2)
+            json.dump({"tag": tag or "", "asset": asset_name or "",
+                       "versions": kept}, handle, indent=2)
     except OSError as error:
         # Not fatal: the emulator is installed and runs. What is lost is the
         # ability to say which build it is, which degrades to "unknown".

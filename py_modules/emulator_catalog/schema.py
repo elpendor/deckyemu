@@ -716,6 +716,13 @@ def validate(entry, known_platforms=(), imported=False):
             bad("a url source needs an https feed address")
         if not source.get("select"):
             bad("a url source needs the feed line to take")
+        # Optional, and useless apart: the notes list the versions and
+        # `build_name` turns one into an address.
+        if bool(source.get("notes")) != bool(source.get("build_name")):
+            bad("a url source needs both 'notes' and 'build_name', or neither")
+        name = str(source.get("build_name") or "")
+        if name and (not name.startswith("https://") or "{version}" not in name):
+            bad("build_name must be an https address holding {version}")
     if kind == "github":
         if not source.get("repo"):
             bad("a release source needs 'repo', as owner/name")

@@ -468,6 +468,32 @@ class Emulators(plugin_base.PluginContext):
 
     # ------------------------------------------------------- versions and builds
 
+    async def _feed_versions(self, entry, notes):
+        """Every version of a feed-installed emulator this device knows of.
+
+        Three sources, and it needs all three. The notes inside the installed
+        build name everything up to itself; the record names everything seen
+        before, which is what survives a rollback; and the feed names the
+        current release, which is neither of those once an older build is
+        installed -- without it a device sitting on 1.17 is offered no way
+        forward, because 1.17's notes have never heard of what came after.
+
+        The feed is asked for one small text file and its failure is not one:
+        no network still lists what is on disk. Returns (versions, newest),
+        where newest is the feed's own build -- its stated address and
+        checksum, which the row for the current release uses instead of
+        guessing at a URL.
+        """
+        newest, _error = await self._run(
+            emu_install.resolve_feed_build,
+            entry["source"]["feed"], entry["source"]["select"],
+        )
+        known = await self._run(
+            emu_install.remember_versions, entry, notes,
+            [newest["tag"]] if newest else [],
+        )
+        return known, newest
+
     async def emulator_builds(self):
         """Which installed emulators can move to a different build, and where they are.
 
@@ -496,7 +522,10 @@ class Emulators(plugin_base.PluginContext):
         for entry in (_RETROARCH_ENTRY,) + tuple(emulator_catalog.CATALOG):
             source = entry.get("source") or {}
 
-            if source.get("kind") == "github":
+            # Both kinds this plugin downloads a file for. They differ only in
+            # where the list of builds comes from -- a releases API or the
+            # publisher's own feed -- and nothing below that line cares.
+            if source.get("kind") in ("github", "url"):
                 # Whether a newer release exists is a network call per emulator,
                 # and this runs when a tab opens -- so this reads the *last
                 # answer* rather than asking again. `check_emulator_updates` is
@@ -511,6 +540,9 @@ class Emulators(plugin_base.PluginContext):
                     "id": entry["id"],
                     "name": entry["name"],
                     "app_id": "",
+                    # The frontend reads this to decide what a build dialog
+                    # offers -- a hold, a commit, a tag -- and a feed build
+                    # behaves exactly as a release does in all of it.
                     "channel": "github",
                     # Empty for anything installed before the record existed.
                     # Reported as unknown rather than guessed from the filename,
@@ -688,12 +720,43 @@ class Emulators(plugin_base.PluginContext):
         # An empty list reads as "this build is the only one that ever
         # existed", which is a different and false claim.
         if source.get("kind") == "url":
+            notes = await self._run(emu_install.read_build_notes, entry)
+            known, newest = await self._feed_versions(entry, notes)
+            builds, error = await self._run(
+                emu_install.feed_history, entry, notes, emu_install.build_size,
+                known, newest,
+            )
+            if error:
+                return {"ok": False, "error": error, "builds": []}
+            record = await self._run(emu_install.read_build_record, entry["id"])
+            installed = record.get("tag", "")
             return {
-                "ok": False,
-                "error": "%s publishes only its current build, so there is nothing to "
-                         "go back to. Updating works; choosing an older build does "
-                         "not." % entry["name"],
-                "builds": [],
+                "ok": True,
+                "error": "",
+                "builds": [
+                    {
+                        "commit": build["tag"],
+                        # The notes name versions, not dates. An empty date is
+                        # what the dialog already shows for a release with
+                        # none, so this needs nothing of its own.
+                        "date": build["published"],
+                        # What changed, from the release notes that came with
+                        # the build. The row truncates it closed and shows the
+                        # whole of it open, exactly as it does a Flathub
+                        # changelog.
+                        #
+                        # Empty for a release the installed build has never
+                        # heard of, which is every release newer than it: the
+                        # notes live inside each download, so they arrive with
+                        # it. Empty rather than the version number over again,
+                        # which is already the heading of the row.
+                        "subject": build["notes"],
+                        "size": build["size"],
+                        "prerelease": False,
+                        "current": bool(installed) and build["tag"] == installed,
+                    }
+                    for build in builds
+                ],
             }
 
         if source.get("kind") != "flatpak":
@@ -834,7 +897,10 @@ class Emulators(plugin_base.PluginContext):
         if entry_id == "retroarch":
             return None
         entry = emulator_catalog.find(entry_id)
-        if not entry or (entry.get("source") or {}).get("kind") != "github":
+        # A feed-installed emulator moves between builds the same way: the
+        # download is a URL either way, and only where the list of them comes
+        # from differs.
+        if not entry or (entry.get("source") or {}).get("kind") not in ("github", "url"):
             return None
         return entry
 
@@ -873,7 +939,37 @@ class Emulators(plugin_base.PluginContext):
                 "Looking up %s" % (tag or "the newest release"), -1,
             )
 
-            if tag:
+            if source.get("kind") == "url":
+                if tag:
+                    # Straight from the version, and confirmed to be there
+                    # before anything is downloaded: these addresses follow a
+                    # convention the publisher never documented, so a build
+                    # that has been taken down has to fail here rather than as
+                    # a 404 halfway through an install.
+                    notes = await self._run(emu_install.read_build_notes, entry)
+                    known, newest = await self._feed_versions(entry, notes)
+                    builds, error = await self._run(
+                        emu_install.feed_history, entry, notes,
+                        emu_install.build_size, known, newest,
+                    )
+                    asset = None
+                    if not error:
+                        match = next((b for b in builds if b["tag"] == tag), None)
+                        if match is None:
+                            error = "That build is no longer published."
+                        else:
+                            # Empty for a past build and stated by the feed
+                            # for the current one, so choosing the newest
+                            # release here verifies exactly as an update does.
+                            asset = {"name": match["name"], "url": match["url"],
+                                     "tag": match["tag"], "size": match["size"],
+                                     "digest": match["digest"]}
+                else:
+                    asset, error = await self._run(
+                        emu_install.resolve_feed_build,
+                        source["feed"], source["select"],
+                    )
+            elif tag:
                 releases, error = await self._run(
                     emu_install.resolve_release_list,
                     source["repo"], source["asset"], source.get("host", ""),

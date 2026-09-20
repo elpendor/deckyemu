@@ -15,12 +15,13 @@
 # downloaded against a number the publisher stated -- and it means nothing here
 # is a mirror, a repack, or a guess at a URL.
 #
-# **What it cannot do is go back.** The feed carries only the current build and
-# the project publishes no changelog; the Wayback Machine has no snapshot of
-# either, and the AUR package tracks only what is current. Old files do remain
-# on the server, but naming one means a convention the author never wrote down
-# and which already breaks at 1.20. `emulator_builds` says so in those words
-# rather than drawing an empty list.
+# **Going back is possible, and the list comes from the build itself.** The
+# feed carries only the current version, the site has no changelog page and the
+# Wayback Machine has no snapshot of either -- but `ReadMe.txt` inside every
+# build holds its release notes, one heading per version, all the way back to
+# 1.00. No network call, no third-party site, and it grows by itself. A
+# rollback carries no checksum, since the feed states one only for the current
+# build; the dialog says so.
 #
 # A pkgforge AppImage of this exists and is not used: it is a repack rather
 # than the publisher, and its build script deletes the ReadMe that BigPEmu's
@@ -84,6 +85,16 @@ ENTRY = {
         # comes out and `extract` names the one to run.
         "unpack": True,
         "extract": r"^bigpemu$",
+        # **Where its past builds are listed, and how to address one.** The
+        # release notes inside the build name every version back to 1.00 --
+        # the author's own list, already on disk, growing with each release --
+        # and an old build's address is the version with its dots removed. The
+        # AUR's PKGBUILD and EmuDeck rely on that spelling too. Guessing it is
+        # only safe because the notes say which versions exist: invented from
+        # the pattern alone it produces 1.20, which was never released.
+        "notes": "ReadMe.txt",
+        "build_name": "https://www.richwhitehouse.com/jaguar/builds"
+                      "/BigPEmu_Linux64_v{version}.tar.gz",
     },
     # Extensions come from this, and Virtual Jaguar's info file is where the
     # list is written down: j64, jag, rom, abs, cof, bin, prg, cue, cdi. The

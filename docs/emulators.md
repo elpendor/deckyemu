@@ -52,10 +52,14 @@ That feed states a checksum for the file, which no other entry here does, so
 this is the one download the plugin can check against a number the publisher
 published.
 
-It differs from the others in one way: **it cannot be moved back to an older
-build.** The feed carries only the current one and the project keeps no
-changelog, so there is nothing to list. Updating works as usual; the build
-dialog says so rather than showing an empty list.
+It moves between builds like the others, with the list coming from an unusual
+place: the release notes inside the build itself, which name every version back
+to 1.00. Going back to one needs no network beyond the download, and each build
+is checked to be still published before it is offered.
+
+One difference worth knowing: **an older build cannot be checked against a
+checksum.** The feed states one for the current version only, so a fresh
+install is verified and a rollback is not.
 
 Nothing here is a mirror or a repack: the application id or the repository above
 is where the build comes from, and following one takes you to the publisher's

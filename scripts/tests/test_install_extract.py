@@ -168,6 +168,21 @@ if os.name == "posix":
     check("and the execute bit the archive recorded survives",
           bool(os.stat(_tarred).st_mode & 0o111), True)
 
+# **A second build unpacks over the first.** The archive records its own modes,
+# and BigPEmu ships its data read-only -- so the file the first install created
+# cannot be reopened for writing, and every *change of build* failed with
+# "Permission denied" while every fresh install worked. Measured on a Deck
+# rolling back from 1.221 to 1.19.
+_again, _why = emu_install._unpack_release(_TAR, _TAR_DIR, "^tarport$")
+check("unpacking over a previous build succeeds", _why, "")
+check("and the read-only file it left is replaced, not refused",
+      os.path.isfile(os.path.join(_TAR_DIR, "Data", "en.txt")), True)
+if os.name == "posix":
+    _locked = os.path.join(_TAR_DIR, "Data", "en.txt")
+    os.chmod(_locked, 0o444)
+    _third, _why = emu_install._unpack_release(_TAR, _TAR_DIR, "^tarport$")
+    check("even one made read-only since", _why, "")
+
 # Only when everything is under the same folder. An archive of loose files has
 # no prefix to strip, and taking the first name for one would flatten it wrong.
 _LOOSE = os.path.join(TMP, "release", "Loose.tar.gz")

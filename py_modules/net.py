@@ -181,16 +181,24 @@ def _discard(key):
 
 
 def _once(method, url, headers=None, timeout=DEFAULT_TIMEOUT):
-    """One request. Returns (status, redirect target), or (None, None) on failure.
+    """One request. Returns (status, redirect target, length), or (None, None, 0).
 
     A status -- any status, including 404 -- means the server answered and the
     caller can decide what it means. None means the request failed outright, which
     is the case worth logging.
+
+    The length is `Content-Length` where the server sent one, so a caller
+    asking whether a file is there learns what it weighs from the same request.
+    It is here rather than in a second helper because everything that makes
+    this work -- the CA fallback for decky's stale bundle, the retry on a
+    kept-alive connection the server closed -- would have to be repeated there,
+    and the copy that skipped the fallback reported every build on a working
+    server as unpublished.
     """
     parsed = urllib.parse.urlsplit(url)
     if parsed.scheme not in ("http", "https") or not parsed.netloc:
         decky.logger.warning("Refusing to probe non-HTTP url %s", url)
-        return None, None
+        return None, None, 0
 
     key = (parsed.scheme, parsed.netloc)
     target = parsed.path or "/"
@@ -209,10 +217,17 @@ def _once(method, url, headers=None, timeout=DEFAULT_TIMEOUT):
             connection.request(method, target, headers=sent)
             response = connection.getresponse()
             location = response.getheader("Location") or ""
+            length = response.getheader("Content-Length") or ""
             # Drained even for HEAD: an unread response leaves the connection
             # unusable for the next request, which would defeat the whole point.
             response.read()
-            return response.status, urllib.parse.urljoin(url, location) if location else ""
+            try:
+                size = int(length)
+            except (TypeError, ValueError):
+                size = 0
+            return (response.status,
+                    urllib.parse.urljoin(url, location) if location else "",
+                    size)
         except (ssl.SSLError, OSError) as error:
             _discard(key)
             if _is_cert_error(error) and not attempt:
@@ -226,13 +241,13 @@ def _once(method, url, headers=None, timeout=DEFAULT_TIMEOUT):
                     continue
             if attempt:
                 decky.logger.warning("%s failed for %s: %s", method, url, error)
-                return None, None
+                return None, None, 0
         except http.client.HTTPException as error:
             _discard(key)
             if attempt:
                 decky.logger.warning("%s failed for %s: %s", method, url, error)
-                return None, None
-    return None, None
+                return None, None, 0
+    return None, None, 0
 
 
 # Redirects are followed by hand because http.client, unlike urlopen, does not do
@@ -244,7 +259,7 @@ def _status_for(method, url, headers=None, timeout=DEFAULT_TIMEOUT):
     """The HTTP status for a request, following redirects as urlopen would."""
     seen = set()
     for _hop in range(_MAX_REDIRECTS):
-        status, location = _once(method, url, headers, timeout)
+        status, location, _length = _once(method, url, headers, timeout)
         if status is None:
             return None
         if status not in (301, 302, 303, 307, 308) or not location:
@@ -256,6 +271,32 @@ def _status_for(method, url, headers=None, timeout=DEFAULT_TIMEOUT):
         url = location
     decky.logger.warning("Too many redirects probing %s", url)
     return None
+
+
+def head_size(url, headers=None, timeout=DEFAULT_TIMEOUT):
+    """How big `url` is, or 0 when it is not there or cannot be read.
+
+    One HEAD, following redirects, through the same request path as every other
+    probe -- which is the point: decky's frozen interpreter carries a CA bundle
+    too old for some hosts, and only that path knows to retry against the
+    system trust store.
+    """
+    seen = set()
+    target = url
+    for _hop in range(_MAX_REDIRECTS + 1):
+        status, location, length = _once("HEAD", target, headers, timeout)
+        if status is None:
+            return 0
+        if status in (301, 302, 303, 307, 308) and location:
+            if location in seen:
+                decky.logger.warning("Redirect loop sizing %s", url)
+                return 0
+            seen.add(location)
+            target = location
+            continue
+        return length if 200 <= status < 300 else 0
+    decky.logger.warning("Too many redirects sizing %s", url)
+    return 0
 
 
 def head_ok(url, headers=None):

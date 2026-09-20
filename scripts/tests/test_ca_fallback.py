@@ -88,5 +88,25 @@ finally:
     net._fallback_checked = False
 
 
+section("every probe goes through the one path that knows about the fallback")
+
+# **This is the bug the section exists for.** A second HTTP helper was written
+# to read a file's size, opening its own connection rather than going through
+# `_once`. It therefore knew nothing about decky's stale CA bundle, every HEAD
+# against a perfectly good server failed with CERTIFICATE_VERIFY_FAILED, and
+# the build list reported that none of the published builds existed.
+import inspect  # noqa: E402
+
+_source = inspect.getsource(net.head_size)
+check("the size probe makes no connection of its own",
+      "_connection(" in _source or "HTTPSConnection" in _source, False)
+check("it asks through the shared request path", "_once(" in _source, True)
+
+# The shared path returns the length, so asking whether a build is there and
+# asking what it weighs are one request rather than two.
+_answer = net._once.__doc__ or ""
+check("which is why that path reports a length", "length" in _answer.lower(), True)
+
+
 if __name__ == "__main__":
     summary()
