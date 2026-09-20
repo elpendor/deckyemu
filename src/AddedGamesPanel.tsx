@@ -38,7 +38,6 @@ export function AddedGamesPanel({ games, onChanged }: Props) {
       <ButtonItem
         layout="below"
         onClick={() => openModal(<AddedGamesModal onChanged={onChanged} />)}
-        description="Rename a game, change what runs it, replace its artwork, or remove it."
       >
         {`Added games (${games.length})`}
       </ButtonItem>

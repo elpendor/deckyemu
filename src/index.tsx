@@ -62,32 +62,34 @@ const EMPTY_STATUS: RetroArchStatus = {
   core_count: 0,
   core_dirs: [],
   emulator_count: 0,
+  port_count: 0,
   default_rom_dir: "",
   waiting_rom_dir: "",
   home_dir: "",
 };
 
-const INSTALL_LABELS: Record<string, string> = {
-  flatpak: "RetroArch (Flatpak)",
-  native: "RetroArch",
-  appimage: "RetroArch (AppImage)",
-};
+/** `3 cores` and `1 core`, for a line made of counted things. */
+function counted(many: number, noun: string): string {
+  return `${many} ${noun}${many === 1 ? "" : "s"}`;
+}
 
-/** One line describing what is available to run games with. */
+/** One line describing what is available to run games with.
+ *
+ * How RetroArch was installed is left out. It decides nothing the reader can
+ * act on here, it is on the RetroArch tab for anyone who wants it, and it made
+ * the one line that has to hold four counts a line about packaging.
+ */
 function statusSummary(status: RetroArchStatus): string {
   const parts: string[] = [];
   if (status.found) {
-    parts.push(
-      `${INSTALL_LABELS[status.kind] ?? "RetroArch"} · ${status.core_count} core${
-        status.core_count === 1 ? "" : "s"
-      }`,
-    );
+    parts.push(`RetroArch · ${counted(status.core_count, "core")}`);
   }
-  if (status.emulator_count > 0) {
-    parts.push(
-      `${status.emulator_count} emulator${status.emulator_count === 1 ? "" : "s"}`,
-    );
-  }
+  // Ports are registered exactly as emulators are, so the count of emulators
+  // includes them and has to have them taken back out -- otherwise a Deck with
+  // one of each reads as two emulators.
+  const emulators = status.emulator_count - status.port_count;
+  if (emulators > 0) parts.push(counted(emulators, "emulator"));
+  if (status.port_count > 0) parts.push(counted(status.port_count, "port"));
   return parts.join(" · ") || "Nothing set up yet";
 }
 

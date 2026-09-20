@@ -701,6 +701,7 @@ class Plugin(
                 "core_count": 0,
                 "core_dirs": [],
                 "emulator_count": len(self._emulators),
+                "port_count": self._port_count(),
                 "default_rom_dir": default_dir,
                 "waiting_rom_dir": waiting,
                 "home_dir": home,
@@ -714,6 +715,7 @@ class Plugin(
             "core_count": len(self._cores),
             "core_dirs": self._install["core_dirs"],
             "emulator_count": len(self._emulators),
+            "port_count": self._port_count(),
             "default_rom_dir": default_dir,
             "waiting_rom_dir": waiting,
             "home_dir": home,
@@ -772,6 +774,16 @@ class Plugin(
             ])
             for core in self._cores + custom
         ]
+
+    def _port_count(self):
+        """How many registered entries are ports rather than emulators.
+
+        Counted out of the same list rather than tracked beside it: a port is
+        registered exactly as an emulator is, and the only thing that tells
+        them apart is the catalog entry behind the id.
+        """
+        return sum(1 for entry in self._emulators
+                   if emulators.is_port(entry.get("id") or ""))
 
     async def _refresh_emulators(self):
         self._emulators = await self._run(emulators.list_emulators)

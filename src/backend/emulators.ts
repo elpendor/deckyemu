@@ -27,6 +27,7 @@ export interface RetroArchStatus {
   core_dirs: string[];
   /** Custom standalone emulators; the plugin is usable with these alone. */
   emulator_count: number;
+  port_count: number;
   default_rom_dir: string;
   /**
    * The transfer folder when a sent file is still sitting in it unadded, else "".

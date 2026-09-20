@@ -4997,6 +4997,11 @@ else:
     print("SKIP execute-bit repair and path validation (needs a POSIX host)")
 
 check("it is reported in the status", run(plugin.get_status())["emulator_count"], 1)
+# Counted separately in the same list, because the panel's one status line
+# names emulators and ports apart and a port registers exactly as an emulator
+# does -- so without the split a Deck with one of each reads as two emulators.
+check("and it is not counted as a port, being an emulator",
+      run(plugin.get_status())["port_count"], 0)
 check(
     "and appears alongside the cores as something that can run a ROM",
     any(core["id"].startswith("emu:") for core in run(plugin.list_cores())),
