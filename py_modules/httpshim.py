@@ -34,6 +34,7 @@ import email.utils
 import os
 import socket
 import threading
+import time
 from typing import Any
 
 import decky
@@ -49,6 +50,18 @@ REASONS = {
 
 #: The longest request line or header line accepted, as http.server's own limit.
 MAX_LINE = 65536
+
+#: How long a body nobody asked for is read and dropped for before hanging up,
+#: and the ceiling on how much. See `_Request.finish`: it exists so a refusal
+#: reaches the client as a status rather than as a reset connection.
+#:
+#: A budget in time rather than only in bytes, because what has to be cleared is
+#: whatever the sender had already put on the wire -- which for a refused upload
+#: is one buffer, not the file. Half a second empties a megabyte over a local
+#: network and gives up on a ROM, which is the right way round: the sender of a
+#: ROM is mid-upload and handles a connection that goes.
+DRAIN_SECONDS = 0.5
+DRAIN_BYTES = 8 * 1024 * 1024
 
 
 class _Request:
@@ -91,13 +104,52 @@ class _Request:
         """Overridden by a handler that wants the socket configured."""
 
     def finish(self):
-        for stream in (self.wfile, self.rfile):
-            try:
-                if not stream.closed:
-                    stream.flush()
-                stream.close()
-            except OSError:
-                pass
+        """Send what is left, then end the connection so the client can read it.
+
+        **The order is the whole of this.** A refused upload answers before the
+        body has been read -- 404 for a PUT to a server handing out a report,
+        which is the correct answer and the point of refusing early -- and a
+        socket closed with unread bytes still in it sends RST. The client then
+        loses the response it was about to read: measured on Linux as
+        `ConnectionResetError` in place of the 404, while Windows delivered the
+        status as if nothing were wrong, which is why a suite passing here said
+        nothing about it.
+
+        So: the response goes out, the write half closes so the client sees a
+        clean end of message, what is left of the body is read and dropped, and
+        only then does the socket close. `socketserver` half-closes here too --
+        that is `shutdown_request` -- and this is the part of it that was
+        missing.
+        """
+        try:
+            if not self.wfile.closed:
+                self.wfile.flush()
+            self.wfile.close()
+        except OSError:
+            pass
+        try:
+            self.connection.shutdown(socket.SHUT_WR)
+        except OSError:
+            pass
+        try:
+            self.rfile.close()
+        except OSError:
+            pass
+        # Bounded, because the body being refused may be a ROM: this is here to
+        # clear a byte or a request line, not to receive a file nobody wants.
+        # Past the limit the reset is the honest outcome anyway -- the sender is
+        # mid-upload and already handles a connection that goes.
+        try:
+            self.connection.settimeout(DRAIN_SECONDS)
+            deadline = time.monotonic() + DRAIN_SECONDS
+            left = DRAIN_BYTES
+            while left > 0 and time.monotonic() < deadline:
+                received = self.connection.recv(65536)
+                if not received:
+                    break
+                left -= len(received)
+        except OSError:
+            pass
         try:
             self.connection.close()
         except OSError:

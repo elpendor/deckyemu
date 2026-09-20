@@ -44,6 +44,11 @@ else:
         # No socket yet. Naming an address for a bus that is not running turns a
         # clear "cannot autolaunch" into a connection refused, which is worse.
         os.environ["XDG_RUNTIME_DIR"] = _runtime
+        # Cleared, or the machine running the suite decides the answer: a
+        # desktop session exports an address of its own, so this passed on a
+        # headless runner and failed on a Deck -- which is the wrong way round
+        # for the checks that catch the bugs Windows cannot.
+        os.environ.pop("DBUS_SESSION_BUS_ADDRESS", None)
         _env = main.Plugin._subprocess_env()
         check("no bus is claimed when there is no socket",
               "DBUS_SESSION_BUS_ADDRESS" in _env, False)

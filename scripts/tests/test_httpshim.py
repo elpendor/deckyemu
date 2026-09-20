@@ -23,6 +23,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from harness import check, section, summary  # noqa: E402  -- installs the decky stub
 
+import http.client as _http_client  # noqa: E402
 import httpshim  # noqa: E402
 
 section("the stand-in HTTP server, for a sandbox without http.server")
@@ -44,6 +45,14 @@ class _Handler(httpshim._Request):  # noqa: SLF001 -- the stand-in under test
         self.wfile.write(body)
 
     def do_PUT(self):  # noqa: N802
+        # Refused without reading a byte of it, which is what the upload server
+        # does to a PUT it will not take -- and the case the connection has to
+        # survive being closed in.
+        if self.path.startswith("/refuse"):
+            self.send_response(404)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
         sent = self.rfile.read(int(self.headers.get("Content-Length") or 0))
         body = b"whole" if sent == UPLOAD else b"short"
         self.send_response(200)
@@ -74,6 +83,28 @@ try:
     # The whole point: a phone sending a ROM, read from the body by length.
     _put = urllib.request.Request(_url + "/upload/game.zip", data=UPLOAD, method="PUT")
     check("a PUT body arrives whole", urllib.request.urlopen(_put).read(), b"whole")
+
+    # **A refusal has to reach the sender.** The upload server answers 404 to a
+    # PUT it will not take -- a report-only session, a path outside the token --
+    # and it answers without reading the body, which is the point of refusing
+    # early. Close the socket with those bytes still unread and the kernel
+    # sends RST instead of the response: on CI the client lost the 404 it was
+    # reading and raised ConnectionResetError, while the same code answered
+    # every time on Windows and on a Deck that was not busy. Reproduced on
+    # Linux at a megabyte, two refusals in six.
+    # Through `http.client` rather than `urlopen`, because that is the client
+    # the upload page's own transfers use and the one that lost the answer:
+    # `urlopen` reads the response as it goes and can have it in hand before the
+    # reset lands, which hides exactly what is being checked.
+    _refusing = _http_client.HTTPConnection("127.0.0.1", _server.server_port, timeout=5)
+    try:
+        _refusing.request("PUT", "/refuse/sneaky.sfc", body=b"x" * (1024 * 1024))
+        _status = _refusing.getresponse().status
+    except (ConnectionResetError, OSError) as error:
+        _status = repr(error)
+    finally:
+        _refusing.close()
+    check("a body the handler never read still gets its answer", _status, 404)
 
     # A method nothing implements is refused rather than hanging the connection.
     try:
