@@ -6,6 +6,7 @@ import { FileName } from "./FileName";
 import { DANGER_TEXT } from "./danger";
 import { logError } from "./logError";
 import { openModal } from "./modalStack";
+import { ownedCount } from "./receivedGroups";
 import { humanSize } from "./TransferModal";
 
 /**
@@ -31,7 +32,18 @@ import { humanSize } from "./TransferModal";
  * Mode. One press against sending a 4 GB ROM twice is a fair trade.
  */
 export function confirmDiscardTransfer(
-  file: { name: string; size: number },
+  file: {
+    name: string;
+    /** The whole set where this is a playlist, so the sentence is honest. */
+    size: number;
+    /**
+     * How many files this one names, for a `.cue` or an `.m3u`. The backend
+     * deletes them with it -- a sheet without its tracks is a game that cannot
+     * start, and tracks without their sheet are sectors nothing can assemble --
+     * so the question has to be about all of them.
+     */
+    owned?: number;
+  },
   onDiscarded: () => void,
   /**
    * A stopped transfer rather than a finished file: the half-file's name to
@@ -50,7 +62,7 @@ export function confirmDiscardTransfer(
        * break to wrap at and runs out of the dialog. The title says what the
        * question is; the name is the detail it is about.
        */
-      strTitle="Delete this file?"
+      strTitle={file.owned ? "Delete these files?" : "Delete this file?"}
       strOKButtonText="Delete"
       bDestructiveWarning
       onOK={() =>
@@ -97,10 +109,13 @@ export function confirmDiscardTransfer(
             </div>
           ) : (
             <div style={DANGER_TEXT}>
-              This deletes {humanSize(file.size)} from the transfer folder on this Deck.
-              It cannot be undone from here — the file would have to be sent again.
-              Anything already added to your library or installed into an emulator is
-              unaffected.
+              {file.owned
+                ? `This deletes it and the ${ownedCount(file.name, file.owned)} it names, `
+                : "This deletes "}
+              {humanSize(file.size)} from the transfer folder on this Deck. It cannot be
+              undone from here — {file.owned ? "they" : "the file"} would have to be sent
+              again. Anything already added to your library or installed into an emulator
+              is unaffected.
             </div>
           )}
         </div>

@@ -42,6 +42,16 @@ gets a **delete** button beside its action — a ROM you thought better of, a BI
 for an emulator you removed, a definition that was refused. That is the only way
 to clear the inbox from Game Mode, and it asks first, naming the size.
 
+**A disc set is one row.** A CD rip is a `.cue` and a dozen `.bin` files, and a
+multi-disc game adds an `.m3u` over the top of those — all of it one game, and
+none of the tracks worth adding on their own. So the sheet gets the row, and what
+it names folds into it: the row reports the size of the whole set and how many
+files it speaks for, a **Tracks** button lists them by name, and **Add** and
+**delete** both act on all of it. The count above the list still counts files, so
+it still matches what you sent. A track whose `.cue` has not arrived stays a row
+of its own, because that one is a game that cannot be assembled and you need to
+see it.
+
 Arriving files show a progress bar of bytes received against the declared total,
 and each can be **cancelled**. That status also appears in the Quick Access
 panel, so dismissing the dialog does not hide a transfer that is still running.

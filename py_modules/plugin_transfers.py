@@ -47,12 +47,50 @@ import emulators
 import fileserver
 import launchers
 import procout
+import romshelf
 import savedata
 import switch_nsz
 import unpack
 import vita_games
 import gamecontent
 import store
+
+
+def _received_owners(received):
+    """{path: the sheet that owns it} for the arrivals that are part of a game.
+
+    Grouped by folder before asking, because `romshelf.sheet_owners` answers for
+    one directory at a time and the received list is not guaranteed to be one:
+    it follows the running server, and a firmware send saves somewhere else.
+    """
+    folders = {}
+    for item in received:
+        folders.setdefault(os.path.dirname(item["path"]), []).append(item["name"])
+
+    owners = {}
+    for folder, names in folders.items():
+        for name, sheet in romshelf.sheet_owners(folder, names).items():
+            owners[os.path.join(folder, name)] = sheet
+    return owners
+
+
+def _owned_beside(path):
+    """The files in this folder that the playlist at `path` owns.
+
+    Empty for anything that is not a playlist, and for one whose tracks are not
+    here -- `sheet_owners` only ever names files the listing had.
+    """
+    folder = os.path.dirname(path)
+    name = os.path.basename(path)
+    try:
+        names = os.listdir(folder)
+    except OSError:
+        return []
+
+    owners = romshelf.sheet_owners(folder, names)
+    return [os.path.join(folder, child)
+            for child, sheet in sorted(owners.items())
+            if sheet == name and os.path.isfile(os.path.join(folder, child))]
 
 
 class Transfers(plugin_base.PluginContext):
@@ -63,12 +101,20 @@ class Transfers(plugin_base.PluginContext):
         # Its own folder, not wherever ROMs are browsed from -- see
         # fileserver.default_dir.
         status["suggested_dir"] = await self._run(fileserver.default_dir)
+        # A CD rip is one sheet and a dozen tracks, and every one of them used
+        # to get its own row with its own Add -- which on a track makes a Steam
+        # entry out of raw sectors. Each track carries the sheet that owns it so
+        # the dialog can show the game once. Cheap enough to do on every poll:
+        # the sheets are the only files opened and `_referenced` will not read a
+        # large one.
+        owners = await self._run(_received_owners, status.get("received") or [])
         # A Switch update or DLC names the game it is for, so its row can offer
         # Install into that game rather than Add, which would make a Steam entry
         # out of something that is not a game. The library is read only when
         # there is a package to ask about.
         library = None
         for item in status.get("received") or []:
+            item["part_of"] = owners.get(item["path"], "")
             # A Vita licence key is only read while its package installs, so its
             # row says that instead of offering Add. `.txt` too, but only when
             # there really is a key in it.
@@ -1635,6 +1681,12 @@ class Transfers(plugin_base.PluginContext):
         By name out of the folder rather than by a path the frontend supplies.
         `inbox_path` refuses anything that is not already the basename of a real
         file in there, so this cannot be pointed at a save game or a launcher.
+
+        A playlist takes its tracks with it. `Game.cue` on its own is not a
+        thing anybody wants deleted -- the twelve `.bin` files it named are the
+        game, and left behind they are raw sectors nothing will ever point at
+        again. The dialog counts them before asking, so what goes is what was
+        agreed to.
         """
         path = await self._run(fileserver.inbox_path, name)
         if not path:
@@ -1643,12 +1695,21 @@ class Transfers(plugin_base.PluginContext):
             return {"ok": True, "removed": False,
                     "received": await self._run(fileserver.received_files)}
 
-        try:
-            await self._run(os.remove, path)
-        except OSError as error:
-            return {"ok": False, "error": "Could not delete %s: %s" % (name, error)}
+        # Tracks first and the sheet last, so a failure part-way leaves the
+        # sheet still listed. The row stays, pressing it again finishes the
+        # job, and the set is never a pile of nameless tracks with nothing
+        # above them.
+        group = await self._run(_owned_beside, path)
+        for victim in group + [path]:
+            try:
+                await self._run(os.remove, victim)
+            except OSError as error:
+                return {"ok": False,
+                        "error": "Could not delete %s: %s"
+                                 % (os.path.basename(victim), error)}
 
-        decky.logger.info("Discarded %s from the transfer folder", name)
+        decky.logger.info("Discarded %s from the transfer folder, with %d "
+                          "file(s) it named", name, len(group))
         return {"ok": True, "removed": True,
                 "received": await self._run(fileserver.received_files)}
 

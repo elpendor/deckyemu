@@ -61,6 +61,8 @@ import { importDefinition } from "./importDefinition";
 import { installContentFor } from "./installContent";
 import { openPatchInstall } from "./installPatch";
 import { openRestoreSaves } from "./openRestore";
+import { DiscTracksModal } from "./DiscTracksModal";
+import { groupReceived, ownedCount, ownedNoun } from "./receivedGroups";
 import { closeOpenModals, openModal } from "./modalStack";
 import { ICON_BUTTON, ICON_BUTTON_WIDE } from "./iconButton";
 
@@ -761,6 +763,16 @@ export function TransferModal({
 
   const running = Boolean(status?.running);
   const received = status?.received ?? [];
+  /*
+   * One row per game, not per file. A CD rip is a sheet and a dozen tracks, and
+   * listed flat each track got its own Add -- which makes a Steam entry out of
+   * raw sectors. The count above the list still counts files, so it still says
+   * what arrived; see receivedGroups.
+   */
+  // Plainly, not memoised: the list is capped at a hundred names and the poll
+  // hands back a new array every few seconds anyway, so a memo would recompute
+  // on the renders that matter and only bind the two together.
+  const groups = groupReceived(received);
   const stopped = status?.stopped ?? [];
   const uploads = status?.uploads ?? [];
 
@@ -947,7 +959,7 @@ export function TransferModal({
           <div style={{ ...COLUMN, gap: "6px" }}>
             <div style={{ fontWeight: 600 }}>Received ({received.length})</div>
             <Focusable style={RECEIVED}>
-              {received.map((file) => (
+              {groups.map(({ file, tracks, size }) => (
                 <Focusable
                   key={file.path}
                   style={{ display: "flex", alignItems: "center", gap: "10px" }}
@@ -955,13 +967,35 @@ export function TransferModal({
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <FileName name={file.name} />
                     <div style={MUTED}>
-                      {humanSize(file.size)}
+                      {/* The set, not the two kilobytes of text naming it --
+                          the size a reader checks against what they sent, and
+                          what deleting the row costs. */}
+                      {humanSize(size)}
+                      {tracks.length > 0
+                        ? ` · ${ownedCount(file.name, tracks.length)}`
+                        : ""}
                       {file.game_content
                         ? ` · ${file.game_content.label}` +
                           (file.game_content.app_id ? ` for ${file.game_content.title}` : "")
                         : ""}
                     </div>
                   </div>
+                  {/* Before the action, because it is about the row rather
+                      than a second thing to do with it -- and folding twelve
+                      rows away raises "did the rest arrive?", which nothing
+                      else here can answer. Only on a row that folded some. */}
+                  {tracks.length > 0 && (
+                    <DialogButton
+                      onClick={() =>
+                        openModal(
+                          <DiscTracksModal playlist={file.name} tracks={tracks} />,
+                        )
+                      }
+                      style={ICON_BUTTON_WIDE}
+                    >
+                      {ownedNoun(file.name) === "track" ? "Tracks" : "Files"}
+                    </DialogButton>
+                  )}
                   {/* What the file is for decides the button. A BIOS offered
                       "Add" was being offered the ROM add flow, which would have
                       made a Steam entry out of a firmware dump. */}
@@ -1073,7 +1107,12 @@ export function TransferModal({
                   {purpose !== "backup" && (
                     <div className={DANGER_CLASS}>
                       <DialogButton
-                        onClick={() => confirmDiscardTransfer(file, load)}
+                        onClick={() =>
+                          confirmDiscardTransfer(
+                            { name: file.name, size, owned: tracks.length },
+                            load,
+                          )
+                        }
                         style={ICON_BUTTON}
                       >
                         <FaTrash />

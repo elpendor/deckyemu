@@ -176,6 +176,57 @@ def part_of_a_disc(path):
     return False
 
 
+def sheet_owners(folder, names):
+    """{name: the playlist in this folder that owns it} for the ones owned.
+
+    `part_of_a_disc` answers the same question for one file, and answers it by
+    reading every sheet in the folder. Asked once per file that is the same
+    folder read a dozen times over, so this answers for a whole listing at
+    once: each sheet is parsed once, whatever it names.
+
+    Resolved to the *top*, not to the immediate parent. A multi-disc set arrives
+    as one `.m3u`, two `.cue` files and two dozen `.bin` files, and all of it is
+    one game -- so the `.bin` files come back owned by the `.m3u` rather than by
+    the sheet that literally lists them, and there is one thing left unowned to
+    show for the set.
+
+    Only names in `names` appear on either side. A sheet that has arrived
+    without its tracks owns nothing yet, and a track whose sheet has not
+    arrived is owned by nothing -- which is the same answer as "this is a file
+    in its own right", and deliberately so: it is the one the reader can act on.
+    """
+    present = {name.lower(): name for name in names}
+
+    parent = {}
+    for name in names:
+        if os.path.splitext(name)[1].lower() not in _PLAYLISTS:
+            continue
+        for child in _referenced(os.path.join(folder, name)) or ():
+            owned_name = present.get(child.lower())
+            # A sheet naming itself would otherwise be its own parent, and the
+            # walk below would have to treat that as a cycle rather than as the
+            # nothing it is.
+            if owned_name is None or owned_name == name:
+                continue
+            # The first sheet to claim a file keeps it. Two sheets naming the
+            # same track is a malformed pair and neither answer is better, but
+            # a stable one beats whichever the listing order produced.
+            parent.setdefault(owned_name, name)
+
+    owners = {}
+    for name in parent:
+        seen = {name}
+        owner = parent[name]
+        # Up the chain to the sheet nothing owns. `seen` is for a pair of
+        # playlists naming each other, which no ripper writes and a hand-edited
+        # .m3u can.
+        while owner in parent and owner not in seen:
+            seen.add(owner)
+            owner = parent[owner]
+        owners[name] = owner
+    return owners
+
+
 #: Extensions that hold a game rather than being part of one. A file with the
 #: same stem and one of these is the container the ROM arrived in, not a track
 #: or a disc that has to travel with it.

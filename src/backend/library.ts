@@ -198,6 +198,13 @@ export interface ReceivedFile {
   game_content?: import("./games").GameContentOwner | null;
   /** A Vita licence key, which is used when its package is unpacked. */
   licence_key?: boolean;
+  /**
+   * The playlist in the same folder that names this file — so it is a track of
+   * a disc, or a disc of a set, and not a game in its own right. Empty for
+   * everything else, including a track whose sheet has not arrived yet: that
+   * one is on its own and the reader has to be able to see it.
+   */
+  part_of?: string;
 }
 
 /** A file still arriving. `total` is the size its sender declared. */
