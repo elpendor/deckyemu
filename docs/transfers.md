@@ -55,8 +55,14 @@ see it.
 **A disc of a multi-disc game asks before it adds.** Press **Add** on one and a
 question names every disc found beside it, in playlist order, offering **One
 game** or **This disc only**. The file browser asks the same question, so a set
-is never merged without being put to you. See
-[Multi-disc games](getting-started.md#multi-disc-games).
+is never merged without being put to you.
+
+**And a disc of a game you have already added says so.** Its row reads
+*disc 2 of ‹game›* and its button **Add to game**, because the filename is enough
+to know which game it belongs to. Pressing it puts the disc into that game — same Steam entry, playlist
+extended, shortcut repointed — and *Its own entry* adds it separately instead.
+Not offered when two added games would both match, which is not a guess worth
+making. See [Multi-disc games](getting-started.md#multi-disc-games).
 
 Arriving files show a progress bar of bytes received against the declared total,
 and each can be **cancelled**. That status also appears in the Quick Access

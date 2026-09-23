@@ -14,6 +14,7 @@ import { FaTrash } from "react-icons/fa";
 import {
   cancelUpload,
   fileServerStatus,
+  joinDiscToGame,
   firmwareDir,
   firmwareMatches,
   firmwareStatus,
@@ -30,7 +31,7 @@ import {
   type FileServerStatus,
 } from "./backend";
 import { selectRom } from "./addFlow";
-import { askDiscChoice } from "./confirmDiscSet";
+import { askDiscChoice, confirmJoinDisc } from "./confirmDiscSet";
 import { FileName } from "./FileName";
 import { HandoffCode } from "./HandoffCode";
 
@@ -65,6 +66,7 @@ import { openRestoreSaves } from "./openRestore";
 import { DiscTracksModal } from "./DiscTracksModal";
 import { groupReceived, ownedCount, ownedNoun } from "./receivedGroups";
 import { closeOpenModals, openModal } from "./modalStack";
+import { repointShortcut } from "./steam";
 import { ICON_BUTTON, ICON_BUTTON_WIDE } from "./iconButton";
 
 /** How often to re-check while running, to pick up newly arrived files. */
@@ -596,6 +598,49 @@ export function TransferModal({
   );
 
   /**
+   * Put an arrival into the game it belongs to, rather than making a new entry.
+   *
+   * The row already names that game, so the press is not a guess -- but merging
+   * is never implied here either, and *Its own entry* drops into the ordinary
+   * add flow. The backend files the disc, writes or extends the playlist and
+   * repoints the shortcut; the only part Steam has to be told is where the
+   * launcher moved to.
+   */
+  const joinDisc = useCallback(
+    async (path: string, name: string, target: { app_id: number; title: string }) => {
+      const choice = await confirmJoinDisc(target.title, name);
+      // Backing out does nothing at all. Adding it as its own entry is a thing
+      // this can do, so it cannot also be what dismissing means.
+      if (choice === "cancel") return;
+      if (choice === "single") {
+        await use(path, name);
+        return;
+      }
+      setBusy(true);
+      try {
+        const result = await joinDiscToGame(target.app_id, path);
+        if (!result.ok) {
+          toaster.toast({ title: "Could not add the disc", body: result.error ?? "" });
+          return;
+        }
+        // Only when the launcher moved. Its filename embeds a hash of the ROM
+        // path, so repointing at the playlist relocates it.
+        if (result.launcher_changed && result.exe) {
+          repointShortcut(target.app_id, result.exe);
+        }
+        toaster.toast({ title: "Added to " + target.title, body: name });
+        await load();
+      } catch (error) {
+        logError("could not add a disc to a game", error);
+        toaster.toast({ title: "Could not add the disc", body: "Something went wrong." });
+      } finally {
+        setBusy(false);
+      }
+    },
+    [load, use],
+  );
+
+  /**
    * Put what has arrived where the emulator reads it, without leaving.
    *
    * The row that opened this dialog can do the same thing, and having to close
@@ -986,6 +1031,13 @@ export function TransferModal({
                       {tracks.length > 0
                         ? ` · ${ownedCount(file.name, tracks.length)}`
                         : ""}
+                      {/* Which game, said here rather than on the button. The
+                          subtitle has the whole row, so a long title costs
+                          nothing; a button carrying one shrinks the filename
+                          beside it and then ellipsizes the title anyway. */}
+                      {file.disc_for
+                        ? ` · disc ${file.disc_for.disc} of ${file.disc_for.title}`
+                        : ""}
                       {file.game_content
                         ? ` · ${file.game_content.label}` +
                           (file.game_content.app_id ? ` for ${file.game_content.title}` : "")
@@ -1096,6 +1148,22 @@ export function TransferModal({
                       style={ICON_BUTTON_WIDE}
                     >
                       Restore
+                    </DialogButton>
+                  ) : file.disc_for ? (
+                    // A disc of a game already in the library. Plain "Add"
+                    // here is the press that makes a second entry with the same
+                    // name, and the row knows better -- so the button says so,
+                    // and the subtitle above says which game. The name is not
+                    // on the button because a button carrying one shrinks the
+                    // filename beside it and ellipsizes the title regardless.
+                    <DialogButton
+                      disabled={busy}
+                      onClick={() =>
+                        void joinDisc(file.path, file.name, file.disc_for!)
+                      }
+                      style={ICON_BUTTON_WIDE}
+                    >
+                      Add to game
                     </DialogButton>
                   ) : (
                     <DialogButton

@@ -205,6 +205,15 @@ export interface ReceivedFile {
    * one is on its own and the reader has to be able to see it.
    */
   part_of?: string;
+  /**
+   * The added game this disc would join, when it is a disc of one.
+   *
+   * Worked out from the library rather than from the folder: the discs this one
+   * belongs to were filed into `roms/<system>` when the game was added, so
+   * nothing beside the file can say so. Absent when two added games match,
+   * which is not a guess worth making.
+   */
+  disc_for?: { app_id: number; title: string; disc: number };
 }
 
 /** A file still arriving. `total` is the size its sender declared. */

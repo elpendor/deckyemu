@@ -5,7 +5,6 @@ import {
   coreById,
   discRow,
   readsPlaylist,
-  takesDiscs,
   withDisc,
 } from "./discSet";
 import type { Core, RomProbe } from "./backend";
@@ -253,26 +252,6 @@ describe("discRow", () => {
 
   it("says nothing when one disc has been picked and no set was found", () => {
     expect(discRow(probe([], [DUCKSTATION]), ["FF7 d1.cue"], DUCKSTATION).show).toBe(false);
-  });
-});
-
-describe("takesDiscs", () => {
-  it("offers on disc formats", () => {
-    for (const name of ["Game (Disc 1).cue", "Game.m3u", "Game.chd", "Game.iso"]) {
-      expect(takesDiscs(name)).toBe(true);
-    }
-  });
-
-  it("stays away from a cartridge", () => {
-    // The cost of getting this wrong is a button on a game that cannot have a
-    // second disc, which would file a file beside it and write a playlist.
-    for (const name of ["Game.z64", "Game.sfc", "Game.zip", "Game"]) {
-      expect(takesDiscs(name)).toBe(false);
-    }
-  });
-
-  it("does not read an extension out of a dotted name", () => {
-    expect(takesDiscs(".cue")).toBe(false);
   });
 });
 

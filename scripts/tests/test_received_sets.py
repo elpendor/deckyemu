@@ -164,3 +164,76 @@ with tempfile.TemporaryDirectory() as root:
           owners.get(os.path.join(first, "Zed (Track 01).bin")), "Zed.cue")
     check("the one in another folder is not",
           os.path.join(second, "Zed (Track 01).bin") in owners, False)
+
+
+section("a disc of a game already added is offered to that game")
+
+import discset  # noqa: E402  -- only this section needs it
+
+with tempfile.TemporaryDirectory() as folder:
+    library = {
+        "111": {"title": "Zed", "rom_path": os.path.join(folder, "Zed (Disc 1).cue")},
+        "222": {"title": "Ayeway", "rom_path": os.path.join(folder, "Ayeway.z64")},
+    }
+    homes = plugin_transfers._disc_homes(library)
+    check("the added disc's set is known", sorted(homes), [("Zed", ".cue")])
+    check("and the cartridge is not a set", ("Ayeway", ".z64") in homes, False)
+
+    waiting = {"name": "Zed (Disc 2).cue", "path": "/inbox/Zed (Disc 2).cue"}
+    check("disc 2 is offered to the game holding disc 1",
+          plugin_transfers._disc_for(waiting, homes),
+          {"app_id": 111, "title": "Zed", "disc": 2})
+
+    # Already there: adding it would do nothing, and a button that does nothing
+    # is worse than no button.
+    check("a disc the game already has is not offered",
+          plugin_transfers._disc_for(
+              {"name": "Zed (Disc 1).cue", "path": "/inbox/Zed (Disc 1).cue"}, homes),
+          None)
+    check("nor is a different game",
+          plugin_transfers._disc_for(
+              {"name": "Wye (Disc 2).cue", "path": "/inbox/Wye (Disc 2).cue"}, homes),
+          None)
+    # Same base, different format: a core is chosen for one extension, and a
+    # playlist mixing two is a set that will not load.
+    check("nor the same disc in another format",
+          plugin_transfers._disc_for(
+              {"name": "Zed (Disc 2).chd", "path": "/inbox/Zed (Disc 2).chd"}, homes),
+          None)
+    # `part_of` says a sheet in the folder names it, which is the only evidence
+    # there is that a file is a track rather than a disc.
+    check("nor a track that merely reads like a disc",
+          plugin_transfers._disc_for(
+              {"name": "Zed (Disc 2).bin", "path": "/inbox/Zed (Disc 2).bin",
+               "part_of": "Zed (Disc 2).cue"}, homes),
+          None)
+
+with tempfile.TemporaryDirectory() as folder:
+    # A game already added as a set: its playlist names the discs, so all of
+    # them count as held and the next one along is what gets offered.
+    write_cue(folder, "Zed (Disc 1).cue", ["Zed (Disc 1) (Track 01).bin"])
+    write_cue(folder, "Zed (Disc 2).cue", ["Zed (Disc 2) (Track 01).bin"])
+    playlist, error = discset.write_playlist(
+        folder, ["Zed (Disc 1).cue", "Zed (Disc 2).cue"])
+    check("the set was written for the fixture", error, "")
+
+    homes = plugin_transfers._disc_homes({"333": {"title": "Zed", "rom_path": playlist}})
+    check("both discs in the playlist count as held",
+          plugin_transfers._disc_for(
+              {"name": "Zed (Disc 2).cue", "path": "/inbox/Zed (Disc 2).cue"}, homes),
+          None)
+    check("and disc 3 is offered",
+          plugin_transfers._disc_for(
+              {"name": "Zed (Disc 3).cue", "path": "/inbox/Zed (Disc 3).cue"}, homes),
+          {"app_id": 333, "title": "Zed", "disc": 3})
+
+# Two added games whose discs share a base name. Picking one to offer would be
+# wrong half the time, so neither is offered and the ordinary Add stands.
+homes = plugin_transfers._disc_homes({
+    "444": {"title": "Zed", "rom_path": "/roms/ps1/Zed (Disc 1).cue"},
+    "555": {"title": "Zed again", "rom_path": "/roms/ps1/Zed (Disc 3).cue"},
+})
+check("an ambiguous match is not guessed at",
+      plugin_transfers._disc_for(
+          {"name": "Zed (Disc 2).cue", "path": "/inbox/Zed (Disc 2).cue"}, homes),
+      None)

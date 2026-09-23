@@ -47,6 +47,7 @@ import emulators
 import fileserver
 import launchers
 import procout
+import discset
 import romshelf
 import savedata
 import switch_nsz
@@ -93,6 +94,64 @@ def _owned_beside(path):
             if sheet == name and os.path.isfile(os.path.join(folder, child))]
 
 
+def _disc_homes(library):
+    """{(base, extension): {"app_id", "title", "numbers"}} for the added discs.
+
+    Which game a disc waiting in the transfer folder would join, worked out from
+    the games already in the library. `discset.find_set` cannot answer this: it
+    only ever looks beside the file, and the discs this one belongs to were
+    filed into `roms/<system>` when the game was added.
+
+    A key two games both answer to is dropped rather than guessed at. Two
+    entries whose discs share a base name is either a mistake somebody is about
+    to fix or two genuinely different games, and picking one of them to offer
+    would be wrong half the time -- so neither is offered and the ordinary
+    **Add** stands.
+    """
+    homes = {}
+    for app_id, entry in (library or {}).items():
+        rom_path = entry.get("rom_path", "")
+        if not rom_path:
+            continue
+        if rom_path.lower().endswith(".m3u"):
+            names = romshelf.named_by(rom_path) or []
+        else:
+            names = [os.path.basename(rom_path)]
+
+        for name in names:
+            key = discset.set_key(name)
+            if not key:
+                continue
+            home = homes.setdefault(key, {"app_id": int(app_id),
+                                          "title": entry.get("title", ""),
+                                          "numbers": set(), "one": True})
+            if home["app_id"] != int(app_id):
+                home["one"] = False
+            home["numbers"].add(discset.disc_number(name))
+    return {key: home for key, home in homes.items() if home["one"]}
+
+
+def _disc_for(item, homes):
+    """The game this arrival would join, or None. See `_disc_homes`.
+
+    A track is never a disc however its name reads, and `part_of` has already
+    said so -- a `.cue` in the folder names it, which is the only evidence there
+    is. A disc the game already has is not offered either: adding disc 2 to a
+    game that has disc 2 does nothing, and a button that does nothing is worse
+    than no button.
+    """
+    if item.get("part_of"):
+        return None
+    key = discset.set_key(item.get("name", ""))
+    home = homes.get(key) if key else None
+    if not home or discset.disc_number(item["name"]) in home["numbers"]:
+        return None
+    # The number goes with it: the row says "disc 2 of Zed" rather than putting
+    # the game's name on a button, where a long title has nowhere to go.
+    return {"app_id": home["app_id"], "title": home["title"],
+            "disc": discset.disc_number(item["name"])}
+
+
 class Transfers(plugin_base.PluginContext):
     """Sending files to the Deck and reading a report back. See the module docstring."""
 
@@ -112,9 +171,16 @@ class Transfers(plugin_base.PluginContext):
         # Install into that game rather than Add, which would make a Steam entry
         # out of something that is not a game. The library is read only when
         # there is a package to ask about.
-        library = None
+        # Which added game each arrival would join, if it is a disc of one. The
+        # library is read once here rather than per row; it is the same read the
+        # package rows below make, and they share it.
+        library = await self._run(store.get_library)
+        homes = await self._run(_disc_homes, library)
         for item in status.get("received") or []:
             item["part_of"] = owners.get(item["path"], "")
+            disc_for = _disc_for(item, homes)
+            if disc_for:
+                item["disc_for"] = disc_for
             # A Vita licence key is only read while its package installs, so its
             # row says that instead of offering Add. `.txt` too, but only when
             # there really is a key in it.
@@ -122,8 +188,6 @@ class Transfers(plugin_base.PluginContext):
                 item["licence_key"] = bool(await self._run(vita_games.zrif_from, item["path"]))
             if not item.get("name", "").lower().endswith(gamecontent.SUFFIXES):
                 continue
-            if library is None:
-                library = await self._run(store.get_library)
             item["game_content"] = await self._run(gamecontent.owner, item["path"], library)
         return status
 

@@ -923,6 +923,48 @@ class Plugin(
                           name, entry.get("title"), len(discs))
         return {"ok": True, "playlist": written, "discs": discs, "error": ""}
 
+    async def join_disc_to_game(self, app_id: int, disc_path: str):
+        """Add a disc to a game and repoint its shortcut, in one press.
+
+        `add_disc_to_game` leaves the repointing to the caller because the panel
+        editing a game is already about to save. The transfer dialog is not: the
+        press there is "put this disc in that game", and everything after it is
+        bookkeeping the user has no reason to be shown.
+
+        Whether the shortcut moves to the playlist depends on the core, and the
+        rule is the one the panel uses -- a core that declares `m3u` is handed
+        the playlist, and one that does not goes on starting the disc it has
+        while the playlist is still written, because filing and deleting follow
+        it. PCSX2 is the case.
+
+        Returns what the Steam side needs: {ok, error, title, exe,
+        launcher_changed}.
+        """
+        added = await self.add_disc_to_game(app_id, disc_path)
+        if not added["ok"]:
+            return {"ok": False, "error": added["error"], "title": "",
+                    "exe": "", "launcher_changed": False}
+
+        library = await self._run(store.get_library)
+        entry = library.get(str(app_id)) or {}
+        core = self._core_by_id(entry.get("core_id", ""))
+        reads_playlist = "m3u" in [
+            text.lower() for text in (core or {}).get("extensions", [])
+        ]
+        if not added["playlist"] or not reads_playlist:
+            # The set is on disk and the shortcut already starts a disc of it.
+            return {"ok": True, "error": "", "title": entry.get("title", ""),
+                    "exe": "", "launcher_changed": False}
+
+        return await self.update_game(
+            app_id,
+            entry.get("title", ""),
+            entry.get("core_id", ""),
+            added["playlist"],
+            entry.get("options") or {},
+            entry.get("system", ""),
+        )
+
     async def make_disc_playlist(self, rom_path: str, discs: list):
         """Write the `.m3u` for a set and return the path to add instead.
 

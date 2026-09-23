@@ -488,16 +488,17 @@ export function realCores(cores: Core[]): Core[] {
 export const probeRom = callable<[romPath: string], RomProbe>("probe_rom");
 
 /**
- * Put another disc into a game that is already in the library.
+ * Put a disc into a game and repoint its shortcut, in one press.
  *
- * Files the disc beside the others and writes or extends the playlist, leaving
- * the shortcut alone — repointing it is the caller's, through `updateGame`,
- * because whether a shortcut runs a playlist depends on the core.
+ * The transfer dialog's version of `addDiscToGame`: there the press means "put
+ * this disc in that game", and the repointing is bookkeeping nobody needs to be
+ * shown. Whether the shortcut moves to the playlist is decided by the core, the
+ * same way the panel decides it.
  */
-export const addDiscToGame = callable<
+export const joinDiscToGame = callable<
   [appId: number, discPath: string],
-  { ok: boolean; playlist: string; discs: string[]; error: string }
->("add_disc_to_game");
+  { ok: boolean; error?: string; title?: string; exe?: string; launcher_changed?: boolean }
+>("join_disc_to_game");
 
 /**
  * The discs beside a file that look like one game with it, before adding it.

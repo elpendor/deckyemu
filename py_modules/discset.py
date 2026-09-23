@@ -260,6 +260,26 @@ def in_disc_order(names):
                    key=lambda pair: pair[0])]
 
 
+def set_key(name):
+    """(base, extension) identifying the set a disc belongs to, or None.
+
+    The whole of what makes two files the same game, with the disc number taken
+    out: `find_set` demands they match character for character apart from it,
+    and this is that comparison in a form two *different folders* can be checked
+    with. A disc waiting in the transfer folder cannot be found by `find_set` --
+    that only ever looks beside the file -- and it still belongs to the game
+    whose discs are already filed away in the library.
+    """
+    parts = split_disc(name)
+    return (parts[0], parts[2]) if parts else None
+
+
+def disc_number(name):
+    """The disc number in this filename, or 0 when it carries none."""
+    parts = split_disc(name)
+    return parts[1] if parts else 0
+
+
 def write_playlist(folder, disc_names, replacing=""):
     """Write the playlist beside its discs. Returns (path, error).
 

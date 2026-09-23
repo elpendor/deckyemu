@@ -181,22 +181,6 @@ export function discRow(
 }
 
 /**
- * Extensions a disc of a multi-disc game arrives as.
- *
- * Only for deciding whether to offer **Add another disc** on a game already in
- * the library, where the alternative is offering it on a cartridge. Getting it
- * wrong costs a button that should not be there, never a wrong file.
- */
-const DISC_FILES = ["cue", "m3u", "gdi", "chd", "iso", "pbp", "ccd", "mds",
-                    "cdi", "nrg", "img", "bin"];
-
-/** Whether this game is the kind another disc could join. */
-export function takesDiscs(romName: string): boolean {
-  const cut = romName.lastIndexOf(".");
-  return cut > 0 && DISC_FILES.includes(romName.slice(cut + 1).toLowerCase());
-}
-
-/**
  * The filename to show for what is being added.
  *
  * The picked disc, until the discs are one game -- then the playlist, because
