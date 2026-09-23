@@ -237,3 +237,21 @@ check("an ambiguous match is not guessed at",
       plugin_transfers._disc_for(
           {"name": "Zed (Disc 2).cue", "path": "/inbox/Zed (Disc 2).cue"}, homes),
       None)
+
+# The status call this feeds runs every second or two while a transfer moves, so
+# one bad record has to cost its own row rather than the whole dialog.
+homes = plugin_transfers._disc_homes({
+    "not-a-number": {"title": "Wat", "rom_path": "/roms/ps1/Wat (Disc 1).cue"},
+    "nope": "this is not an entry",
+    "666": {"title": "Zed", "rom_path": "/roms/ps1/Zed (Disc 1).cue"},
+})
+check("a malformed library record is skipped, not raised",
+      sorted(homes), [("Zed", ".cue")])
+check("and the good record beside it still answers",
+      plugin_transfers._disc_for(
+          {"name": "Zed (Disc 2).cue", "path": "/inbox/Zed (Disc 2).cue"}, homes),
+      {"app_id": 666, "title": "Zed", "disc": 2})
+
+check("an empty library answers nothing rather than failing",
+      plugin_transfers._disc_homes({}), {})
+check("and so does a missing one", plugin_transfers._disc_homes(None), {})

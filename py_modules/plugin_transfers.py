@@ -110,6 +110,14 @@ def _disc_homes(library):
     """
     homes = {}
     for app_id, entry in (library or {}).items():
+        if not isinstance(entry, dict):
+            continue
+        try:
+            number = int(app_id)
+        except (TypeError, ValueError):
+            # This runs inside the status poll. One malformed record must cost
+            # its own row, never the dialog.
+            continue
         rom_path = entry.get("rom_path", "")
         if not rom_path:
             continue
@@ -122,10 +130,10 @@ def _disc_homes(library):
             key = discset.set_key(name)
             if not key:
                 continue
-            home = homes.setdefault(key, {"app_id": int(app_id),
+            home = homes.setdefault(key, {"app_id": number,
                                           "title": entry.get("title", ""),
                                           "numbers": set(), "one": True})
-            if home["app_id"] != int(app_id):
+            if home["app_id"] != number:
                 home["one"] = False
             home["numbers"].add(discset.disc_number(name))
     return {key: home for key, home in homes.items() if home["one"]}
@@ -167,28 +175,45 @@ class Transfers(plugin_base.PluginContext):
         # the sheets are the only files opened and `_referenced` will not read a
         # large one.
         owners = await self._run(_received_owners, status.get("received") or [])
-        # A Switch update or DLC names the game it is for, so its row can offer
-        # Install into that game rather than Add, which would make a Steam entry
-        # out of something that is not a game. The library is read only when
-        # there is a package to ask about.
-        # Which added game each arrival would join, if it is a disc of one. The
-        # library is read once here rather than per row; it is the same read the
-        # package rows below make, and they share it.
-        library = await self._run(store.get_library)
-        homes = await self._run(_disc_homes, library)
+        # Both of the answers below need the library, and most arrivals ask it
+        # nothing. Read once, on the first row that cares: reading it every time
+        # put a file read into every poll -- plus one per multi-disc game, to
+        # parse its playlist -- and a poll runs once a second while a transfer
+        # is moving.
+        library = None
+        homes = None
         for item in status.get("received") or []:
             item["part_of"] = owners.get(item["path"], "")
-            disc_for = _disc_for(item, homes)
-            if disc_for:
-                item["disc_for"] = disc_for
+            lowered = item.get("name", "").lower()
+
             # A Vita licence key is only read while its package installs, so its
             # row says that instead of offering Add. `.txt` too, but only when
             # there really is a key in it.
-            if item.get("name", "").lower().endswith(vita_games.ZRIF_SUFFIXES):
-                item["licence_key"] = bool(await self._run(vita_games.zrif_from, item["path"]))
-            if not item.get("name", "").lower().endswith(gamecontent.SUFFIXES):
+            if lowered.endswith(vita_games.ZRIF_SUFFIXES):
+                item["licence_key"] = bool(
+                    await self._run(vita_games.zrif_from, item["path"]))
+
+            # A disc of a game already added goes into that game rather than
+            # making a second entry with the same name. Never for a track: the
+            # sheet beside it has already said what it is.
+            if not item["part_of"] and discset.set_key(item.get("name", "")):
+                if homes is None:
+                    if library is None:
+                        library = await self._run(store.get_library)
+                    homes = await self._run(_disc_homes, library)
+                disc_for = _disc_for(item, homes)
+                if disc_for:
+                    item["disc_for"] = disc_for
+
+            # A Switch update or DLC names the game it is for, so its row can
+            # offer Install into that game rather than Add, which would make a
+            # Steam entry out of something that is not a game.
+            if not lowered.endswith(gamecontent.SUFFIXES):
                 continue
-            item["game_content"] = await self._run(gamecontent.owner, item["path"], library)
+            if library is None:
+                library = await self._run(store.get_library)
+            item["game_content"] = await self._run(
+                gamecontent.owner, item["path"], library)
         return status
 
     async def start_report(self):
