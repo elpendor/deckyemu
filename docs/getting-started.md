@@ -74,7 +74,7 @@ By default the address, the token and the six-digit code are all new every
 session, so nothing outlives one transfer and a saved link is worthless the next
 day. That is the safe default, and it means typing the code every time.
 
-Turn on **Remember trusted devices** and the address stays the same instead. Your
+Set **Trusted devices** to keep the address and it stays the same instead. Your
 laptop or phone can bookmark the upload page and come straight back to it with
 nothing to type at all — no address, no code. For a device you send games from
 regularly, this is the single biggest thing you can do to make it painless.
@@ -288,7 +288,7 @@ and a set missing a disc is not offered at all.
 | A game worked and stopped after an emulator update | Open that emulator's version dialog and pick an earlier build. Choosing one also holds it, so nothing moves it back |
 | An emulator you held updated anyway | The hold was released, or the emulator is not the one you held — a held row says *held* under its name |
 | A game will not boot and the system needs firmware | Check **BIOS and firmware** — a missing file looks exactly like a game failing |
-| A bookmarked transfer link stopped working | Either **Remember trusted devices** is off, so every session issues a new one, or **Reset link** was pressed — which invalidates all of them at once |
+| A bookmarked transfer link stopped working | Either **Trusted devices** is set to a new link each session, or **Reset link** was pressed — which invalidates all of them at once |
 | A ROM stayed in `transfer/` after adding | Something was unaccounted for: a disc a playlist names, or a different dump of the same name already filed |
 | The cover or the name is wrong | **Wrong game? Choose the right one** on the add panel, or the pencil on an added game |
 | A game is on the wrong system's shelf, with that system's cover | Its core covers several systems and the game was added before the **System** row existed. Edit it, set **System**, and look the artwork up again |

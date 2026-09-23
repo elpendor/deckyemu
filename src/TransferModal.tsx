@@ -5,11 +5,10 @@ import {
   ModalRoot,
   Navigation,
   QuickAccessTab,
-  ToggleField,
 } from "@decky/ui";
 import { FileSelectionType, openFilePicker, toaster } from "@decky/api";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { FaTrash } from "react-icons/fa";
+import { FaListUl, FaTrash } from "react-icons/fa";
 
 import {
   cancelUpload,
@@ -36,6 +35,7 @@ import { askDiscChoice, confirmJoinDisc } from "./confirmDiscSet";
 import { FileName } from "./FileName";
 import { HandoffCode } from "./HandoffCode";
 import { TransferCodeModal } from "./TransferCodeModal";
+import { TrustedDevices } from "./TrustedDevices";
 
 /**
  * What marks a sent file as an emulator definition rather than a ROM.
@@ -66,7 +66,7 @@ import { installContentFor } from "./installContent";
 import { openPatchInstall } from "./installPatch";
 import { openRestoreSaves } from "./openRestore";
 import { DiscTracksModal } from "./DiscTracksModal";
-import { groupReceived, ownedCount, ownedNoun } from "./receivedGroups";
+import { groupReceived, ownedCount } from "./receivedGroups";
 import { closeOpenModals, openModal } from "./modalStack";
 import { repointShortcut } from "./steam";
 import { ICON_BUTTON, ICON_BUTTON_WIDE } from "./iconButton";
@@ -219,10 +219,27 @@ export function ProgressBar({ fraction }: { fraction: number }) {
  * scrolling *inside* it and nothing else, whereas the dialog scrolling costs the
  * QR code being off screen.
  */
+/**
+ * The received list: four rows, then it scrolls.
+ *
+ * A row is the 48px of its buttons plus the 6px gap, so four is 216 -- the same
+ * arithmetic the optional-files list settled on, and about the most that can be
+ * taken in without reading. Letting it take the whole dialog was worse than it
+ * sounds: with twelve files waiting the code, what is arriving and **Done**
+ * were all pushed apart by a list nobody scrolls to the bottom of anyway.
+ *
+ * Its own scroller rather than the dialog's, and the nesting is avoided by
+ * arithmetic rather than by hope: with this capped, the head and the foot add
+ * up to well under the shell's ceiling, so the region around it has nothing
+ * left to scroll.
+ */
 const RECEIVED = {
   display: "flex",
   flexDirection: "column" as const,
   gap: "6px",
+  maxHeight: "216px",
+  overflowY: "auto" as const,
+  overscrollBehavior: "contain" as const,
 };
 
 /**
@@ -506,7 +523,15 @@ export function TransferModal({
       setBusy(true);
       try {
         await setSettings({ transfer_remember: next });
-        if (status?.running) {
+        // The restart is only there to hand out a link of the new kind, and it
+        // is not worth a transfer: with something arriving the setting is saved
+        // and takes effect the next time receiving starts, which is what the
+        // dialog promised before the press.
+        const live =
+          (status?.uploading ?? 0) > 0 ||
+          (status?.uploads?.length ?? 0) > 0 ||
+          (status?.paused ?? 0) > 0;
+        if (status?.running && !live) {
           await stopFileServer();
           await startFileServer(status.target_dir || dir);
         }
@@ -518,7 +543,15 @@ export function TransferModal({
         setBusy(false);
       }
     },
-    [status?.running, status?.target_dir, dir, load],
+    [
+      status?.running,
+      status?.target_dir,
+      status?.uploading,
+      status?.uploads?.length,
+      status?.paused,
+      dir,
+      load,
+    ],
   );
 
   /** Invalidate every saved link, and hand out a new one. */
@@ -874,6 +907,15 @@ export function TransferModal({
   const stopped = status?.stopped ?? [];
   const uploads = status?.uploads ?? [];
   const arriving = summariseUploads(uploads);
+  /**
+   * Something is moving, or waiting to move again.
+   *
+   * What the trusted-devices change must not interrupt: the restart it does is
+   * only there to reissue the link, and `stop_file_server` stops whatever is
+   * happening. A paused transfer counts -- it is between attempts, not over,
+   * and restarting the server is the end of it.
+   */
+  const transferLive = uploads.length > 0 || (status?.paused ?? 0) > 0;
   // See the fold below. `received` counts the folder rather than this session,
   // which is the point: a file sent yesterday and never added is still the
   // reason you are looking at this dialog rather than at a QR code.
@@ -974,6 +1016,7 @@ export function TransferModal({
                     idleMinutes={Math.round(status.idle_timeout / 60)}
                     remember={remember}
                     onRemember={(next) => void changeRemember(next)}
+                    deferred={transferLive}
                     busy={busy}
                   />,
                 )
@@ -1100,12 +1143,11 @@ export function TransferModal({
         )}
 
         {(!running || !codeFolded) && (
-          <ToggleField
-            label="Remember trusted devices"
-            description="Keeps the same address between sessions, so a device can bookmark this page and come straight back with no code to type. Off issues a new link each time."
-            checked={remember}
+          <TrustedDevices
+            remember={remember}
             onChange={(next) => void changeRemember(next)}
-            disabled={busy}
+            busy={busy}
+            deferred={transferLive}
           />
         )}
       </Focusable>
@@ -1209,9 +1251,9 @@ export function TransferModal({
                           <DiscTracksModal playlist={file.name} tracks={tracks} />,
                         )
                       }
-                      style={ICON_BUTTON_WIDE}
+                      style={ICON_BUTTON}
                     >
-                      {ownedNoun(file.name) === "track" ? "Tracks" : "Files"}
+                      <FaListUl />
                     </DialogButton>
                   )}
                   {/* What the file is for decides the button. A BIOS offered

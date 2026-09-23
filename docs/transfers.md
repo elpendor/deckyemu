@@ -56,7 +56,7 @@ to clear the inbox from Game Mode, and it asks first, naming the size.
 multi-disc game adds an `.m3u` over the top of those — all of it one game, and
 none of the tracks worth adding on their own. So the sheet gets the row, and what
 it names folds into it: the row reports the size of the whole set and how many
-files it speaks for, a **Tracks** button lists them by name, and **Add** and
+files it speaks for, a list button opens their names, and **Add** and
 **delete** both act on all of it. The count above the list still counts files, so
 it still matches what you sent. A track whose `.cue` has not arrived stays a row
 of its own, because that one is a game that cannot be assembled and you need to
@@ -122,9 +122,15 @@ your Deck, and they would have no way of telling they had been given one.
 ### Keeping the same address
 
 By default the port, token and code all rotate per session, so nothing outlives a
-transfer and a saved link is worthless. **Remember trusted devices** reuses the
-port and token instead, so a device that bookmarked the link lands on the upload
-page with nothing to type.
+transfer and a saved link is worthless. **Trusted devices**, set to keep the
+address, reuses the port and token instead, so a device that bookmarked the link
+lands on the upload page with nothing to type. It is a **Change** button behind
+a confirmation rather than a switch: changing it reissues the link, and that is
+not something a press meant for the button below it should do.
+
+**It never interrupts a transfer.** Reissuing means restarting the server, so
+with a file arriving the change is saved and takes effect the next time
+receiving starts.
 
 It is off by default because it changes what the link *is*: a bookmark becomes a
 standing credential that works whenever the server runs. That is the right trade
