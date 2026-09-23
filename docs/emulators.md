@@ -40,13 +40,25 @@ types it accepts and its launch arguments are all filled in for you.
 | Supermodel | Sega Model 3 arcade | Flathub — [`com.supermodel3.Supermodel`](https://flathub.org/apps/com.supermodel3.Supermodel) |
 | BigPEmu | Atari Jaguar | Direct — [`www.richwhitehouse.com/jaguar`](https://www.richwhitehouse.com/jaguar/) |
 
+Nothing here is a mirror or a repack: the application id or the repository above
+is where the build comes from, and following one takes you to the publisher's
+own page. That is the whole of what this plugin adds — it downloads what those
+projects publish and fills in the system, the file types and the launch
+arguments.
+
+Most come from Flathub and install for your user, so no password is asked for.
+RPCS3, Azahar, Vita3K and Xenia Canary publish no Flatpak and are downloaded
+from their own releases into `~/deckyemu/emulators`. The panel says which is
+which in brackets after the name, because the two behave differently when
+something goes wrong and only one of them has builds you can move between.
+
 ### The one marked (Direct)
 
 **BigPEmu** plays the Atari Jaguar, and it is the only way to play the system
 well — RetroArch's Virtual Jaguar core leaves games that do not run at all. Its
 author publishes no flatpak and uses no release page, so the plugin reads the
 same update feed BigPEmu's own **Check for Updates** reads, and downloads the
-build that feed names. Nothing is mirrored and nothing is repacked.
+build that feed names.
 
 That feed states a checksum for the file, which no other entry here does, so
 this is the one download the plugin can check against a number the publisher
@@ -61,17 +73,7 @@ One difference worth knowing: **an older build cannot be checked against a
 checksum.** The feed states one for the current version only, so a fresh
 install is verified and a rollback is not.
 
-Nothing here is a mirror or a repack: the application id or the repository above
-is where the build comes from, and following one takes you to the publisher's
-own page. That is the whole of what this plugin adds — it downloads what those
-projects publish and fills in the system, the file types and the launch
-arguments.
-
-Most come from Flathub and install for your user, so no password is asked for.
-RPCS3, Azahar, Vita3K and Xenia Canary publish no Flatpak and are downloaded
-from their own releases into `~/deckyemu/emulators`. The panel says which is
-which in brackets after the name, because the two behave differently when
-something goes wrong and only one of them has builds you can move between.
+### What installing also sets up
 
 Several emulators are not playable as they ship — a keyboard is bound instead of
 a controller, or they start in a window — so installing one also writes a
@@ -83,6 +85,8 @@ menu bar that slides in, a notification in the corner or a mouse pointer are
 harmless; on a handheld the game is the only thing on screen and there is no
 pointer to dismiss any of it with. xemu is the clearest case — its menu bar, its
 notifications and its cursor are all switched off on install.
+
+### BIOS, keys and firmware
 
 **Installing the emulator is not always enough to play.** Some systems need BIOS
 files, keys or firmware that are yours to dump and that this plugin will never
