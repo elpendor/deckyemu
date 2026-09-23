@@ -176,6 +176,16 @@ def part_of_a_disc(path):
     return False
 
 
+def named_by(path):
+    """The filenames a playlist points at, or None if it could not be read.
+
+    The public way to ask `_referenced`, for the one caller outside this module
+    that needs it: adding a disc to a game already in the library has to know
+    what its playlist says before it can say anything more.
+    """
+    return _referenced(path)
+
+
 def sheet_owners(folder, names):
     """{name: the playlist in this folder that owns it} for the ones owned.
 

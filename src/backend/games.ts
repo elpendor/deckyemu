@@ -488,6 +488,18 @@ export function realCores(cores: Core[]): Core[] {
 export const probeRom = callable<[romPath: string], RomProbe>("probe_rom");
 
 /**
+ * Put another disc into a game that is already in the library.
+ *
+ * Files the disc beside the others and writes or extends the playlist, leaving
+ * the shortcut alone — repointing it is the caller's, through `updateGame`,
+ * because whether a shortcut runs a playlist depends on the core.
+ */
+export const addDiscToGame = callable<
+  [appId: number, discPath: string],
+  { ok: boolean; playlist: string; discs: string[]; error: string }
+>("add_disc_to_game");
+
+/**
  * The discs beside a file that look like one game with it, before adding it.
  *
  * `probe_rom` carries the same answer, but it also reads the file, picks cores

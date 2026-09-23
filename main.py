@@ -839,6 +839,90 @@ class Plugin(
             }
         return {"ok": True, "name": name, "error": ""}
 
+    async def add_disc_to_game(self, app_id: int, disc_path: str):
+        """Put another disc into a game that is already in the library.
+
+        The case this exists for is ordinary and was unreachable from Game Mode:
+        a two-disc game whose second disc turned up after the first was added.
+        Disc 1 went in as a single game, so there is no playlist, and the only
+        way to end up with one entry was to delete the game and add it again --
+        which throws away the Steam app id, and with it the play time and any
+        per-game controller layout.
+
+        What it does is small, because the pieces were all here. The disc is
+        filed beside the others exactly as adding a game files one, the playlist
+        is written or extended, and the caller repoints the shortcut through
+        `update_game`, which already knows how. Nothing is deleted and nothing
+        is renamed.
+
+        Returns {ok, playlist, discs, error}. `playlist` is the path to repoint
+        to -- the caller decides whether to, because whether the shortcut runs a
+        playlist depends on the core and that judgement lives in one place in
+        the panel.
+        """
+        library = await self._run(store.get_library)
+        entry = library.get(str(app_id))
+        if not entry:
+            return {"ok": False, "playlist": "", "discs": [],
+                    "error": "That game is no longer tracked."}
+
+        rom_path = entry.get("rom_path", "")
+        folder = os.path.dirname(rom_path)
+        if not rom_path or not await self._run(os.path.isdir, folder):
+            return {"ok": False, "playlist": "", "discs": [],
+                    "error": "This game's folder is not there."}
+
+        if not disc_path or not await self._run(os.path.isfile, disc_path):
+            return {"ok": False, "playlist": "", "discs": [],
+                    "error": "That file is not there."}
+        # The same refusal the hand-picked path gives, and for the same reason:
+        # the picker shows every file in the folder, so a CD game's tracks are
+        # all one press away and every one of them looks like a disc.
+        if await self._run(romshelf.part_of_a_disc, disc_path):
+            return {"ok": False, "playlist": "", "discs": [],
+                    "error": "%s is one track of a disc, not a disc. Pick the "
+                             ".cue that names it instead."
+                             % os.path.basename(disc_path)}
+
+        # Filed the way adding a game files a ROM: out of the transfer folder,
+        # with its tracks, into `roms/<system>`. A disc the user keeps elsewhere
+        # comes back unmoved, and then it is not beside the others -- which a
+        # playlist cannot express, so it is refused rather than half-done.
+        filed = await self._run(
+            romshelf.file_rom, disc_path, entry.get("system", ""),
+            await self._run(fileserver.default_dir, False),
+        )
+        if os.path.dirname(os.path.realpath(filed)) != os.path.realpath(folder):
+            return {"ok": False, "playlist": "", "discs": [],
+                    "error": "A disc has to be in the same folder as the "
+                             "others, and this one could not be moved there."}
+
+        name = os.path.basename(filed)
+        playlist = rom_path if rom_path.lower().endswith(".m3u") else ""
+        if playlist:
+            known = await self._run(romshelf.named_by, playlist)
+            if known is None:
+                return {"ok": False, "playlist": "", "discs": [],
+                        "error": "This game's playlist could not be read."}
+        else:
+            known = [os.path.basename(rom_path)]
+
+        if any(one.lower() == name.lower() for one in known):
+            return {"ok": True, "playlist": playlist, "discs": known,
+                    "error": ""}
+
+        discs = await self._run(discset.in_disc_order, known + [name])
+        written, error = await self._run(
+            discset.write_playlist, folder, discs,
+            os.path.basename(rom_path) if rom_path.lower().endswith(".m3u") else "",
+        )
+        if error:
+            return {"ok": False, "playlist": "", "discs": [], "error": error}
+
+        decky.logger.info("Added %s to %s; playlist now names %d discs",
+                          name, entry.get("title"), len(discs))
+        return {"ok": True, "playlist": written, "discs": discs, "error": ""}
+
     async def make_disc_playlist(self, rom_path: str, discs: list):
         """Write the `.m3u` for a set and return the path to add instead.
 

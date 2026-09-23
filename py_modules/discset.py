@@ -242,7 +242,25 @@ def playlist_body(disc_names):
     return "".join("%s\n" % name for name in disc_names)
 
 
-def write_playlist(folder, disc_names):
+def in_disc_order(names):
+    """`names` by disc number, or in the order given when they do not all carry one.
+
+    A disc added to a game already in the library is picked from a file browser,
+    so it arrives last however it is numbered -- and the order of a playlist is
+    the order of the discs, with nothing else in the file to say which is which.
+    Sorted only when every name answers, because a set the naming rules cannot
+    read is one the user assembled by hand, and then the order they picked in is
+    the only answer anybody has.
+    """
+    numbered = [split_disc(name) for name in names]
+    if not all(numbered):
+        return list(names)
+    return [name for _, name in
+            sorted(zip((part[1] for part in numbered), names),
+                   key=lambda pair: pair[0])]
+
+
+def write_playlist(folder, disc_names, replacing=""):
     """Write the playlist beside its discs. Returns (path, error).
 
     Refuses rather than overwrites when something is already there saying
@@ -250,6 +268,12 @@ def write_playlist(folder, disc_names):
     and replacing it is not this function's decision to make. One that already
     says exactly this is a success -- adding the same set twice is allowed, and
     the second time has nothing to do.
+
+    `replacing` is the basename of a playlist the caller already owns -- the one
+    its own game is pointed at -- which it may rewrite, and which names the file
+    instead of the discs do. That is how a disc joins a set that already has a
+    playlist: the file keeps its name, so the shortcut pointing at it keeps
+    working, and the refusal above still guards every other file in the folder.
     """
     if len(disc_names) < 2:
         return "", "A playlist needs at least two discs."
@@ -266,10 +290,12 @@ def write_playlist(folder, disc_names):
         if not os.path.isfile(os.path.join(folder, name)):
             return "", "%s is not in this folder." % name
 
-    path = os.path.join(folder, playlist_name(disc_names))
+    if replacing and replacing != os.path.basename(replacing):
+        return "", "%s is not a file in this folder." % replacing
+    path = os.path.join(folder, replacing or playlist_name(disc_names))
     body = playlist_body(disc_names)
 
-    if os.path.exists(path):
+    if os.path.exists(path) and not replacing:
         try:
             with open(path, "r", encoding="utf-8", errors="replace") as handle:
                 existing = handle.read()

@@ -218,6 +218,12 @@ then shows no row about discs at all — it was asked and answered, and a switch
 offering the same thing again would be the panel pretending not to know. To
 change your mind, pick the file again.
 
+**A disc that turns up later can join a game already added.** Open the game's
+editor and press **Add another disc**. The disc is filed beside the others, the
+playlist is written or extended, and the shortcut is repointed at it — so the
+game keeps the entry it has, along with its play time and its controller layout.
+Deleting the game and adding it again works too, and throws both of those away.
+
 **What runs the game decides the rest:**
 
 | Runs it | Shortcut starts | Changing disc |

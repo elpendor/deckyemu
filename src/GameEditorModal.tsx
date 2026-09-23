@@ -34,6 +34,8 @@ import {
   type Core,
   type GameOptions,
   type Workaround,
+  addDiscToGame,
+  getStatus,
 } from "./backend";
 import {
   addAppsToCollection,
@@ -55,6 +57,7 @@ import {
   systemOptions,
   withCurrentCore,
 } from "./corePicker";
+import { readsPlaylist, takesDiscs } from "./discSet";
 import { preselectCore } from "./CoreInstallPanel";
 import { openManagePage } from "./manageRoute";
 import { callWithRetry } from "./timeout";
@@ -406,6 +409,63 @@ export function GameEditorModal({ game, onSaved, closeModal, onLeave }: Props) {
   // Whether the file's name is the game's name. False for anything installed
   // from a package, which boots eboot.bin -- see lookupTerm.
   const byFilename = filenameNamesTheGame(romPath);
+
+  /**
+   * Put another disc into this game, keeping the Steam entry it already has.
+   *
+   * The case is ordinary: a two-disc game whose second disc turned up after the
+   * first went in, so the game is a single disc with no playlist. Deleting and
+   * re-adding was the only way to one entry, and it throws away the app id --
+   * the play time and any per-game controller layout with it.
+   *
+   * The backend files the disc beside the others and writes the playlist. The
+   * shortcut is repointed here, and only when the core can read one: PCSX2
+   * cannot, and for it the playlist is still worth writing -- filing and
+   * deleting follow it -- while the shortcut goes on starting the first disc
+   * and its own menu does the swapping. The same judgement the add flow makes,
+   * from the same function.
+   */
+  const addDisc = useCallback(async () => {
+    setError("");
+    // The transfer folder, not the game's own. A disc being added to a game
+    // that is already in the library has just arrived from another device --
+    // that is the whole shape of the case -- so the folder it is sitting in is
+    // where the browser should open. The game's folder is the fallback, for a
+    // disc already filed there and for a Deck whose backend did not answer.
+    let start = dirname(romPath);
+    try {
+      const status = await getStatus();
+      start = status.waiting_rom_dir || status.default_rom_dir || start;
+    } catch (statusError) {
+      logError("could not read the transfer folder", statusError);
+    }
+
+    let picked: { path: string; realpath: string } | undefined;
+    try {
+      picked = await openFilePicker(
+        FileSelectionType.FILE, start, true, true,
+        undefined, undefined, false, true,
+      );
+    } catch (pickError) {
+      if (!String(pickError ?? "").toLowerCase().includes("cancel")) {
+        logError("file picker failed", pickError);
+        setError("Could not open the file browser.");
+      }
+      return;
+    }
+    const path = picked?.realpath || picked?.path || "";
+    if (!path) return;
+
+    const result = await addDiscToGame(game.app_id, path);
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
+    if (result.playlist && readsPlaylist(cores?.all.find((one) => one.id === coreId))) {
+      setRomPath(result.playlist);
+    }
+    setNote(`${result.discs.length} discs now. Save to apply.`);
+  }, [romPath, game.app_id, cores, coreId]);
 
   const pickRom = useCallback(async () => {
     setError("");
@@ -1234,6 +1294,19 @@ export function GameEditorModal({ game, onSaved, closeModal, onLeave }: Props) {
           Change ROM file
         </DialogButton>
       </div>
+
+      {/* Only where another disc could belong. On a cartridge this is a button
+          that would file a file beside it and write a playlist about it. */}
+      {takesDiscs(basename(romPath)) && (
+        <div style={FIELD}>
+          <Label hint="Files it beside this game and puts it in the playlist.">
+            Discs
+          </Label>
+          <DialogButton onClick={() => void addDisc()} style={BUTTON} disabled={busy}>
+            Add another disc
+          </DialogButton>
+        </div>
+      )}
     </>,
   );
 
