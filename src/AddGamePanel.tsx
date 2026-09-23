@@ -444,8 +444,12 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
     }
 
     // Asked here as well as in the transfer dialog, so a set is never merged
-    // without being put to the user -- see `askDiscChoice`.
-    await selectRom(path, await askDiscChoice(path));
+    // without being put to the user -- see `askDiscChoice`. Backing out of that
+    // question withdraws the press: the file is not taken into the flow, and
+    // whatever was already chosen stays chosen.
+    const choice = await askDiscChoice(path);
+    if (choice === "cancel") return;
+    await selectRom(path, choice);
   }, [settings?.last_rom_dir, status.default_rom_dir, status.waiting_rom_dir]);
 
   const visibleCores: Core[] = useMemo(() => {

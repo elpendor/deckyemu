@@ -210,8 +210,8 @@ on by default — turn it off to add the single disc instead.
 
 **You are asked first, whichever way you got here.** Choose a disc — with **Add**
 in the transfer dialog, or from the file browser — and a question names every
-disc it found, in the order they would go into the playlist: **One game**, or
-**This disc only**. The point is that merging never just happens to you: the
+disc it found, in the order they would go into the playlist: **One game**, **This disc
+only**, or **Cancel** to add nothing at all. The point is that merging never just happens to you: the
 discs are recognised by their filenames and nothing else can recognise them, so
 the guess is put to you rather than acted on. Whichever you answer, the panel
 then shows no row about discs at all — it was asked and answered, and a switch

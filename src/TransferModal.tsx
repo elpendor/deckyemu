@@ -651,7 +651,12 @@ export function TransferModal({
        * press was about getting this file into the add flow, and it goes there
        * undecided, which is what the panel already handles.
        */
-      void selectRom(path, await askDiscChoice(path));
+      // Backing out of the disc question withdraws the press entirely: nothing
+      // is added, and this dialog stays where it was rather than closing and
+      // opening the panel behind it.
+      const choice = await askDiscChoice(path);
+      if (choice === "cancel") return;
+      void selectRom(path, choice);
       toaster.toast({ title: "Ready to add", body: name });
       void close();
       // Everything else of ours, not just this dialog. Steam re-reveals each
