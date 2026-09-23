@@ -41,6 +41,72 @@ interface Props {
    * worse -- it leaves that space blank and adds a row.
    */
   children?: ReactNode;
+  /**
+   * Draw the address and the code without the QR square beside them.
+   *
+   * For a dialog where the crossing has already been made and the screen has
+   * turned into something else — the transfer dialog once files are arriving,
+   * where 190px of QR sits above the list you came back to read. A second
+   * device can still be sent here by typing, which is why the code stays.
+   *
+   * Here rather than in the caller because the sizes and the two instructions
+   * are this component's whole reason to exist: a dialog that drew its own
+   * shorter version would be the drift this file was made to end, and
+   * `test_handoff` would say so.
+   */
+  compact?: boolean;
+}
+
+/**
+ * The same crossing as one line, for a dialog that has become about something
+ * else.
+ *
+ * The transfer dialog once files are arriving: 190px of QR above the list you
+ * came back to read, and the list capped at 22vh under it because the dialog
+ * had run out of height. A second device can still be sent here by typing, so
+ * the code stays -- it is the square that goes.
+ *
+ * Here rather than in the caller because the sizes and the wording are this
+ * file's whole reason to exist, and a dialog drawing its own shorter version is
+ * the drift it was made to end. `test_handoff` checks exactly that.
+ */
+function CompactCode({ shortUrl, pin, pinLocked, children }: Props) {
+  return (
+    <Focusable style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+      {/* Address first, then the code, because that is the order they are used
+          in: you open the page and it asks for the digits. Leading with the
+          code put the answer before the question. */}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        {pinLocked ? (
+          <div style={{ color: "#e35d5d", fontSize: "13px" }}>
+            Too many wrong codes. Stop and start again for a new one.
+          </div>
+        ) : (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "baseline",
+              gap: "10px",
+              flexWrap: "wrap",
+            }}
+          >
+            <div style={{ fontSize: "19px", fontWeight: 600, wordBreak: "break-all" }}>
+              {shortUrl}
+            </div>
+            <div style={{ display: "flex", alignItems: "baseline", gap: "6px" }}>
+              <span style={MUTED}>then</span>
+              <span
+                style={{ fontSize: "19px", fontWeight: 700, letterSpacing: "0.24em" }}
+              >
+                {pin}
+              </span>
+            </div>
+          </div>
+        )}
+      </div>
+      {children}
+    </Focusable>
+  );
 }
 
 /**
@@ -59,7 +125,22 @@ interface Props {
  * arm's length, and the six digits are read off this screen by somebody typing
  * them into a laptop.
  */
-export function HandoffCode({ url, shortUrl, pin, pinLocked, children }: Props) {
+export function HandoffCode({
+  url,
+  shortUrl,
+  pin,
+  pinLocked,
+  children,
+  compact,
+}: Props) {
+  if (compact) {
+    return (
+      <CompactCode shortUrl={shortUrl} pin={pin} pinLocked={pinLocked} url={url}>
+        {children}
+      </CompactCode>
+    );
+  }
+
   return (
     <Focusable style={SPLIT}>
       <QrCode text={url} />

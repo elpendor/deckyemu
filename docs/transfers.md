@@ -36,6 +36,16 @@ One kind of file is not a ROM: a `.deckyemu.json` **emulator definition** gets a
 **Import** button instead. That is how an emulator this plugin does not ship gets
 set up — see [Emulators this plugin does not ship](emulators.md#emulators-this-plugin-does-not-ship).
 
+**The dialog gives its height to the list.** With a transfer running or files
+waiting, the QR square folds to one line — the address and then the code, with
+**QR code** opening the square and the settings over the top for a second
+device — and
+several files arriving report as one line and one bar, with **Details** for the
+per-file rows and their Cancel buttons. **Done** is pinned to the bottom and the
+received list is the only thing that scrolls, so finishing never means scrolling
+past it. With nothing arriving and nothing waiting the code stays open, which is
+when you opened the dialog to scan it.
+
 The list is the folder, not a record of what arrived while the dialog was open,
 so a file sent last week is still there to act on. Anything you decide against
 gets a **delete** button beside its action — a ROM you thought better of, a BIOS

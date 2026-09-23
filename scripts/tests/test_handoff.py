@@ -36,6 +36,9 @@ def _frontend(name):
 # The dialogs that make the crossing, and the file they all go through.
 _CROSSERS = (
     "TransferModal.tsx",
+    # The transfer dialog's second crossing: the compact line in the dialog, and
+    # the square over the top of it once the list is what the dialog is about.
+    "TransferCodeModal.tsx",
     "ReportModal.tsx",
     "SaveBackupModal.tsx",
     "CloudSetupModal.tsx",

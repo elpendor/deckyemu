@@ -31,9 +31,11 @@ import {
   type FileServerStatus,
 } from "./backend";
 import { selectRom } from "./addFlow";
+import { summariseUploads } from "./arriving";
 import { askDiscChoice, confirmJoinDisc } from "./confirmDiscSet";
 import { FileName } from "./FileName";
 import { HandoffCode } from "./HandoffCode";
+import { TransferCodeModal } from "./TransferCodeModal";
 
 /**
  * What marks a sent file as an emulator definition rather than a ROM.
@@ -221,8 +223,45 @@ const RECEIVED = {
   display: "flex",
   flexDirection: "column" as const,
   gap: "6px",
-  maxHeight: "22vh",
+};
+
+/**
+ * The dialog as a column with a ceiling, rather than a stack that grows.
+ *
+ * Measured on the device at 1280x800: the code block is 200px of QR and
+ * address, the received list was capped at 22vh, the trusted-devices toggle and
+ * its two-line description another 90 -- about 612px before a single transfer
+ * is in flight, against roughly 680 of usable modal. So the dialog scrolled,
+ * **and the list scrolled inside it**, which on a thumbstick is the worst thing
+ * this screen could do. `Done` sat under all of it.
+ *
+ * A ceiling with one scroller between a pinned head and a pinned foot fixes
+ * both: nothing nests, and the button that finishes never moves. `maxHeight`
+ * rather than `height` so the dialog with nothing waiting stays small instead
+ * of drawing an empty box down the screen.
+ */
+const SHELL = {
+  display: "flex",
+  flexDirection: "column" as const,
+  gap: "10px",
+  maxHeight: "76vh",
+};
+
+/**
+ * The one scroll region: the received list, and the stopped list above it.
+ *
+ * `minHeight: 0` is what makes it work at all -- a flex child defaults to
+ * `min-height: auto` and refuses to shrink below its content, so without it the
+ * list pushes the footer off the bottom instead of scrolling.
+ */
+const SCROLLER = {
+  display: "flex",
+  flexDirection: "column" as const,
+  gap: "10px",
+  flex: "1 1 auto",
+  minHeight: 0,
   overflowY: "auto" as const,
+  overscrollBehavior: "contain" as const,
 };
 
 /**
@@ -259,6 +298,8 @@ export function TransferModal({
     Record<string, RequirementMatch>
   >({});
   const [remember, setRemember] = useState(false);
+  /** Per-file rows for what is arriving, in place of the one-line summary. */
+  const [showArriving, setShowArriving] = useState(false);
   const timer = useRef<number | undefined>(undefined);
 
   // Through a ref so the unmount effect below can stay dependency-free: given
@@ -832,6 +873,12 @@ export function TransferModal({
   const groups = groupReceived(received);
   const stopped = status?.stopped ?? [];
   const uploads = status?.uploads ?? [];
+  const arriving = summariseUploads(uploads);
+  // See the fold below. `received` counts the folder rather than this session,
+  // which is the point: a file sent yesterday and never added is still the
+  // reason you are looking at this dialog rather than at a QR code.
+  const codeFolded =
+    received.length > 0 || uploads.length > 0 || (status?.paused ?? 0) > 0;
 
   // ModalRoot gets our handler, not the raw one, so dismissing with B stops the
   // server too rather than leaving it listening behind a closed dialog.
@@ -840,10 +887,11 @@ export function TransferModal({
       {/* Injected here as well as in the panels: the rule is scoped to a class,
           not global, and a modal renders outside whichever panel opened it. */}
       <style>{DANGER_CSS}</style>
+      <Focusable style={SHELL}>
       {/* Matches the button that opens it. The heading and the button used to
           use different words for the same thing, so arriving here read as
           having gone somewhere else. */}
-      <div style={{ fontSize: "18px", fontWeight: 600, marginBottom: "8px" }}>
+      <div style={{ fontSize: "18px", fontWeight: 600 }}>
         Transfer to Deck
       </div>
 
@@ -860,7 +908,7 @@ export function TransferModal({
         </div>
       )}
 
-      <Focusable style={COLUMN}>
+      <Focusable style={{ ...COLUMN, flex: "0 0 auto" }}>
         {!running && (
           <>
             <div style={MUTED}>
@@ -885,7 +933,66 @@ export function TransferModal({
           </>
         )}
 
-        {running && status && (
+        {/*
+          * The code folds away once there is something else to look at.
+          *
+          * It is 190px of QR plus the address and the six digits, and it is
+          * read exactly once -- after that the dialog is about what is arriving
+          * and what has arrived, and the thing you came back for is below the
+          * fold. Folded on "a transfer is in flight, or files are waiting",
+          * rather than on a device having connected: coming back to the dialog
+          * to add what arrived is the case this is for, and by then the
+          * connection is long over.
+          *
+          * Never one-way, and never sticky. Sending from a second device is
+          * ordinary, so **Show QR** is always there, and an empty list with
+          * nothing arriving leaves it open -- which is exactly when the dialog
+          * was opened to scan something.
+          */}
+        {running && status && codeFolded && (
+          <HandoffCode
+            url={status.url}
+            shortUrl={status.short_url}
+            pin={status.pin}
+            pinLocked={status.pin_locked}
+            compact
+          >
+            {/* Over the top, not in place. Expanding here put the dialog
+                back the way it was with nothing to press to undo it; a modal
+                gives B a job and leaves this dialog as it was found. One
+                button, because what it opens carries the square and the
+                settings both -- the whole of what folding put away. */}
+            <DialogButton
+              onClick={() =>
+                openModal(
+                  <TransferCodeModal
+                    url={status.url}
+                    shortUrl={status.short_url}
+                    pin={status.pin}
+                    pinLocked={status.pin_locked}
+                    targetDir={status.target_dir}
+                    idleMinutes={Math.round(status.idle_timeout / 60)}
+                    remember={remember}
+                    onRemember={(next) => void changeRemember(next)}
+                    busy={busy}
+                  />,
+                )
+              }
+              style={ICON_BUTTON_WIDE}
+            >
+              QR code
+            </DialogButton>
+          </HandoffCode>
+        )}
+
+        {/* The one thing folding would otherwise lose, and only while it
+            matters. Close reads like it cancels, and a transfer running is
+            exactly when somebody wants to put the Deck down. */}
+        {running && codeFolded && uploads.length > 0 && (
+          <div style={MUTED}>Closing this is fine — transfers keep going.</div>
+        )}
+
+        {running && status && !codeFolded && (
           <HandoffCode
             url={status.url}
             shortUrl={status.short_url}
@@ -925,9 +1032,42 @@ export function TransferModal({
             this existed a multi-gigabyte ROM produced no sign of life at all --
             a file only appeared once it had finished and been renamed into
             place, so a long transfer and a dead connection looked identical. */}
-        {uploads.length > 0 && (
+        {/*
+          * One line for the lot, with the rows a press away.
+          *
+          * Two lines per file was already the compact version, and it is still
+          * 70px each -- three files arriving is 210px of bars above the list,
+          * at exactly the moment the list is what the dialog is for. The
+          * summary is what somebody glancing at this wants: is it moving, and
+          * how far. Cancelling one of several is the reason **Details** exists,
+          * and it is rare enough to be a press.
+          */}
+        {uploads.length > 0 && !showArriving && (
+          <Focusable style={{ ...COLUMN, gap: "4px" }}>
+            <Focusable style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                {arriving.files === 1 ? "1 file" : `${arriving.files} files`}
+                {" · "}
+                {Math.round(arriving.fraction * 100)}%
+                {" · "}
+                {humanSize(arriving.received)} of {humanSize(arriving.total)}
+              </div>
+              <DialogButton onClick={() => setShowArriving(true)} style={ICON_BUTTON_WIDE}>
+                Details
+              </DialogButton>
+            </Focusable>
+            <ProgressBar fraction={arriving.fraction} />
+          </Focusable>
+        )}
+
+        {uploads.length > 0 && showArriving && (
           <div style={{ ...COLUMN, gap: "8px" }}>
-            <div style={{ fontWeight: 600 }}>Arriving</div>
+            <Focusable style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <div style={{ fontWeight: 600, flex: 1 }}>Arriving</div>
+              <DialogButton onClick={() => setShowArriving(false)} style={ICON_BUTTON_WIDE}>
+                Hide
+              </DialogButton>
+            </Focusable>
             {/* Two lines per file, not three: name and size share a row with the
                 button, and the bar gets the row under it. Three rows each meant
                 two simultaneous uploads could push the dialog into scrolling,
@@ -959,6 +1099,20 @@ export function TransferModal({
           </div>
         )}
 
+        {(!running || !codeFolded) && (
+          <ToggleField
+            label="Remember trusted devices"
+            description="Keeps the same address between sessions, so a device can bookmark this page and come straight back with no code to type. Off issues a new link each time."
+            checked={remember}
+            onChange={(next) => void changeRemember(next)}
+            disabled={busy}
+          />
+        )}
+      </Focusable>
+
+      {/* The only thing that scrolls, and it takes whatever the head and the
+          foot leave. It was 22vh of a dialog that also scrolled. */}
+      <Focusable style={SCROLLER}>
         {/* Half-sent files nobody is sending: cancelled, or interrupted and not
             picked up again. Kept so choosing the file again carries on, which
             made them invisible -- the list skips half-files, and the only way
@@ -1205,22 +1359,10 @@ export function TransferModal({
           </div>
         )}
 
-        {/* Below the code and the received list: this is setup, not the thing you
-            opened the dialog to do. Offered even before the server starts, so the
-            choice can be made once rather than discovered mid-transfer.
+      </Focusable>
 
-            The description is deliberately two short lines. It was a paragraph,
-            and a paragraph here is what tipped the dialog into scrolling -- which
-            costs more than the nuance it was carrying, since the toggle is read
-            once and the QR code is read every time. */}
-        <ToggleField
-          label="Remember trusted devices"
-          description="Keeps the same address between sessions, so a device can bookmark this page and come straight back with no code to type. Off issues a new link each time."
-          checked={remember}
-          onChange={(next) => void changeRemember(next)}
-          disabled={busy}
-        />
-
+      {/* Pinned, so finishing never means scrolling past the list to find it. */}
+      <Focusable style={{ ...COLUMN, flex: "0 0 auto" }}>
         {/* One row, the same shape as Start receiving / Change folder above.
             Reset is conditional and secondary, so it takes the narrow half and
             leaves twice the width to the button everyone actually presses --
@@ -1250,6 +1392,7 @@ export function TransferModal({
             </div>
           )}
         </Focusable>
+      </Focusable>
       </Focusable>
     </ModalRoot>
   );
