@@ -30,6 +30,7 @@ import {
   type FileServerStatus,
 } from "./backend";
 import { selectRom } from "./addFlow";
+import { askDiscChoice } from "./confirmDiscSet";
 import { FileName } from "./FileName";
 import { HandoffCode } from "./HandoffCode";
 
@@ -562,8 +563,19 @@ export function TransferModal({
    * panel with the game already probed and its artwork resolved.
    */
   const use = useCallback(
-    (path: string, name: string) => {
-      void selectRom(path);
+    async (path: string, name: string) => {
+      /*
+       * Asked here, before the flow starts, because merging discs must never be
+       * implied: the detection is a guess from filenames, and this is the one
+       * screen where both discs are in front of you. The answer is carried into
+       * the panel -- a no adds this disc alone and takes the row away with it,
+       * rather than leaving a switch that offers again what was just declined.
+       *
+       * A failure to ask is not a failure to add. The set is a nicety; the
+       * press was about getting this file into the add flow, and it goes there
+       * undecided, which is what the panel already handles.
+       */
+      void selectRom(path, await askDiscChoice(path));
       toaster.toast({ title: "Ready to add", body: name });
       void close();
       // Everything else of ours, not just this dialog. Steam re-reveals each
@@ -1087,7 +1099,7 @@ export function TransferModal({
                     </DialogButton>
                   ) : (
                     <DialogButton
-                      onClick={() => use(file.path, file.name)}
+                      onClick={() => void use(file.path, file.name)}
                       style={ICON_BUTTON_WIDE}
                     >
                       Add

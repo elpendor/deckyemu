@@ -488,6 +488,19 @@ export function realCores(cores: Core[]): Core[] {
 export const probeRom = callable<[romPath: string], RomProbe>("probe_rom");
 
 /**
+ * The discs beside a file that look like one game with it, before adding it.
+ *
+ * `probe_rom` carries the same answer, but it also reads the file, picks cores
+ * and looks up artwork — too much for a list that only needs to know whether to
+ * ask a question. Fewer than two discs comes back empty, so a caller can treat
+ * "no set" and "one disc" alike and say nothing.
+ */
+export const discSetFor = callable<
+  [romPath: string],
+  { discs: string[]; playlist: string }
+>("disc_set_for");
+
+/**
  * Whether a hand-picked file can join a set being built.
  *
  * Refuses a disc in another folder — a playlist names files beside itself — so

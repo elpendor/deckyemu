@@ -64,12 +64,13 @@ import {
   installableOptions,
   systemOptions,
 } from "./corePicker";
+import { askDiscChoice } from "./confirmDiscSet";
 import {
   licenceChoice,
   missingEmulator,
   pendingPackage as pendingPackageOf,
 } from "./packageState";
-import { coreById, discRow, readsPlaylist, withDisc } from "./discSet";
+import { addedFileName, coreById, discRow, readsPlaylist, withDisc } from "./discSet";
 import { PackagedGameEntries, PendingPackageRows } from "./PackageRows";
 import { ArtPickerModal } from "./ArtPickerModal";
 import { openManagePage } from "./manageRoute";
@@ -214,6 +215,7 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
     installableId,
     keyChoice,
     discs,
+    discChoice,
     looking,
     adding,
     installingCore,
@@ -441,7 +443,9 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
       return;
     }
 
-    await selectRom(path);
+    // Asked here as well as in the transfer dialog, so a set is never merged
+    // without being put to the user -- see `askDiscChoice`.
+    await selectRom(path, await askDiscChoice(path));
   }, [settings?.last_rom_dir, status.default_rom_dir, status.waiting_rom_dir]);
 
   const visibleCores: Core[] = useMemo(() => {
@@ -826,6 +830,10 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
   }
 
   const romName = romPath ? romPath.slice(romPath.lastIndexOf("/") + 1) : "";
+  // What the button shows. `romName` stays the real file: the patch and unpack
+  // rows act on it by name, and a playlist that is not written yet is not a
+  // file anything can be done to.
+  const addedName = addedFileName(romName, discs, probe?.disc_playlist ?? "");
   const capsule = resolved?.art?.capsule?.data;
   const canAdd = Boolean(romPath && coreId && title.trim() && !adding && !looking);
 
@@ -836,7 +844,7 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
   // What the disc row says, decided in discSet.ts so the one judgement that
   // matters -- whether the chosen core can load a playlist at all -- is
   // reachable by a test. There is no DOM in the test run.
-  const discInfo = discRow(probe, discs, coreById(probe, coreId));
+  const discInfo = discRow(probe, discs, coreById(probe, coreId), discChoice);
 
   const pendingPackage = pendingPackageOf(probe);
   const licence = licenceChoice(pendingPackage, keyChoice);
@@ -886,7 +894,7 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
                 browser, and the button that actually adds one is at the bottom
                 of the same panel saying "Add to Steam". Two buttons claiming to
                 add would be worse than a plain description of what each does. */}
-            {romName || "Choose a game"}
+            {addedName || "Choose a game"}
           </div>
         </ButtonItem>
       </PanelSectionRow>

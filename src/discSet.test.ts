@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { coreById, discRow, readsPlaylist, withDisc } from "./discSet";
+import { addedFileName, coreById, discRow, readsPlaylist, withDisc } from "./discSet";
 import type { Core, RomProbe } from "./backend";
 
 /*
@@ -76,6 +76,25 @@ describe("discRow", () => {
     expect(discRow(probe([], [SNES9X]), [], SNES9X).show).toBe(false);
   });
 
+  /*
+   * The question is put before the flow starts, so by the time the panel draws
+   * the answer is in. Either answer takes the row away: a switch offering what
+   * you just refused and one offering what you just chose read the same, and
+   * neither is the panel having listened.
+   */
+  it("says nothing once the question has been answered", () => {
+    const discs = ["Game (Disc 1).cue", "Game (Disc 2).cue"];
+    expect(discRow(probe(discs, [DUCKSTATION]), [], DUCKSTATION, "single").show).toBe(false);
+    expect(discRow(probe(discs, [DUCKSTATION]), discs, DUCKSTATION, "set").show).toBe(false);
+  });
+
+  it("offers the set when nobody was asked", () => {
+    // Nothing was declined -- the check could not run, or the caller does not
+    // ask. The row is then what does the informing, so it has to show.
+    const discs = ["Game (Disc 1).cue", "Game (Disc 2).cue"];
+    expect(discRow(probe(discs, [DUCKSTATION]), discs, DUCKSTATION).show).toBe(true);
+  });
+
   it("offers the set when the core can read one", () => {
     const row = discRow(
       probe(["Game (Disc 1).cue", "Game (Disc 2).cue"],
@@ -87,6 +106,19 @@ describe("discRow", () => {
     expect(row.on).toBe(true);
     expect(row.disabled).toBe(false);
     expect(row.label).toContain("2 discs");
+    // The panel says which file it is about to write, rather than that it will
+    // write one. The probe has carried the name all along.
+    expect(row.description).toContain("Game.m3u");
+  });
+
+  it("describes the playlist without a name when the probe has none", () => {
+    // Never seen in practice -- a found set always names one -- but the row is
+    // a sentence, and one with a hole in it is worse than a vaguer one.
+    const discs = ["Game (Disc 1).cue", "Game (Disc 2).cue"];
+    const bare = { ...probe(discs, [DUCKSTATION]), disc_playlist: "" };
+    const row = discRow(bare, discs, DUCKSTATION);
+    expect(row.description).toContain("a playlist naming them");
+    expect(row.description).not.toContain("called");
   });
 
   /*
@@ -214,6 +246,36 @@ describe("discRow", () => {
 
   it("says nothing when one disc has been picked and no set was found", () => {
     expect(discRow(probe([], [DUCKSTATION]), ["FF7 d1.cue"], DUCKSTATION).show).toBe(false);
+  });
+});
+
+describe("addedFileName", () => {
+  it("names the playlist once the discs are one game", () => {
+    expect(addedFileName("Game (Disc 2).cue",
+                         ["Game (Disc 1).cue", "Game (Disc 2).cue"],
+                         "Game.m3u")).toBe("Game.m3u");
+  });
+
+  it("names the picked disc when the set was refused", () => {
+    // A no empties the list, so one disc and no set are the same state here.
+    expect(addedFileName("Game (Disc 2).cue", [], "Game.m3u"))
+      .toBe("Game (Disc 2).cue");
+  });
+
+  it("names the file for an ordinary game", () => {
+    expect(addedFileName("Ayeway.z64", [], "")).toBe("Ayeway.z64");
+  });
+
+  it("falls back to the file when no playlist name came back", () => {
+    // Never seen -- a set always names one -- but a blank button would be the
+    // panel showing nothing at all where the file goes.
+    expect(addedFileName("Game (Disc 1).cue",
+                         ["Game (Disc 1).cue", "Game (Disc 2).cue"], ""))
+      .toBe("Game (Disc 1).cue");
+  });
+
+  it("is empty before anything is picked, which is what shows the prompt", () => {
+    expect(addedFileName("", [], "")).toBe("");
   });
 });
 

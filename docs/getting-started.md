@@ -208,6 +208,16 @@ Pick any disc of a set and the panel offers to **add all of them as one game**.
 One entry in your library, every disc filed into one folder, and the switch is
 on by default — turn it off to add the single disc instead.
 
+**You are asked first, whichever way you got here.** Choose a disc — with **Add**
+in the transfer dialog, or from the file browser — and a question names every
+disc it found, in the order they would go into the playlist: **One game**, or
+**This disc only**. The point is that merging never just happens to you: the
+discs are recognised by their filenames and nothing else can recognise them, so
+the guess is put to you rather than acted on. Whichever you answer, the panel
+then shows no row about discs at all — it was asked and answered, and a switch
+offering the same thing again would be the panel pretending not to know. To
+change your mind, pick the file again.
+
 **What runs the game decides the rest:**
 
 | Runs it | Shortcut starts | Changing disc |

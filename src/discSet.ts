@@ -8,6 +8,7 @@
  * an `.m3u`, adds it to Steam, and produces a game that will not start.
  */
 
+import type { DiscChoice } from "./addFlow";
 import type { Core, RomProbe } from "./backend";
 
 /**
@@ -75,10 +76,20 @@ export function discRow(
   probe: RomProbe | null,
   discs: string[],
   core: Core | undefined,
+  /**
+   * The answer already given, or `""` if nobody asked.
+   *
+   * **Either answer takes the row away.** You pressed Add and you were asked;
+   * a switch that then offers the same thing again is the panel pretending not
+   * to know, and it reads the same whether it is offering what you refused or
+   * what you chose. `""` is the only state with a question left in it, and it
+   * means the check could not run -- every way into the add flow asks.
+   */
+  choice: DiscChoice | "" = "",
 ): DiscRow {
   const found = probe?.disc_set ?? [];
   const picked = discs.length >= 2;
-  if (!probe || (found.length === 0 && !picked)) {
+  if (!probe || choice !== "" || (found.length === 0 && !picked)) {
     return { show: false, label: "", description: "", on: false, disabled: false,
              playlistRuns: false };
   }
@@ -139,10 +150,18 @@ export function discRow(
   }
 
   if (picked) {
+    // Named, not described. The backend has carried `disc_playlist` for exactly
+    // this from the beginning -- "so the panel can name the file it is about to
+    // create rather than describing one" -- and nothing read it, so the panel
+    // said a playlist would be written and never said what. The file shown
+    // above stays the disc: the playlist does not exist until Add is pressed,
+    // so backing out leaves the folder as it was, and cores are matched on the
+    // disc's extension because almost none of them claim `.m3u`.
+    const playlist = probe.disc_playlist;
     return {
       show: true,
       label: `Add ${discs.length} discs as one game`,
-      description: `${discs.join(", ")} — a playlist naming them in this order is written beside them, and one game goes into your library. The emulator's disc-swap menu does the rest.`,
+      description: `${discs.join(", ")} — ${playlist ? `a playlist called ${playlist}` : "a playlist"} naming them in this order is written beside them, and one game goes into your library. The emulator's disc-swap menu does the rest.`,
       on: true,
       disabled: false,
       playlistRuns: true,
@@ -159,6 +178,23 @@ export function discRow(
     disabled: false,
     playlistRuns: true,
   };
+}
+
+/**
+ * The filename to show for what is being added.
+ *
+ * The picked disc, until the discs are one game -- then the playlist, because
+ * that is what goes into the library and what the shortcut runs. Once the
+ * question has been answered the panel shows no disc row at all, so this line
+ * is the only thing left that would say a set is being added; showing
+ * `Game (Disc 2).cue` there is the panel naming a file nobody is adding.
+ *
+ * Display only. The playlist does not exist until Add is pressed -- which is
+ * what lets you back out and leave the folder untouched -- and cores are
+ * matched on the disc's extension, since almost nothing claims `.m3u`.
+ */
+export function addedFileName(romName: string, discs: string[], playlist: string): string {
+  return discs.length >= 2 && playlist ? playlist : romName;
 }
 
 /**

@@ -52,6 +52,12 @@ it still matches what you sent. A track whose `.cue` has not arrived stays a row
 of its own, because that one is a game that cannot be assembled and you need to
 see it.
 
+**A disc of a multi-disc game asks before it adds.** Press **Add** on one and a
+question names every disc found beside it, in playlist order, offering **One
+game** or **This disc only**. The file browser asks the same question, so a set
+is never merged without being put to you. See
+[Multi-disc games](getting-started.md#multi-disc-games).
+
 Arriving files show a progress bar of bytes received against the declared total,
 and each can be **cancelled**. That status also appears in the Quick Access
 panel, so dismissing the dialog does not hide a transfer that is still running.

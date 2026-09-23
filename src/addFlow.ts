@@ -154,7 +154,21 @@ export async function selectPackagedGame(
  * Errors land in the draft rather than throwing, because both callers are UI
  * handlers with nowhere useful to send an exception.
  */
-export async function selectRom(romPath: string): Promise<void> {
+/**
+ * What was already decided about this file's discs before the flow started.
+ *
+ * `"set"` and no answer are the same thing to the probe -- a set it finds is
+ * seeded either way -- and they differ only in that the first was asked for.
+ * `"single"` is a no, and it has to be carried rather than inferred: the discs
+ * are still beside the file, so the probe will keep finding them, and without
+ * this the answer would be overwritten a moment after it was given.
+ */
+export type DiscChoice = "set" | "single";
+
+export async function selectRom(
+  romPath: string,
+  discChoice?: DiscChoice,
+): Promise<void> {
   // A different game, so anything still in flight for the last one is no longer
   // an answer to anything -- see `newDraftGeneration`. Bumped before the first
   // write, so a lookup that returns during this function is already stale.
@@ -176,6 +190,7 @@ export async function selectRom(romPath: string): Promise<void> {
     // over from the last ROM would name discs that are not beside this one, and
     // the playlist would be written listing files that are not there.
     discs: [],
+    discChoice: discChoice ?? "",
     unpacking: false,
     unpackPercent: 0,
     unpackStatus: "",
@@ -192,7 +207,11 @@ export async function selectRom(romPath: string): Promise<void> {
       // of 3 wants, and the row says what it found and can be turned off in one
       // press. Defaulting it off would mean the common case is the one that
       // needs an extra step.
-      discs: info.disc_set ?? [],
+      //
+      // Unless the question was already put and the answer was no. The discs
+      // are still beside the file and the probe still finds them, so declining
+      // has to be remembered here or it would last about a second.
+      discs: discChoice === "single" ? [] : (info.disc_set ?? []),
       // Not for a save backup: `showAllCores` opens the every-core dropdown,
       // and there is no core that runs an archive of save files.
       showAllCores: info.matching_cores.length === 0 && !info.save_backup,

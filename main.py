@@ -789,6 +789,23 @@ class Plugin(
         self._emulators = await self._run(emulators.list_emulators)
         return self._emulators
 
+    async def disc_set_for(self, rom_path: str):
+        """The discs beside `rom_path` that look like one game with it.
+
+        The same answer `probe_rom` carries in `disc_set`, asked on its own so
+        the transfer dialog can ask it before the add flow starts. A probe reads
+        the file, chooses cores and looks up artwork, none of which a list of
+        filenames needs, and the dialog asks the moment a button is pressed.
+
+        Returns {discs, playlist}. Fewer than two discs is not a set, and the
+        caller is meant to say nothing at all rather than announce one disc.
+        """
+        discs = await self._run(discset.find_set, rom_path)
+        if len(discs) < 2:
+            return {"discs": [], "playlist": ""}
+        return {"discs": discs,
+                "playlist": await self._run(discset.playlist_name, discs)}
+
     async def disc_candidate(self, rom_path: str, folder: str):
         """Whether `rom_path` may be added to a set being built by hand.
 

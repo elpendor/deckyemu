@@ -3689,6 +3689,22 @@ check("the title loses the disc marker with the region",
 check("and nothing has been written yet", os.path.isdir(_ps1) and sorted(
       name for name in os.listdir(_ps1) if name.endswith(".m3u")), [])
 
+# The same answer without the probe around it, which is what the transfer dialog
+# asks before it starts the add flow: it needs the names and nothing else, and a
+# probe would read the file, choose cores and look up artwork to get them.
+_set = run(plugin.disc_set_for(_first))
+check("the discs come back on their own", _set["discs"],
+      ["Zed (USA) (Disc %d).chd" % n for n in (1, 2, 3)])
+check("with the playlist they would be written into", _set["playlist"],
+      "Zed (USA).m3u")
+# Nothing to ask about, and saying so as an empty list rather than a one-item
+# one is what lets the dialog treat "no set" and "one disc" alike and stay
+# silent -- a confirmation naming a single disc would be noise on every add.
+open(os.path.join(TMP, "Wye (USA).chd"), "w").close()
+_alone = run(plugin.disc_set_for(os.path.join(TMP, "Wye (USA).chd")))
+check("a game that is not a set asks nothing", (_alone["discs"], _alone["playlist"]),
+      ([], ""))
+
 # A disc picked by hand, for a set the naming rules cannot reach. The folder is
 # the only one a playlist can name, so anything else is refused with a reason.
 open(os.path.join(TMP, "Zed (USA) (Disc 4).chd"), "w").close()

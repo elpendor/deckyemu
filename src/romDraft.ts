@@ -12,6 +12,7 @@
  * instance is mounted at the time.
  */
 
+import type { DiscChoice } from "./addFlow";
 import type { InstallableCore, ResolvedGame, RomProbe } from "./backend";
 
 export interface RomDraft {
@@ -73,6 +74,20 @@ export interface RomDraft {
    * the way back, every time, which is exactly the case this is for.
    */
   discs: string[];
+  /**
+   * The answer already given about this file's discs, or `""` if nobody asked.
+   *
+   * A question answered once must not come back as a control re-offering the
+   * same thing — that reads as the panel not having listened. So a no takes the
+   * row away entirely, and a yes turns it from a switch into a statement of
+   * what was decided. Only `""` leaves a choice to make, and that is the case
+   * where the check could not run.
+   *
+   * One field rather than a pair of flags, for the reason `discs` is one list
+   * rather than a list and a switch: two pieces of state for one answer can
+   * disagree, and then the panel has to pick which to believe.
+   */
+  discChoice: DiscChoice | "";
   looking: boolean;
   adding: boolean;
   installingCore: string;
@@ -127,6 +142,7 @@ export const EMPTY_DRAFT: RomDraft = {
   installableId: "",
   keyChoice: "",
   discs: [],
+  discChoice: "",
   looking: false,
   adding: false,
   installingCore: "",
