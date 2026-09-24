@@ -135,12 +135,13 @@ def _walk(root, skip_top=(), except_names=(), only=()):
     """
     found = []
     root = os.path.normpath(root)
+    except_names, except_dirs = split_except(except_names)
 
     # A declared save can be one file rather than a directory -- a memory card,
     # a record of achievements -- and `os.walk` over a file yields nothing at
     # all. Silently backing up none of it is the worst answer available.
     if os.path.isfile(root):
-        if os.path.basename(root) in except_names:
+        if _named_by(os.path.basename(root), except_names):
             return []
         if only and not _named_by(os.path.basename(root), only):
             return []
@@ -151,13 +152,19 @@ def _walk(root, skip_top=(), except_names=(), only=()):
         if relative == ".":
             directories[:] = [name for name in directories if name not in skip_top]
             relative = ""
+        # Pruned rather than filtered afterwards: there is no reason to walk
+        # into a directory nothing will be taken from, and some of them hold
+        # tens of thousands of shader files.
+        if except_dirs:
+            directories[:] = [name for name in directories
+                              if not _named_by(name, except_dirs)]
         for name in sorted(files):
             path = os.path.join(current, name)
             if os.path.islink(path) and not os.path.realpath(path).startswith(root + os.sep):
                 continue
             if not os.path.isfile(path):
                 continue
-            if name in except_names:
+            if _named_by(name, except_names):
                 continue
             if only and not _named_by(name, only):
                 continue
@@ -168,6 +175,30 @@ def _walk(root, skip_top=(), except_names=(), only=()):
 def _named_by(name, patterns):
     """Whether a filename matches any of `patterns`."""
     return any(fnmatch.fnmatch(name, one) for one in patterns)
+
+
+def split_except(names):
+    """`saves_except` as (file rules, directory rules).
+
+    A rule ending in `/` names a directory and everything under it; anything
+    else names a file, exactly or as a pattern. Both match wherever they appear
+    in the tree, which is what the field always promised for plain names.
+
+    Directories are here because nothing could say "not this". A definition
+    that declared its whole folder carried whatever the program left in it --
+    one put 60 MB of shader and pipeline caches, a year of logs and a pile of
+    crash dumps into somebody's Dropbox, and neither a filename list nor the
+    flatpak `cache` rule could stop it.
+    """
+    files, folders = [], []
+    for one in names or ():
+        if not isinstance(one, str) or not one:
+            continue
+        if one.endswith("/"):
+            folders.append(one[:-1])
+        else:
+            files.append(one)
+    return tuple(files), tuple(folders)
 
 
 def links_skipped(root, skip_top=()):

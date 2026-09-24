@@ -101,7 +101,11 @@ OPTIONAL = {
              "lines that a reader has to check are consecutive. A pattern "
              "never crosses a `/`, so it cannot reach outside the directory "
              "it is written in. See `savedata`.",
-    "saves_except": "Filenames the backup leaves behind, inside `saves` or "
+    "saves_except": "Filenames the backup leaves behind -- and a copy up too, "
+                    "which it did not used to. A name may be a `*` or `?` "
+                    "pattern, and one ending in `/` is a directory and "
+                    "everything under it, for the caches and logs a program "
+                    "leaves among the things worth keeping. Inside `saves` or "
                     "inside the directories an entry that declares none owns, "
                     "for a config that shares a folder with the save files. "
                     "Names only, matched wherever they appear: a config is not "
@@ -796,8 +800,11 @@ def validate(entry, known_platforms=(), imported=False):
     # which for anything but a flatpak means declaring `data` first.
     roots = owned_roots(entry)
     for name in entry.get("saves_except") or ():
-        if not name or "/" in name or name in (".", ".."):
-            bad("saves_except %r is not a plain filename" % name)
+        stripped = name[:-1] if isinstance(name, str) and name.endswith("/") else name
+        if (not isinstance(stripped, str) or not stripped or "/" in stripped
+                or stripped in (".", "..")):
+            bad("saves_except %r is not a filename, a pattern, or a directory "
+                "name ending in /" % (name,))
     for path, kind in saves_of(entry):
         if not isinstance(path, str) or not path:
             bad("a saves entry must be a path, or {'dir': <path>} or "
@@ -1123,6 +1130,9 @@ def needs_format(entry):
         return 2
     for path, kind in saves_of(entry):
         if kind or "*" in (path or "") or "?" in (path or ""):
+            return 2
+    for name in entry.get("saves_except") or ():
+        if not isinstance(name, str) or name.endswith("/") or "*" in name or "?" in name:
             return 2
     spec = entry.get("game_config") or {}
     if spec and not (spec.get("format") and spec.get("path")):

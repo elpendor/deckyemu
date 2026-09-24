@@ -32,6 +32,7 @@ sys.path.insert(0, REPO_ROOT)
 
 import cloudsync  # noqa: E402
 import emu_install  # noqa: E402
+import savedata  # noqa: E402
 import emulator_catalog  # noqa: E402
 import sysenv  # noqa: E402
 
@@ -248,6 +249,37 @@ with tempfile.TemporaryDirectory() as home:
     finally:
         sysenv.user_home = _real_home
         emulator_catalog.CATALOG = _real_catalog
+
+
+section("what a definition can say it does not want kept")
+
+check("a plain name is a file rule, as it always was",
+      savedata.split_except(["a.cfg"]), (("a.cfg",), ()))
+check("a trailing slash makes it a directory",
+      savedata.split_except(["logs/", "*.log"]), (("*.log",), ("logs",)))
+
+with tempfile.TemporaryDirectory() as home:
+    folder = os.path.join(home, "whole")
+    os.makedirs(os.path.join(folder, "logs"))
+    os.makedirs(os.path.join(folder, "deep", "sentry"))
+    for relative in ("save.dat", "keep.sav", "run.log", "logs/old.log",
+                     "deep/sentry/crash.dmp", "deep/also.sav"):
+        path = os.path.join(folder, *relative.split("/"))
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write("x")
+
+    kept = sorted(rel.replace(os.sep, "/") for _abs, rel in savedata._walk(
+        folder, (), ("*.log", "logs/", "sentry/")))
+    check("patterns and directories are both left behind",
+          kept, ["deep/also.sav", "keep.sav", "save.dat"])
+    # A directory rule matches wherever it appears, like a name always has.
+    check("including one nested well down the tree",
+          any("sentry" in one for one in kept), False)
+
+# The copy up has to be told as well, or the file is merely unrecorded.
+_args = cloudsync._excludes({"except": ["a.cfg", "logs/"], "whole": False})
+check("rclone is told about a file rule", "a.cfg" in _args, True)
+check("and about a directory rule", "**/logs/**" in _args, True)
 
 
 if __name__ == "__main__":

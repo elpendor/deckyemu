@@ -267,9 +267,18 @@ def _excludes(source):
     and is rebuilt on its own. Uploading it would be gigabytes of shader cache
     charged to somebody's Dropbox quota.
     """
-    if not source.get("whole"):
-        return []
     args = []
+    # **`saves_except` never reached rclone.** It kept names out of the archive
+    # and out of the record, and the copy up sent them anyway -- so the config
+    # this field exists to hold back, the one that binds a controller by device
+    # id, was sitting in the storage ready for another Deck to take.
+    names, folders = savedata.split_except(source.get("except"))
+    for name in names:
+        args += ["--exclude", name, "--exclude", "**/%s" % name]
+    for name in folders:
+        args += ["--exclude", "%s/**" % name, "--exclude", "**/%s/**" % name]
+    if not source.get("whole"):
+        return args
     for name in savedata._SKIP_TOP:
         args += ["--exclude", "%s/**" % name]
     return args
