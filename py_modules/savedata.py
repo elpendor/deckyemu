@@ -111,8 +111,15 @@ _SKIP_TOP = ("cache", ".ld.so", "log", "shaders")
 _PARTIAL = ".deckyemu-tmp"
 
 
-def _walk(root, skip_top=(), except_names=()):
+def _walk(root, skip_top=(), except_names=(), only=()):
     """Every file under `root`, as (absolute path, path relative to root).
+
+    `only` are filename patterns, and with them nothing else is taken. It is
+    how a declared save that is a pattern is carried: the root becomes the
+    directory holding it and the pattern becomes this, so the save has a real
+    directory behind it. Expanding the pattern into one root per matching file
+    instead meant a Deck with none of them had no root at all -- nothing to
+    back up, which is true, and nowhere to restore to, which is the bug.
 
     Symlinks are followed for their target's contents only when they point back
     inside the root: an emulator that symlinks its save directory onto an SD card
@@ -135,6 +142,8 @@ def _walk(root, skip_top=(), except_names=()):
     if os.path.isfile(root):
         if os.path.basename(root) in except_names:
             return []
+        if only and not _named_by(os.path.basename(root), only):
+            return []
         return [(root, os.path.basename(root))]
 
     for current, directories, files in os.walk(root, followlinks=False):
@@ -150,8 +159,15 @@ def _walk(root, skip_top=(), except_names=()):
                 continue
             if name in except_names:
                 continue
+            if only and not _named_by(name, only):
+                continue
             found.append((path, posixpath.join(*relative.split(os.sep), name) if relative else name))
     return found
+
+
+def _named_by(name, patterns):
+    """Whether a filename matches any of `patterns`."""
+    return any(fnmatch.fnmatch(name, one) for one in patterns)
 
 
 def links_skipped(root, skip_top=()):
@@ -188,11 +204,11 @@ def links_skipped(root, skip_top=()):
     return found
 
 
-def _measure(root, skip_top=(), except_names=()):
+def _measure(root, skip_top=(), except_names=(), only=()):
     # The same exclusions the build applies, or the panel counts files it is
     # not going to carry -- and the count is what somebody reads as "this is
     # everything".
-    files = _walk(root, skip_top, except_names)
+    files = _walk(root, skip_top, except_names, only)
     total = 0
     for path, _ in files:
         try:
@@ -295,16 +311,27 @@ def _catalog_sources(empty=False):
 
         declared = schema.saves_of(entry)
         one_file = set()
+        only = {}
         if declared:
             roots = []
             for relative, kind in declared:
-                for path in _matching(os.path.join(home, *relative.split("/"))):
-                    roots.append((os.path.basename(path), path))
-                    # What the definition says it is, for the code that would
-                    # otherwise have to look -- and a restore looks on the Deck
-                    # that is missing the file. See `schema.saves_of`.
-                    if kind == "file":
-                        one_file.add(path)
+                absolute = os.path.join(home, *relative.split("/"))
+                name = os.path.basename(relative)
+                if "*" in name or "?" in name:
+                    # The directory holding it, filtered to the pattern. One
+                    # root per matching file read better and restored to
+                    # nowhere: a Deck missing all of them had no root, so the
+                    # saves had nothing to come back into.
+                    folder = os.path.dirname(absolute)
+                    roots.append((name, folder))
+                    only[name] = (name,)
+                    continue
+                roots.append((os.path.basename(absolute), absolute))
+                # What the definition says it is, for the code that would
+                # otherwise have to look -- and a restore looks on the Deck
+                # that is missing the file. See `schema.saves_of`.
+                if kind == "file":
+                    one_file.add(absolute)
         else:
             # A root that *is* a cache directory, rather than one holding a
             # `cache` folder. An imported entry lists the XDG directories it
@@ -318,8 +345,16 @@ def _catalog_sources(empty=False):
         # Kept only for restoring, because a backup listing it would offer an
         # emulator with nothing in it.
         if not empty:
-            roots = [(label, path) for label, path in roots
-                     if os.path.isdir(path) or os.path.isfile(path)]
+            # A filtered root is the directory holding a pattern, and that
+            # directory is the port's install folder -- there whether or not a
+            # single save matches. "Something to back up" has to mean a match,
+            # or every port with none appears in the list offering nothing.
+            roots = [
+                (label, path) for label, path in roots
+                if (os.path.isdir(path) or os.path.isfile(path))
+                and (label not in only
+                     or _walk(path, (), (), only[label]))
+            ]
         if not roots:
             continue
         found.append({
@@ -327,6 +362,7 @@ def _catalog_sources(empty=False):
             "name": entry["name"],
             "roots": roots,
             "one_file": one_file,
+            "only": only,
             "whole": not declared,
             "except": tuple(entry.get("saves_except") or ()),
         })
@@ -367,8 +403,9 @@ def sources():
         files = 0
         total = 0
         skip = _SKIP_TOP if source["whole"] else ()
-        for _, path in source["roots"]:
-            count, size = _measure(path, skip, source.get("except", ()))
+        for label, path in source["roots"]:
+            count, size = _measure(path, skip, source.get("except", ()),
+                                   (source.get("only") or {}).get(label, ()))
             files += count
             total += size
         # Named beside the count, because the count is what somebody reads as
@@ -434,7 +471,9 @@ def build(destination, ids=None):
                         "path": path,
                         "whole": source["whole"],
                     })
-                    for absolute, relative in _walk(path, skip, source.get("except", ())):
+                    for absolute, relative in _walk(
+                            path, skip, source.get("except", ()),
+                            (source.get("only") or {}).get(label, ())):
                         try:
                             bundle.write(absolute, posixpath.join("files", key, relative))
                         except OSError as error:

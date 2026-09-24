@@ -167,9 +167,15 @@ with tempfile.TemporaryDirectory() as home:
         listed = savedata._all_sources(True)
         check("but a restore knows where its saves go",
               [one["id"] for one in listed], ["zed"])
+        # The pattern's place is the directory holding it, carried with the
+        # filter -- so a Deck with none of those files still knows where they
+        # go. One root per matching file had nowhere at all.
         check("and the places are the ones the definition declared",
               sorted(os.path.relpath(path, folder) for _, path in listed[0]["roots"]),
-              ["saves", "zed.cfg.json"])
+              [".", "saves", "zed.cfg.json"])
+        check("the pattern's root carries its filter",
+              listed[0]["only"], {"controllerPak_file_*.sav":
+                                  ("controllerPak_file_*.sav",)})
     finally:
         sysenv.user_home = _real_home
         emulator_catalog.CATALOG = _real_catalog
@@ -208,6 +214,40 @@ try:
           theirs["files"]["save/global.sav"]["mtime"], 222)
 finally:
     cloudsync._local_files = _real_local
+
+
+section("a pattern carries only what it matches, and only where it belongs")
+
+with tempfile.TemporaryDirectory() as home:
+    emulator_catalog.CATALOG = (PORT,)
+    _real_home = sysenv.user_home
+    sysenv.user_home = lambda: home
+    try:
+        import savedata
+
+        folder = os.path.join(home, "deckyemu", "emulators", "zed")
+        os.makedirs(os.path.join(folder, "saves"))
+        lay_out(folder)
+
+        source = [one for one in savedata._all_sources() if one["id"] == "zed"][0]
+        filtered = [(label, path) for label, path in source["roots"]
+                    if label in source["only"]]
+        check("the pattern is one root, at the directory holding it",
+              [os.path.relpath(path, folder) for _, path in filtered], ["."])
+
+        label, path = filtered[0]
+        carried = sorted(rel for _abs, rel in savedata._walk(
+            path, (), (), source["only"][label]))
+        check("and it carries the files it names", carried,
+              ["controllerPak_file_0.sav", "controllerPak_file_1.sav"])
+        # The root is the port's whole install folder, so without the filter a
+        # backup of it would be the binary, the built archive and the logs.
+        check("and nothing else in that folder",
+              any(one.endswith((".appimage", ".log", ".txt")) for one in carried),
+              False)
+    finally:
+        sysenv.user_home = _real_home
+        emulator_catalog.CATALOG = _real_catalog
 
 
 if __name__ == "__main__":

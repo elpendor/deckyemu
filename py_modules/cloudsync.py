@@ -217,6 +217,26 @@ def _file_root(path, source=None):
     return os.path.isfile(path)
 
 
+def _only_for(source, segment):
+    """rclone's half of a `saves` pattern: `--include` arguments, or none.
+
+    A declared save may be a pattern, and the root behind it is the directory
+    holding it -- so a copy of that root would take the whole directory with
+    it. For a port that is its binary, its built archive and its logs, because
+    a portable port keeps its saves beside itself.
+
+    Matched back by segment rather than carried, so `_roots_of` stays a pair
+    and everything unpacking it keeps working.
+    """
+    only = (source.get("only") or {})
+    if not only:
+        return []
+    for (label, _path), (candidate, _same) in zip(source["roots"], _roots_of(source)):
+        if candidate == segment and label in only:
+            return ["--include", only[label]]
+    return []
+
+
 def _safe(*segments):
     """Join path segments for a remote, refusing anything that is not one."""
     for segment in segments:
@@ -491,6 +511,7 @@ def push_steps(remote, ids=None):
                 ["copy", path, "%s:%s/%s" % (remote, root_of(remote), target),
                  "--backup-dir", "%s:%s/%s/%s" % (
                      remote, replaced_of(remote), when, target)]
+                + _only_for(source, segment)
                 + _excludes(source) + _by_content(remote) + _FILES_AT_ONCE + _STATS
             )
             if not command:
@@ -973,8 +994,14 @@ def _local_files(source):
     # with the saves is not a save, and syncing one carries another device's
     # controller bindings onto this one.
     except_names = tuple(source.get("except") or ())
+    # A pattern's root is the directory holding it, so the filter has to come
+    # along or the whole directory counts as saves. Built once, not per root.
+    only = source.get("only") or {}
+    by_segment = {seg: label for (label, _p), (seg, _q)
+                  in zip(source["roots"], _roots_of(source))} if only else {}
     for segment, path in _roots_of(source):
-        for absolute, relative in savedata._walk(path, skip, except_names):
+        for absolute, relative in savedata._walk(
+                path, skip, except_names, only.get(by_segment.get(segment), ())):
             try:
                 found = os.stat(absolute)
             except OSError:
@@ -1678,7 +1705,8 @@ def pull_steps(remote, ids=None, replace=False, stamp="", known=None):
             one_file = (_file_root(path, source)
                         or (source["id"], segment) in doubled)
             into = os.path.dirname(path) if one_file else path
-            args = ["copy", "%s:%s/%s" % (remote, root, where), into]
+            args = (["copy", "%s:%s/%s" % (remote, root, where), into]
+                    + _only_for(source, segment))
             if not replace:
                 args.append("--ignore-existing")
             command = cloudsave.argv(
