@@ -1913,6 +1913,11 @@ def remove_appimage(entry_id, keep=()):
             if not os.path.isdir(directory):
                 return False, "Nothing was installed for that emulator."
             _prune(directory, keeping)
+            # Nothing of the entry's was in here after all -- a port keeping
+            # its saves under `.local/share` rather than beside its binary --
+            # so the folder goes, as it did before anything was kept.
+            if not os.listdir(directory):
+                shutil.rmtree(directory)
         else:
             shutil.rmtree(directory)
     except FileNotFoundError:

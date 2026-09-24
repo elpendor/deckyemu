@@ -109,6 +109,18 @@ with tempfile.TemporaryDirectory() as home:
         # and the first file left behind is now a save, not a program.
         check("the port reads as not installed", emu_install.installed_appimage("zed"), "")
 
+        # A port keeping its saves under `.local/share` keeps nothing in here,
+        # and an empty folder left behind is litter `rmtree` never left.
+        outside = dict(PORT)
+        outside["saves"] = [{"dir": ".local/share/elsewhere"}]
+        lay_out(folder)
+        emulator_catalog.find = lambda one: outside if one == "zed" else None
+        removed, _error = emu_install.remove_appimage(
+            "zed", emu_install.declared_saves("zed"))
+        check("a folder left with nothing kept in it goes entirely",
+              (removed, os.path.exists(folder)), (True, False))
+        emulator_catalog.find = lambda one: PORT if one == "zed" else None
+
         section("and deleting the data on purpose still does")
 
         lay_out(folder)

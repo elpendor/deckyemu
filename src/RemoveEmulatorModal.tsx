@@ -18,12 +18,16 @@ interface Props {
  * a sentence promising that saves are kept, above a switch that deletes them,
  * is how somebody loses a memory card.
  *
- * The switch appears for a flatpak only. That is the kind whose data outlives
- * it -- `flatpak uninstall` leaves `~/.var/app/<id>` in place, so a reinstall
- * inherits the last install's configuration, which is the state that had
- * DuckStation coming back with a setup wizard nobody could dismiss. An AppImage
- * keeps its data in ordinary folders and this does not remove them, so it must
- * not offer a switch that says it does.
+ * The switch appears for a flatpak only. That is the kind that comes back
+ * wearing its old configuration -- `flatpak uninstall` leaves `~/.var/app/<id>`
+ * in place, which is the state that had DuckStation returning with a setup
+ * wizard nobody could dismiss.
+ *
+ * An AppImage keeps nothing this removes, except a port, which keeps its saves
+ * beside its own binary -- and those are kept deliberately, by name, from the
+ * definition. No switch for them: the reason this one exists is a reinstall
+ * inheriting settings, and a port inherits its saves, which is the outcome
+ * somebody removing one wants rather than the one they need warning about.
  *
  * Off by default, and it stays off every time the dialog opens: this is the
  * press that destroys save games, and a remembered answer is one somebody gave
