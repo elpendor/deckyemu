@@ -73,7 +73,16 @@ export function TransferCodeModal({
         >
           <TrustedDevices
             remember={remember}
-            onChange={onRemember}
+            onChange={(next) => {
+              onRemember(next);
+              // This dialog holds the address and the code it was opened with,
+              // and changing the setting reissues both -- so a moment from now
+              // the square on screen encodes a dead token and the digits are
+              // somebody else's. Close rather than show them. Deferred is the
+              // exception: nothing is reissued until receiving next starts, so
+              // what is on screen stays true.
+              if (!deferred) closeModal?.();
+            }}
             busy={busy}
             deferred={deferred}
           />
