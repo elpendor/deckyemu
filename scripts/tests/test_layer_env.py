@@ -89,6 +89,47 @@ with tempfile.TemporaryDirectory() as home:
         sysenv.user_home = _real
 
 
+section("the seam another plugin can use")
+
+# A Steam shortcut has one Exe and one launch options string. This plugin owns
+# the Exe, so anything else wanting to set a variable for a game has only the
+# launch options -- and two things wanting that field is a conflict with no
+# answer. A directory is not a field.
+_hook = chr(10).join(launchers.env_hook())
+check("every launcher reads the same directory",
+      "$HOME\"/deckyemu/env.d/*.sh" in _hook, True)
+check("sourced, because the point is what it leaves behind",
+      ". \"$_dke_env\"" in _hook, True)
+# Missing is the ordinary case, and an unreadable file is skipped rather than
+# fatal -- nothing here runs under `set -e`.
+check("and an unreadable one is skipped", '[ -r "$_dke_env" ]' in _hook, True)
+check("the loop variable does not leak into the emulator",
+      "unset _dke_env" in _hook, True)
+
+# Order matters: a hook that sets LSFGVK_CONFIG has to be read before the
+# forwarding that carries it into a sandbox.
+with tempfile.TemporaryDirectory() as home:
+    import sysenv
+
+    _real = sysenv.user_home
+    sysenv.user_home = lambda: home
+    try:
+        install = {"kind": "flatpak", "exe": "/usr/bin/flatpak",
+                   "config_dir": os.path.join(home, "ra"),
+                   "core_dirs": [], "info_dirs": []}
+        core = os.path.join(home, "ra", "cores", "c.so")
+        os.makedirs(os.path.dirname(core))
+        open(core, "w", encoding="utf-8").write("x")
+        rom = os.path.join(home, "g.bin")
+        open(rom, "w", encoding="utf-8").write("x")
+        body = open(launchers.write_launcher(install, "Order", core, rom),
+                    encoding="utf-8").read()
+        check("the hook is read before the sandbox forwarding",
+              body.index("_dke_env") < body.index("LSFGVK_CONFIG"), True)
+    finally:
+        sysenv.user_home = _real
+
+
 if __name__ == "__main__":
     from harness import summary
 

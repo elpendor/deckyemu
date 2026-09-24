@@ -272,6 +272,16 @@ reads as it installs, straight into the folder it is kept in, so it is written
 once. A game dumped with its update and DLC merged into one file needs none of
 this.
 
+## Setting variables for every launch
+
+Anything in `~/deckyemu/env.d/*.sh` is read just before an emulator starts, in
+name order. It is there so another plugin — or a file you write yourself — can
+set an environment variable without touching a shortcut's launch options, which
+is the one field two plugins cannot share.
+
+A file with a mistake in it costs its own variables and not the game. For a
+flatpak emulator the variables are carried into the sandbox as well.
+
 ## Collections
 
 Added games are filed under a Steam collection so they are findable in Big

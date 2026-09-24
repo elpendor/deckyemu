@@ -218,7 +218,10 @@ LAUNCH_GATE_DIR = os.path.join(decky.DECKY_PLUGIN_RUNTIME_DIR, "launch")
 #  35  an approval is honoured only while it is fresh. One left behind by a
 #      launch that never happened let the next one past the two-games gate
 #      without asking.
-FORMAT_VERSION = 35
+#  36  every launcher reads ~/deckyemu/env.d, and a flatpak one carries a
+#      Vulkan layer's variables into the sandbox. Existing shortcuts get
+#      neither until they are rewritten, which is what this bump is for.
+FORMAT_VERSION = 36
 
 # One file per OSD mode rather than one shared file. Games can override the
 # global setting individually, and a single file would mean the last game
@@ -1384,6 +1387,47 @@ def picker_shim(entry, rom_path):
     ])
 
 
+#: Where anything else can add environment to every launch.
+#:
+#: Under `$HOME` with the rest of what this plugin owns, so a SteamOS update
+#: leaves it alone.
+ENV_DIR = "deckyemu/env.d"
+
+
+def env_hook():
+    """Shell that reads `~/deckyemu/env.d/*.sh` before the emulator starts.
+
+    **The seam another plugin can use without fighting this one for the
+    shortcut.** A Steam shortcut has one Exe and one launch options string.
+    This plugin owns the Exe -- it points at a generated script -- so anything
+    else wanting to set a variable for a game has only the launch options, and
+    two things wanting them is a conflict with no answer. A directory is not a
+    field: everything in it applies, and nothing has to know what else is
+    there.
+
+    Frame generation is the case that found it. `lsfg-vk` is switched on by
+    setting `LSFGVK_CONFIG` before the program runs, which meant editing the
+    launch options of a shortcut this plugin wrote. It works, and it only works
+    because nothing here rewrites that field.
+
+    Sourced rather than executed, because the point is the environment it
+    leaves behind. Read in sorted order so two files that set the same thing
+    settle it the same way every launch. Missing is the ordinary case and costs
+    a test; unreadable is skipped rather than fatal, and nothing here runs under
+    `set -e`, so a file with a mistake in it costs its own variables and not the
+    game.
+    """
+    return [
+        "# Anything dropped in ~/%s is sourced here -- the seam another plugin" % ENV_DIR,
+        "# or a hand-written file uses to set variables for every launch.",
+        "# See launchers.env_hook.",
+        'for _dke_env in "$HOME"/%s/*.sh; do' % ENV_DIR,
+        '  [ -r "$_dke_env" ] && . "$_dke_env"',
+        "done",
+        "unset _dke_env",
+    ]
+
+
 #: Variables a Vulkan layer set on the host needs inside a flatpak sandbox.
 #:
 #: Named rather than forwarded by prefix: a sandbox exists to be a smaller
@@ -1820,6 +1864,7 @@ def write_launcher(
             "# Core: %s" % _flat(core_path),
         ]
         + (["# Args: %s" % _flat(" ".join(extra))] if extra else [])
+        + env_hook()
         + forward
         + [
             "",
