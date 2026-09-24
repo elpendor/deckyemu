@@ -135,6 +135,11 @@ section("the standard library the sandbox actually has")
 # this list cannot see, which is why nothing imports it any more.
 PROVEN_STDLIB = frozenset((
     "asyncio", "base64", "collections", "concurrent", "ctypes", "email",
+    # Proven by `shutil`, which is proven and imports it at module scope: a
+    # PyInstaller bundle packs what its analysis saw imported, so one cannot be
+    # there without the other. `glob` has no such guarantor, which is why
+    # `savedata` matches its save patterns with this instead.
+    "fnmatch",
     "functools",
     "hashlib", "heapq", "html", "http", "importlib", "inspect", "io", "json", "os",
     "posixpath", "re", "secrets", "shlex", "shutil", "socket", "ssl", "stat",

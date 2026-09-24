@@ -30,7 +30,11 @@ REQUIRED = {
     "summary": "One line under the name. Say which system it runs.",
     "source": "How to install it: {'kind': 'flatpak', 'id': ...} or "
               "{'kind': 'appimage', ...}. See emu_install.",
-    "args": "Launch arguments, with `{rom}` where the ROM path goes.",
+    "args": "Launch arguments, with `{rom}` where the ROM path goes. May be "
+            "left out entirely when `game_config` or `game_beside` puts the "
+            "game there instead -- a port reads its ROM from its own config or "
+            "from the directory beside it, and had to write `\"args\": \"\"` to "
+            "say so.",
 }
 
 #: Fields an entry may carry, with what each is for.
@@ -91,7 +95,12 @@ OPTIONAL = {
              "or one of `data`. Omit it and the whole of that directory is "
              "backed up instead, which is right for an emulator that only "
              "reads ROMs off the disk and wrong for one that installs games "
-             "into itself. See `savedata`.",
+             "into itself. A path may end in a `*` or `?` pattern, for a "
+             "program that numbers its save files: one N64 port writes sixteen "
+             "`controllerPak_file_N.sav`, and listing them by hand is sixteen "
+             "lines that a reader has to check are consecutive. A pattern "
+             "never crosses a `/`, so it cannot reach outside the directory "
+             "it is written in. See `savedata`.",
     "saves_except": "Filenames the backup leaves behind, inside `saves` or "
                     "inside the directories an entry that declares none owns, "
                     "for a config that shares a folder with the save files. "
@@ -158,7 +167,11 @@ OPTIONAL = {
                    "'json-flat', 'path': <file relative to home>, 'keys': "
                    "{key: value}}. `{rom}` in a value is the game's path. "
                    "Written each time a game is saved onto this entry. With "
-                   "it, `args` may be empty and carry no `{rom}`.",
+                   "it, `args` may be left out. `format` and `path` may be "
+                   "left out too when `setup` names one file: it is usually "
+                   "the same file, and repeating it is a second place to keep "
+                   "in step. Both are still required when `setup` writes "
+                   "several, because then there is no one file to mean.",
     "source_moved": "Set when `source` starts naming a different place, as "
                     "{'recipe': <number>, 'note': <sentence>}. An install whose "
                     "recorded recipe is below that number was downloaded from "
@@ -673,9 +686,12 @@ def validate(entry, known_platforms=(), imported=False):
         say("%s: %s" % (entry_id, message))
 
     for field in REQUIRED:
-        # A game read from the program's own config needs nothing on the
-        # command line, so its arguments may be empty.
-        if (field == "args" and "args" in entry
+        # A game read from the program's own config, or found beside it, needs
+        # nothing on the command line -- so its arguments may be empty, and
+        # need not be written at all. Requiring the key bought nothing: every
+        # port in a nine-entry set carried `"args": ""`, which is a line saying
+        # that the field above it already said.
+        if (field == "args"
                 and (entry.get("game_config") or entry.get("game_beside"))):
             continue
         if not entry.get(field):
@@ -1055,11 +1071,30 @@ def _validate_needs(entry_id, entry):
     return problems
 
 
+def one_file_setup(entry):
+    """(format, path) of a setup that writes exactly one file, or ("", "").
+
+    What `game_config` falls back to. A setup with `files` writes several and
+    there is no one file to mean, so it answers nothing rather than picking.
+    """
+    setup = entry.get("setup")
+    if not isinstance(setup, dict) or setup.get("files"):
+        return "", ""
+    path = setup.get("path")
+    return (setup.get("format") or "", path) if isinstance(path, str) and path else ("", "")
+
+
 def _validate_game_config(entry_id, entry):
     """`game_config` has to name a format, a file and at least one key with `{rom}`.
 
     The file is inside something the entry owns, like `game_content`: it is
     written on every save, so "relative to home" is too wide a fence.
+
+    The format and the file may be inherited from `setup` -- see
+    `one_file_setup`. They are usually the same file, written under two rules:
+    `setup` seeds a recommendation once and leaves whatever the user changed,
+    while this is the game's own path and has to be rewritten on every save. Two
+    rules, one file, and no reason to write the filename twice.
     """
     spec = entry.get("game_config")
     if not spec:
@@ -1072,12 +1107,16 @@ def _validate_game_config(entry_id, entry):
     if not isinstance(spec, dict):
         bad("must be an object with 'format', 'path' and 'keys'")
         return problems
-    if spec.get("format") not in GAME_CONFIG_FORMATS:
-        bad("format %r is not one of %s" % (
-            spec.get("format"), ", ".join(repr(one) for one in GAME_CONFIG_FORMATS)))
-    path = spec.get("path")
+    inherited_format, inherited_path = one_file_setup(entry)
+    fmt = spec.get("format") or inherited_format
+    if fmt not in GAME_CONFIG_FORMATS:
+        bad("format %r is not one of %s -- and `setup` names no single file to "
+            "take it from" % (
+                spec.get("format"), ", ".join(repr(one) for one in GAME_CONFIG_FORMATS)))
+    path = spec.get("path") or inherited_path
     if not isinstance(path, str) or not path or _escapes(path):
-        bad("path %r must be a file relative to home that does not escape it" % path)
+        bad("path %r must be a file relative to home that does not escape it, "
+            "or be left out for `setup`'s own file" % spec.get("path"))
     keys = spec.get("keys")
     if not isinstance(keys, dict) or not keys:
         bad("keys must be an object of key: value")

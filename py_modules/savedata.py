@@ -36,6 +36,7 @@ than working it out from the shape of the paths -- which would be a guess in the
 one direction where a wrong answer overwrites something.
 """
 
+import fnmatch
 import json
 import os
 import posixpath
@@ -239,6 +240,40 @@ def _is_cache_root(relative):
     return relative == ".cache" or relative.startswith(".cache/")
 
 
+def _matching(path):
+    """`path` itself, or what its pattern matches, in a stable order.
+
+    For a program that numbers its save files. One N64 port writes sixteen
+    `controllerPak_file_N.sav` beside its config, and a definition listing them
+    by hand is sixteen lines a reader has to check are consecutive -- and that
+    silently misses the seventeenth if a later build writes one.
+
+    Only the filename may hold a pattern. The directory part is taken
+    literally, so a pattern cannot reach out of the directory it was written in
+    -- and that directory is the prefix the schema already checked sits inside a
+    root this entry owns. One in a directory name simply matches nothing.
+
+    `fnmatch` rather than `glob`, and the difference is what decky's frozen
+    runtime carries. A PyInstaller bundle packs what its analysis saw imported:
+    `shutil` is proven present and imports `fnmatch` at module scope, so
+    `fnmatch` comes with it, while nothing proven imports `glob`. That
+    distinction is not pedantry -- `http` was proven, `http.server` was not
+    bundled, and the plugin failed to load at all.
+
+    Sorted, because a directory's own order is the filesystem's and a backup
+    listing its contents differently each run reads as having changed.
+    """
+    if "*" not in path and "?" not in path:
+        return [path]
+    folder, pattern = os.path.split(path)
+    try:
+        names = os.listdir(folder)
+    except OSError:
+        return []
+    return sorted(os.path.join(folder, name) for name in names
+                  if fnmatch.fnmatch(name, pattern))
+
+
 def _catalog_sources():
     """The catalog emulators that are installed, and what to take from each."""
     home = sysenv.user_home()
@@ -253,10 +288,10 @@ def _catalog_sources():
 
         declared = list(entry.get("saves") or ())
         if declared:
-            roots = [
-                (relative.rsplit("/", 1)[-1], os.path.join(home, *relative.split("/")))
-                for relative in declared
-            ]
+            roots = []
+            for relative in declared:
+                for path in _matching(os.path.join(home, *relative.split("/"))):
+                    roots.append((os.path.basename(path), path))
         else:
             # A root that *is* a cache directory, rather than one holding a
             # `cache` folder. An imported entry lists the XDG directories it

@@ -85,7 +85,8 @@ particular — the id, paths and arguments all depend on which emulator you have
 
 ## Fields
 
-Required: `id`, `name`, `summary`, `source`, `args`. Everything else is
+Required: `id`, `name`, `summary`, `source`, `args` — and `args` may be left
+out when `game_config` or `game_beside` puts the game there instead. Everything else is
 optional. `py_modules/emulator_catalog/schema.py` is the authority; the importer
 names every problem it finds, so the fastest way to get a definition right is to
 import it and read what comes back.
@@ -96,10 +97,10 @@ import it and read what comes back.
 | `name` | What the panel shows. |
 | `summary` | One line. Say which system it runs. |
 | `source` | How the emulator is obtained — see below. |
-| `args` | How to launch a game. `{rom}` is where the ROM path goes. |
+| `args` | How to launch a game. `{rom}` is where the ROM path goes. Leave it out entirely for a port that takes the game through `game_config` or `game_beside`. |
 | `fullscreen_args` | The switch that starts fullscreen. Omit if it has none. |
 | `root` | The directory under your home the emulator owns, or a list. Everything the definition writes must sit inside one. A list because emulators following the XDG layout split them: settings under `~/.config/<name>`, saves and keys under `~/.local/share/<name>`. |
-| `saves` | Where it keeps save data, relative to home, so the backup carries it off the device. Each path must sit inside a `root`. Omit it and the whole of that directory is backed up — right for an emulator that only reads ROMs off the disk, wrong for one that installs games into itself. |
+| `saves` | Where it keeps save data, relative to home, so the backup carries it off the device. Each path must sit inside a `root`. A filename may be a `*` or `?` pattern, for a program that numbers its saves — `…/controllerPak_file_*.sav` rather than sixteen lines. Omit `saves` entirely and the whole of that directory is backed up — right for an emulator that only reads ROMs off the disk, wrong for one that installs games into itself. |
 | `platform` **or** `databases` | What it plays. `databases` takes libretro system names, e.g. `["Sony - PlayStation"]`, and buys extensions, boxart and collection grouping at once. `platform` is for systems libretro has no database for. One or the other, never both. |
 | `firmware` | Files you must supply — see [below](#firmware-and-keys). |
 | `note` | A caveat shown in the panel. |
@@ -119,7 +120,7 @@ import it and read what comes back.
 | `workarounds` | Corrections for bugs in the emulator itself, each one a switch. The panel calls them **fixes**; the key keeps its older name because it is written into records already on people's devices. Unlike everything above, one is *temporary*: it must name the upstream issue or pull request that will retire it, say what it costs in the user's terms, and it is off by default. Ordinary configuration that is simply how this emulator has to run does not belong here — it belongs in `env`, `layout` or `setup`. The fields are in `py_modules/emulator_catalog/schema.py`; note that an imported definition may not use one that patches the emulator's files. |
 | `port` | `true` for a native port of one game rather than an emulator for a system. It is listed under **Ports** instead of **Emulators**; installing, setup and launching work the same. |
 | `needs` | For a `port`, the one file it plays: `{"what": <a line shown wherever the port is>, "extensions": [...], "id": {"at": <byte offset>, "is": [...]}, "sha1": [...]}`. A port covers one game, so the extensions its system's cores declare are wrong for it in both directions. `id` reads bytes at a fixed offset and decides whether to offer the port at all; a file that reads as another game is not offered, one that cannot be read still is. `sha1` lists the dumps the port actually accepts — most of these projects publish that list — and is checked only once `id` has matched, so a wrong dump is named while you are still looking at the file rather than by the port itself after a long first launch. Neither may be declared beside a compressed extension, since neither survives compression. |
-| `game_config` | For a program that reads its game from its own settings file instead of the command line. `{"format": "json-flat", "path": <file under a root>, "keys": {key: value}}` — `{rom}` in a value becomes the game's path, written each time a game is saved onto it. With this, `args` may be empty. |
+| `game_config` | For a program that reads its game from its own settings file instead of the command line. `{"format": "json-flat", "path": <file under a root>, "keys": {key: value}}` — `{rom}` in a value becomes the game's path, written each time a game is saved onto it. With this, `args` may be left out. `format` and `path` may be left out too when `setup` names one file, which is usually the same file: `setup` seeds a recommendation once and leaves what you changed, while this is rewritten on every save. |
 | `first_run` | Arguments for the run that sets a port up: `{"args": "{rom}", "unless": [<file names>]}`. Passed only while none of those files exist beside the program — how a port that builds its own archive from your dump asks for it once and never again. |
 | `game_beside` | `true` for a program that looks for its game in the directory it runs in instead of taking a path: the game is linked in and the program runs there. `{"as": <name>}` where it insists on one filename. |
 | `game_picker` | `true` when the port asks for its game through a file picker rather than a path. The picker is answered with the game the shortcut was made for, since there is no navigating one with a controller. |

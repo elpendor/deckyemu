@@ -1088,10 +1088,20 @@ def game_config_values(entry, rom_path):
     added -- and this is where the one copy of "which keys, holding what" lives.
     """
     spec = entry.get("game_config") or {}
-    if not spec or spec.get("format") != JSON_FLAT:
+    if not spec:
+        return "", {}
+    # The format and the file may be left out when `setup` names one file --
+    # usually the same file, written under two rules. Resolved the way
+    # `schema.one_file_setup` validates it, and not by importing that: this
+    # module is reached from the catalog rather than the other way round.
+    setup = entry.get("setup")
+    one_file = isinstance(setup, dict) and setup.get("path") and not setup.get("files")
+    fmt = spec.get("format") or (setup.get("format") if one_file else "")
+    path = spec.get("path") or (setup.get("path") if one_file else "")
+    if fmt != JSON_FLAT or not path:
         return "", {}
     return (
-        os.path.join(sysenv.user_home(), spec["path"]),
+        os.path.join(sysenv.user_home(), path),
         {key: (value.replace("{rom}", rom_path) if isinstance(value, str) else value)
          for key, value in (spec.get("keys") or {}).items()},
     )
