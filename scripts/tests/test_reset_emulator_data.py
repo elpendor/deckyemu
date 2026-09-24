@@ -124,7 +124,9 @@ emu_install.flatpak_scope = lambda app_id: (
 emu_install.installed_appimage = lambda entry_id: (
     "/nonexistent/%s.AppImage" % entry_id if entry_id == APPIMAGE["id"] else None
 )
-emu_install.remove_appimage = lambda entry_id: (True, "")
+# `keep` is what a removal leaves behind for a port; a reset asks for
+# everything to go, so it passes none and the stub only has to accept it.
+emu_install.remove_appimage = lambda entry_id, keep=(): (True, "")
 emu_install.flatpak_binary = lambda: "/usr/bin/flatpak"
 emulators.remove = lambda entry_id: None
 

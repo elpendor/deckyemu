@@ -526,6 +526,13 @@ state it was in, including a setup wizard you have already answered once.
 The switch is not offered for an emulator installed from a GitHub release or one
 of your own, because their data lives in ordinary folders this does not remove.
 
+**A port is the exception, and removing one keeps its saves.** The portable kind
+writes its saves and its config beside its own binary rather than in a folder of
+its own elsewhere — which is inside the directory removing it deletes. So what
+the definition declares as saves is left behind, and reinstalling the port finds
+them where it left them. Everything else in there goes: the binary, the archive
+it built from your dump, its logs.
+
 ## Updating an emulator, or going back
 
 Every emulator installed from the panel can be moved between published builds

@@ -1494,9 +1494,14 @@ class Emulators(plugin_base.PluginContext):
         the kind whose data outlives it: `flatpak uninstall` leaves
         `~/.var/app/<id>` alone, so a reinstall inherits the last install's
         state, which is how an emulator comes back with a config nobody wanted.
-        An AppImage keeps its data in ordinary folders and is untouched by this;
-        the catalog knows where they are, but deleting them is not wired up and
-        pretending otherwise would be worse than the gap.
+
+        It applies to an AppImage too, and used not to. The reasoning was that
+        an AppImage keeps its data in ordinary folders elsewhere, which is true
+        of every emulator here and false of a port: the portable kind writes
+        `saves/`, `Save/` and its config *beside* the binary, inside the folder
+        removal deletes. So removing a port deleted the saves as well, from a
+        button that says it will not, and the declared `saves` are now kept
+        unless this says otherwise.
         """
         entry = emulator_catalog.find(entry_id)
         if not entry:
@@ -1517,7 +1522,10 @@ class Emulators(plugin_base.PluginContext):
             if not removed["ok"]:
                 return removed
         else:
-            removed, error = await self._run(emu_install.remove_appimage, entry_id)
+            keep = () if delete_data else await self._run(
+                emu_install.declared_saves, entry_id)
+            removed, error = await self._run(
+                emu_install.remove_appimage, entry_id, keep)
             if not removed:
                 return {"ok": False, "error": error}
 

@@ -186,6 +186,31 @@ def _roots_of(source):
     return listed
 
 
+def _file_root(path):
+    """A declared save that is one file rather than a directory.
+
+    `saves` may name a single file -- a record of achievements, a port's
+    config, a memory card -- and the two travel differently. A directory root
+    is copied into its own folder up there and back into itself; a file root
+    is *inside* a folder named after it, because rclone's `copy` puts a source
+    file into the destination directory rather than over it. So the remote
+    holds `achievements.json/achievements.json`, which is ugly and harmless.
+
+    What was not harmless is bringing it back. The fetch passed the local file
+    as rclone's destination, and rclone has to make a directory there to put
+    the file in, so it refused with *is a file not a directory* and the whole
+    restore stopped on the first emulator that declared one. Six of the nine
+    ports in one set declare exactly this, so it stopped on all of them.
+
+    Read from the disk rather than the definition, because a `saves` entry does
+    not say which it is. **Existing and being a file, not merely not being a
+    directory**: a save directory that this Deck has never had yet is missing
+    rather than either, and reading that as a file sent every root of a fresh
+    restore into its parent.
+    """
+    return os.path.isfile(path)
+
+
 def _safe(*segments):
     """Join path segments for a remote, refusing anything that is not one."""
     for segment in segments:
@@ -773,7 +798,7 @@ def room_for(remote, ids=None, replace=False, stamp=""):
             here = landing.get(root)
             if not here or not rest:
                 continue
-            target = os.path.join(here, *rest.split("/"))
+            target = here if _file_root(here) else os.path.join(here, *rest.split("/"))
             try:
                 already = os.path.getsize(target)
             except OSError:
@@ -833,7 +858,13 @@ def _rows_from(files_by_emulator):
             row["files"] += 1
             row["bytes"] += int(size or 0)
             local = landing.get((emulator, parts[0]))
-            if local and os.path.exists(os.path.join(local, *parts[1:])):
+            if local and _file_root(local):
+                # The file itself, not a path built inside it.
+                here_already = os.path.exists(local)
+            else:
+                here_already = bool(local) and os.path.exists(
+                    os.path.join(local, *parts[1:]))
+            if here_already:
                 row["present"] += 1
         if row["files"]:
             found.append(row)
@@ -1588,7 +1619,11 @@ def pull_steps(remote, ids=None, replace=False, stamp="", known=None):
             # thing.
             named = bool(stamp) and bool(_split_stamp(stamp)[0])
             where = target.split("/", 1)[1] if named else target
-            args = ["copy", "%s:%s/%s" % (remote, root, where), path]
+            # A file root is held up there inside a folder of its own name, so
+            # what comes down is that folder's contents -- and they belong
+            # beside the file, not inside it. See `_file_root`.
+            into = os.path.dirname(path) if _file_root(path) else path
+            args = ["copy", "%s:%s/%s" % (remote, root, where), into]
             if not replace:
                 args.append("--ignore-existing")
             command = cloudsave.argv(

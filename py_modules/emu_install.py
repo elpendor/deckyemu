@@ -36,6 +36,9 @@ import zipfile
 
 import decky
 
+import savedata
+import sysenv
+
 import emu_patch
 import emulator_catalog
 import net
@@ -1837,6 +1840,11 @@ def installed_appimage(entry_id):
     # Not created on the way past: this is a question, and answering it should
     # not leave an empty folder behind for every emulator that is not installed.
     directory = emulators_dir(entry_id, create=False)
+    # Saves kept behind by a removal live in here too, for a port that writes
+    # them beside its binary -- and one of them is a file, so without this the
+    # first of them alphabetically was returned as the program to run and the
+    # port read as still installed after it was removed.
+    saves = {os.path.normpath(one) for one in declared_saves(entry_id)}
     try:
         for name in sorted(os.listdir(directory)):
             # The build record lives in here too, and sorts first because it
@@ -1845,6 +1853,8 @@ def installed_appimage(entry_id):
             if name == BUILD_RECORD:
                 continue
             path = os.path.join(directory, name)
+            if os.path.normpath(path) in saves:
+                continue
             if os.path.isfile(path):
                 return path
     except OSError:
@@ -1852,8 +1862,38 @@ def installed_appimage(entry_id):
     return ""
 
 
-def remove_appimage(entry_id):
-    """Delete the folder an AppImage emulator was installed into."""
+def declared_saves(entry_id):
+    """Absolute paths of what an entry calls its save data, as they exist now.
+
+    Read from the definition rather than guessed, and resolved through the same
+    patterns `savedata` expands, so the two always mean the same files.
+    """
+    entry = emulator_catalog.find(entry_id)
+    if not entry:
+        return []
+    home = sysenv.user_home()
+    found = []
+    for relative in entry.get("saves") or ():
+        found.extend(savedata._matching(os.path.join(home, *relative.split("/"))))
+    return found
+
+
+def remove_appimage(entry_id, keep=()):
+    """Delete the folder an AppImage emulator was installed into.
+
+    `keep` are paths inside it to leave behind, and it is the difference
+    between removing an emulator and removing a port. An emulator installed
+    from a release keeps its saves in `~/.config` or `~/.local/share`, well
+    outside this folder, so deleting the folder costs nothing but the binary.
+    A port of the portable kind keeps them *beside* the binary -- `saves/`,
+    `Save/`, its own `.cfg.json` -- all inside the very directory this used to
+    delete whole.
+
+    So removing a port took its saves with it, silently, from a button that
+    offers to delete the data separately and defaults to not. `delete_data`
+    was honoured for a flatpak and meaningless here, because the code above
+    believed an AppImage kept nothing in its own folder.
+    """
     if not emulator_catalog.is_safe_id(entry_id):
         return False, "Invalid emulator id."
 
@@ -1867,13 +1907,37 @@ def remove_appimage(entry_id):
     if not os.path.normpath(directory).startswith(root + os.sep):
         return False, "Refusing to remove %s" % directory
 
+    keeping = {os.path.normpath(one) for one in keep}
     try:
-        shutil.rmtree(directory)
+        if keeping:
+            if not os.path.isdir(directory):
+                return False, "Nothing was installed for that emulator."
+            _prune(directory, keeping)
+        else:
+            shutil.rmtree(directory)
     except FileNotFoundError:
         return False, "Nothing was installed for that emulator."
     except OSError as error:
         return False, "Could not remove %s: %s" % (directory, error)
     return True, ""
+
+
+def _prune(folder, keeping):
+    """Empty `folder` of everything that is not a kept save or holding one."""
+    for name in sorted(os.listdir(folder)):
+        child = os.path.join(folder, name)
+        # The save itself, or something inside it: left exactly as it is.
+        if any(child == one or child.startswith(one + os.sep) for one in keeping):
+            continue
+        # A folder on the way down to one: emptied of the rest, kept itself.
+        if os.path.isdir(child) and any(
+                one.startswith(child + os.sep) for one in keeping):
+            _prune(child, keeping)
+            continue
+        if os.path.isdir(child) and not os.path.islink(child):
+            shutil.rmtree(child)
+        else:
+            os.remove(child)
 
 
 def remove_tool(name):
