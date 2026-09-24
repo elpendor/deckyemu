@@ -344,9 +344,14 @@ export const emulatorBuilds = callable<[], EmulatorBuild[]>("emulator_builds");
  *
  * `error` names the projects that could not be reached; their previous answers
  * are left alone rather than blanked, so a failed check costs a row nothing.
+ *
+ * `ports` picks which half of the catalog is asked, because the button that
+ * calls this sits under one list or the other. Sweeping both meant the button
+ * below the ports list reported on emulators — a true count of something the
+ * reader was not looking at.
  */
 export const checkEmulatorUpdates = callable<
-  [],
+  [ports: boolean],
   { ok: boolean; checked: number; available: number; error: string }
 >("check_emulator_updates");
 

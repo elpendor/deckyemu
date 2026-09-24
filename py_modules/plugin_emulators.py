@@ -595,8 +595,14 @@ class Emulators(plugin_base.PluginContext):
             })
         return rows
 
-    async def check_emulator_updates(self):
+    async def check_emulator_updates(self, ports: bool = False):
         """Ask each installed AppImage emulator's project what it has published.
+
+        `ports` picks which half of the catalog to ask about, because the button
+        that calls this sits under one list or the other. It swept both, so the
+        one below the ports list asked every emulator as well and answered "4
+        emulators have updates" on a tab with no ports left on it -- a count
+        that was true of something the reader was not looking at.
 
         **The only thing that makes this network call, and it is never made on
         the way to drawing something.** One call per installed AppImage emulator
@@ -619,6 +625,8 @@ class Emulators(plugin_base.PluginContext):
         failures = []
 
         for entry in emulator_catalog.CATALOG:
+            if bool(entry.get("port")) != bool(ports):
+                continue
             source = entry.get("source") or {}
             # Both kinds this plugin downloads itself. A flatpak is checked by
             # flatpak, and `byo` is not this plugin's to check at all.
@@ -641,7 +649,13 @@ class Emulators(plugin_base.PluginContext):
             if emu_install.update_state(record.get("tag", ""), tag) == "available":
                 available += 1
 
-        await self._run(emu_install.write_latest_tags, tags)
+        # Only ids the catalog still has. The file is written back whole, so a
+        # removed emulator's last-seen tag stayed in it for good -- nothing
+        # reads one, but it is unbounded, and it is the first place somebody
+        # debugging this count would look.
+        known = {entry["id"] for entry in emulator_catalog.CATALOG}
+        await self._run(emu_install.write_latest_tags,
+                        {key: value for key, value in tags.items() if key in known})
 
         # Named, not counted. "1 emulator could not be checked" sends the reader
         # to open four dialogs to find out which; the name is the whole of what

@@ -233,20 +233,28 @@ export function EmulatorCatalogPanel({ onChanged, ports = false }: Props) {
       // one press could spend a hundred and sixty requests against GitHub's
       // sixty-an-hour budget for the address, and the rate limiting that
       // followed looked like GitHub being unreachable.
-      const result = await callWithRetry(checkEmulatorUpdates, OVER_THE_NETWORK);
+      const result = await callWithRetry(() => checkEmulatorUpdates(ports), OVER_THE_NETWORK);
       await loadBuilds();
       // The failures first, and kept even when something was checked
       // successfully: "everything is up to date" alongside a project that could
       // not be reached is the sentence that makes somebody stop looking.
       const parts: string[] = [];
       if (result.available > 0) {
+        // Named for the list this button is under. It said "emulators" on both
+        // tabs, so removing every port and pressing it answered "4 emulators
+        // have updates" on a page with no ports on it.
+        const noun = ports ? "port" : "emulator";
         parts.push(
           result.available === 1
-            ? "1 emulator has an update."
-            : `${result.available} emulators have updates.`,
+            ? `1 ${noun} has an update.`
+            : `${result.available} ${noun}s have updates.`,
         );
       } else if (result.checked > 0) {
-        parts.push("Everything marked (GitHub) is up to date.");
+        parts.push(
+          ports
+            ? "Every port is up to date."
+            : "Everything marked (GitHub) is up to date.",
+        );
       } else if (!result.error) {
         // Nothing to check is not a failure and not a success. It is the state
         // of a Deck whose emulators all came from Flathub, which is most of
@@ -264,7 +272,7 @@ export function EmulatorCatalogPanel({ onChanged, ports = false }: Props) {
     } finally {
       setChecking(false);
     }
-  }, [loadBuilds]);
+  }, [loadBuilds, ports]);
   // Why any definition file was refused. Empty is the ordinary case.
   const [problems, setProblems] = useState<string[]>([]);
 
@@ -661,8 +669,12 @@ export function EmulatorCatalogPanel({ onChanged, ports = false }: Props) {
   // Nothing installed from a release means nothing for the check to ask about,
   // and a button whose only possible answer is "there was nothing to do" is a
   // row explaining an absence. Most Decks are in exactly this state.
-  const hasReleaseBuilds = Object.values(builds).some(
-    (row) => row.channel === "github",
+  //
+  // This list's rows, not every row there is. `builds` covers the whole
+  // catalog, so an emulator installed from a release put the button under an
+  // empty ports list -- where pressing it then reported on the emulators.
+  const hasReleaseBuilds = entries.some(
+    (entry) => builds[entry.id]?.channel === "github",
   );
 
   return (
@@ -922,10 +934,16 @@ export function EmulatorCatalogPanel({ onChanged, ports = false }: Props) {
             onClick={() => void runCheck()}
             description={
               checkNote ||
-              "Emulators marked (GitHub) are not checked automatically — this asks each project directly, so it happens when you press it."
+              (ports
+                ? "Ports are not checked automatically — this asks each project directly, so it happens when you press it."
+                : "Emulators marked (GitHub) are not checked automatically — this asks each project directly, so it happens when you press it.")
             }
           >
-            {checking ? "Checking..." : "Check for emulator updates"}
+            {checking
+              ? "Checking..."
+              : ports
+                ? "Check for port updates"
+                : "Check for emulator updates"}
           </ButtonItem>
         </PanelSectionRow>
       )}

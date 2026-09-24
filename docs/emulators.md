@@ -552,7 +552,9 @@ builds like the rest, with two differences.
 means asking each project's repository directly, one request per emulator, and a
 tab that did that every time you walked past it would be spending your
 connection on a question nobody asked. So there is a **Check for emulator
-updates** button at the foot of the Emulators tab. Press it and the rows say
+updates** button at the foot of the Emulators tab, and a **Check for port
+updates** at the foot of the Ports tab. Each asks about the list it sits under
+and counts only that list. Press it and the rows say
 *update available* where there is one, and the button says what it found.
 
 Until you press it, the plugin does not claim either way. A row saying nothing
