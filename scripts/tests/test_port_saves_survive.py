@@ -142,6 +142,39 @@ with tempfile.TemporaryDirectory() as home:
           os.path.dirname(config), folder)
 
 
+section("a port reinstalled but not yet played is still installed here")
+
+_real_catalog = emulator_catalog.CATALOG
+with tempfile.TemporaryDirectory() as home:
+    emulator_catalog.CATALOG = (PORT,)
+    _real_home = sysenv.user_home
+    sysenv.user_home = lambda: home
+    try:
+        import savedata
+
+        folder = os.path.join(home, "deckyemu", "emulators", "zed")
+        os.makedirs(folder)
+        # What a freshly reinstalled port looks like: the binary is there and
+        # not one save has been written yet.
+        with open(os.path.join(folder, "zed.appimage"), "w", encoding="utf-8") as h:
+            h.write("x")
+
+        check("a backup has nothing to offer for it",
+              [one["id"] for one in savedata._all_sources()], [])
+        # The restore screen read that same emptiness as "not installed here,
+        # so these stay in the backup" -- on a port that had just been
+        # installed, for saves that belong to precisely it.
+        listed = savedata._all_sources(True)
+        check("but a restore knows where its saves go",
+              [one["id"] for one in listed], ["zed"])
+        check("and the places are the ones the definition declared",
+              sorted(os.path.relpath(path, folder) for _, path in listed[0]["roots"]),
+              ["saves", "zed.cfg.json"])
+    finally:
+        sysenv.user_home = _real_home
+        emulator_catalog.CATALOG = _real_catalog
+
+
 if __name__ == "__main__":
     from harness import summary
 

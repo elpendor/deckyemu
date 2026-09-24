@@ -107,7 +107,7 @@ def with_run(fake, action, sources=SOURCES):
     real_sources = savedata._all_sources
     subprocess.run = fake
     cloudsave.binary = lambda: "/tools/rclone"
-    savedata._all_sources = lambda: list(sources)
+    savedata._all_sources = lambda empty=False: list(sources)
     try:
         return action()
     finally:
@@ -1048,7 +1048,7 @@ def room(free, replace=True, answer=(True, _UP_THERE)):
     real_sources = savedata._all_sources
     cloudsave.rclone = lambda args, seconds: answer
     _shutil.disk_usage = lambda path: type("Usage", (), {"free": free})()
-    savedata._all_sources = lambda: list(_ROOM_SOURCE)
+    savedata._all_sources = lambda empty=False: list(_ROOM_SOURCE)
     try:
         return cloudsync.room_for("dropbox", None, replace)
     finally:

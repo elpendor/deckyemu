@@ -219,10 +219,16 @@ def _safe(*segments):
     return "/".join(segments)
 
 
-def _sources(ids=None):
-    """The emulators this Deck could copy, narrowed to `ids` when given."""
+def _sources(ids=None, empty=False):
+    """The emulators this Deck could copy, narrowed to `ids` when given.
+
+    `empty` includes an emulator that is installed but has no saves here yet.
+    Copying up has nothing to send for one; bringing down is the whole point of
+    it, and without this a port reinstalled after a removal was reported as
+    "not installed here" with its saves left in the backup.
+    """
     return [
-        source for source in savedata._all_sources()
+        source for source in savedata._all_sources(empty)
         if ids is None or source["id"] in ids
     ]
 
@@ -791,7 +797,7 @@ def room_for(remote, ids=None, replace=False, stamp=""):
     copy, not to be the only thing that can.
     """
     needed = {}
-    for source in _sources(ids):
+    for source in _sources(ids, True):
         landing = dict(_roots_of(source))
         for name, size in _files_up_there(remote, source["id"], stamp).items():
             root, _, rest = name.partition("/")
@@ -831,7 +837,7 @@ def room_for(remote, ids=None, replace=False, stamp=""):
 
 def _rows_from(files_by_emulator):
     """Turn `{emulator: {name: size}}` into the rows the restore screen reads."""
-    here = {source["id"]: source for source in savedata._all_sources()}
+    here = {source["id"]: source for source in savedata._all_sources(True)}
     landing = {}
     for source in here.values():
         for segment, path in _roots_of(source):
@@ -1578,7 +1584,11 @@ def pull_steps(remote, ids=None, replace=False, stamp="", known=None):
     if not root:
         return [], "That is not a copy this can read."
 
+    doubled = set()
     if known is not None:
+        # A caller that already listed passes the pairs alone, so the shape is
+        # read from the disk below -- right for a launch, where the save is
+        # there to look at.
         up_there = set(known)
     else:
         # One emulator asked for is one emulator listed. The whole tree costs
@@ -1593,12 +1603,21 @@ def pull_steps(remote, ids=None, replace=False, stamp="", known=None):
         # The pairs that actually exist up there. `<emulator>/<root>/<file>` is
         # the shallowest path that means anything; anything shorter is not ours.
         up_there = set()
+        under = {}
         for entry in entries:
             parts = (entry.get("Path") or "").split("/")
             if len(parts) >= 3:
                 up_there.add((parts[0], parts[1]))
+                under.setdefault((parts[0], parts[1]), []).append("/".join(parts[2:]))
+        # Which roots up there are one file wrapped in a folder of its own
+        # name -- see `_file_root`. Asked of the storage rather than the disk
+        # because the disk is the thing that has none of it: restoring a
+        # declared file save onto a Deck that lost it cannot tell a file from a
+        # directory by looking, and guessing "directory" recreates the very
+        # shape that could not be read back.
+        doubled = {key for key, names in under.items() if names == [key[1]]}
 
-    listed = [source for source in _sources(ids)
+    listed = [source for source in _sources(ids, True)
               if any(source["id"] == emulator for emulator, _ in up_there)]
     if not listed:
         return [], "That storage has nothing for the emulators installed here."
@@ -1622,7 +1641,8 @@ def pull_steps(remote, ids=None, replace=False, stamp="", known=None):
             # A file root is held up there inside a folder of its own name, so
             # what comes down is that folder's contents -- and they belong
             # beside the file, not inside it. See `_file_root`.
-            into = os.path.dirname(path) if _file_root(path) else path
+            one_file = _file_root(path) or (source["id"], segment) in doubled
+            into = os.path.dirname(path) if one_file else path
             args = ["copy", "%s:%s/%s" % (remote, root, where), into]
             if not replace:
                 args.append("--ignore-existing")

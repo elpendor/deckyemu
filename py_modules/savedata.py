@@ -274,8 +274,15 @@ def _matching(path):
                   if fnmatch.fnmatch(name, pattern))
 
 
-def _catalog_sources():
-    """The catalog emulators that are installed, and what to take from each."""
+def _catalog_sources(empty=False):
+    """The catalog emulators that are installed, and what to take from each.
+
+    `empty` keeps an emulator that is installed but has no saves yet. Backing
+    up wants it left out -- it is a row saying nothing -- and restoring needs
+    it: a port reinstalled a minute ago has an empty folder, and deciding from
+    that folder that the port is "not installed here" is how a restore offered
+    to put saves everywhere except the emulator they belong to.
+    """
     home = sysenv.user_home()
     found = []
     for entry in emulator_catalog.CATALOG:
@@ -301,8 +308,12 @@ def _catalog_sources():
             # definition as `_SKIP_TOP`, applied one level up.
             roots = [(os.path.basename(path), path) for path in owned
                      if not _is_cache_root(relative_of(path, home))]
-        roots = [(label, path) for label, path in roots
-                 if os.path.isdir(path) or os.path.isfile(path)]
+        # A declared path that is not there yet is still where its saves go.
+        # Kept only for restoring, because a backup listing it would offer an
+        # emulator with nothing in it.
+        if not empty:
+            roots = [(label, path) for label, path in roots
+                     if os.path.isdir(path) or os.path.isfile(path)]
         if not roots:
             continue
         found.append({
@@ -315,8 +326,12 @@ def _catalog_sources():
     return found
 
 
-def _all_sources():
+def _all_sources(empty=False):
     """Every emulator and port with something to back up, by name.
+
+    `empty` is passed straight through to `_catalog_sources`: with it, an
+    installed emulator that has no saves yet is listed too, which is what a
+    restore needs and a backup does not.
 
     By name because that is how the restore list reads and how a list of a dozen
     things is looked through. RetroArch used to lead, on the reasoning that it
@@ -328,7 +343,7 @@ def _all_sources():
     libretro = _retroarch_source()
     if libretro:
         found.append(libretro)
-    return sorted(found + _catalog_sources(),
+    return sorted(found + _catalog_sources(empty),
                   key=lambda source: source["name"].casefold())
 
 

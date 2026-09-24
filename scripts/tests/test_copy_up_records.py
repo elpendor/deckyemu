@@ -131,7 +131,7 @@ os.makedirs(os.path.join(TMP, "waiting", "empty"), exist_ok=True)
 
 _real_sources = savedata._all_sources
 _real_mine = cloudsync.read_mine
-savedata._all_sources = lambda: list(_SOURCES)
+savedata._all_sources = lambda empty=False: list(_SOURCES)
 try:
     cloudsync.read_mine = lambda source_id: {}
     check("an emulator with saves and no copy behind it is waiting",
