@@ -1616,6 +1616,47 @@ def compare(remote, source_id, seconds=BEFORE_PLAY_SECONDS):
     }
 
 
+def _forget_gone(remote, entries, only):
+    """Drop names the record claims that the storage does not have.
+
+    **The record is carried forward, and nothing ever removed from it.** It has
+    to name what the storage holds rather than what this Deck sent, or a save
+    left behind by an uninstall is invisible to the very screen meant to bring
+    it back -- see `_state_of`. The cost is that a file deleted from the
+    storage by other means is claimed for good, and the restore screen counts a
+    file that is not there.
+
+    Repaired here because this is the one moment the truth is already in hand:
+    a restore lists the storage to plan itself, so the comparison is free and
+    the only cost is a small write, and only when the record is actually wrong.
+
+    Quiet by design. This runs inside a read, and a storage that will not take
+    the correction must not stop the restore that was asked for. `only` is the
+    emulator a narrowed listing covered, and nothing outside it can be judged
+    from what came back.
+    """
+    seen = {}
+    for entry in entries:
+        path = (entry.get("Path") or "")
+        emulator, _, rest = path.partition("/")
+        if rest:
+            seen.setdefault(emulator, set()).add(rest)
+    for emulator, names in seen.items():
+        if only and emulator != only:
+            continue
+        mine = read_mine(emulator)
+        held = (mine or {}).get("files") or {}
+        gone = [name for name in held if name not in names]
+        if not gone:
+            continue
+        kept = {name: said for name, said in held.items() if name in names}
+        decky.logger.info(
+            "Cloud record for %s named %d file(s) the storage no longer has",
+            emulator, len(gone))
+        _keep_mine(emulator, dict(mine, files=kept), remote)
+        _write_record(remote, emulator, dict(mine, files=kept))
+
+
 def pull_steps(remote, ids=None, replace=False, stamp="", known=None):
     """One rclone call per save root, coming the other way. Returns (steps, error).
 
@@ -1686,6 +1727,9 @@ def pull_steps(remote, ids=None, replace=False, stamp="", known=None):
         # directory by looking, and guessing "directory" recreates the very
         # shape that could not be read back.
         doubled = {key for key, names in under.items() if names == [key[1]]}
+        # The listing is ground truth, and this is the only place that has it
+        # without paying for it. See `_forget_gone`.
+        _forget_gone(remote, entries, only)
 
     listed = [source for source in _sources(ids, True)
               if any(source["id"] == emulator for emulator, _ in up_there)]

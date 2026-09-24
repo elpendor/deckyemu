@@ -294,6 +294,44 @@ check("rclone is told about a file rule", "a.cfg" in _args, True)
 check("and about a directory rule", "**/logs/**" in _args, True)
 
 
+section("a record stops claiming what the storage no longer has")
+
+_kept = {}
+_written = {}
+_real_mine, _real_keep, _real_write = (
+    cloudsync.read_mine, cloudsync._keep_mine, cloudsync._write_record)
+cloudsync.read_mine = lambda one: {"at": 1, "device": "d", "files": {
+    "save/here.sav": {"size": 1, "mtime": 1},
+    "save/deleted-from-dropbox.sav": {"size": 2, "mtime": 2}}}
+cloudsync._keep_mine = lambda one, state, remote="": _kept.update({one: state})
+cloudsync._write_record = lambda remote, one, state: (
+    _written.update({one: state}) or (True, ""))
+try:
+    entries = [{"Path": "zed/save/here.sav"}, {"Path": "zed/.deckyemu-state.json"}]
+    cloudsync._forget_gone("dropbox", entries, "")
+    check("the name the listing did not show is dropped",
+          sorted(_written["zed"]["files"]), ["save/here.sav"])
+    check("and this Deck's copy is corrected with it",
+          sorted(_kept["zed"]["files"]), ["save/here.sav"])
+
+    # A listing narrowed to one emulator says nothing about the others, and
+    # judging them from it would delete every name they have.
+    _kept.clear(); _written.clear()
+    cloudsync._forget_gone("dropbox", [{"Path": "other/save/x.sav"}], "other")
+    check("an emulator the listing did not cover is left alone",
+          "zed" in _written, False)
+
+    # The ordinary case writes nothing at all.
+    _kept.clear(); _written.clear()
+    cloudsync._forget_gone("dropbox", [
+        {"Path": "zed/save/here.sav"},
+        {"Path": "zed/save/deleted-from-dropbox.sav"}], "")
+    check("a record that is right costs no write", _written, {})
+finally:
+    cloudsync.read_mine, cloudsync._keep_mine, cloudsync._write_record = (
+        _real_mine, _real_keep, _real_write)
+
+
 if __name__ == "__main__":
     from harness import summary
 
