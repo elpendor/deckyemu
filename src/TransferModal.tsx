@@ -29,7 +29,7 @@ import {
   stopFileServerIfIdle,
   type FileServerStatus,
 } from "./backend";
-import { selectRom } from "./addFlow";
+import { selectRom, type DiscChoice } from "./addFlow";
 import { summariseUploads } from "./arriving";
 import { askDiscChoice, confirmJoinDisc } from "./confirmDiscSet";
 import { FileName } from "./FileName";
@@ -639,7 +639,7 @@ export function TransferModal({
    * panel with the game already probed and its artwork resolved.
    */
   const use = useCallback(
-    async (path: string, name: string) => {
+    async (path: string, name: string, decided?: DiscChoice) => {
       /*
        * Asked here, before the flow starts, because merging discs must never be
        * implied: the detection is a guess from filenames, and this is the one
@@ -650,11 +650,17 @@ export function TransferModal({
        * A failure to ask is not a failure to add. The set is a nicety; the
        * press was about getting this file into the add flow, and it goes there
        * undecided, which is what the panel already handles.
+       *
+       * `decided` is an answer already given on the way here -- **Its own
+       * entry** on a disc of an added game. Without it the question came
+       * straight back: that disc's siblings may have been sent with it, so
+       * `find_set` finds a set in the transfer folder and asks about it, one
+       * dialog after the one that was just answered.
        */
       // Backing out of the disc question withdraws the press entirely: nothing
       // is added, and this dialog stays where it was rather than closing and
       // opening the panel behind it.
-      const choice = await askDiscChoice(path);
+      const choice = decided ?? (await askDiscChoice(path));
       if (choice === "cancel") return;
       void selectRom(path, choice);
       toaster.toast({ title: "Ready to add", body: name });
@@ -692,7 +698,9 @@ export function TransferModal({
       // this can do, so it cannot also be what dismissing means.
       if (choice === "cancel") return;
       if (choice === "single") {
-        await use(path, name);
+        // Carried, not asked again: the siblings of this disc may be waiting
+        // beside it, and the ordinary flow would ask about those next.
+        await use(path, name, "single");
         return;
       }
       setBusy(true);
