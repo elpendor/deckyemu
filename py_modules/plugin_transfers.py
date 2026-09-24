@@ -403,6 +403,7 @@ class Transfers(plugin_base.PluginContext):
 
         kinds = await self._run(cloudsave.remote_kinds) if tool else {}
         kind = kinds.get(remote, "")
+        accounts = await self._accounts(configured) if details else {}
         # **The service, not just the name somebody typed.** The name is a
         # label -- it defaults to something generic -- so a row reading "saves
         # go to cloud" answered nothing anybody wanted to know. The service is
@@ -434,17 +435,45 @@ class Transfers(plugin_base.PluginContext):
             # accounts, which is a local file -- and paying four seconds of
             # Dropbox to open a screen that shows neither is what made the
             # restore dialog feel broken.
-            "account": (await self._run(cloudsave.account_for, remote)
-                        if (remote and details) else ""),
+            "account": accounts.get(remote, ""),
             # Numbers can only come back from a service that answered, so this
             # doubles as proof the sign-in still works.
             "space": (await self._run(cloudsave.remote_space, remote)
                       if (remote and details) else {}),
             "remotes": [{"name": name, "kind": kinds.get(name, ""),
                          "label": await self._run(cloudsave.label_for,
-                                                  kinds.get(name, ""))}
+                                                  kinds.get(name, "")),
+                         "account": accounts.get(name, "")}
                         for name in configured],
         }
+
+    async def _accounts(self, configured):
+        """Who each storage says you are, asked once per storage and kept.
+
+        **Every row, not just the one in use.** Two accounts of one service are
+        the reason rows carry a number, and a number is all they carried -- so
+        telling one Dropbox from another meant switching to it to find out.
+
+        Asked once ever. It costs a call, which is why the row in use used to
+        be the only one paying it, and the answer does not change; an empty
+        answer is cached too, because a service that will not say never starts.
+        **Dropbox is one of those** -- rclone reports "doesn't support
+        UserInfo" -- so its rows stay bare, and for two of them the honest fix
+        is a name somebody gives them rather than one asked for.
+        """
+        known = store.get_settings().get("cloud_accounts") or {}
+        if not isinstance(known, dict):
+            known = {}
+        asking = [name for name in configured if name not in known]
+        for name in asking:
+            known[name] = await self._run(cloudsave.account_for, name)
+        if asking:
+            # Names no longer configured go, so signing out and back in asks
+            # again rather than showing whoever was there before.
+            kept = {name: known.get(name, "") for name in configured}
+            store.set_settings({"cloud_accounts": kept})
+            return kept
+        return known
 
     async def choose_cloud_remote(self, name: str):
         """Pick which configured storage saves go to. Returns the new status.

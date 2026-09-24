@@ -92,6 +92,24 @@ const BODY = {
  */
 
 /** Free space, rounded the way a person would say it. */
+/**
+ * When saves last went up, in as few words as the row has space for.
+ *
+ * Short on purpose: this sits beside an account and a free-space figure on a
+ * 854px panel, so "Synced 12 min ago" is the whole sentence. Nothing at all
+ * before the first copy, rather than "never" -- a storage signed into a minute
+ * ago has not failed at anything.
+ */
+function syncedAgo(at?: number): string {
+  if (!at) return "";
+  const mins = Math.floor((Date.now() / 1000 - at) / 60);
+  if (mins < 1) return "Synced just now";
+  if (mins < 60) return `Synced ${mins} min ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `Synced ${hours}h ago`;
+  return `Synced ${Math.floor(hours / 24)}d ago`;
+}
+
 function gigabytes(bytes: number): string {
   if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
   return `${Math.round(bytes / 1024 ** 2)} MB`;
@@ -489,11 +507,21 @@ export function CloudSetupModal({ closeModal }: Props) {
                 // for that long after being pressed reads as one that did not
                 // take. It replaces the line it is waiting for, so nothing
                 // moves when the figures arrive.
+                // The account on every row, not just this one: two accounts
+                // of a service are why rows carry a number, and a number alone
+                // never said which was which. Blank for a service that will
+                // not name itself.
+                //
+                // "Synced" only on the row in use, because it is the only one
+                // anything is copied to, and it is the question this screen is
+                // opened with -- free space says the account exists, not that
+                // saves are arriving.
                 const under =
                   chosen && describing === one.name && cloud?.space?.free === undefined
                     ? ["Reading how much room is left..."]
                     : [
-                        chosen ? cloud?.account : "",
+                        one.account || "",
+                        chosen ? syncedAgo(cloud?.last_sync) : "",
                         chosen && cloud?.space?.free !== undefined
                           ? `${gigabytes(cloud.space.free)} free`
                           : "",

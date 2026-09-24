@@ -390,6 +390,8 @@ export interface CloudRemote {
   kind: string;
   /** That backend in words, for a person to read. */
   label: string;
+  /** Who it says you are, or "" for a service that will not say. */
+  account?: string;
 }
 
 export interface CloudState {
