@@ -288,6 +288,13 @@ with tempfile.TemporaryDirectory() as home:
     check("including one nested well down the tree",
           any("sentry" in one for one in kept), False)
 
+# And the same rule coming back, or a restore hands this Deck the config that
+# was deliberately never sent -- another device's, binding a pad that is not
+# here.
+_pull = cloudsync._excludes({"except": ["BigPEmuConfig.bigpcfg"], "whole": False})
+check("a restore is told to leave it behind too",
+      "BigPEmuConfig.bigpcfg" in _pull, True)
+
 # The copy up has to be told as well, or the file is merely unrecorded.
 _args = cloudsync._excludes({"except": ["a.cfg", "logs/"], "whole": False})
 check("rclone is told about a file rule", "a.cfg" in _args, True)

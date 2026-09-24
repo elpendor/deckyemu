@@ -1758,8 +1758,13 @@ def pull_steps(remote, ids=None, replace=False, stamp="", known=None):
             one_file = (_file_root(path, source)
                         or (source["id"], segment) in doubled)
             into = os.path.dirname(path) if one_file else path
+            # The same rule coming down as going up. Excluding a config from
+            # the copy up and then restoring one is worse than never having
+            # excluded it: what arrives is some other Deck's, which is the
+            # controller bound by device id that `saves_except` exists to keep
+            # out, and it arrives looking like a save.
             args = (["copy", "%s:%s/%s" % (remote, root, where), into]
-                    + _only_for(source, segment))
+                    + _only_for(source, segment) + _excludes(source))
             if not replace:
                 args.append("--ignore-existing")
             command = cloudsave.argv(
