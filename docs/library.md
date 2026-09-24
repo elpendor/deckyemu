@@ -280,7 +280,9 @@ set an environment variable without touching a shortcut's launch options, which
 is the one field two plugins cannot share.
 
 A file with a mistake in it costs its own variables and not the game. For a
-flatpak emulator the variables are carried into the sandbox as well.
+flatpak emulator, variables belonging to a Vulkan layer — `LSFGVK_*`, `MAKO_*`
+and their off switches — are carried into the sandbox as well, which `flatpak
+run` does not do by itself.
 
 ## Collections
 

@@ -50,16 +50,25 @@ check("and nothing at all is emitted for an empty argv",
 section("what the prelude does")
 
 _text = chr(10).join(_lines)
-# Quoted, and built into "$@" rather than spliced as text: a config path with
-# a space in it would otherwise arrive as two arguments.
-for _name in launchers.LAYER_ENV:
-    check("%s is forwarded when set" % _name,
-          ('"--env=%s=${%s}"' % (_name, _name)) in _text, True)
-check("and only when set, so an ordinary launch is unchanged",
-      _text.count("if [ -n") , len(launchers.LAYER_ENV))
-# The list is named rather than matched by prefix: a sandbox is meant to be a
-# smaller environment than the host.
-check("nothing is forwarded by pattern", "*" in _text, False)
+# **By prefix, having started by name.** Naming them lasted until the second
+# layer: lsfg-vk uses LSFGVK_*, MAKO uses MAKO_* and a dozen tuning variables
+# besides, and a list of names means reading somebody else's release notes
+# forever -- wrong quietly in between, as a game that simply does not get the
+# layer.
+for _prefix in launchers.LAYER_ENV_PREFIXES:
+    check("%s* is matched" % _prefix, (_prefix + "*") in _text, True)
+for _name in launchers.LAYER_ENV_NAMES:
+    check("%s is matched, being outside both prefixes" % _name, _name in _text, True)
+# The namespace is still the fence: a sandbox is meant to be a smaller
+# environment than the host, so this is prefixes a layer gave itself and not a
+# wildcard.
+check("nothing matches everything", "*)" in _text.replace("_*)", ""), False)
+# Looked up again inside the shell rather than pasted through it, so a value
+# with a space or a quote in it arrives as one argument.
+check("the value is read by name, not interpolated",
+      'eval "_dke_val=\${$_dke_var}"' in _text, True)
+check("and the loop variables do not leak into the emulator",
+      "unset _dke_var _dke_val" in _text, True)
 
 
 section("the whole launcher, written out")
@@ -125,7 +134,7 @@ with tempfile.TemporaryDirectory() as home:
         body = open(launchers.write_launcher(install, "Order", core, rom),
                     encoding="utf-8").read()
         check("the hook is read before the sandbox forwarding",
-              body.index("_dke_env") < body.index("LSFGVK_CONFIG"), True)
+              body.index("_dke_env") < body.index("_dke_var"), True)
     finally:
         sysenv.user_home = _real
 

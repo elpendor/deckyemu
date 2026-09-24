@@ -221,7 +221,9 @@ LAUNCH_GATE_DIR = os.path.join(decky.DECKY_PLUGIN_RUNTIME_DIR, "launch")
 #  36  every launcher reads ~/deckyemu/env.d, and a flatpak one carries a
 #      Vulkan layer's variables into the sandbox. Existing shortcuts get
 #      neither until they are rewritten, which is what this bump is for.
-FORMAT_VERSION = 36
+#  37  those variables are matched by the prefix a layer gave itself rather
+#      than by name, so a second layer works without this list being edited.
+FORMAT_VERSION = 37
 
 # One file per OSD mode rather than one shared file. Games can override the
 # global setting individually, and a single file would mean the last game
@@ -1428,12 +1430,22 @@ def env_hook():
     ]
 
 
-#: Variables a Vulkan layer set on the host needs inside a flatpak sandbox.
+#: Prefixes of the variables a Vulkan layer needs inside a flatpak sandbox.
 #:
-#: Named rather than forwarded by prefix: a sandbox exists to be a smaller
-#: environment than the host, and copying in whatever happens to start with the
-#: right letters is how that stops being true.
-LAYER_ENV = ("LSFGVK_CONFIG", "LSFGVK_PROFILE", "DISABLE_LSFGVK")
+#: **By prefix, having started by name.** Naming them was the careful choice --
+#: a sandbox exists to be a smaller environment than the host -- and it lasted
+#: until the second layer. `lsfg-vk` uses `LSFGVK_CONFIG` and `LSFGVK_PROFILE`;
+#: MAKO, which succeeds it, uses `MAKO_PROFILE`, `MAKO_CONFIG` and a dozen
+#: tuning variables besides. Keeping a list of names means reading somebody
+#: else's release notes forever, and being wrong quietly in between: the
+#: failure is a game that simply does not get the layer, with nothing to see.
+#:
+#: The namespace is still the fence. These are prefixes a layer gave itself,
+#: not a wildcard, and a variable outside them does not cross.
+LAYER_ENV_PREFIXES = ("LSFGVK_", "MAKO_")
+
+#: The off switches, which are not under either prefix.
+LAYER_ENV_NAMES = ("DISABLE_LSFGVK", "DISABLE_MAKO")
 
 
 def forward_layer_env(argv, command):
@@ -1458,14 +1470,27 @@ def forward_layer_env(argv, command):
         return [], command
     lines = [
         "# A Vulkan layer switched on for this shortcut lives in the host's",
-        "# environment, and `flatpak run` does not carry it in. See LAYER_ENV.",
+        "# environment, and `flatpak run` does not carry it in.",
         "set --",
     ]
-    for name in LAYER_ENV:
-        lines.append(
-            'if [ -n "${%s-}" ]; then set -- "$@" "--env=%s=${%s}"; fi'
-            % (name, name, name)
-        )
+    # Read from the environment as it is, rather than from a list written
+    # here: `env` names what is actually set, and `case` keeps the match to
+    # the prefixes above. A value with a space or a quote in it survives
+    # because nothing is re-parsed -- the name is looked up again inside the
+    # shell rather than pasted through it.
+    lines.extend([
+        'for _dke_var in $(env | sed -n "s/^\\([A-Za-z_][A-Za-z0-9_]*\\)=.*/\\1/p"); do',
+        "  case \"$_dke_var\" in",
+        "    %s)" % "|".join(
+            [prefix + "*" for prefix in LAYER_ENV_PREFIXES] + list(LAYER_ENV_NAMES)
+        ),
+        '      eval "_dke_val=\\${$_dke_var}"',
+        '      set -- "$@" "--env=$_dke_var=$_dke_val"',
+        "      ;;",
+        "  esac",
+        "done",
+        "unset _dke_var _dke_val",
+    ])
     # After `flatpak run` and before the application id, which is where every
     # other option this builds already goes.
     head = " ".join(shlex.quote(arg) for arg in argv[:2])
