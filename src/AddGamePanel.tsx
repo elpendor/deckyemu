@@ -403,16 +403,17 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
     // like an error.
     let picked: { path: string; realpath: string } | undefined;
     try {
-      // A transferred file still waiting to be added, else where a ROM was last
-      // picked from, else the backend's default (home). No hardcoded path: the
-      // backend resolves the real home, which is not /home/deck on every install.
+      // Where a file was last picked from, else home. No hardcoded path: the
+      // backend resolves the real home, which is not /home/deck on every
+      // install.
       //
-      // The inbox wins because the received list is the only other way back to a
-      // sent file and it does not survive a reload -- after one, the file is on
-      // disk with nothing pointing at it. It is only ever set when something is
-      // actually in there, so it cannot open an empty folder.
-      const startPath =
-        status.waiting_rom_dir || settings?.last_rom_dir || status.default_rom_dir;
+      // **Not the transfer folder, deliberately.** It used to win over both,
+      // on the reasoning that a file just sent from another device should be
+      // in front of you. But that is the transfer feature's own job -- what
+      // arrives there is listed there, with a button to add it -- and taking
+      // this picker there as well meant the one control for "something already
+      // on this Deck" opened somewhere most of a library never is.
+      const startPath = settings?.last_rom_dir || status.home_dir;
       picked = await openFilePicker(
         FileSelectionType.FILE,
         startPath,
@@ -450,7 +451,7 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
     const choice = await askDiscChoice(path);
     if (choice === "cancel") return;
     await selectRom(path, choice);
-  }, [settings?.last_rom_dir, status.default_rom_dir, status.waiting_rom_dir]);
+  }, [settings?.last_rom_dir, status.home_dir]);
 
   const visibleCores: Core[] = useMemo(() => {
     if (!probe) return [];
@@ -877,7 +878,7 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
             layout="below"
             onClick={() => void openTransfer()}
             disabled={adding}
-            description="Send games over the local network from a phone or PC. They arrive in the transfer folder, ready to choose below."
+            description="From a phone or PC, over the local network."
           >
             Transfer to Deck
           </ButtonItem>
@@ -885,7 +886,15 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
       )}
 
       <PanelSectionRow>
-        <ButtonItem layout="below" onClick={pickRom} disabled={adding}>
+        <ButtonItem
+          layout="below"
+          onClick={pickRom}
+          disabled={adding}
+          // The button had none while the one above it explained itself. The
+          // path belongs here, not in the label, which cannot carry one that
+          // changes.
+          description="Opens your last folder, or home."
+        >
           {/* Wrapped rather than left to overflow. A .pkg arrives named
               UP4415-NPUB31749_00-GOATSIMULATORPS3_bg_1_fbd920a6…pkg -- a
               hundred characters with not one space in them, so there is no
@@ -894,11 +903,14 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
               a line or two instead. Kept whole rather than truncated: the
               interesting part of these names is the end. */}
           <div style={{ overflowWrap: "anywhere", whiteSpace: "normal" }}>
-            {/* "Choose a game" rather than "Add to Library": this opens a file
-                browser, and the button that actually adds one is at the bottom
-                of the same panel saying "Add to Steam". Two buttons claiming to
-                add would be worse than a plain description of what each does. */}
-            {addedName || "Choose a game"}
+            {/* "Existing" against "Transfer to Deck" above: one brings a file
+                onto the device, this picks one already on it, and both read as
+                ways to start. "Choose" not "Add", because "Add to Steam" at the
+                foot of this panel is what adds. "File" not "game", because the
+                picker has no extension filter and the flow takes a ROM, a disc
+                image or a package. It is the slot too: once something is chosen
+                this is its name. */}
+            {addedName || "Choose an existing file"}
           </div>
         </ButtonItem>
       </PanelSectionRow>
@@ -1054,7 +1066,7 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
                 if (installed) resetDraft();
               })
             }
-            description="A ROM hack, not a game. It goes onto a game you have already added, and your ROM file is not changed."
+            description="A ROM hack. Goes onto a game you already added; your ROM is untouched."
           >
             Install
           </ButtonItem>

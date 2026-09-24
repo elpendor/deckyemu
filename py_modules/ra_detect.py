@@ -271,26 +271,24 @@ def detect():
 
 
 def default_rom_dir():
-    """Where the ROM picker opens when nothing better is known: the transfer folder.
+    """The transfer folder: where a file this plugin received is on disk.
 
-    This used to guess -- RetroArch's remembered browse directory, then the ROM
-    folders the common emulation setups lay down, then SD-card variants of those.
-    Every guess that missed dropped the user somewhere unexpected with no way to
-    tell why, and none of them can be right for a library spread across several of
-    those places at once. That guessing is not coming back.
+    It used to be what the add-a-game picker opened on, and is not any more.
+    That picker is the one control for "something already on this Deck", and
+    opening it where files *arrive* pointed it away from where a library
+    actually lives; a file that has just been sent needs no picker at all,
+    because it has a row of its own in the transfer dialog with a button to add
+    it. It opens on `last_rom_dir`, else home.
 
-    Home replaced it, on the grounds that it sits above all of them and always
-    exists. What that missed is the install this answer is actually for. On a
-    brand new device home holds no ROMs either, so "somewhere empty" was never
-    the thing separating the two -- and of the two empty folders, one is where
-    this plugin's own flow puts every file it receives. Sending a game from
-    another device and then being dropped in `/home/deck` to find it is the
-    friction the transfer feature exists to remove.
+    What is left reading this is the code that has to *name* a received file --
+    resolving what an unpack wrote, and the file server's own default. For
+    those it is not a guess at all, it is the answer.
 
-    Two things still win over this, and between them they cover the case home was
-    kept for: `last_rom_dir` in settings, so anyone whose library is on an SD card
-    goes back to it after one visit, and `waiting_dir()`, which overrides even
-    that when something new has just arrived.
+    The guessing it replaced is not coming back: RetroArch's remembered browse
+    directory, then the ROM folders the common setups lay down, then SD-card
+    variants of those. Every guess that missed dropped somebody somewhere
+    unexpected with no way to tell why, and none can be right for a library
+    spread across several of those places at once.
     """
     # Created, unlike most reads of a plugin folder: this is a path handed to a
     # file picker, and a picker opened at a directory that is not there has no
