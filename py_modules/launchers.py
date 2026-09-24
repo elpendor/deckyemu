@@ -1384,6 +1384,51 @@ def picker_shim(entry, rom_path):
     ])
 
 
+#: Variables a Vulkan layer set on the host needs inside a flatpak sandbox.
+#:
+#: Named rather than forwarded by prefix: a sandbox exists to be a smaller
+#: environment than the host, and copying in whatever happens to start with the
+#: right letters is how that stops being true.
+LAYER_ENV = ("LSFGVK_CONFIG", "LSFGVK_PROFILE", "DISABLE_LSFGVK")
+
+
+def forward_layer_env(argv, command):
+    """(prelude lines, command) that carry a layer's environment into a sandbox.
+
+    **`flatpak run` does not pass the host's environment on.** Frame
+    generation is switched on per Steam shortcut by the plugin that owns it,
+    through launch options that set `LSFGVK_CONFIG` before this script runs.
+    That reaches an AppImage emulator and is dropped by a flatpak one, so its
+    answer for flatpaks is `flatpak override`, which is per application -- on
+    an emulator, every game it runs.
+
+    Forwarded as `--env=`, so the shortcut that asked is the one that gets it.
+
+    Built into `"$@"` rather than spliced in as text, because the exec line is
+    one line of quoted argv and a value with a space in it would otherwise
+    arrive as two arguments. Nothing is emitted for an emulator that is not a
+    flatpak, or when none of the variables is set, so every other launcher is
+    byte for byte what it was.
+    """
+    if not argv or os.path.basename(argv[0]) != "flatpak":
+        return [], command
+    lines = [
+        "# A Vulkan layer switched on for this shortcut lives in the host's",
+        "# environment, and `flatpak run` does not carry it in. See LAYER_ENV.",
+        "set --",
+    ]
+    for name in LAYER_ENV:
+        lines.append(
+            'if [ -n "${%s-}" ]; then set -- "$@" "--env=%s=${%s}"; fi'
+            % (name, name, name)
+        )
+    # After `flatpak run` and before the application id, which is where every
+    # other option this builds already goes.
+    head = " ".join(shlex.quote(arg) for arg in argv[:2])
+    rest = " ".join(shlex.quote(arg) for arg in argv[2:])
+    return lines, " ".join(p for p in (head, '"$@"', rest) if p)
+
+
 def preflight(rom_path, emulator, install, core_path, title_id=""):
     """The shell that refuses a launch whose pieces are missing, or "".
 
@@ -1730,6 +1775,7 @@ def write_launcher(
 
     path = launcher_path(title, rom_path)
     command = " ".join(shlex.quote(arg) for arg in argv)
+    forward, command = forward_layer_env(argv, command)
 
     # Only an emulator that reads motion off a socket, and only once its server
     # has been fetched. Every other launcher is written exactly as it was --
@@ -1774,6 +1820,7 @@ def write_launcher(
             "# Core: %s" % _flat(core_path),
         ]
         + (["# Args: %s" % _flat(" ".join(extra))] if extra else [])
+        + forward
         + [
             "",
             sysenv.SHELL_PREAMBLE,
