@@ -26,6 +26,7 @@ import plugin_base
 import emulators
 import launchers
 import romshelf
+import vita_games
 import steam_shortcuts
 import store
 
@@ -495,6 +496,13 @@ class Audit(plugin_base.PluginContext):
                     launch["extra_args"],
                     self._menu_combo(settings),
                     settings,
+                    # **This list used to stop here**, which is the bug
+                    # `_title_id_for` exists for: a rebuild wrote every Vita
+                    # launcher to open an eboot by path, which starts Vita3K's
+                    # own interface and no game. Positional, because `_run`
+                    # forwards args and no keywords -- the same reason it was
+                    # easy to miss at the other call site.
+                    vita_games.title_of(rom or ""),
                 )
             except OSError as error:
                 decky.logger.warning("Could not rebuild launcher for %r: %s", title, error)
