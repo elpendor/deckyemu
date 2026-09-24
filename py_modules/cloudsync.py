@@ -977,13 +977,34 @@ def _local_files(source):
     return listed
 
 
-def _state_of(source):
-    """What this Deck would upload, in the shape the record keeps it."""
+def _state_of(source, carry=None):
+    """What this Deck would upload, in the shape the record keeps it.
+
+    `carry` is the previous record, and with it this answers a different
+    question: not what this Deck has, but what the storage will hold once the
+    copy lands. **The two are not the same, and the difference lost a save.**
+
+    A copy up is `copy`, never `sync`, so a file that no longer exists here is
+    left alone up there. The record written beside the saves is the restore
+    screen's whole index -- a walk of the storage costs 4.7 seconds per
+    emulator, which is why it is read instead of measured -- and rewriting it
+    from the local side alone made that file invisible. It sat in Dropbox while
+    the screen said *all of them already on this Deck*, true of the index and
+    not of the storage.
+
+    Only the copy beside the saves carries this. The one kept here stays a
+    record of what this Deck sent, because that is what `changed_since_push`
+    compares, and there a save that is no longer here has to read as a change.
+    """
+    files = {name: {"size": size, "mtime": mtime}
+             for name, (size, mtime) in _local_files(source).items()}
+    for name, said in ((carry or {}).get("files") or {}).items():
+        if name not in files and isinstance(said, dict):
+            files[name] = said
     return {
         "device": _device(),
         "at": int(time.time()),
-        "files": {name: {"size": size, "mtime": mtime}
-                  for name, (size, mtime) in _local_files(source).items()},
+        "files": files,
     }
 
 
@@ -1157,8 +1178,11 @@ def record_push(remote, source_id):
     if source is None or not _SEGMENT.match(source_id):
         return False, ""
 
+    # Read before `_keep_mine` replaces it: what went up last time is the best
+    # account of what the storage still holds, and it costs no network call.
     state = _state_of(source)
-    ok, error = _write_record(remote, source_id, state)
+    ok, error = _write_record(
+        remote, source_id, _state_of(source, read_mine(source_id)))
     if ok:
         _keep_mine(source_id, state, remote)
     return ok, error
@@ -1203,7 +1227,10 @@ def record_pushes(remote, source_ids):
             folder = os.path.join(staging, source_id)
             os.makedirs(folder, exist_ok=True)
             with open(os.path.join(folder, STATE_FILE), "w", encoding="utf-8") as handle:
-                handle.write(json.dumps(state, sort_keys=True))
+                # The storage's copy names what will be up there, this Deck's
+                # names what it sent. See `_state_of`.
+                handle.write(json.dumps(
+                    _state_of(source, read_mine(source_id)), sort_keys=True))
             states[source_id] = state
     except OSError as error:
         shutil.rmtree(staging, ignore_errors=True)

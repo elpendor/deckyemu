@@ -175,6 +175,41 @@ with tempfile.TemporaryDirectory() as home:
         emulator_catalog.CATALOG = _real_catalog
 
 
+section("the storage's record names what the storage holds")
+
+# A copy up never deletes up there, so a file that stopped existing here is
+# still in the storage -- and the record beside the saves is the restore
+# screen's whole index, because walking a remote costs seconds per emulator.
+# Rewriting that index from the local side alone is what made a 46 KB save
+# invisible: in Dropbox, absent from the list of what could come back.
+_sent = {"files": {"save/file1.sav": {"size": 46715, "mtime": 111},
+                   "save/global.sav": {"size": 76, "mtime": 111}}}
+
+
+class _Src(dict):
+    pass
+
+
+_source = _Src(id="zed", name="Zed", roots=[], whole=False)
+_real_local = cloudsync._local_files
+cloudsync._local_files = lambda source: {"save/global.sav": (76, 222)}
+try:
+    here = cloudsync._state_of(_source)
+    check("this Deck's own record is what it sent, and nothing else",
+          sorted(here["files"]), ["save/global.sav"])
+    # Which is what `changed_since_push` compares: a save that is no longer
+    # here has to read as a change, so this half must not carry anything.
+    theirs = cloudsync._state_of(_source, _sent)
+    check("the storage's record still names the file only it has",
+          sorted(theirs["files"]), ["save/file1.sav", "save/global.sav"])
+    check("and the size carried is the one that went up",
+          theirs["files"]["save/file1.sav"]["size"], 46715)
+    check("while a file that is here is described as it is now",
+          theirs["files"]["save/global.sav"]["mtime"], 222)
+finally:
+    cloudsync._local_files = _real_local
+
+
 if __name__ == "__main__":
     from harness import summary
 
