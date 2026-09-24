@@ -653,4 +653,30 @@ check("and the storages typed in by hand are all still offered",
       sorted(cloudsave.offered(cloudsave.BACKENDS)) == sorted(cloudsave.BACKENDS),
       True)
 
+section("signing in takes over only when there is nothing to take over from")
+
+# **Signing in used to become the storage saves go to, every time.** With one
+# storage that is the only possible answer and nobody notices. With one already
+# set up it silently moves where every save goes, off the back of a press that
+# said nothing about changing anything.
+import plugin_transfers  # noqa: E402
+import store  # noqa: E402
+
+_real_remotes, _real_set = cloudsave.remotes, store.set_settings
+_written = {}
+store.set_settings = lambda values: _written.update(values)
+try:
+    cloudsave.remotes = lambda: ["dropbox"]
+    _written.clear()
+    plugin_transfers._use_if_only("dropbox")
+    check("the first storage is the one saves go to",
+          _written, {"cloud_remote": "dropbox:"})
+
+    cloudsave.remotes = lambda: ["dropbox", "pcloud"]
+    _written.clear()
+    plugin_transfers._use_if_only("pcloud")
+    check("a second one is signed in and left alone", _written, {})
+finally:
+    cloudsave.remotes, store.set_settings = _real_remotes, _real_set
+
 summary()

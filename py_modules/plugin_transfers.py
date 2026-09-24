@@ -57,6 +57,21 @@ import gamecontent
 import store
 
 
+def _use_if_only(name):
+    """Send saves to a storage just signed into, but only if it is the first.
+
+    Signing in used to switch to the new one every time. On a Deck with one
+    storage that is right and invisible -- it is the only answer. On a Deck
+    that already has one, it quietly moves where every save goes, because
+    somebody added a second account, and the press that did it said nothing
+    about changing anything. The row for the new storage says what it is and
+    can be chosen deliberately.
+    """
+    if len(cloudsave.remotes()) > 1:
+        return
+    store.set_settings({"cloud_remote": "%s:" % name})
+
+
 def _received_owners(received):
     """{path: the sheet that owns it} for the arrivals that are part of a game.
 
@@ -330,7 +345,7 @@ class Transfers(plugin_base.PluginContext):
             return False, "Saved, but %s did not answer: %s" % (
                 label, cloudsave.said_plainly(error))
 
-        store.set_settings({"cloud_remote": "%s:" % name})
+        _use_if_only(name)
         self._note_cloud_state()
         return True, ""
 
@@ -361,7 +376,7 @@ class Transfers(plugin_base.PluginContext):
             return (False, "Signed in, but %s did not answer: %s" % (
                 label, cloudsave.said_plainly(error)), "")
 
-        store.set_settings({"cloud_remote": "%s:" % name})
+        _use_if_only(name)
         self._note_cloud_state()
         return (True, "", "")
 
