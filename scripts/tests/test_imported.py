@@ -88,6 +88,20 @@ _one, _one_problems = imported.parse_many(json.dumps(_definition()), _KNOWN)
 check("a bare object is still one definition",
       ([entry["id"] for entry in _one], _one_problems), (["testemu"], []))
 
+# **A file saying 1 while using a format 2 field is the failure to catch.** It
+# loads here and, on a Deck one release behind, fails as a missing `args` --
+# which reads as a broken definition rather than an old plugin. A definitions
+# file is published once and read by whatever happens to be installed.
+# A port, so leaving `args` out is legal rather than simply wrong: its game
+# arrives beside it rather than on the command line.
+_under = dict(_definition(port=True, game_beside=True))
+_under.pop("args", None)
+check("a definition using a newer field under format 1 says to raise the file",
+      "Raise the file to format 2" in (imported.parse(
+          json.dumps(dict(_under, format=1)), _KNOWN)[1] or ""), True)
+check("and the same definition at format 2 is accepted",
+      imported.parse(json.dumps(dict(_under, format=2)), _KNOWN)[1], "")
+
 _many = json.dumps({"format": 1, "definitions": [
     _definition(id="alpha-emu", name="Alpha"),
     _definition(id="beta-emu", name="Beta"),

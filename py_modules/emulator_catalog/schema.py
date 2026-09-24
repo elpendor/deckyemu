@@ -798,10 +798,18 @@ def validate(entry, known_platforms=(), imported=False):
     for name in entry.get("saves_except") or ():
         if not name or "/" in name or name in (".", ".."):
             bad("saves_except %r is not a plain filename" % name)
-    for path in entry.get("saves") or ():
-        if _escapes(path):
+    for path, kind in saves_of(entry):
+        if not isinstance(path, str) or not path:
+            bad("a saves entry must be a path, or {'dir': <path>} or "
+                "{'file': <path>}, not %r" % (path,))
+        elif _escapes(path):
             bad("saves path %r must be relative to home and must not escape it"
                 % path)
+        elif kind == "file" and ("*" in path or "?" in path):
+            # A pattern names however many files match, so "one file" is not
+            # something it can promise.
+            bad("saves path %r is a pattern, so it cannot be declared as one "
+                "file" % path)
         elif not roots:
             bad("saves path %r has nothing to sit inside: the entry is not a "
                 "flatpak and declares no 'data'" % path)
@@ -1069,6 +1077,57 @@ def _validate_needs(entry_id, entry):
     if unknown:
         bad("unknown key(s) %s" % ", ".join(repr(name) for name in unknown))
     return problems
+
+
+def saves_of(entry):
+    """`saves` as (path, kind) pairs, where kind is "dir", "file" or "".
+
+    A save may be written as a plain string, which says where and not what, or
+    as `{"dir": ...}` or `{"file": ...}`, which says both.
+
+    **The difference is not decoration.** One file and one directory travel to
+    cloud storage differently and come back differently, and with a bare string
+    the only way to tell them apart is to look at the disk -- which cannot
+    answer in the one case that matters. A restore runs on the Deck that is
+    missing the file; guessing "directory" there recreates the folder-named-
+    after-a-file shape that could not be read back, and guessing "file" sends a
+    whole save folder into its parent.
+
+    A string stays legal and stays inferred: every definition written so far is
+    strings, and most of them are directories that exist.
+    """
+    listed = []
+    for one in entry.get("saves") or ():
+        if isinstance(one, dict):
+            if "dir" in one:
+                listed.append((one.get("dir"), "dir"))
+            elif "file" in one:
+                listed.append((one.get("file"), "file"))
+            else:
+                listed.append((None, ""))
+        else:
+            listed.append((one, ""))
+    return listed
+
+
+def needs_format(entry):
+    """The lowest definition format that can express this entry.
+
+    Checked against what the file declares, so an author using a newer field
+    under `"format": 1` is told to raise it. Otherwise the definition reaches
+    an older plugin, which sees a missing `args` and says so -- reporting a
+    broken definition rather than "update the plugin". A definitions file is
+    published once and read by whatever happens to be installed.
+    """
+    if "args" not in entry:
+        return 2
+    for path, kind in saves_of(entry):
+        if kind or "*" in (path or "") or "?" in (path or ""):
+            return 2
+    spec = entry.get("game_config") or {}
+    if spec and not (spec.get("format") and spec.get("path")):
+        return 2
+    return 1
 
 
 def one_file_setup(entry):

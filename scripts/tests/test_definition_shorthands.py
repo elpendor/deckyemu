@@ -171,6 +171,47 @@ check("a game_config naming its own file keeps it",
       os.path.join(_home, "deckyemu/emulators/zed/other.json"))
 
 
+section("a save can say whether it is a file or a directory")
+
+check("a plain string says only where, as it always did",
+      schema.saves_of({"saves": ["a/b"]}), [("a/b", "")])
+check("and an object says which it is",
+      schema.saves_of({"saves": [{"dir": "a/b"}, {"file": "a/c.json"}]}),
+      [("a/b", "dir"), ("a/c.json", "file")])
+check("a declared file validates",
+      schema.validate(port(game_beside=True, saves=[
+          {"file": "deckyemu/emulators/zed/zed.cfg.json"},
+          {"dir": "deckyemu/emulators/zed/saves"},
+      ]), imported=True), [])
+check("the fence still applies to a declared one",
+      any("outside every directory this entry owns" in problem
+          for problem in schema.validate(port(game_beside=True, saves=[
+              {"file": ".local/share/somebody-else/x.json"}]), imported=True)), True)
+# A pattern names however many files match, so "one file" is not something it
+# can promise -- and the whole point of declaring is to be believed.
+check("a pattern cannot be declared as one file",
+      any("cannot be declared as one file" in problem
+          for problem in schema.validate(port(game_beside=True, saves=[
+              {"file": "deckyemu/emulators/zed/pak_*.sav"}]), imported=True)), True)
+check("and neither half of an object is not a saves entry at all",
+      any("must be a path" in problem
+          for problem in schema.validate(port(game_beside=True, saves=[{"nope": "x"}]),
+                                         imported=True)), True)
+
+
+section("a definition says which format it needs")
+
+check("nothing newer than the first format is format 1",
+      schema.needs_format({"args": "{rom}", "saves": ["a/b"]}), 1)
+check("leaving args out needs 2", schema.needs_format({"saves": ["a/b"]}), 2)
+check("a pattern needs 2",
+      schema.needs_format({"args": "", "saves": ["a/pak_*.sav"]}), 2)
+check("saying dir or file needs 2",
+      schema.needs_format({"args": "", "saves": [{"dir": "a/b"}]}), 2)
+check("and a game_config leaning on setup needs 2",
+      schema.needs_format({"args": "", "game_config": {"keys": {"r": "{rom}"}}}), 2)
+
+
 if __name__ == "__main__":
     from harness import summary
 

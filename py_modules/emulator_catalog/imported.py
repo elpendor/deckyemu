@@ -52,7 +52,7 @@ STORE = os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "emulators.d")
 SUFFIX = ".deckyemu.json"
 
 #: Bumped when the on-disk shape changes in a way an older file cannot satisfy.
-FORMAT = 1
+FORMAT = 2
 
 MAX_BYTES = 256 * 1024
 
@@ -88,6 +88,20 @@ def parse(text, known_platforms=()):
     problems = schema.validate(data, known_platforms, imported=True)
     if problems:
         return None, "\n".join(problems)
+
+    # Said here rather than left to the reader of an older plugin's error.
+    # A definition using a format 2 field under `"format": 1` loads fine on
+    # this version and, one release back, fails as "missing required field
+    # 'args'" -- which reads as a broken definition rather than an old
+    # plugin. A definitions file is published once and read by whatever
+    # happens to be installed.
+    wanted = schema.needs_format(data)
+    if wanted > version:
+        return None, (
+            "This definition uses fields from format %d, but the file says "
+            "format %d. Raise the file to format %d."
+            % (wanted, version, wanted)
+        )
 
     data["imported"] = True
 

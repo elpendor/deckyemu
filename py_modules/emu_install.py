@@ -1873,7 +1873,7 @@ def declared_saves(entry_id):
         return []
     home = sysenv.user_home()
     found = []
-    for relative in entry.get("saves") or ():
+    for relative, _kind in emulator_catalog.schema.saves_of(entry):
         found.extend(savedata._matching(os.path.join(home, *relative.split("/"))))
     return found
 

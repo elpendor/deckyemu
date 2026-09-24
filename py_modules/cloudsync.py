@@ -186,7 +186,7 @@ def _roots_of(source):
     return listed
 
 
-def _file_root(path):
+def _file_root(path, source=None):
     """A declared save that is one file rather than a directory.
 
     `saves` may name a single file -- a record of achievements, a port's
@@ -202,12 +202,18 @@ def _file_root(path):
     restore stopped on the first emulator that declared one. Six of the nine
     ports in one set declare exactly this, so it stopped on all of them.
 
-    Read from the disk rather than the definition, because a `saves` entry does
-    not say which it is. **Existing and being a file, not merely not being a
-    directory**: a save directory that this Deck has never had yet is missing
-    rather than either, and reading that as a file sent every root of a fresh
-    restore into its parent.
+    The definition first, when it says -- `{"file": ...}` in `saves`, carried
+    here as the source's `one_file`. Otherwise the disk, which is all a plain
+    string offers.
+
+    **Existing and being a file, not merely not being a directory.** A save
+    directory this Deck has never had is neither, and reading that as a file
+    sent every root of a fresh restore into its parent. Which is the whole
+    reason the definition should say: the disk cannot answer on the Deck that
+    is missing the file, and that is the Deck doing the restoring.
     """
+    if path in ((source or {}).get("one_file") or ()):
+        return True
     return os.path.isfile(path)
 
 
@@ -804,7 +810,8 @@ def room_for(remote, ids=None, replace=False, stamp=""):
             here = landing.get(root)
             if not here or not rest:
                 continue
-            target = here if _file_root(here) else os.path.join(here, *rest.split("/"))
+            target = (here if _file_root(here, source)
+                      else os.path.join(here, *rest.split("/")))
             try:
                 already = os.path.getsize(target)
             except OSError:
@@ -864,7 +871,7 @@ def _rows_from(files_by_emulator):
             row["files"] += 1
             row["bytes"] += int(size or 0)
             local = landing.get((emulator, parts[0]))
-            if local and _file_root(local):
+            if local and _file_root(local, source):
                 # The file itself, not a path built inside it.
                 here_already = os.path.exists(local)
             else:
@@ -1668,7 +1675,8 @@ def pull_steps(remote, ids=None, replace=False, stamp="", known=None):
             # A file root is held up there inside a folder of its own name, so
             # what comes down is that folder's contents -- and they belong
             # beside the file, not inside it. See `_file_root`.
-            one_file = _file_root(path) or (source["id"], segment) in doubled
+            one_file = (_file_root(path, source)
+                        or (source["id"], segment) in doubled)
             into = os.path.dirname(path) if one_file else path
             args = ["copy", "%s:%s/%s" % (remote, root, where), into]
             if not replace:

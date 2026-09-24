@@ -53,11 +53,19 @@ so is the honest half of allowing imports at all.
 ## Writing one
 
 A definition is JSON. A template, not a working setup for anything in
-particular — the id, paths and arguments all depend on which emulator you have:
+particular — the id, paths and arguments all depend on which emulator you have.
+
+`format` is the one field about the file rather than the emulator: it says
+which version of this shape the definition is written in, and a plugin too old
+to read it says so plainly instead of reporting the first field it does not
+recognise. **Put `2` unless you know you need `1`.** Format 2 adds omitting
+`args`, patterns and `{"dir": …}`/`{"file": …}` in `saves`, and a
+`game_config` that takes its file from `setup`; a definition using any of them
+under `"format": 1` is refused here rather than confusing an older Deck.
 
 ```json
 {
-  "format": 1,
+  "format": 2,
   "id": "my-emulator",
   "name": "My Emulator",
   "summary": "Nintendo Switch.",
@@ -100,7 +108,7 @@ import it and read what comes back.
 | `args` | How to launch a game. `{rom}` is where the ROM path goes. Leave it out entirely for a port that takes the game through `game_config` or `game_beside`. |
 | `fullscreen_args` | The switch that starts fullscreen. Omit if it has none. |
 | `root` | The directory under your home the emulator owns, or a list. Everything the definition writes must sit inside one. A list because emulators following the XDG layout split them: settings under `~/.config/<name>`, saves and keys under `~/.local/share/<name>`. |
-| `saves` | Where it keeps save data, relative to home, so the backup carries it off the device. Each path must sit inside a `root`. A filename may be a `*` or `?` pattern, for a program that numbers its saves — `…/controllerPak_file_*.sav` rather than sixteen lines. Omit `saves` entirely and the whole of that directory is backed up — right for an emulator that only reads ROMs off the disk, wrong for one that installs games into itself. |
+| `saves` | Where it keeps save data, relative to home, so the backup carries it off the device. Each path must sit inside a `root`. A filename may be a `*` or `?` pattern, for a program that numbers its saves — `…/controllerPak_file_*.sav` rather than sixteen lines. An entry may be written as `{"dir": …}` or `{"file": …}` instead of a bare path, and **should be, for a single file**: otherwise it is read off the disk, and a restore runs on the Deck that is missing the file. Omit `saves` entirely and the whole of that directory is backed up — right for an emulator that only reads ROMs off the disk, wrong for one that installs games into itself. |
 | `platform` **or** `databases` | What it plays. `databases` takes libretro system names, e.g. `["Sony - PlayStation"]`, and buys extensions, boxart and collection grouping at once. `platform` is for systems libretro has no database for. One or the other, never both. |
 | `firmware` | Files you must supply — see [below](#firmware-and-keys). |
 | `note` | A caveat shown in the panel. |
@@ -157,7 +165,7 @@ sends a dozen instead of pressing **Import** a dozen times:
 
 ```jsonc
 {
-  "format": 1,
+  "format": 2,
   "definitions": [
     { "id": "some-emulator", … },
     { "id": "some-port", "port": true, … }

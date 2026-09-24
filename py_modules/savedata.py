@@ -293,12 +293,18 @@ def _catalog_sources(empty=False):
         if not any(os.path.isdir(path) for path in owned):
             continue
 
-        declared = list(entry.get("saves") or ())
+        declared = schema.saves_of(entry)
+        one_file = set()
         if declared:
             roots = []
-            for relative in declared:
+            for relative, kind in declared:
                 for path in _matching(os.path.join(home, *relative.split("/"))):
                     roots.append((os.path.basename(path), path))
+                    # What the definition says it is, for the code that would
+                    # otherwise have to look -- and a restore looks on the Deck
+                    # that is missing the file. See `schema.saves_of`.
+                    if kind == "file":
+                        one_file.add(path)
         else:
             # A root that *is* a cache directory, rather than one holding a
             # `cache` folder. An imported entry lists the XDG directories it
@@ -320,6 +326,7 @@ def _catalog_sources(empty=False):
             "id": entry["id"],
             "name": entry["name"],
             "roots": roots,
+            "one_file": one_file,
             "whole": not declared,
             "except": tuple(entry.get("saves_except") or ()),
         })
