@@ -56,6 +56,7 @@ import {
   withCurrentCore,
 } from "./corePicker";
 import { preselectCore } from "./CoreInstallPanel";
+import { ScrollList } from "./ScrollList";
 import { openManagePage } from "./manageRoute";
 import { callWithRetry } from "./timeout";
 import { logError } from "./logError";
@@ -99,6 +100,29 @@ const BUTTON = { width: "100%" };
  * point to check on the device, not a measured answer.
  */
 const EDITOR_TABS_HEIGHT = "50vh";
+
+/**
+ * A rule between the sections of a tab, and the class that draws it.
+ *
+ * Every section was a `<div>` in a 14px gap and nothing else, so a button and
+ * the next section's label read as one block. The values are the ones
+ * `EmulatorVersionModal` already uses between its rows.
+ */
+const PANE_CLASS = "deckyemu-editor-pane";
+
+//: A caption for the whole tab, which the rule below must not sit under.
+const PANE_NOTE_CLASS = "deckyemu-pane-note";
+
+const PANE_CSS = `
+.${PANE_CLASS} > * + * {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding-top: 14px;
+}
+.${PANE_CLASS} > .${PANE_NOTE_CLASS} + * {
+  border-top: none;
+  padding-top: 0;
+}
+`;
 
 /** "" means follow the global setting rather than override it. */
 const OSD_OPTIONS: SingleDropdownOption[] = [
@@ -924,25 +948,31 @@ export function GameEditorModal({ game, onSaved, closeModal, onLeave }: Props) {
   const coreChanged = coreId !== game.core_id;
   const busy = saving || refreshing;
 
-  // Each tab's content, scrolled the way the added games list scrolls: an inner
-  // Focusable filling the pane. Steam's own pane must stay still -- letting it
-  // do the scrolling turned the tab bar black as content moved under it. A
-  // Focusable, because a controller cannot enter a scroll region with nothing
-  // focusable in it.
+  // Each tab's content, scrolled the way every other list here scrolls. Steam's
+  // own pane must stay still -- letting it do the scrolling turned the tab bar
+  // black as content moved under it.
+  //
+  // `ScrollList` rather than the `overflowY` pair this used to write itself:
+  // that is three quarters of a scroll region, and the missing quarter is the
+  // scrollbar, which Steam's CEF draws for nobody. Without it there is nothing
+  // saying the tab continues below the fold -- and the footer sits right under
+  // it, so what is content and what is the end of the dialog read the same.
   const pane = (children: React.ReactNode) => (
-    <Focusable
-      style={{
-        ...FIELD,
-        gap: "14px",
-        height: "100%",
-        overflowY: "auto",
-        boxSizing: "border-box",
-        paddingTop: "8px",
-        paddingBottom: "8px",
-      }}
-    >
-      {children}
-    </Focusable>
+    <>
+      <style>{PANE_CSS}</style>
+      <ScrollList
+        className={PANE_CLASS}
+        style={{
+          gap: "14px",
+          height: "100%",
+          boxSizing: "border-box",
+          paddingTop: "8px",
+          paddingBottom: "8px",
+        }}
+      >
+        {children}
+      </ScrollList>
+    </>
   );
 
   const nameAndArtwork = (
@@ -1105,7 +1135,7 @@ export function GameEditorModal({ game, onSaved, closeModal, onLeave }: Props) {
 
   const addonsTab = pane(
     <>
-      <div style={{ fontSize: "12px", opacity: 0.6 }}>
+      <div className={PANE_NOTE_CLASS} style={{ fontSize: "12px", opacity: 0.6 }}>
         Changes on this tab apply straight away, without Save.
       </div>
 
@@ -1268,6 +1298,15 @@ export function GameEditorModal({ game, onSaved, closeModal, onLeave }: Props) {
           // Recorded frame by frame on the device. A `clip` box is not a scroll
           // container, so there is nothing for that scroll to move.
           overflow: "clip",
+          // Where the tabs end and the dialog's own buttons begin. On the box
+          // rather than on the footer, so the line does not move when a note or
+          // an error appears between them.
+          //
+          // Twice the width and three times the contrast of the rules between
+          // sections. At the same weight the two read as the same kind of line
+          // and the boundary said nothing: the question is not "is there a
+          // line" but "is this one the end of the content".
+          borderBottom: "2px solid rgba(255, 255, 255, 0.3)",
         }}
       >
         <Tabs
@@ -1292,7 +1331,7 @@ export function GameEditorModal({ game, onSaved, closeModal, onLeave }: Props) {
           does not wrap: a Steam button claims a full line whenever its row lets
           it, and three stacked buttons under a fixed-height tab box ran off the
           bottom of the panel. */}
-      <Focusable style={{ display: "flex", gap: "8px", marginTop: "10px" }}>
+      <Focusable style={{ display: "flex", gap: "8px", marginTop: "14px" }}>
         <DialogButton
           onClick={() => void save()}
           disabled={busy || !title.trim()}

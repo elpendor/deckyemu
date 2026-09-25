@@ -39,9 +39,12 @@ const noop = () => {};
  * can say so itself.
  */
 export function ScrollList({
+  className,
   style,
   children,
 }: {
+  /** A caller's class, for rules about the children. Added, not replacing. */
+  className?: string;
   /** Whatever bounds it: `maxHeight`, and any layout the caller had. */
   style?: CSSProperties;
   children: ReactNode;
@@ -50,7 +53,7 @@ export function ScrollList({
     <>
       <style>{SCROLLER_CSS + SCROLLER_ROW_CSS}</style>
       <Focusable
-        className={SCROLLER_CLASS}
+        className={className ? `${SCROLLER_CLASS} ${className}` : SCROLLER_CLASS}
         style={{
           display: "flex",
           flexDirection: "column",
