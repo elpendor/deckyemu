@@ -63,6 +63,9 @@ jobs:
     # argued. Worth doing if this path ever grows a step that writes.
     permissions:
       contents: write
+      # For the Announcements discussion a release opens. The release itself
+      # publishes fine without it; the discussion silently does not.
+      discussions: write
     steps:
       # On a dispatch, the branch rather than the detached commit: a release
       # commits the bump back to it. On a pull request `github.ref_name` is
@@ -467,4 +470,5 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --target "${{ steps.commit.outputs.sha }}" \
             --title "v${{ steps.meta.outputs.version }}" \
-            --notes-file notes.md
+            --notes-file notes.md \
+            --discussion-category "Announcements"
