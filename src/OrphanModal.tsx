@@ -1,4 +1,4 @@
-import { DialogButton, Focusable, ModalRoot, Spinner } from "@decky/ui";
+import { ConfirmModal, DialogButton, Focusable, ModalRoot, Spinner } from "@decky/ui";
 import { toaster } from "@decky/api";
 import { useCallback, useEffect, useState } from "react";
 
@@ -30,7 +30,8 @@ import { humanSize } from "./TransferModal";
 import { ownedCollectionMatcher } from "./collectionMatch";
 import { callWithRetry } from "./timeout";
 import { logError } from "./logError";
-import { ScrollList } from "./ScrollList";
+import { openModal } from "./modalStack";
+import { ScrollList, ScrollRow } from "./ScrollList";
 
 interface Props {
   onChanged: () => void;
@@ -44,6 +45,16 @@ interface Finding {
   action: string;
   run: () => Promise<string>;
   destructive?: boolean;
+  /**
+   * Exactly what the button will act on, one line each.
+   *
+   * Shown when it is pressed, not on the card: a count answers "is anything
+   * wrong", and the names answer "do I want this to happen", which is a
+   * different question asked at a different moment. Several findings used to
+   * paste the list into `detail`, which made the card long enough to hide the
+   * findings under it and still gave nothing to read before pressing.
+   */
+  items?: string[];
 }
 
 /**
@@ -61,6 +72,10 @@ async function forgetAndUnfile(appIds: number[]): Promise<string> {
     (emptied ? `, ${emptied} collection(s) tidied` : "") +
     "."
   );
+}
+
+function basename(path: string): string {
+  return path.slice(path.lastIndexOf("/") + 1) || path;
 }
 
 const SECTION: React.CSSProperties = {
@@ -91,6 +106,9 @@ export function OrphanModal({ onChanged, closeModal }: Props) {
   const [emptyCollections, setEmptyCollections] = useState<string[]>([]);
   const [unfiled, setUnfiled] = useState<StaleCollection[]>([]);
   const [stale, setStale] = useState<StaleCollection[]>([]);
+  // Kept beside the two collection checks: the backend sends the names with the
+  // targets, and a confirmation listing app ids would say nothing.
+  const [titles, setTitles] = useState<Record<string, string>>({});
   const [done, setDone] = useState<string[]>([]);
   const [error, setError] = useState("");
 
@@ -112,7 +130,8 @@ export function OrphanModal({ onChanged, closeModal }: Props) {
       // Where each game belongs, against where Steam actually has it. Empty
       // when collections are switched off, so both checks below fall away with
       // the feature rather than reporting a library-wide fault.
-      const { targets } = await collectionTargets();
+      const { targets, titles: named } = await collectionTargets();
+      setTitles(named ?? {});
       setUnfiled(findUnfiledGames(targets));
       setStale(findStaleCollections(targets, owns));
     } catch (loadError) {
@@ -145,6 +164,44 @@ export function OrphanModal({ onChanged, closeModal }: Props) {
     [onChanged, load],
   );
 
+  /**
+   * Ask before acting, and say what will be acted on.
+   *
+   * Every one of these presses changes something outside the dialog -- a Steam
+   * shortcut, a file, a collection -- and until this existed the button was the
+   * whole interaction: press it and read a toast about what had already
+   * happened. A count is not consent.
+   */
+  const confirm = useCallback(
+    (finding: Finding) => {
+      const items = finding.items ?? [];
+      openModal(
+        <ConfirmModal
+          strTitle={finding.action + "?"}
+          strOKButtonText={finding.action}
+          bDestructiveWarning={finding.destructive}
+          onOK={() => void perform(finding)}
+          strDescription={
+            <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+              <div>{finding.detail}</div>
+              {items.length > 0 && (
+                <ScrollList style={{ maxHeight: "34vh", gap: "2px" }}>
+                  {items.map((item, index) => (
+                    <ScrollRow key={`${item}-${index}`}>
+                      <div style={{ overflowWrap: "anywhere", whiteSpace: "pre-wrap" }}>{item}</div>
+                    </ScrollRow>
+                  ))}
+                </ScrollList>
+              )}
+            </div>
+          }
+        />,
+      );
+    },
+    [perform],
+  );
+
+
   const findings: Finding[] = [];
 
   for (const install of report?.previous_installs ?? []) {
@@ -167,6 +224,7 @@ export function OrphanModal({ onChanged, closeModal }: Props) {
           `repoints the shortcut at it.` +
           (noRom ? ` ${noRom} cannot be adopted because their ROM is missing.` : "") +
           (noShortcut ? ` ${noShortcut} no longer have a Steam shortcut.` : ""),
+        items: adoptable.map((game) => game.title || String(game.app_id)),
         action: `Adopt ${adoptable.length}`,
         run: async () => {
         const result = await adoptPreviousInstall(install.path);
@@ -218,6 +276,7 @@ export function OrphanModal({ onChanged, closeModal }: Props) {
           : `None of its ${install.games.length} game(s) can be taken over` +
             (noShortcut ? ` — Steam has no shortcut for ${noShortcut} of them` : "") +
             `. Deleting the old record stops it being offered every time. Launcher scripts are kept.`,
+      items: install.games.map((game) => game.title || String(game.app_id)),
       action: "Discard the old record",
       destructive: true,
       run: async () => {
@@ -233,9 +292,12 @@ export function OrphanModal({ onChanged, closeModal }: Props) {
     findings.push({
       key: "broken",
       title: "Games that can no longer launch",
-      detail: broken
-        .map((entry) => `${entry.title || entry.app_id} — ${entry.reasons.join(" and ")}`)
-        .join("\n"),
+      detail:
+        `${broken.length} game(s) have lost their ROM or their launcher script. Removing ` +
+        `takes the Steam shortcut and the record; the ROM, if it is still there, stays.`,
+      items: broken.map(
+        (entry) => `${entry.title || entry.app_id} — ${entry.reasons.join(" and ")}`,
+      ),
       action: `Remove ${broken.length} from Steam`,
       destructive: true,
       run: async () => {
@@ -263,11 +325,21 @@ export function OrphanModal({ onChanged, closeModal }: Props) {
         `reuses the id of a deleted shortcut, so an id recorded here can end up belonging to a ` +
         `different game — and editing or removing one of these would have rewritten that game ` +
         `instead. Forgetting the record fixes it: no Steam entry is touched at all. The ROM ` +
-        `stays where it is, so the game can be added again from the panel.` +
-        "\n\n" +
-        mispointed
-          .map((entry) => `${entry.title || entry.app_id} -> ${entry.runs_title || entry.runs}`)
-          .join("\n"),
+        `stays where it is, so the game can be added again from the panel.`,
+      // The two scripts, not the two titles. What differs is the record's
+      // launcher against the shortcut's exe, and when both belong to the same
+      // game the title line read "X -> X" and said nothing.
+      items: mispointed.map(
+        (entry) =>
+          `${entry.title || entry.app_id}
+` +
+          `    record: ${basename(entry.launcher_path)}
+` +
+          `    Steam runs: ${basename(entry.runs)}` +
+          (entry.runs_title && entry.runs_title !== entry.title
+            ? ` (${entry.runs_title})`
+            : ""),
+      ),
       action: `Forget ${mispointed.length}`,
       run: async () => forgetAndUnfile(mispointed.map((entry) => entry.app_id)),
     });
@@ -281,6 +353,7 @@ export function OrphanModal({ onChanged, closeModal }: Props) {
         `${missingShortcuts.length} game(s) are tracked here but Steam has no shortcut for them, ` +
         `which happens when a shortcut is deleted directly in Steam. Forgetting them removes the ` +
         `leftover record and its launcher script; no Steam entry is touched.`,
+      items: missingShortcuts.map((entry) => entry.title || String(entry.app_id)),
       action: `Forget ${missingShortcuts.length}`,
       run: async () => forgetAndUnfile(missingShortcuts.map((entry) => entry.app_id)),
     });
@@ -312,9 +385,8 @@ export function OrphanModal({ onChanged, closeModal }: Props) {
         `${dead.length} shortcut(s) in Steam were made by this plugin, but the launcher script ` +
         `each one runs is gone — so they do nothing when launched. A reset deletes the scripts ` +
         `and the records while leaving Steam's shortcuts behind, which is how these are left. ` +
-        `Nothing else is touched: no ROM, no save, no emulator.` +
-        "\n\n" +
-        dead.map((item) => item.title || item.launcher).join("\n"),
+        `Nothing else is touched: no ROM, no save, no emulator.`,
+      items: dead.map((item) => item.title || item.launcher),
       action: `Remove ${dead.length}`,
       destructive: true,
       run: async () => removeShortcuts(dead),
@@ -329,9 +401,8 @@ export function OrphanModal({ onChanged, closeModal }: Props) {
       detail:
         `${duplicates.length} shortcut(s) run the same launcher as a game already in your ` +
         `library, so each of these games appears twice in Steam. Removing these keeps the copy ` +
-        `this plugin tracks — the game itself stays, along with its artwork and collections.` +
-        "\n\n" +
-        duplicates.map((item) => item.title || item.launcher).join("\n"),
+        `this plugin tracks — the game itself stays, along with its artwork and collections.`,
+      items: duplicates.map((item) => item.title || item.launcher),
       action: `Remove ${duplicates.length}`,
       run: async () => removeShortcuts(duplicates),
     });
@@ -346,9 +417,8 @@ export function OrphanModal({ onChanged, closeModal }: Props) {
         `${orphans.length} shortcut(s) still launch their game, but nothing here has a record of ` +
         `them — so editing and removing them from the plugin will not work. They are listed ` +
         `rather than swept up because they do still play. Removing one deletes the Steam entry ` +
-        `only; its ROM and its launcher script stay where they are.` +
-        "\n\n" +
-        orphans.map((item) => item.title || item.launcher).join("\n"),
+        `only; its ROM and its launcher script stay where they are.`,
+      items: orphans.map((item) => item.title || item.launcher),
       action: `Remove ${orphans.length}`,
       destructive: true,
       run: async () => removeShortcuts(orphans),
@@ -365,9 +435,10 @@ export function OrphanModal({ onChanged, closeModal }: Props) {
         `${unused.length} file(s) filed under a system, totalling ${humanSize(bytes)}, ` +
         `that nothing in your library points at. Removing a game leaves its ROM by ` +
         `default, and a shortcut deleted in Steam itself never asks at all. Only the ` +
-        `plugin's own roms folder is counted — anything you keep elsewhere is untouched.` +
-        "\n\n" +
-        unused.map((rom) => `${rom.system}/${rom.name}`).join("\n"),
+        `plugin's own roms folder is counted — anything you keep elsewhere is untouched.`,
+      items: unused.map(
+        (rom) => `${rom.system}/${rom.name} — ${humanSize(rom.bytes)}`,
+      ),
       action: `Delete ${unused.length}`,
       destructive: true,
       run: async () => {
@@ -406,6 +477,9 @@ export function OrphanModal({ onChanged, closeModal }: Props) {
         `${unfiled.map((entry) => entry.tag).join(", ")}. This happens when the collection ` +
         `was deleted in Steam, or when filing the game failed as it was added — the record ` +
         `says it is there, so nothing else notices.`,
+      items: unfiled.flatMap((entry) =>
+        entry.appIds.map((id) => `${titles[String(id)] || id} -> ${entry.tag}`),
+      ),
       action: `File ${count}`,
       run: async () => {
         const filed = await fileUnfiledGames(unfiled);
@@ -424,6 +498,9 @@ export function OrphanModal({ onChanged, closeModal }: Props) {
         `held here but belonging elsewhere now, usually after the naming was changed. ` +
         `They are removed from these collections only; any collection left empty is ` +
         `deleted. Only collections this plugin made are listed.`,
+      items: stale.flatMap((entry) =>
+        entry.appIds.map((id) => `${titles[String(id)] || id} <- ${entry.tag}`),
+      ),
       action: `Remove ${count}`,
       destructive: true,
       run: async () => {
@@ -448,6 +525,7 @@ export function OrphanModal({ onChanged, closeModal }: Props) {
         `from a shortcut deleted in Steam itself, or from before removal did that. ` +
         `Only collections matching the naming this plugin uses are listed, and only ` +
         `while they hold nothing.`,
+      items: emptyCollections,
       action: `Delete ${emptyCollections.length}`,
       destructive: true,
       run: async () => {
@@ -466,6 +544,7 @@ export function OrphanModal({ onChanged, closeModal }: Props) {
       key: "strays",
       title: "Launcher scripts with no game",
       detail: `${strays.length} script(s) in the launcher folder are not referenced by any tracked game.`,
+      items: strays.map((path) => path.split("/").pop() || path),
       action: `Delete ${strays.length}`,
       destructive: true,
       run: async () => {
@@ -512,7 +591,7 @@ export function OrphanModal({ onChanged, closeModal }: Props) {
                 {finding.detail}
               </div>
               <DialogButton
-                onClick={() => void perform(finding)}
+                onClick={() => confirm(finding)}
                 disabled={Boolean(busy)}
                 style={{ width: "auto", minWidth: "200px", marginTop: "6px" }}
               >

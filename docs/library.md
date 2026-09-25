@@ -360,6 +360,11 @@ game recorded as filed can simply not be there, because the collection was
 deleted in Steam or because filing it failed as it was added. Each is reported
 before anything is done about it, and the list is rebuilt after every fix.
 
+Every fix asks first, and the question names what it will touch: the games, the
+shortcuts, the files or the collections, one to a line. The card tells you how
+many, which is enough to decide whether something is wrong; the list tells you
+what, which is what you need before pressing.
+
 A previous install can be **discarded** as well as adopted. Games with no
 surviving shortcut are not offered for adoption at all, and discarding deletes
 only the old record — the launcher scripts stay, because they are why any
