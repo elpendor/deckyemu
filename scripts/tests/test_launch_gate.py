@@ -122,7 +122,10 @@ else:
     # agree on it, and pointing the script somewhere else is exactly the way to
     # write a passing check for two halves that never meet.
     _dir = launchers.LAUNCH_GATE_DIR
-    _gate = launchers.launch_gate()
+    # Both gates, in the order a launcher runs them. They are written
+    # separately now -- the preflight goes between them -- and the pair is
+    # still what a launch meets.
+    _gate = launchers.launch_gate() + launchers.cloud_gate()
 
     _script = os.path.join(TMP, "gate.sh")
     with io.open(_script, "w", encoding="utf-8", newline="\n") as _handle:
@@ -342,7 +345,8 @@ else:
     try:
         _patient = os.path.join(TMP, "gate-patient.sh")
         with io.open(_patient, "w", encoding="utf-8", newline="\n") as _handle:
-            _handle.write("#!/bin/sh\n" + launchers.launch_gate() + "\necho LAUNCHED\n")
+            _handle.write("#!/bin/sh\n" + launchers.launch_gate()
+                          + launchers.cloud_gate() + "\necho LAUNCHED\n")
         os.chmod(_patient, 0o755)
         _began = time.time()
         _said = _launch(321, _patient)
@@ -375,7 +379,7 @@ else:
     with io.open(_ro_script, "w", encoding="utf-8", newline="\n") as _handle:
         _handle.write(
             "#!/bin/sh\n"
-            + launchers.launch_gate().replace(
+            + (launchers.launch_gate() + launchers.cloud_gate()).replace(
                 launchers.LAUNCH_GATE_DIR, os.path.join(_readonly, "nope", "deeper")
             )
             + "\necho LAUNCHED\n"

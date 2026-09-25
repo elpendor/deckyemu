@@ -223,7 +223,11 @@ LAUNCH_GATE_DIR = os.path.join(decky.DECKY_PLUGIN_RUNTIME_DIR, "launch")
 #      neither until they are rewritten, which is what this bump is for.
 #  37  those variables are matched by the prefix a layer gave itself rather
 #      than by name, so a second layer works without this list being edited.
-FORMAT_VERSION = 37
+#  38  the check for a missing emulator or ROM runs before the wait for saves
+#      to come down, not after it. The note it leaves was arriving later than
+#      the four seconds the panel waits for one, so whether the dialog appeared
+#      depended on how long the network took.
+FORMAT_VERSION = 38
 
 # One file per OSD mode rather than one shared file. Games can override the
 # global setting individually, and a single file would mean the last game
@@ -1042,17 +1046,29 @@ def took_off(app_id):
 
 
 def launch_gate():
-    """The gate, with this install's paths in it.
-
-    Two gates, in the order they have to run. The two-games check can end the
-    launch outright, so it goes first: waiting for saves to come down and then
-    refusing to start is a wait nobody got anything for.
-    """
-    # Both waits count in steps rather than seconds, so the numbers written
-    # into the script are the seconds divided by the step.
+    """The two-games gate, with this install's paths in it."""
     return (_LAUNCH_GATE.replace("{gate}", LAUNCH_GATE_DIR)
-            .replace("{approved}", str(APPROVAL_SECONDS))
-            + _CLOUD_GATE
+            .replace("{approved}", str(APPROVAL_SECONDS)))
+
+
+def cloud_gate():
+    """The wait for saves to come down, with this install's paths in it.
+
+    **Last of the three things that can end a launch, and that ordering is the
+    whole point of it being its own function.** The two-games gate and the
+    preflight both refuse outright, and both are a stat: waiting out a network
+    round trip and then refusing is a wait nobody got anything for, and bringing
+    a save down for a game that cannot start is worse than pointless.
+
+    It also cost a real bug. With this ahead of the preflight, a launch missing
+    its emulator left its note only after the saves had been fetched -- measured
+    at 4.5s on a Deck -- and the panel gives up waiting for that note after four
+    seconds. The dialog appeared or did not depending on how long the network
+    took, which from the outside looks like the check working intermittently.
+    """
+    # The wait counts in steps rather than seconds, so the numbers written into
+    # the script are the seconds divided by the step.
+    return (_CLOUD_GATE
             .replace("{onfile}", CLOUD_ON_FILE)
             .replace("{stale}", str(CLOUD_STALE_SECONDS))
             .replace("{cap}", str(CLOUD_MAX_SECONDS)))
@@ -1897,6 +1913,7 @@ def write_launcher(
             "",
             launch_gate(),
             preflight(rom_path, emulator, install, core_path, title_id),
+            cloud_gate(),
             log_capture(path),
             ran_marker(),
             game_config_setup(emulator, rom_path),
