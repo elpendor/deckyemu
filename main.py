@@ -2579,6 +2579,9 @@ class Plugin(
                 {
                     "title": entry.get("title", "Game"),
                     "label": entry.get("title", "?"),
+                    # Carried so the writer can tell a libretro game from an
+                    # emulator one when neither has a record left to say so.
+                    "core_id": core_id,
                     "core_path": core["path"] if core else entry.get("core_path", ""),
                     "rom_path": entry.get("rom_path", ""),
                     # Resolved for this game, exactly as `prepare_shortcut` and
@@ -2638,6 +2641,14 @@ class Plugin(
             # whole library: a standalone emulator's launcher does not involve
             # RetroArch and must still be rebuilt on a Deck that has none.
             if not install and not job["emulator"]:
+                skipped.append(job["label"])
+                continue
+            # An emulator game whose emulator is no longer registered. Writing
+            # anyway takes the libretro branch, where `core_path` is the
+            # emulator's own target -- so RetroArch was told to load an AppImage
+            # as a core. The script on disk is the last correct one and its
+            # preflight already names the emulator; reinstalling rebuilds it.
+            if emulators.is_emulator_id(job.get("core_id", "")) and not job["emulator"]:
                 skipped.append(job["label"])
                 continue
             try:
