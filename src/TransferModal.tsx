@@ -57,6 +57,7 @@ const PATCH_SUFFIXES = [".ips", ".bps", ".ups"];
 import { DANGER_CLASS, DANGER_CSS, DANGER_TEXT } from "./danger";
 import { COLUMN, MUTED } from "./dialogStyle";
 import { logError } from "./logError";
+import { ScrollList } from "./ScrollList";
 import { installThroughEmulator } from "./firmwareInstall";
 import { requirementForFile, type RequirementMatch } from "./firmwareMatch";
 import { confirmUnknownDump } from "./confirmUnknownDump";
@@ -234,12 +235,8 @@ export function ProgressBar({ fraction }: { fraction: number }) {
  * left to scroll.
  */
 const RECEIVED = {
-  display: "flex",
-  flexDirection: "column" as const,
   gap: "6px",
   maxHeight: "216px",
-  overflowY: "auto" as const,
-  overscrollBehavior: "contain" as const,
 };
 
 /**
@@ -267,18 +264,17 @@ const SHELL = {
 /**
  * The one scroll region: the received list, and the stopped list above it.
  *
- * `minHeight: 0` is what makes it work at all -- a flex child defaults to
- * `min-height: auto` and refuses to shrink below its content, so without it the
- * list pushes the footer off the bottom instead of scrolling.
+ * `ScrollList` carries the rest, and `minHeight: 0` is the part that makes it
+ * work at all -- a flex child defaults to `min-height: auto` and refuses to
+ * shrink below its content, so without it the list pushes the footer off the
+ * bottom instead of scrolling.
  */
 const SCROLLER = {
-  display: "flex",
-  flexDirection: "column" as const,
   gap: "10px",
   flex: "1 1 auto",
-  minHeight: 0,
-  overflowY: "auto" as const,
-  overscrollBehavior: "contain" as const,
+  // A container, not a list: the groups inside reserve their own gutter, and
+  // reserving a second one out here put the rows two steps in from the footer.
+  scrollbarGutter: "auto" as const,
 };
 
 /**
@@ -1167,7 +1163,7 @@ export function TransferModal({
 
       {/* The only thing that scrolls, and it takes whatever the head and the
           foot leave. It was 22vh of a dialog that also scrolled. */}
-      <Focusable style={SCROLLER}>
+      <ScrollList style={SCROLLER}>
         {/* Half-sent files nobody is sending: cancelled, or interrupted and not
             picked up again. Kept so choosing the file again carries on, which
             made them invisible -- the list skips half-files, and the only way
@@ -1187,7 +1183,7 @@ export function TransferModal({
                 the same file again.
               </div>
             </div>
-            <Focusable style={RECEIVED}>
+            <ScrollList style={RECEIVED}>
               {stopped.map((file) => (
                 <Focusable
                   key={file.partial}
@@ -1217,14 +1213,14 @@ export function TransferModal({
                   </div>
                 </Focusable>
               ))}
-            </Focusable>
+            </ScrollList>
           </div>
         )}
 
         {received.length > 0 && (
           <div style={{ ...COLUMN, gap: "6px" }}>
             <div style={{ fontWeight: 600 }}>Received ({received.length})</div>
-            <Focusable style={RECEIVED}>
+            <ScrollList style={RECEIVED}>
               {groups.map(({ file, tracks, size }) => (
                 <Focusable
                   key={file.path}
@@ -1410,11 +1406,11 @@ export function TransferModal({
                   )}
                 </Focusable>
               ))}
-            </Focusable>
+            </ScrollList>
           </div>
         )}
 
-      </Focusable>
+      </ScrollList>
 
       {/* Pinned, so finishing never means scrolling past the list to find it. */}
       <Focusable style={{ ...COLUMN, flex: "0 0 auto" }}>

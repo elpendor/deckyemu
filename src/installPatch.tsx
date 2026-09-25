@@ -2,7 +2,6 @@ import {
   ConfirmModal,
   DialogButton,
   Field,
-  Focusable,
   ModalRoot,
   Spinner,
 } from "@decky/ui";
@@ -14,6 +13,7 @@ import { MUTED } from "./dialogStyle";
 import { ICON_BUTTON_WIDE } from "./iconButton";
 import { logError } from "./logError";
 import { openModal } from "./modalStack";
+import { ScrollList } from "./ScrollList";
 
 /**
  * Install a ROM hack from wherever it was picked: the transfer list or the add
@@ -55,9 +55,9 @@ interface Props {
 /**
  * The games a patch could go on, one row each with Install.
  *
- * Built like the added games list -- a title, a scrolled Focusable of `Field`
- * rows, a button on each -- because that is the dialog here that already holds
- * a long list of games, and a controller can reach every row of it.
+ * Built like the added games list -- a title, a `ScrollList` of `Field` rows,
+ * a button on each -- because that is the dialog here that already holds a
+ * long list of games, and a controller can reach every row of it.
  */
 function PatchTargetModal({ path, name, onDone, closeModal }: Props) {
   const [targets, setTargets] = useState<PatchTarget[] | null>(null);
@@ -116,9 +116,7 @@ function PatchTargetModal({ path, name, onDone, closeModal }: Props) {
       )}
 
       {targets && targets.length > 0 && (
-        <Focusable
-          style={{ display: "flex", flexDirection: "column", maxHeight: "55vh", overflowY: "auto" }}
-        >
+        <ScrollList style={{ maxHeight: "55vh" }}>
           {targets.map((game) => (
             <Field
               key={game.app_id}
@@ -135,7 +133,7 @@ function PatchTargetModal({ path, name, onDone, closeModal }: Props) {
               </DialogButton>
             </Field>
           ))}
-        </Focusable>
+        </ScrollList>
       )}
     </ModalRoot>
   );

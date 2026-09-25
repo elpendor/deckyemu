@@ -60,10 +60,18 @@ export function ScrollList({
           minHeight: 0,
           overflowY: "auto",
           overscrollBehavior: "contain",
+          // The padding must come out of the height. At `height: 100%` inside
+          // Steam's Tabs pane it otherwise overflows by 4px, and a scrolled
+          // pane draws a black scrim behind the tab bar.
+          boxSizing: "border-box",
           // Room for a focus ring, and a margin for the row being scrolled into
           // view, so neither lands flush against the clip.
           padding: "2px",
           scrollPaddingBlock: "6px",
+          // Reserved so rows do not jump sideways when a list grows past the
+          // fold. **Not `both-edges`**: this CEF reserves that in layout but
+          // paints 8px short of it, which clips the last control in every row.
+          scrollbarGutter: "stable",
           ...style,
         }}
       >

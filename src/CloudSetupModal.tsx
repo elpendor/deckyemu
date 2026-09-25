@@ -19,6 +19,7 @@ import { HandoffCode } from "./HandoffCode";
 import { ICON_BUTTON, ICON_BUTTON_WIDE } from "./iconButton";
 import { logError } from "./logError";
 import { openModal } from "./modalStack";
+import { ScrollList } from "./ScrollList";
 
 /** Whatever happens next happens on the phone, so this end has to watch for it. */
 const POLL_MS = 2000;
@@ -36,17 +37,12 @@ const POLL_MS = 2000;
  * the screen with it -- that is a screen of its own since, so the number can go
  * back to being the number every other list here uses.
  *
- * `minHeight` survives the flex column it sits in: without it a flex child
- * refuses to shrink below its content, which is the failure this is here to
- * stop.
+ * `ScrollList` carries the rest: the column, the scrollbar, and the
+ * `minHeight: 0` a flex child needs to shrink below its content at all.
  */
 const ACCOUNTS = {
-  display: "flex",
-  flexDirection: "column" as const,
   gap: "6px",
   maxHeight: "38vh",
-  minHeight: 0,
-  overflowY: "auto" as const,
 };
 
 /**
@@ -495,7 +491,7 @@ export function CloudSetupModal({ closeModal }: Props) {
         {remotes.length > 0 && !adding && (
           // Flexed, so the list inside it is what absorbs the leftover height.
           <div style={{ ...COLUMN, gap: "6px", flex: "1 1 auto", minHeight: 0 }}>
-            <Focusable style={ACCOUNTS}>
+            <ScrollList style={ACCOUNTS}>
               {named.map(({ one, label, nth }) => {
                 const chosen = one.name === cloud?.remote;
                 // Free space only where it is known, and it is known for the
@@ -577,7 +573,7 @@ export function CloudSetupModal({ closeModal }: Props) {
                   </Focusable>
                 );
               })}
-            </Focusable>
+            </ScrollList>
           </div>
         )}
 

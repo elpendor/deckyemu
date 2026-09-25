@@ -30,6 +30,7 @@ import { humanSize } from "./TransferModal";
 import { ownedCollectionMatcher } from "./collectionMatch";
 import { callWithRetry } from "./timeout";
 import { logError } from "./logError";
+import { ScrollList } from "./ScrollList";
 
 interface Props {
   onChanged: () => void;
@@ -503,14 +504,7 @@ export function OrphanModal({ onChanged, closeModal }: Props) {
       )}
 
       {report && pending.length > 0 && (
-        <Focusable
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            maxHeight: "50vh",
-            overflowY: "auto",
-          }}
-        >
+        <ScrollList style={{ maxHeight: "50vh" }}>
           {pending.map((finding) => (
             <div key={finding.key} style={SECTION}>
               <div style={{ fontWeight: 500 }}>{finding.title}</div>
@@ -526,7 +520,7 @@ export function OrphanModal({ onChanged, closeModal }: Props) {
               </DialogButton>
             </div>
           ))}
-        </Focusable>
+        </ScrollList>
       )}
 
       <Focusable style={{ display: "flex", gap: "8px", marginTop: "14px" }}>

@@ -681,7 +681,7 @@ export function RestoreSavesModal({ closeModal }: Props) {
           somewhere a backup is -- and two scrollers over one list of sources
           would be two places to look for the same answer. */}
       {choosing && (files?.length || accounts.length > 0) ? (
-      <Focusable style={{ maxHeight: "38vh", overflowY: "auto" }}>
+      <ScrollList style={{ maxHeight: "38vh" }}>
       {/* Which backup, when there is a choice -- more than one file on the
           Deck, or a storage signed into. A lone file with nowhere else to read
           from is opened for you, so this does not appear. */}
@@ -734,7 +734,7 @@ export function RestoreSavesModal({ closeModal }: Props) {
           </Field>
         </Focusable>
       ))}
-      </Focusable>
+      </ScrollList>
       ) : null}
 
       {/* The second level, and the only one: a snapshot picked here is read
@@ -770,7 +770,7 @@ export function RestoreSavesModal({ closeModal }: Props) {
               offers far more than five here and the rows ran off the bottom of
               the screen with the buttons never rendering -- which is the exact
               thing that container was added downstairs to stop. */}
-          <Focusable style={{ maxHeight: "38vh", overflowY: "auto" }}>
+          <ScrollList style={{ maxHeight: "38vh" }}>
           {(replaced[earlier.remote] ?? []).map((snapshot) => (
             <Field
               key={snapshot.stamp}
@@ -794,7 +794,7 @@ export function RestoreSavesModal({ closeModal }: Props) {
               </DialogButton>
             </Field>
           ))}
-          </Focusable>
+          </ScrollList>
         </>
       )}
 

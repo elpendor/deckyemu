@@ -1,7 +1,6 @@
 import {
   DialogButton,
   Field,
-  Focusable,
   ModalRoot,
   Spinner,
   Tabs,
@@ -19,6 +18,7 @@ import { callWithRetry } from "./timeout";
 import { openModal } from "./modalStack";
 import { landscapeArtUrls } from "./steam";
 import { ICON_BUTTON } from "./iconButton";
+import { ScrollList } from "./ScrollList";
 
 interface Props {
   closeModal?: () => void;
@@ -316,7 +316,13 @@ export function AddedGamesModal({ closeModal, onChanged }: Props) {
           rows, so the flash would not lose anything -- but it would move every
           row under a thumb already reaching for one. */}
       {systems.length > 0 && tabbed === true && (
+        <>
+        {/* Steam's pane pads itself `58px 24px 40px`. The top clears the tab
+            row and stays; the sides inset the list, and the bottom pushed the
+            pane into scrolling, which blackens the tab bar. */}
+        <style>{`.deckyemu-games-tabs ._TabContentsScroll { padding-left: 0; padding-right: 0; padding-bottom: 0; }`}</style>
         <div
+          className="deckyemu-games-tabs"
           style={{
             height: TABS_HEIGHT,
             display: "flex",
@@ -352,44 +358,29 @@ export function AddedGamesModal({ closeModal, onChanged }: Props) {
               // it per game is what the flat list did.
               title: `${system} (${grouped.get(system)!.length})`,
               content: (
-                // Focusable rather than a div, and this is the rule that has
-                // cost the most here: a controller cannot enter a scroll region
-                // with nothing focusable in it, so the part below the fold is
-                // unreachable. The rows carry buttons, so this one is enterable
-                // -- but the container still has to be a Focusable to be the
-                // thing focus enters.
-                <Focusable
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    height: "100%",
-                    overflowY: "auto",
-                  }}
-                >
+                // `ScrollList` is the Focusable and the scrollbar together, and
+                // both halves matter: a controller cannot enter a scroll region
+                // with nothing focusable in it -- the rows carry buttons, so
+                // this one is enterable -- and Steam's CEF draws no scrollbar,
+                // so nothing said the tab continued past the fold.
+                <ScrollList style={{ height: "100%" }}>
                   {grouped
                     .get(system)!
                     .sort((a, b) => a.title.localeCompare(b.title))
                     .map((game) => gameRow(game))}
-                </Focusable>
+                </ScrollList>
               ),
             }))}
           />
         </div>
+        </>
       )}
 
-      {/* The default. Scrolled, and Focusable rather than a div: a controller
-          has to be able to reach past the first screenful, which is the whole
-          reason this list stopped being the panel. Same shell as the library
-          check. */}
+      {/* The default. A controller has to be able to reach past the first
+          screenful, which is the whole reason this list stopped being the
+          panel. Same shell as the library check. */}
       {systems.length > 0 && tabbed === false && (
-        <Focusable
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            maxHeight: "60vh",
-            overflowY: "auto",
-          }}
-        >
+        <ScrollList style={{ maxHeight: "60vh" }}>
           {systems.map((system) => (
             <div key={system}>
               <div
@@ -410,7 +401,7 @@ export function AddedGamesModal({ closeModal, onChanged }: Props) {
                 .map((game) => gameRow(game))}
             </div>
           ))}
-        </Focusable>
+        </ScrollList>
       )}
 
     </ModalRoot>
