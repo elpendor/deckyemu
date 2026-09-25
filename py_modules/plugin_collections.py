@@ -37,6 +37,7 @@ import decky
 
 import plugin_base
 
+import emulators
 import libretro_meta
 import platforms
 import store
@@ -316,7 +317,14 @@ class Collections(plugin_base.PluginContext):
             app_id = entry.get("app_id")
             if not app_id:
                 continue
-            core = self._core_by_id(entry.get("core_id", ""))
+            core_id = entry.get("core_id", "")
+            core = self._core_by_id(core_id)
+            # A game whose emulator is no longer registered has no answer here.
+            # `_entry_platform` reads `port` off the core, so with none it files
+            # a port under its own system and the library check offers to move
+            # four ports onto an N64 shelf. Reinstalling restores the answer.
+            if core is None and emulators.is_emulator_id(core_id):
+                continue
             platform = self._entry_platform(settings, core, entry)
             targets[str(app_id)] = self._collection_name(settings, platform)
             titles[str(app_id)] = entry.get("title", "")
