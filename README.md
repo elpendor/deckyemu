@@ -13,6 +13,11 @@ xemu, Xenia Canary, Supermodel and BigPEmu — along with the BIOS and firmware 
 one needs.
 Bring your own instead, if you would rather.
 
+**Or a native port**, where a game has been rebuilt to run on the Deck with no
+emulator at all — Dusklight, Ship of Harkinian, 2 Ship 2 Harkinian, Ghostship,
+Starship, SpaghettiKart, Lighthouse, PaperBoat and DevilutionX. Each plays one
+game and needs the dump you already own.
+
 ![The Emulators tab in the settings page, listing Azahar, Cemu, Dolphin and
 DuckStation with the system and file types each one
 handles.](docs/images/installing-an-emulator.jpg)

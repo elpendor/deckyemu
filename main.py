@@ -332,6 +332,9 @@ class Plugin(
         # per step, and startup continues, so a failure costs the one thing that
         # failed rather than the plugin.
         for label, step in (
+            # Before the load, which is what would otherwise report each of them
+            # as clashing with a built-in.
+            ("drop definitions the plugin now ships", self._drop_superseded_definitions),
             ("load imported emulator definitions",
              lambda: self._run(emulator_catalog.reload_imported)),
             ("detect RetroArch and scan cores", self.refresh_retroarch),

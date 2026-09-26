@@ -118,6 +118,17 @@ from . import (
     xemu,
     xenia,
 )
+from . import (
+    devilutionx,
+    dusklight,
+    ghostship,
+    lighthouse,
+    paperboat,
+    shipwright,
+    spaghetti,
+    starship,
+    twoship,
+)
 from . import cloud
 from . import deck_gyro  # noqa: F401  -- re-exported; launchers reads the tool spec
 from . import hotkeys  # noqa: F401  -- re-exported; emu_install reads the spec
@@ -142,6 +153,17 @@ _MODULES = (
     xenia,
     supermodel,
     bigpemu,
+    # The ports, which are entries like any other -- `port: True` is the only
+    # difference, and the Ports tab is the catalog filtered on it.
+    dusklight,
+    shipwright,
+    devilutionx,
+    twoship,
+    ghostship,
+    starship,
+    spaghetti,
+    lighthouse,
+    paperboat,
 )
 
 #: The entries written in this package. Never changes at runtime.

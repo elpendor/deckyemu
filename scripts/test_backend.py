@@ -1611,7 +1611,15 @@ _ids = [entry["id"] for entry in emu_catalog.CATALOG]
 check("every catalog id is unique", len(set(_ids)), len(_ids))
 check("every id is safe as a directory name", all(emu_catalog.is_safe_id(i) for i in _ids), True)
 for _entry in emu_catalog.CATALOG:
-    if emulators.ROM_PLACEHOLDER not in (_entry.get("args") or ""):
+    # A port may take the game another way -- written into its config before it
+    # starts, or found beside the binary -- so the requirement is that it takes
+    # the game at all, not that it takes it on the command line.
+    _takes_rom = emulators.ROM_PLACEHOLDER in (_entry.get("args") or "")
+    if _entry.get("port"):
+        _takes_rom = _takes_rom or bool(
+            _entry.get("game_beside") or _entry.get("game_config")
+        )
+    if not _takes_rom:
         failures.append("catalog entry %s passes no ROM" % _entry["id"])
     if not (_entry.get("databases") or _entry.get("platform")):
         failures.append("catalog entry %s names no system" % _entry["id"])
@@ -1679,10 +1687,14 @@ check(
 # maintenance nobody asked for. A real Deck settled the argument: derivation is
 # best-effort widening, not a guarantee, because the archive it reads is cached
 # and can be a version behind. So every system any entry claims needs a floor.
+# Ports excepted: `extensions_for` answers one out of its own
+# `needs.extensions` and never touches the derived list, so a floor under its
+# system would protect nothing and would claim a system reads one game's format.
 _unfloored = sorted(
     {
         database
         for entry in emu_catalog.CATALOG
+        if not entry.get("port")
         for database in (entry.get("databases") or [])
         if database not in emu_catalog.MANUAL_EXTENSIONS
     }

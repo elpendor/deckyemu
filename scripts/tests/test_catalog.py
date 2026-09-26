@@ -78,9 +78,15 @@ check("every module in the package is in the catalog",
 # Stated in the package docstring as the thing no entry may depend on: the
 # derived extension list can come back empty from a stale libretro index, so
 # every system an entry claims needs a floor.
+#
+# Ports are exempt, and have to be: `extensions_for` answers a port out of its
+# own `needs.extensions` and never touches the derived list, so a floor under
+# its system would protect nothing. It would also be a lie -- the floor says
+# what a *system* reads, and a port reads one game's format.
 _unfloored = sorted(
     key
     for entry in emulator_catalog.CATALOG
+    if not entry.get("port")
     for key in emulator_catalog._system_keys(entry)
     if key not in emulator_catalog.MANUAL_EXTENSIONS
 )
@@ -172,8 +178,13 @@ def _mentions_fullscreen(value):
 # knows no path to write a config into. BigPEmu is the case -- its config lives
 # in `UserData/` beside a binary the user unpacked wherever they liked -- and
 # under gamescope a window the size of the screen is fullscreen anyway.
+#
+# Ports are exempt for the same reason `byo` is, from the other direction: a
+# port has no GUI to be windowed in. It opens on the one game it plays, and
+# under gamescope that window is the screen.
 _no_switch = [entry["id"] for entry in emulator_catalog.CATALOG
               if not (entry.get("fullscreen_args") or "")
+              and not entry.get("port")
               and (entry.get("source") or {}).get("kind") != "byo"]
 check("the entries with no fullscreen switch are the ones expected to have none",
       sorted(_no_switch), ["azahar", "bigpemu", "dolphin"])

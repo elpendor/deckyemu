@@ -15,9 +15,9 @@ interface Props {
  * Native ports of single games, laid out like the Emulators tab.
  *
  * The list is the catalog filtered to ports, so installing, updating and
- * removing one are the rows and buttons that tab already has. What differs is
- * only where the entries come from: a definition the user sends, since this
- * plugin ships no ports.
+ * removing one are the rows and buttons that tab already has. Ports ship with
+ * the plugin like every other entry; the import button below is for one that
+ * does not.
  */
 export function PortsPanel({ onChanged }: Props) {
   // As on the emulators tab: installing above registers a port below.

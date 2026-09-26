@@ -719,17 +719,16 @@ export function EmulatorCatalogPanel({ onChanged, ports = false }: Props) {
         </PanelSectionRow>
       )}
 
-      {/* The ports list is empty until somebody imports one, which is what
-          every install starts as -- this plugin ships no ports. Without a row
-          saying so the tab is a heading and a button, and reads as a list that
-          failed to load. The emulators list is bundled and cannot be empty,
-          but it says the same thing if it ever is. */}
+      {/* Both lists are bundled now and neither can be empty, so this is the
+          shape of a list that failed to load rather than an ordinary state.
+          Kept for that reason, and worded as a fact rather than an
+          instruction. */}
       {!loading && entries.length === 0 && (
         <PanelSectionRow>
           <Field
             description={
               ports
-                ? "No ports yet. A ports list is a file somebody gives you: send it with Transfer to Deck, then import it below."
+                ? "No ports to install here."
                 : "No emulators to install here."
             }
           />

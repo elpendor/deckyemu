@@ -489,10 +489,26 @@ Some games have been rebuilt to run on the Deck directly, with no emulator. A
 port plays one game and needs the disc or cartridge dump you already own; it
 builds its own copy of the assets from that file the first time it runs.
 
-They live under **Ports**, and this plugin ships none — you import a definition,
-exactly as you would for an emulator. Send a `.deckyemu.json` over **Transfer**
-and press **Import**. One file can hold several, and each is checked on its own,
-so one bad entry costs only itself.
+They live under **Ports**, and these ship with the plugin. Unlike every other
+table on this page, the middle column is a game rather than a system: a port
+plays one game, and which one is the only thing that says what to supply.
+
+| Port | Plays | Installed from |
+| --- | --- | --- |
+| Dusklight | The Legend of Zelda: Twilight Princess | GitHub — [`TwilitRealm/dusklight`](https://github.com/TwilitRealm/dusklight) |
+| Ship of Harkinian | The Legend of Zelda: Ocarina of Time | GitHub — [`HarbourMasters/Shipwright`](https://github.com/HarbourMasters/Shipwright) |
+| DevilutionX | Diablo | GitHub — [`diasurgical/DevilutionX`](https://github.com/diasurgical/DevilutionX) |
+| 2 Ship 2 Harkinian | The Legend of Zelda: Majora's Mask | GitHub — [`2ship2harkinian/2Ship2Harkinian`](https://github.com/2ship2harkinian/2Ship2Harkinian) |
+| Ghostship | Super Mario 64 | GitHub — [`HarbourMasters/Ghostship`](https://github.com/HarbourMasters/Ghostship) |
+| Starship | Star Fox 64 | GitHub — [`HarbourMasters/Starship`](https://github.com/HarbourMasters/Starship) |
+| SpaghettiKart | Mario Kart 64 | GitHub — [`HarbourMasters/SpaghettiKart`](https://github.com/HarbourMasters/SpaghettiKart) |
+| Lighthouse | Banjo-Kazooie | GitHub — [`HarbourMasters/Lighthouse`](https://github.com/HarbourMasters/Lighthouse) |
+| PaperBoat | Paper Mario | GitHub — [`HarbourMasters/PaperBoat`](https://github.com/HarbourMasters/PaperBoat) |
+
+A port that is not here can still be added: import a definition, exactly as you
+would for an emulator. Send a `.deckyemu.json` over **Transfer** and press
+**Import**. One file can hold several, and each is checked on its own, so one
+bad entry costs only itself.
 
 After that a port behaves like everything else. It is offered under **Run with**
 for a file it recognises, its game is filed under **Ports** rather than the

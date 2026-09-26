@@ -38,6 +38,10 @@ import emu_install
 import emu_patch
 import emu_firmware
 import emulator_catalog
+# Imported by name rather than reached as `emulator_catalog.imported`: the
+# package binds that attribute only once `reload_imported` has run, and the step
+# below deliberately runs before it.
+from emulator_catalog import imported as imported_definitions
 import steam_layouts
 import emulators
 import installer
@@ -649,6 +653,37 @@ class Startup(plugin_base.PluginContext):
             "launcher_format": launchers.FORMAT_VERSION,
             "motion_emulators": fingerprint,
         })
+
+    async def _drop_superseded_definitions(self):
+        """Delete imported definitions the plugin now ships itself.
+
+        The nine ports were an imported file before they were catalog entries.
+        A bundled id always wins, so the stored copy is not merely redundant:
+        `reload_imported` refuses it by name at every start, and the Emulators
+        tab shows nine "already a built-in emulator" problems for something the
+        user did nothing wrong to have.
+
+        Only the definition goes. The installed port is registered by id, which
+        the bundled entry now answers for, so it keeps working untouched.
+        """
+        bundled = {entry["id"] for entry in emulator_catalog.BUNDLED}
+        dropped = []
+        for entry_id in sorted(bundled):
+            if not await self._run(imported_definitions.already_imported, entry_id):
+                continue
+            removed, error = await self._run(
+                imported_definitions.remove, entry_id
+            )
+            if removed:
+                dropped.append(entry_id)
+            elif error:
+                decky.logger.warning("Could not drop %s's definition: %s",
+                                     entry_id, error)
+        if dropped:
+            decky.logger.info(
+                "Dropped imported definition(s) now shipped with the plugin: %s",
+                ", ".join(dropped),
+            )
 
     async def _forget_removed_settings(self):
         """Clear settings that have been taken out of the plugin.
