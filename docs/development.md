@@ -295,6 +295,9 @@ py_modules/                 Backend logic. Plain Python, no third-party
   plugin_library.py         The record of what was added, and taking things out
                             of it. clear_library deletes the games
   plugin_packages.py        Games that arrive as a .pkg
+  plugin_probe.py           What a picked file is: what could run it, what to
+                            call it, and its artwork. main.py keeps the add
+                            flow it feeds
   plugin_retroarch.py       Installing RetroArch and its cores. Reading what is
                             already installed stays in main.py, with the state
                             it keeps

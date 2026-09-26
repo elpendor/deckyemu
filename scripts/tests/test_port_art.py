@@ -120,9 +120,10 @@ section("the panel is told one of the three words it knows")
 # read better in the log and labelled SteamGridDB artwork as libretro on screen.
 import re  # noqa: E402 -- only this check needs it
 
-_main = io.open(os.path.join(os.path.dirname(os.path.dirname(
-    os.path.dirname(os.path.abspath(__file__)))), "main.py"), encoding="utf-8").read()
-_assigned = set(re.findall(r'source_used = "([^"]*)"', _main))
+_probe = io.open(os.path.join(os.path.dirname(os.path.dirname(
+    os.path.dirname(os.path.abspath(__file__)))), "py_modules", "plugin_probe.py"),
+    encoding="utf-8").read()
+_assigned = set(re.findall(r'source_used = "([^"]*)"', _probe))
 check("nothing else is ever assigned to it", sorted(_assigned),
       ["libretro", "none", "steamgriddb"])
 
@@ -137,7 +138,7 @@ _labels = set(re.findall(r"^  ([a-z]+):", _block, re.M))
 check("every name source the panel knows is one the backend sends",
       _labels, _LABELLED)
 check("and the backend sends no other",
-      set(re.findall(r'title_source = "([^"]*)"', _main)) - _LABELLED, set())
+      set(re.findall(r'title_source = "([^"]*)"', _probe)) - _LABELLED, set())
 
 
 if __name__ == "__main__":

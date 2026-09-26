@@ -183,6 +183,22 @@ class PluginContext:
         """The controller combo that opens RetroArch's menu."""
         raise NotImplementedError
 
+    # --- what a picked file turns out to be -------------------------------
+    @staticmethod
+    def _ps3_package_state(pkg_path: str) -> dict:
+        """What a PS3 .pkg is, and whether RPCS3 has already unpacked it."""
+        raise NotImplementedError
+
+    @staticmethod
+    def _ps4_package_state(pkg_path: str) -> dict:
+        """What a PS4 .pkg is, and whether shadPS4 already has it unpacked."""
+        raise NotImplementedError
+
+    @staticmethod
+    def _vita_package_state(pkg_path: str) -> dict:
+        """What a Vita .pkg is, whether it is installed, and whether its key is here."""
+        raise NotImplementedError
+
     # --- endpoints one part calls on another ------------------------------
     def prepare_shortcut(
         self, title: str, core_id: str, rom_path: str, system: str = "",

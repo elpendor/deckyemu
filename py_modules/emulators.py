@@ -385,6 +385,17 @@ def is_port(emulator_id):
     return bool((emulator_catalog.find(emulator_id or "") or {}).get("port"))
 
 
+def core_is_port(core_id):
+    """The same question asked of a core id, which is how the picker spells it.
+
+    Lives here rather than in the one mixin that sorts cores because the add
+    flow asks it too, and a private copy imported across modules is worse than
+    a public one next to `is_port`.
+    """
+    core_id = str(core_id or "")
+    return is_emulator_id(core_id) and is_port(emulator_id(core_id))
+
+
 def to_core_entry(emulator, system_name=""):
     """Shape an emulator like a libretro core.
 
