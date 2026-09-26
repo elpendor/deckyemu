@@ -377,6 +377,17 @@ def get_library():
     return data if isinstance(data, dict) else {}
 
 
+def _entry_name(entry):
+    """What to call a game in a sentence about it.
+
+    A record carries `title`; `name` is what the panel's field is called and
+    what an old record might have. Reading only `name` meant every one of
+    those sentences said "A game".
+    """
+    entry = entry or {}
+    return entry.get("title") or entry.get("name") or ""
+
+
 def already_added(library, rom_path):
     """The game already added for this file, or None. Never raises.
 
@@ -414,13 +425,13 @@ def already_added(library, rom_path):
         if same:
             return {
                 "app_id": str(app_id),
-                "name": (entry or {}).get("name") or "",
+                "name": _entry_name(entry),
                 "same_file": True,
             }
         if by_name is None and os.path.basename(known).lower() == name:
             by_name = {
                 "app_id": str(app_id),
-                "name": (entry or {}).get("name") or "",
+                "name": _entry_name(entry),
                 "same_file": False,
             }
     return by_name

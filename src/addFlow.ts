@@ -133,6 +133,10 @@ export async function selectPackagedGame(
       // Cleared so the panel stops offering to install a package that is now a
       // game, and so the core dropdown reflects the EBOOT rather than the .pkg.
       probe: null,
+      // Kept, because it is about the game and not about the package. The
+      // probe answered it for the eboot this is switching to, and clearing the
+      // probe was why picking an already-added package said nothing.
+      alreadyAdded: getDraft().probe?.already_added ?? null,
       coreId: core.core_id,
       title: game.title,
       resolved: null,
@@ -185,6 +189,9 @@ export async function selectRom(
     romPath,
     titleId: "",
     resolved: null,
+    // Answered again below by this file's own probe. Carried over it would
+    // claim the last file's game is this one.
+    alreadyAdded: null,
     installable: [],
     // Cleared here and seeded below from this file's own folder. A set carried
     // over from the last ROM would name discs that are not beside this one, and

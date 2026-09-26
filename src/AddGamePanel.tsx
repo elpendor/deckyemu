@@ -206,6 +206,7 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
     romPath,
     titleId,
     probe,
+    alreadyAdded: carriedAlreadyAdded,
     coreId,
     showAllCores,
     systemId,
@@ -851,6 +852,10 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
   // reachable by a test. There is no DOM in the test run.
   const discInfo = discRow(probe, discs, coreById(probe, coreId), discChoice);
 
+  // From the probe while there is one. An installed package clears the probe
+  // on its way to the eboot inside it, and carries this across.
+  const alreadyAdded = probe?.already_added ?? carriedAlreadyAdded;
+
   const pendingPackage = pendingPackageOf(probe);
   const licence = licenceChoice(pendingPackage, keyChoice);
   // Null once the emulator is here, which is what takes the offer off screen
@@ -941,18 +946,18 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
           set up correctly, and it may already be set up. Said at the point it
           is still cheap to act on -- the cleanup screen finds duplicates too,
           but only once two of them exist. */}
-      {probe?.already_added && (
+      {alreadyAdded && (
         <PanelSectionRow>
           <Field
             label={
-              probe.already_added.same_file
+              alreadyAdded.same_file
                 ? "This file is already in your library"
                 : "You may already have this game"
             }
             description={
-              probe.already_added.same_file
-                ? `${probe.already_added.name || "A game"} already runs this exact file. Adding it again gives you a second entry for it, which is fine if that is what you want — a different core, say.`
-                : `${probe.already_added.name || "A game"} runs a file with this name from somewhere else, so this may be the same game sent twice. Adding it makes a second entry.`
+              alreadyAdded.same_file
+                ? `${alreadyAdded.name || "A game"} already runs this exact file. Adding it again gives you a second entry for it, which is fine if that is what you want — a different core, say.`
+                : `${alreadyAdded.name || "A game"} runs a file with this name from somewhere else, so this may be the same game sent twice. Adding it makes a second entry.`
             }
           />
         </PanelSectionRow>
@@ -1514,7 +1519,7 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
                 ? "Adding..."
                 : probe?.disc_warning
                   ? "Add anyway"
-                  : probe?.already_added
+                  : alreadyAdded
                     // Not "Add anyway", which is the wording for a file that
                     // will not work. This one will work perfectly; there is
                     // simply going to be two of it, and the button should say

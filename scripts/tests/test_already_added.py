@@ -50,6 +50,20 @@ check("an empty library says nothing",
 check("and no path is not a match against everything",
       store.already_added(LIBRARY, ""), None)
 
+section("the name comes off the record, which spells it `title`")
+
+# `name` is what the panel's field is called; a record has never carried one.
+# Reading only `name` meant every one of these sentences said "A game".
+REAL = {"3001": {"title": "Tobu Tobu Girl", "rom_path": "/home/deck/Emulation/gb/Tobu.gb"}}
+check("a real record is named", store.already_added(REAL, "/home/deck/Emulation/gb/Tobu.gb")["name"],
+      "Tobu Tobu Girl")
+# Kept as a fallback rather than replaced: an old record may have one, and a
+# test that writes `name` should not start reporting nothing.
+NAMED = {"3002": {"name": "Older shape", "rom_path": "/home/deck/Emulation/gb/Tobu.gb"}}
+check("and `name` still answers where a record has it",
+      store.already_added(NAMED, "/home/deck/Emulation/gb/Tobu.gb")["name"], "Older shape")
+
+
 section("an exact match wins wherever it is in the list")
 
 # The name match is found first walking the dict, and must not be the answer:

@@ -398,6 +398,19 @@ class Probe(plugin_base.PluginContext):
             else:
                 result["ps3_package"] = await self._run(self._ps3_package_state, rom_path)
 
+            # The library records what boots, not the package it came out of,
+            # so the path match above asked about the `.pkg` and found nothing
+            # -- picking one already added said nothing at all. Asked again on
+            # what was installed, which is the path a record would carry.
+            state = (result.get("ps4_package") or result.get("vita_package")
+                     or result.get("ps3_package") or {})
+            if not result["already_added"] and state.get("installed") and state.get("eboot"):
+                result["already_added"] = await self._run(
+                    store.already_added,
+                    await self._run(store.get_library),
+                    state["eboot"],
+                )
+
         # A ROM set is named after the MAME set rather than the game, so the
         # panel offered "daytona2" and Steam got a shelf entry called that.
         # It is also what the artwork search is given, and SteamGridDB has a

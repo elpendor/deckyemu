@@ -24,6 +24,14 @@ export interface RomDraft {
    */
   titleId: string;
   probe: RomProbe | null;
+  /**
+   * The game already in the library for what is being added, or null.
+   *
+   * Normally `probe.already_added` and read from there. This exists for the
+   * one path that has no probe: an installed package carries on from the eboot
+   * inside it and clears the probe, so the answer has to outlive it.
+   */
+  alreadyAdded: RomProbe["already_added"];
   coreId: string;
   showAllCores: boolean;
   /**
@@ -133,6 +141,7 @@ export const EMPTY_DRAFT: RomDraft = {
   romPath: "",
   titleId: "",
   probe: null,
+  alreadyAdded: null,
   coreId: "",
   showAllCores: false,
   systemId: "",
