@@ -92,8 +92,8 @@ upload halfway.
 
 ## 2. Get something to run it
 
-There are two routes, and you can use both. Which one you want depends on the
-system.
+There are three routes, and you can use all of them. Which one you want depends
+on the game.
 
 ### RetroArch and cores — for most retro systems
 
@@ -128,6 +128,18 @@ Two things to expect here:
 
 For an emulator not in that list, see
 [docs/emulator-definitions.md](emulator-definitions.md).
+
+### Native ports — for a handful of specific games
+
+Open **Settings → Ports**. A few games have been rebuilt to run on the Deck
+directly, with no emulator between them and the hardware, and the plugin ships
+nine of them. Each row names the game it plays, because that is the only thing
+that says what to supply: you still need your own dump of that game, and the
+port builds its own copy of the assets from it the first time it runs.
+
+Install one the same way as an emulator. It then appears under **Run with** in
+step 3 for a file it recognises — and only for that game's file, so there is
+nothing to choose between. [More on ports](emulators.md#native-ports).
 
 ## 3. Add the game to Steam
 

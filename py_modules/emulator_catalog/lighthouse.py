@@ -19,7 +19,6 @@ ENTRY = {
         "extract": r"^lighthouse\.appimage$",
     },
     "root": "deckyemu/emulators/lighthouse",
-    "data": ["deckyemu/emulators/lighthouse"],
     "saves": [
         {"dir": "deckyemu/emulators/lighthouse/saves"},
         {"file": "deckyemu/emulators/lighthouse/lighthouse.cfg.json"},

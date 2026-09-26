@@ -21,7 +21,6 @@ ENTRY = {
         "extract": r"^2ship\.appimage$",
     },
     "root": "deckyemu/emulators/2ship",
-    "data": ["deckyemu/emulators/2ship"],
     "saves": [
         {"dir": "deckyemu/emulators/2ship/saves"},
         {"file": "deckyemu/emulators/2ship/2ship2harkinian.json"},

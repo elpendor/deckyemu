@@ -184,6 +184,44 @@ _wrong = {name: {"table": _listed[name], "catalog": _expected[name]}
 check("and each row names the source the catalog actually uses", _wrong, {})
 
 
+section("every page's Contents lists every section on it")
+
+# A page long enough to carry a Contents list is one nobody reads top to bottom,
+# so a section missing from it is a section that does not exist as far as most
+# readers are concerned. Four pages had drifted by the time anyone looked --
+# `emulators.md` had a whole Native ports section unlisted, and `library.md` was
+# missing seven -- because adding a heading and adding its link are two edits
+# and only one of them is visible while you write.
+#
+# `##` only. A `###` may be linked and usually is not, and requiring those would
+# turn the list into an outline of the page rather than a way into it.
+def _anchor(heading):
+    """GitHub's anchor for a heading, for the punctuation these pages use."""
+    return re.sub(r"[^a-z0-9 -]", "", heading.lower()).replace(" ", "-")
+
+
+_unlisted = {}
+_pages_with_contents = 0
+for _name in sorted(os.listdir(os.path.join(REPO_ROOT, "docs"))):
+    if not _name.endswith(".md"):
+        continue
+    with open(os.path.join(REPO_ROOT, "docs", _name), encoding="utf-8") as _handle:
+        _page = _handle.read()
+    _contents = re.search(r"^\*\*Contents\*\*(.*?)(?=\n\n)", _page, re.S | re.M)
+    if not _contents:
+        continue
+    _pages_with_contents += 1
+    _links = set(re.findall(r"\]\(#([a-z0-9-]+)\)", _contents.group(1)))
+    _missing = [line[3:].strip() for line in _page.split("\n")
+                if line.startswith("## ") and _anchor(line[3:].strip()) not in _links]
+    if _missing:
+        _unlisted[_name] = _missing
+check("no section is missing from its page's Contents", _unlisted, {})
+# Not a tautology: an empty result means the pages were read, not that the
+# pattern stopped matching any.
+check("and it read every page that has one", _pages_with_contents >= 7, True)
+
+
 if __name__ == "__main__":
     from harness import summary
 

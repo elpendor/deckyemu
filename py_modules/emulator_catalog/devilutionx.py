@@ -18,7 +18,6 @@ ENTRY = {
         "asset": r"^devilutionx-linux-x86_64\.appimage$",
     },
     "root": ".local/share/diasurgical/devilution",
-    "data": [".local/share/diasurgical/devilution"],
     "saves": [
         {"dir": ".local/share/diasurgical/devilution"},
     ],

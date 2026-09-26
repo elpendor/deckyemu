@@ -19,7 +19,6 @@ ENTRY = {
         "extract": r"^ghostship\.appimage$",
     },
     "root": "deckyemu/emulators/ghostship",
-    "data": ["deckyemu/emulators/ghostship"],
     "saves": [
         {"dir": "deckyemu/emulators/ghostship/saves"},
         {"file": "deckyemu/emulators/ghostship/ghostship.cfg.json"},

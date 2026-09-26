@@ -6407,9 +6407,16 @@ check("with a size and a label on each",
 # `byo` is not downloaded, so there is no directory of this plugin's making to
 # describe: the build, its config and its saves are all wherever the user
 # unpacked them, and the reset tab is right to know nothing about it.
+#
+# Asked through `owned_roots`, which is what the reset and the backup actually
+# read: it unions `data` with `root`, so an entry confined to a `root` -- every
+# port, and every imported definition -- answers without declaring the same
+# path twice. Reading `data` alone made this check disagree with the code it
+# was guarding.
 check("every emulator the plugin downloads says where its data lives",
       [entry["id"] for entry in emu_catalog.CATALOG
-       if entry["source"]["kind"] not in ("flatpak", "byo") and not entry.get("data")],
+       if entry["source"]["kind"] not in ("flatpak", "byo")
+       and not emu_catalog.schema.owned_roots(entry)],
       [])
 
 _stamp_root = os.path.join(TMP, "stamproot")

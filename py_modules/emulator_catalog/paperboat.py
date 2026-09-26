@@ -18,7 +18,6 @@ ENTRY = {
         "extract": r"^Paperboat\.AppImage$",
     },
     "root": "deckyemu/emulators/paperboat",
-    "data": ["deckyemu/emulators/paperboat"],
     "saves": [
         {"dir": "deckyemu/emulators/paperboat/saves"},
         {"file": "deckyemu/emulators/paperboat/paperboat.cfg.json"},

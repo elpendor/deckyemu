@@ -6,6 +6,7 @@ where each one ends up.
 Back to [the README](../README.md).
 
 **Contents** — [Sending files from another device](#sending-files-from-another-device) ·
+[Fetching a definition by link](#fetching-a-definition-by-link) ·
 [Unpacking a zip](#unpacking-a-zip) ·
 [Unpacking a Switch .nsz](#unpacking-a-switch-nsz) ·
 [Where a ROM ends up](#where-a-rom-ends-up)

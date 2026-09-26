@@ -18,7 +18,6 @@ ENTRY = {
         "extract": r"^soh\.appimage$",
     },
     "root": "deckyemu/emulators/shipwright",
-    "data": ["deckyemu/emulators/shipwright"],
     "databases": ["Nintendo - Nintendo 64"],
     "needs": {
         "what": "your own ROM of the game (.z64, .n64 or .v64)",

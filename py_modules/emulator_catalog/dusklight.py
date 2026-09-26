@@ -18,7 +18,6 @@ ENTRY = {
         "asset": r"^Dusklight-v[0-9][0-9A-Za-z.+-]*-linux-x86_64\.AppImage$",
     },
     "root": ".local/share/TwilitRealm/Dusklight",
-    "data": [".local/share/TwilitRealm/Dusklight"],
     "databases": ["Nintendo - GameCube"],
     "needs": {
         "what": "a GameCube disc image of the game (.iso, not a compressed "

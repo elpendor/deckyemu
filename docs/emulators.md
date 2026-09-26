@@ -10,6 +10,7 @@ Back to [the README](../README.md).
 [Getting to the emulator's own menu](#getting-to-the-emulators-own-menu) ·
 [Fixes](#fixes) · [Motion controls](#motion-controls) ·
 [Xbox 360 files](#xbox-360-files) · [Arcade ROM sets](#arcade-rom-sets) ·
+[Native ports](#native-ports) ·
 [Removing an emulator](#removing-an-emulator) ·
 [Updating an emulator, or going back](#updating-an-emulator-or-going-back) ·
 [Adding your own emulator](#adding-your-own-emulator)
@@ -506,14 +507,15 @@ Ports tab says it too, under each name, for the same reason.
 | Lighthouse | Banjo-Kazooie | GitHub — [`HarbourMasters/Lighthouse`](https://github.com/HarbourMasters/Lighthouse) |
 | PaperBoat | Paper Mario | GitHub — [`HarbourMasters/PaperBoat`](https://github.com/HarbourMasters/PaperBoat) |
 
-A port that is not here can still be added: import a definition, exactly as you
-would for an emulator. Send a `.deckyemu.json` over **Transfer** and press
-**Import**. One file can hold several, and each is checked on its own, so one
-bad entry costs only itself.
+A port behaves like everything else once installed. It is offered under **Run
+with** for a file it recognises, its game is filed under **Ports** rather than
+the system, and its saves are backed up with the rest.
 
-After that a port behaves like everything else. It is offered under **Run with**
-for a file it recognises, its game is filed under **Ports** rather than the
-system, and its saves are backed up with the rest.
+A port that is not in the table can still be added: import a definition, exactly
+as you would for an emulator. Send a `.deckyemu.json` over **Transfer** and press
+**Import**. One file can hold several, and each is checked on its own, so one
+bad entry costs only itself. An imported one then behaves exactly like the nine
+above, except that it is never marked as verified — nobody here has run it.
 
 Three things differ from an emulator:
 
@@ -546,7 +548,7 @@ of your own, because their data lives in ordinary folders this does not remove.
 **A port is the exception, and removing one keeps its saves.** The portable kind
 writes its saves and its config beside its own binary rather than in a folder of
 its own elsewhere — which is inside the directory removing it deletes. So what
-the definition declares as saves is left behind, and reinstalling the port finds
+the entry declares as saves is left behind, and reinstalling the port finds
 them where it left them. Everything else in there goes: the binary, the archive
 it built from your dump, its logs.
 

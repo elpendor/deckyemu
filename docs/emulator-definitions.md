@@ -7,6 +7,7 @@ linked to or named as a download here; a definition is something you bring.
 
 **Contents** — [Using one](#using-one) · [After importing](#after-importing) ·
 [Writing one](#writing-one) · [Fields](#fields) ·
+[Several in one file](#several-in-one-file) ·
 [Firmware and keys](#firmware-and-keys) · [Getting it right](#getting-it-right) ·
 [What is refused](#what-is-refused) · [Updating and removing](#updating-and-removing) ·
 [When it does not work](#when-it-does-not-work)

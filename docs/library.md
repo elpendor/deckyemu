@@ -7,8 +7,15 @@ Back to [the README](../README.md).
 
 **Contents** — [Starting a game](#starting-a-game) ·
 [Editing a game](#editing-a-game) ·
+[Setting variables for every launch](#setting-variables-for-every-launch) ·
 [Collections](#collections) · [Orphaned entries](#orphaned-entries) ·
 [Backing up save data](#backing-up-save-data) ·
+[Setting up cloud storage](#setting-up-cloud-storage) ·
+[Sending saves to the cloud](#sending-saves-to-the-cloud) ·
+[Copying when a game closes](#copying-when-a-game-closes) ·
+[Saves coming back before a game starts](#saves-coming-back-before-a-game-starts) ·
+[When there is no network](#when-there-is-no-network) ·
+[Restoring from the cloud](#restoring-from-the-cloud) ·
 [Restoring a backup](#restoring-a-backup) ·
 [Removing everything](#removing-everything)
 

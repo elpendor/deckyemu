@@ -19,7 +19,6 @@ ENTRY = {
         "extract": r"^starship\.appimage$",
     },
     "root": "deckyemu/emulators/starship",
-    "data": ["deckyemu/emulators/starship"],
     "saves": [
         {"file": "deckyemu/emulators/starship/default.sav"},
         {"file": "deckyemu/emulators/starship/starship.cfg.json"},

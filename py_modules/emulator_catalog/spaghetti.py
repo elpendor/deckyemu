@@ -19,7 +19,6 @@ ENTRY = {
         "extract": r"^spaghetti\.appimage$",
     },
     "root": "deckyemu/emulators/spaghetti",
-    "data": ["deckyemu/emulators/spaghetti"],
     "saves": [
         {"file": "deckyemu/emulators/spaghetti/default.sav"},
         {"file": "deckyemu/emulators/spaghetti/spaghettify.cfg.json"},
