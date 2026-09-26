@@ -102,3 +102,48 @@ tag, error = emu_install.latest_tag({"source": {"kind": "flatpak", "id": "org.x.
 check("a flatpak entry answers without asking", (tag, error), ("", ""))
 tag, error = emu_install.latest_tag({})
 check("an entry with no source answers without asking", (tag, error), ("", ""))
+
+
+section("the tag comes from a redirect, not the API")
+
+# The website answers `/releases/latest` by redirecting to the tag. That is off
+# the API's 60-an-hour budget, which fourteen entries were spending per press.
+import net  # noqa: E402
+
+_landed = {}
+net.head_location = lambda url, *a, **k: _landed.get(url, "")
+_PAGE = emu_install.GITHUB_LATEST_PAGE % "owner/repo"
+
+_landed[_PAGE] = "https://github.com/owner/repo/releases/tag/v1.2.3"
+check("the tag is read out of where it landed",
+      emu_install.github_latest_tag("owner/repo"), "v1.2.3")
+
+# A repository with no releases lands on `/releases`, which is not a tag.
+_landed[_PAGE] = "https://github.com/owner/repo/releases"
+check("no releases is not a tag", emu_install.github_latest_tag("owner/repo"), "")
+
+_landed[_PAGE] = ""
+check("and neither is no answer at all",
+      emu_install.github_latest_tag("owner/repo"), "")
+
+# A moved repository lands under its new owner; the tag is still the answer.
+_landed[_PAGE] = "https://github.com/newowner/repo/releases/tag/1.1.0"
+check("a renamed repository still answers",
+      emu_install.github_latest_tag("owner/repo"), "1.1.0")
+
+_landed[_PAGE] = "https://github.com/owner/repo/releases/tag/v1%2E0"
+check("an escaped tag comes back as itself",
+      emu_install.github_latest_tag("owner/repo"), "v1.0")
+
+check("a repository name that is not one asks nothing",
+      emu_install.github_latest_tag("../etc"), "")
+
+# `host` names a self-hosted forge, which is not github.com and has no such
+# page, so that entry must keep going to the API.
+_asked = []
+net.head_location = lambda url, *a, **k: (_asked.append(url), _landed.get(url, ""))[1]
+emu_install.latest_tag(
+    {"source": {"kind": "github", "repo": "owner/repo", "host": "git.example.com"}})
+check("a self-hosted forge is not asked for a github page", _asked, [])
+emu_install.github_latest_tag("owner/repo")
+check("and an ordinary repository is", len(_asked), 1)

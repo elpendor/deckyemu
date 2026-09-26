@@ -299,6 +299,30 @@ def head_size(url, headers=None, timeout=DEFAULT_TIMEOUT):
     return 0
 
 
+def head_location(url, headers=None, timeout=DEFAULT_TIMEOUT):
+    """Where `url` ends up after its redirects, or "".
+
+    One HEAD, no body. For a server that answers a question by redirecting:
+    GitHub's `/releases/latest` lands on `/releases/tag/<tag>`.
+    """
+    seen = set()
+    target = url
+    for _hop in range(_MAX_REDIRECTS + 1):
+        status, location, _length = _once("HEAD", target, headers, timeout)
+        if status is None:
+            return ""
+        if status in (301, 302, 303, 307, 308) and location:
+            if location in seen:
+                decky.logger.warning("Redirect loop following %s", url)
+                return ""
+            seen.add(location)
+            target = location
+            continue
+        return target if 200 <= status < 300 else ""
+    decky.logger.warning("Too many redirects following %s", url)
+    return ""
+
+
 def head_ok(url, headers=None):
     """True if `url` exists. Falls back to a ranged GET for servers that 405 HEAD."""
     status = _status_for("HEAD", url, headers)

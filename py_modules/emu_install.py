@@ -33,6 +33,7 @@ import subprocess
 import time
 import tarfile
 import zipfile
+from urllib.parse import unquote
 
 import decky
 
@@ -592,6 +593,18 @@ def remove_flatpak_husk(app_id):
 # -------------------------------------------------------------------- github
 
 GITHUB_API = "https://api.github.com/repos/%s/releases/latest"
+
+#: The same question asked of the website, which answers by redirecting to
+#: `/releases/tag/<tag>`. Off the API's 60-an-hour budget entirely, and the
+#: body is empty -- so checking fourteen entries costs nothing that installing
+#: one later needs. Excludes pre-releases exactly as the API's `latest` does;
+#: the atom feed does not, which is why it is not this.
+GITHUB_LATEST_PAGE = "https://github.com/%s/releases/latest"
+
+#: What that redirect lands on. A repository with no releases lands on
+#: `/releases` instead, which this does not match -- so "none published" stays
+#: distinguishable from a tag.
+_TAG_IN_URL = re.compile(r"/releases/tag/([^/?#]+)")
 
 
 #: Same call against a self-hosted forge. A project taken off GitHub tends to
@@ -1788,6 +1801,19 @@ def write_latest_tags(tags):
         decky.logger.warning("Could not record the latest tags: %s", error)
 
 
+def github_latest_tag(repo):
+    """The newest published tag for `repo`, or "". No API budget, no body.
+
+    A renamed repository redirects twice and still answers, which is how
+    `HarbourMasters/Lighthouse` kept working after it moved.
+    """
+    if not re.match(r"^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$", repo or ""):
+        return ""
+    landed = net.head_location(GITHUB_LATEST_PAGE % repo)
+    found = _TAG_IN_URL.search(landed or "")
+    return unquote(found.group(1)) if found else ""
+
+
 def latest_tag(entry):
     """The newest published tag for one AppImage emulator, or ('', reason).
 
@@ -1804,9 +1830,14 @@ def latest_tag(entry):
         return asset.get("tag", ""), ""
     if source.get("kind") != "github":
         return "", ""
-    asset, error = resolve_release_asset(
-        source.get("repo", ""), source.get("asset", ""), source.get("host", "")
-    )
+    repo, host = source.get("repo", ""), source.get("host", "")
+    if not host:
+        tag = github_latest_tag(repo)
+        if tag:
+            return tag, ""
+        # Falls through to the API rather than reporting nothing: the website
+        # answering oddly should not be the end of the check.
+    asset, error = resolve_release_asset(repo, source.get("asset", ""), host)
     if not asset:
         return "", error or "Could not read the latest release."
     return asset.get("tag", ""), ""

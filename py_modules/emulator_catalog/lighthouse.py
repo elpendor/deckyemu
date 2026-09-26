@@ -11,7 +11,7 @@ ENTRY = {
     "port": True,
     "source": {
         "kind": "github",
-        "repo": "HarbourMasters/Lighthouse",
+        "repo": "IsleOPorts/Lighthouse",
         "asset": r"^Lighthouse-[A-Za-z0-9-]+-Linux\.zip$",
         "unpack": True,
         "extract": r"^lighthouse\.appimage$",

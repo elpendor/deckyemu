@@ -504,7 +504,7 @@ Ports tab says it too, under each name, for the same reason.
 | Ghostship | Super Mario 64 | GitHub — [`HarbourMasters/Ghostship`](https://github.com/HarbourMasters/Ghostship) |
 | Starship | Star Fox 64 | GitHub — [`HarbourMasters/Starship`](https://github.com/HarbourMasters/Starship) |
 | SpaghettiKart | Mario Kart 64 | GitHub — [`HarbourMasters/SpaghettiKart`](https://github.com/HarbourMasters/SpaghettiKart) |
-| Lighthouse | Banjo-Kazooie | GitHub — [`HarbourMasters/Lighthouse`](https://github.com/HarbourMasters/Lighthouse) |
+| Lighthouse | Banjo-Kazooie | GitHub — [`IsleOPorts/Lighthouse`](https://github.com/IsleOPorts/Lighthouse) |
 | PaperBoat | Paper Mario | GitHub — [`HarbourMasters/PaperBoat`](https://github.com/HarbourMasters/PaperBoat) |
 
 A port behaves like everything else once installed. It is offered under **Run
