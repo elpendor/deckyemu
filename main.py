@@ -988,14 +988,13 @@ class Plugin(
         decky.logger.info("Wrote %s naming %d disc(s)", path, len(discs))
         return {"ok": True, "path": path, "error": ""}
 
-    async def probe_rom(self, rom_path: str):
-        """Suggested cores for a ROM, most relevant first, plus a default name."""
-        decky.logger.info("probe_rom: %s", rom_path)
-        if not os.path.isfile(rom_path):
-            decky.logger.warning("probe_rom: not a file: %s", rom_path)
-        cores = await self.list_cores()
-        extension = os.path.splitext(rom_path)[1].lower().lstrip(".")
+    async def _match_extension(self, rom_path, extension):
+        """What this file reads as, and what is inside it when nothing can run that.
 
+        Returns `(match_extension, archived)`. `archived` is the header of an
+        archive's contents -- "stfs", "xex" -- and is set only when nothing can
+        be offered for it, which is what empties the core list.
+        """
         # A zipped ROM is matched on what is inside it, since RetroArch unpacks
         # archives itself and no core advertises `zip`.
         match_extension = await self._run(ra_cores.content_extension, rom_path)
@@ -1025,39 +1024,25 @@ class Plugin(
             match_extension = await self._run(
                 xbox360_content.extension_from_header, rom_path
             )
-        matching = [] if archived else ra_cores.cores_for_extension(
-            cores, match_extension)
-        # A port plays one game. Its extensions already narrow it to that game's
-        # format, and where the recipe says what the file itself should read as,
-        # this is where a disc of a different game drops out -- and where one
-        # that reads as the right game is recognised. See `ports.verdict`.
-        matching, identified, wrong_dump = await self._run(
-            _sift_ports, matching, rom_path)
-        # An arcade ROM set is matched on `zip`, which twenty-two cores claim
-        # because most of them simply unpack an archive to reach the one game
-        # inside. Asked once and used twice below: for the ordering, and for
-        # whether the Unpack row belongs in the panel at all.
-        romset = await self._run(ra_cores.is_romset, rom_path)
+        return match_extension, archived
 
-        settings = await self._run(store.get_settings)
-        remembered = settings.get("last_core_by_ext", {}).get(match_extension, "")
+    @staticmethod
+    def _rank_cores(matching, identified, folder_system, romset, remembered):
+        """Order the cores that claim this file, best answer first. Sorts in place.
 
-        # What the folder holding the ROM says the system is, which for a disc
-        # image is the only evidence there is. See platforms.SYSTEM_FOLDERS.
-        folder_system = await self._run(platforms.system_for_folder, rom_path)
+        Evidence about this file beats a preference carried over from the last
+        one. `last_core_by_ext` is keyed on the extension alone, so for `.chd`
+        -- eighteen cores across six systems -- it remembers whichever system
+        was added last and suggests it for the next file whatever that file is.
+        A Dreamcast image suggested SwanStation is a shortcut that cannot work,
+        and it is reported as "the game will not launch".
 
-        # Evidence about this file beats a preference carried over from the
-        # last one. `last_core_by_ext` is keyed on the extension alone, so for
-        # `.chd` -- eighteen cores across six systems -- it remembers whichever
-        # system was added last and suggests it for the next file whatever that
-        # file is. A Dreamcast image suggested SwanStation is a shortcut that
-        # cannot work, and it is reported as "the game will not launch".
-        #
-        # One sort with both terms rather than two passes: the order the two
-        # rules apply in is the whole behaviour, and a second `.sort()` silently
-        # overrules the first. Ties keep the order list_cores gave them, and
-        # when neither term has anything to say the key is constant and the list
-        # is left exactly as it was.
+        One sort with every term rather than a pass each: the order the rules
+        apply in is the whole behaviour, and a second `.sort()` silently
+        overrules the first. Ties keep the order list_cores gave them, and when
+        no term has anything to say the key is constant and the list is left
+        exactly as it was.
+        """
         matching.sort(
             key=lambda core: (
                 # The file said which game it is, and exactly one thing here
@@ -1083,6 +1068,38 @@ class Plugin(
                 core["id"] != remembered,
             )
         )
+
+    async def probe_rom(self, rom_path: str):
+        """Suggested cores for a ROM, most relevant first, plus a default name."""
+        decky.logger.info("probe_rom: %s", rom_path)
+        if not os.path.isfile(rom_path):
+            decky.logger.warning("probe_rom: not a file: %s", rom_path)
+        cores = await self.list_cores()
+        extension = os.path.splitext(rom_path)[1].lower().lstrip(".")
+
+        match_extension, archived = await self._match_extension(rom_path, extension)
+        matching = [] if archived else ra_cores.cores_for_extension(
+            cores, match_extension)
+        # A port plays one game. Its extensions already narrow it to that game's
+        # format, and where the recipe says what the file itself should read as,
+        # this is where a disc of a different game drops out -- and where one
+        # that reads as the right game is recognised. See `ports.verdict`.
+        matching, identified, wrong_dump = await self._run(
+            _sift_ports, matching, rom_path)
+        # An arcade ROM set is matched on `zip`, which twenty-two cores claim
+        # because most of them simply unpack an archive to reach the one game
+        # inside. Asked once and used twice below: for the ordering, and for
+        # whether the Unpack row belongs in the panel at all.
+        romset = await self._run(ra_cores.is_romset, rom_path)
+
+        settings = await self._run(store.get_settings)
+        remembered = settings.get("last_core_by_ext", {}).get(match_extension, "")
+
+        # What the folder holding the ROM says the system is, which for a disc
+        # image is the only evidence there is. See platforms.SYSTEM_FOLDERS.
+        folder_system = await self._run(platforms.system_for_folder, rom_path)
+
+        self._rank_cores(matching, identified, folder_system, romset, remembered)
 
         # A save backup this plugin wrote, recognised by the manifest inside it
         # rather than by its name -- the name is the user's to change the moment
@@ -1248,17 +1265,38 @@ class Plugin(
             },
         }
 
+        await self._probe_kinds(result, rom_path, extension, romset)
+        await self._probe_warnings(result, rom_path, extension, wrong_dump)
+        decky.logger.info(
+            "probe_rom -> ext=%s match_ext=%s matching=%s suggested=%s backup=%s",
+            extension,
+            match_extension,
+            [core["id"] for core in matching],
+            result["suggested_core_id"],
+            # Whether this was recognised as a save backup, and for whom. A zip
+            # of saves matches on whatever extension happens to be inside it --
+            # `.rtc` for a RetroArch backup -- so without this the log of a
+            # backup being probed is indistinguishable from a ROM nothing runs.
+            [entry["id"] for entry in save_backup] if save_backup else None,
+        )
+        return result
+
+    async def _probe_kinds(self, result, rom_path, extension, romset):
+        """What this file is, where that is not simply "a ROM". Fills `result`.
+
+        Each of these either renames the game or empties the core list, because
+        what was picked belongs to a game rather than being one.
+        """
         # A PlayStation 3 package is the one thing the picker can be pointed at
         # that is not a game yet. RPCS3 has to unpack it first, and what boots
         # afterwards is dev_hdd0/game/<TITLE_ID>/USRDIR/EBOOT.BIN -- so the add
         # flow installs it and carries on with that path, and the user never
         # sees either the product code or the word EBOOT.
-        # `.pkg` does not say which console it is for. A PS3 package begins
-        # \x7fPKG and a PS4 one \x7fCNT, and nothing else about the file tells
-        # them apart -- same extension, same rough size, same naming. Sending a
-        # PS4 game to RPCS3 gets it reported as a corrupt package.
-        # Three consoles now share it. PS4 is `\x7fCNT`; the PS3 and the Vita
-        # are both `\x7fPKG` and differ only in a type field at offset 6.
+        #
+        # `.pkg` does not say which console it is for, and three consoles share
+        # it. PS4 is `\x7fCNT`; the PS3 and the Vita are both `\x7fPKG` and
+        # differ only in a type field at offset 6. Sending a PS4 game to RPCS3
+        # gets it reported as a corrupt package.
         if extension == "pkg":
             if await self._run(ps4_games.is_package, rom_path):
                 result["ps4_package"] = await self._run(self._ps4_package_state, rom_path)
@@ -1267,14 +1305,6 @@ class Plugin(
             else:
                 result["ps3_package"] = await self._run(self._ps3_package_state, rom_path)
 
-        # A PS Vita release, which is a zip like every zipped ROM is a zip -- and
-        # a `.vpk` is the same thing under another extension. Detected by the one
-        # file every release carries and no ROM archive does.
-        #
-        # Recognised in order to be *explained*, not offered. Vita3K is given a
-        # `.pkg` and its zRIF or nothing: a release handed over as a path is
-        # re-split on its spaces by the emulator's own launcher, and even
-        # without spaces the content has to be installed and decrypted before
         # A ROM set is named after the MAME set rather than the game, so the
         # panel offered "daytona2" and Steam got a shelf entry called that.
         # It is also what the artwork search is given, and SteamGridDB has a
@@ -1284,6 +1314,14 @@ class Plugin(
         if romset_title:
             result["provisional_title"] = romset_title
 
+        # A PS Vita release, which is a zip like every zipped ROM is a zip --
+        # and a `.vpk` is the same thing under another extension. Detected by
+        # the one file every release carries and no ROM archive does.
+        #
+        # Recognised in order to be *explained*, not offered. Vita3K is given a
+        # `.pkg` and its zRIF or nothing: a release handed over as a path is
+        # re-split on its spaces by the emulator's own launcher, and even
+        # without spaces the content has to be installed and decrypted before
         # anything can start it. This used to suggest Vita3K as the core to run
         # it with, which wrote a Steam shortcut that could never work and said
         # so only when the game was launched.
@@ -1326,11 +1364,8 @@ class Plugin(
         if "." + extension in gamecontent.GAME_SUFFIXES and not result.get("game_content"):
             result["content_waiting"] = await self._run(gamecontent.waiting_for, rom_path)
 
-        # An Xbox disc image with nothing to boot. Worth saying here because the
-        # console says it so badly: "Please insert an Xbox disc" on a black
-        # screen reads as a broken emulator, a missing BIOS or a dead pad long
-        # before it reads as a bad file. Said only when we are certain -- see
-        # xbox_disc, which stays silent about every .iso that is not an Xbox one.
+    async def _probe_warnings(self, result, rom_path, extension, wrong_dump):
+        """What is wrong with this file, said before it is added. Fills `result`."""
         # A port that plays this game but refuses this dump of it. Said here
         # rather than left to the port, which says it after the game has been
         # added and a first launch has spent minutes building an archive from a
@@ -1343,6 +1378,11 @@ class Plugin(
                 % (", ".join(sorted(wrong_dump)))
             )
 
+        # An Xbox disc image with nothing to boot. Worth saying because the
+        # console says it so badly: "Please insert an Xbox disc" on a black
+        # screen reads as a broken emulator, a missing BIOS or a dead pad long
+        # before it reads as a bad file. Said only when we are certain -- see
+        # xbox_disc, silent about every .iso that is not an Xbox one.
         if extension in ("iso", "xiso"):
             disc = await self._run(xbox_disc.inspect, rom_path)
             # `certain` matters: a root that could not be read to the end proves
@@ -1354,19 +1394,6 @@ class Plugin(
                     "its root, so there is nothing for the console to start. It "
                     "will boot to \"Please insert an Xbox disc\"."
                 )
-        decky.logger.info(
-            "probe_rom -> ext=%s match_ext=%s matching=%s suggested=%s backup=%s",
-            extension,
-            match_extension,
-            [core["id"] for core in matching],
-            result["suggested_core_id"],
-            # Whether this was recognised as a save backup, and for whom. A zip
-            # of saves matches on whatever extension happens to be inside it --
-            # `.rtc` for a RetroArch backup -- so without this the log of a
-            # backup being probed is indistinguishable from a ROM nothing runs.
-            [entry["id"] for entry in save_backup] if save_backup else None,
-        )
-        return result
 
     def _core_by_id(self, core_id):
         if emulators.is_emulator_id(core_id):
