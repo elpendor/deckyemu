@@ -1,8 +1,7 @@
 """DevilutionX -- native port of a 1996 PC action RPG. Needs your own data file
 
 The one port here whose game is not a console ROM, so it claims
-`platform` rather than `databases`. The data file has to keep its name:
-the program looks for two exact filenames and nothing else.
+`platform` rather than `databases`.
 """
 
 ENTRY = {

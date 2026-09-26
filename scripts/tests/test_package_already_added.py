@@ -3,15 +3,9 @@
 
     python scripts/tests/test_package_already_added.py
 
-The path match is made against the file that was picked, and for every other
-console that is the file the record carries. A package is the exception: what
-is added is what boots after the install -- `ux0/app/<id>/eboot.bin` for the
-Vita, `dev_hdd0/game/<id>/USRDIR/EBOOT.BIN` for the PS3 -- so the `.pkg` in
-front of the user matches neither the path nor the name of its own game, and
-picking one already in the library said nothing at all.
-
-The probe already knows: `installed` and `eboot` come back from the package
-state. Asking again with the path that would be recorded is the whole fix.
+A package is added under what boots after the install, not under the `.pkg`
+that was picked, so the path match found nothing. The probe already knows:
+`installed` and `eboot` come back from the package state.
 """
 
 import asyncio
@@ -56,9 +50,8 @@ def probe(installed, eboot=_EBOOT, already=None):
     return result
 
 
-# Stubs rather than real headers: which console a package is for is
-# `plugin_packages`' question and is tested there. What is under test is what
-# happens once the answer is "installed".
+# Stubs: which console a package is for is tested in `plugin_packages`. What
+# is under test is what happens once the answer is "installed".
 _real_ps4, _real_vita = ps4_games.is_package, vita_games.is_package
 ps4_games.is_package = lambda path: False
 vita_games.is_package = lambda path: True
@@ -92,9 +85,8 @@ try:
 
     section("a match the picked file already made is not overwritten")
 
-    # The `.pkg` itself can be what a record carries -- a game added before it
-    # was installed, or one whose emulator runs the package directly. That
-    # answer is about the file in front of the user and outranks this one.
+    # The `.pkg` itself can be what a record carries, and that answer is about
+    # the file in front of the user, so it outranks this one.
     _kept = {"app_id": "9", "name": "From the package", "same_file": True}
     check("the earlier answer stands", probe(True, already=_kept)["already_added"], _kept)
 
@@ -105,8 +97,7 @@ try:
                "core_id": "emu:vita3k", "rom_path": _EBOOT,
                "system": "", "collection": "", "launcher_path": ""},
     })
-    # `installed` without an eboot is what a console reports when it knows the
-    # title id and cannot find the game. Nothing to compare, so nothing said.
+    # `installed` without an eboot: nothing to compare, so nothing said.
     check("no boot path is not a match against everything",
           probe(True, eboot="")["already_added"], None)
 

@@ -146,10 +146,8 @@ function describe(entry: CatalogEmulator, build?: EmulatorBuild): ReactNode {
     ? `needs ${entry.needs_what}`
     : entry.extensions.map((extension) => `.${extension}`).join(" ");
   const parts = [entry.system, extensions, motion(entry)].filter(Boolean);
-  // A port's game goes on a line of its own above the rest. It is the one fact
-  // that identifies the row -- the name rarely resembles the game, and the
-  // system and file types below are the whole console's -- so joining it into
-  // the run would bury the only thing worth reading first.
+  // A port's game on its own line: the one fact that identifies the row, and
+  // joining it into the run below would bury it.
   const plays = entry.plays ? <div>{entry.plays}</div> : null;
   // **First and bold, or it is not read.** Everything else on this line is
   // what the emulator *is* -- the system, the file types -- and those never
@@ -729,10 +727,8 @@ export function EmulatorCatalogPanel({ onChanged, ports = false }: Props) {
         </PanelSectionRow>
       )}
 
-      {/* Both lists are bundled now and neither can be empty, so this is the
-          shape of a list that failed to load rather than an ordinary state.
-          Kept for that reason, and worded as a fact rather than an
-          instruction. */}
+      {/* Neither list can be empty now, so this is the shape of one that
+          failed to load rather than an ordinary state. */}
       {!loading && entries.length === 0 && (
         <PanelSectionRow>
           <Field

@@ -1,11 +1,7 @@
 """2 Ship 2 Harkinian -- native port of an N64 game. Needs your own ROM
 
-The same shape as Ship of Harkinian, from a different project. Its gyro
-option reads the pad's own sensor, which Steam's virtual pad does not
-have, so the note tells the user to leave it off.
-
-`twoship.py` rather than `2ship.py`: the id is what the user sees and a
-module name cannot start with a digit.
+`twoship.py` because a module name cannot start with a digit; the id
+is still `2ship`. Its gyro option reads a sensor Steam's pad has not.
 """
 
 ENTRY = {

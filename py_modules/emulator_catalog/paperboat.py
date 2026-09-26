@@ -1,7 +1,7 @@
 """PaperBoat -- native port of an N64 role-playing game. Needs your own ROM
 
-One accepted dump, the US release. The first launch builds its archive
-and asks once at the end whether to run.
+One accepted dump. The first launch builds its archive and asks once
+at the end whether to run.
 """
 
 ENTRY = {

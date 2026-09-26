@@ -1611,9 +1611,8 @@ _ids = [entry["id"] for entry in emu_catalog.CATALOG]
 check("every catalog id is unique", len(set(_ids)), len(_ids))
 check("every id is safe as a directory name", all(emu_catalog.is_safe_id(i) for i in _ids), True)
 for _entry in emu_catalog.CATALOG:
-    # A port may take the game another way -- written into its config before it
-    # starts, or found beside the binary -- so the requirement is that it takes
-    # the game at all, not that it takes it on the command line.
+    # A port may take the game through its config or beside the binary, so the
+    # requirement is that it takes the game at all.
     _takes_rom = emulators.ROM_PLACEHOLDER in (_entry.get("args") or "")
     if _entry.get("port"):
         _takes_rom = _takes_rom or bool(
@@ -1688,8 +1687,7 @@ check(
 # best-effort widening, not a guarantee, because the archive it reads is cached
 # and can be a version behind. So every system any entry claims needs a floor.
 # Ports excepted: `extensions_for` answers one out of its own
-# `needs.extensions` and never touches the derived list, so a floor under its
-# system would protect nothing and would claim a system reads one game's format.
+# `needs.extensions`, so a floor under its system would protect nothing.
 _unfloored = sorted(
     {
         database
@@ -6408,11 +6406,9 @@ check("with a size and a label on each",
 # describe: the build, its config and its saves are all wherever the user
 # unpacked them, and the reset tab is right to know nothing about it.
 #
-# Asked through `owned_roots`, which is what the reset and the backup actually
-# read: it unions `data` with `root`, so an entry confined to a `root` -- every
-# port, and every imported definition -- answers without declaring the same
-# path twice. Reading `data` alone made this check disagree with the code it
-# was guarding.
+# Through `owned_roots`, which the reset and the backup read: it unions `data`
+# with `root`, so an entry confined to a `root` answers without saying it
+# twice. Reading `data` alone disagreed with the code it guards.
 check("every emulator the plugin downloads says where its data lives",
       [entry["id"] for entry in emu_catalog.CATALOG
        if entry["source"]["kind"] not in ("flatpak", "byo")

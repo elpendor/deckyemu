@@ -1,8 +1,7 @@
 """Ship of Harkinian -- native port of an N64 game. Needs your own ROM
 
-Reads the ROM once and builds its own archive beside itself, which is
-why `root` sits under the plugin's own emulators directory rather than a
-dot-directory: the archive, the saves and the binary are one install.
+Builds its own archive beside itself, which is why `root` is under the
+plugin's emulators directory rather than a dot-directory.
 """
 
 ENTRY = {

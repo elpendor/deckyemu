@@ -186,15 +186,9 @@ check("and each row names the source the catalog actually uses", _wrong, {})
 
 section("every page's Contents lists every section on it")
 
-# A page long enough to carry a Contents list is one nobody reads top to bottom,
-# so a section missing from it is a section that does not exist as far as most
-# readers are concerned. Four pages had drifted by the time anyone looked --
-# `emulators.md` had a whole Native ports section unlisted, and `library.md` was
-# missing seven -- because adding a heading and adding its link are two edits
-# and only one of them is visible while you write.
-#
-# `##` only. A `###` may be linked and usually is not, and requiring those would
-# turn the list into an outline of the page rather than a way into it.
+# A page with a Contents list is one nobody reads top to bottom, so a section
+# missing from it does not exist for most readers. Four pages had drifted.
+# `##` only: a `###` may be linked and usually is not.
 def _anchor(heading):
     """GitHub's anchor for a heading, for the punctuation these pages use."""
     return re.sub(r"[^a-z0-9 -]", "", heading.lower()).replace(" ", "-")
@@ -217,8 +211,7 @@ for _name in sorted(os.listdir(os.path.join(REPO_ROOT, "docs"))):
     if _missing:
         _unlisted[_name] = _missing
 check("no section is missing from its page's Contents", _unlisted, {})
-# Not a tautology: an empty result means the pages were read, not that the
-# pattern stopped matching any.
+# Not a tautology: an empty result means the pages were read.
 check("and it read every page that has one", _pages_with_contents >= 7, True)
 
 

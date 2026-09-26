@@ -27,9 +27,8 @@ export interface RomDraft {
   /**
    * The game already in the library for what is being added, or null.
    *
-   * Normally `probe.already_added` and read from there. This exists for the
-   * one path that has no probe: an installed package carries on from the eboot
-   * inside it and clears the probe, so the answer has to outlive it.
+   * Normally read from `probe`. This outlives it for the one path that clears
+   * the probe: an installed package carrying on from its eboot.
    */
   alreadyAdded: RomProbe["already_added"];
   coreId: string;

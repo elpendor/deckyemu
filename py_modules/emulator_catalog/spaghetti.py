@@ -1,8 +1,7 @@
 """SpaghettiKart -- native port of an N64 kart racer. Needs your own ROM
 
-Finds the ROM beside itself, so the first launch asks only for a
-confirmation. Its controller-pak saves are a glob rather than a list:
-the port writes one file per pak page.
+Finds the ROM beside itself, so the first launch only confirms. Its
+controller-pak saves are a glob -- one file per pak page.
 """
 
 ENTRY = {

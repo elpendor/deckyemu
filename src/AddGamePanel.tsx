@@ -852,8 +852,8 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
   // reachable by a test. There is no DOM in the test run.
   const discInfo = discRow(probe, discs, coreById(probe, coreId), discChoice);
 
-  // From the probe while there is one. An installed package clears the probe
-  // on its way to the eboot inside it, and carries this across.
+  // From the probe while there is one; an installed package carries it
+  // across when it clears the probe.
   const alreadyAdded = probe?.already_added ?? carriedAlreadyAdded;
 
   const pendingPackage = pendingPackageOf(probe);

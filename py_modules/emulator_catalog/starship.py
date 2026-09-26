@@ -1,8 +1,7 @@
 """Starship -- native port of an N64 game. Needs your own ROM
 
-`game_picker` because the first launch asks whether to extract and then
-wants the ROM chosen in its own file browser. The launcher hands it the
-path; the question is the port's and cannot be skipped.
+`game_picker`: the first launch asks whether to extract and then wants
+the ROM chosen in its own browser.
 """
 
 ENTRY = {

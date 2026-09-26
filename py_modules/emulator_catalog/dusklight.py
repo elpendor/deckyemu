@@ -1,9 +1,7 @@
 """Dusklight -- native port of a GameCube game. Needs your own disc image
 
-Takes the disc image through `game_config` rather than on the command
-line: its own launcher re-reads the config at start, so the path has to
-be in the file before the process begins. `isoVerification` is off
-because the check refuses dumps this port otherwise plays.
+Takes the disc through `game_config`: its launcher re-reads the
+config at start, so the path must be in the file first.
 """
 
 ENTRY = {

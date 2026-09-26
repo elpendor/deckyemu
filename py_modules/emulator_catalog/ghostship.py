@@ -1,8 +1,7 @@
 """Ghostship -- native port of an N64 game. Needs your own ROM
 
-The release asset is named for the project rather than for the port,
-which is why the pattern and the extracted name disagree. `unpack`
-because the archive holds data folders the binary needs beside it.
+The asset is named for the project, not the port, so the pattern and
+the extracted name disagree. `unpack` for the data folders beside it.
 """
 
 ENTRY = {

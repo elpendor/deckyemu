@@ -38,9 +38,8 @@ import emu_install
 import emu_patch
 import emu_firmware
 import emulator_catalog
-# Imported by name rather than reached as `emulator_catalog.imported`: the
-# package binds that attribute only once `reload_imported` has run, and the step
-# below deliberately runs before it.
+# By name: the package binds `emulator_catalog.imported` only once
+# `reload_imported` has run, and the step below runs before it.
 from emulator_catalog import imported as imported_definitions
 import steam_layouts
 import emulators
@@ -235,7 +234,12 @@ class Startup(plugin_base.PluginContext):
                     "Leaving %s launch arguments alone; they were edited", emulator["id"]
                 )
             else:
-                emulator["args"] = entry.get("args") or "{rom}"
+                # `{rom}` only where the program takes a path. A port that
+                # finds its own game declares no `args`, and this was the one
+                # place that defaulted those to the path anyway.
+                emulator["args"] = entry.get("args") or (
+                    "" if emulator_catalog.finds_its_game(entry) else "{rom}"
+                )
                 emulator["fullscreen_args"] = entry.get("fullscreen_args") or ""
                 changed.append(emulator["id"])
 
@@ -657,14 +661,9 @@ class Startup(plugin_base.PluginContext):
     async def _drop_superseded_definitions(self):
         """Delete imported definitions the plugin now ships itself.
 
-        The nine ports were an imported file before they were catalog entries.
-        A bundled id always wins, so the stored copy is not merely redundant:
-        `reload_imported` refuses it by name at every start, and the Emulators
-        tab shows nine "already a built-in emulator" problems for something the
-        user did nothing wrong to have.
-
-        Only the definition goes. The installed port is registered by id, which
-        the bundled entry now answers for, so it keeps working untouched.
+        A bundled id wins, so the stored copy is refused by name at every start
+        and shows as a problem. Only the definition goes; the install is
+        registered by id and keeps working.
         """
         bundled = {entry["id"] for entry in emulator_catalog.BUNDLED}
         dropped = []

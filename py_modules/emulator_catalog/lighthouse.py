@@ -1,8 +1,6 @@
 """Lighthouse -- native port of an N64 platformer. Needs your own ROM
 
-Four accepted dumps, more than any other port here takes: the US 1.0 and
-1.1 revisions, the Japanese release and the PAL one all build an archive
-this port can read.
+Four accepted dumps, more than any other port here takes.
 """
 
 ENTRY = {
