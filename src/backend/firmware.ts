@@ -143,6 +143,13 @@ export interface CatalogEmulator {
   port?: boolean;
   /** The file a port wants, in its own words. Empty for an emulator. */
   needs_what?: string;
+  /**
+   * The game a port plays. Empty for an emulator.
+   *
+   * The one fact that identifies a port: its own name rarely resembles the
+   * game, and its system and file types are the whole console's.
+   */
+  plays?: string;
   /** Full system name, e.g. "PlayStation 2". */
   system: string;
   short: string;

@@ -8,6 +8,7 @@ ENTRY = {
     "id": "paperboat",
     "name": "PaperBoat",
     "summary": "Native port of an N64 role-playing game. Needs your own ROM.",
+    "verified": True,
     "port": True,
     "source": {
         "kind": "github",

@@ -12,6 +12,7 @@ ENTRY = {
     "id": "2ship",
     "name": "2 Ship 2 Harkinian",
     "summary": "Native port of an N64 game. Needs your own ROM.",
+    "verified": True,
     "port": True,
     "source": {
         "kind": "github",

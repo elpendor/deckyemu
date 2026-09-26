@@ -9,6 +9,7 @@ ENTRY = {
     "id": "spaghetti",
     "name": "SpaghettiKart",
     "summary": "Native port of an N64 kart racer. Needs your own ROM.",
+    "verified": True,
     "port": True,
     "source": {
         "kind": "github",

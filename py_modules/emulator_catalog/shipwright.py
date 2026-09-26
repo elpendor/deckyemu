@@ -9,6 +9,7 @@ ENTRY = {
     "id": "shipwright",
     "name": "Ship of Harkinian",
     "summary": "Native port of an N64 game. Needs your own ROM.",
+    "verified": True,
     "port": True,
     "source": {
         "kind": "github",

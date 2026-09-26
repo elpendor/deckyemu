@@ -491,7 +491,8 @@ builds its own copy of the assets from that file the first time it runs.
 
 They live under **Ports**, and these ship with the plugin. Unlike every other
 table on this page, the middle column is a game rather than a system: a port
-plays one game, and which one is the only thing that says what to supply.
+plays one game, and which one is the only thing that says what to supply. The
+Ports tab says it too, under each name, for the same reason.
 
 | Port | Plays | Installed from |
 | --- | --- | --- |

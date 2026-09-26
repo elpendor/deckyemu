@@ -10,6 +10,7 @@ ENTRY = {
     "id": "dusklight",
     "name": "Dusklight",
     "summary": "Native port of a GameCube game. Needs your own disc image.",
+    "verified": True,
     "port": True,
     "source": {
         "kind": "github",

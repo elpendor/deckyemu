@@ -10,6 +10,7 @@ ENTRY = {
     "name": "DevilutionX",
     "summary": "Native port of a 1996 PC action RPG. Needs your own data "
                "file.",
+    "verified": True,
     "port": True,
     "source": {
         "kind": "github",

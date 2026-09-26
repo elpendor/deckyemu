@@ -709,6 +709,10 @@ def listing(database_extensions, installed_ids=()):
                 # so its extensions are not a useful description of what it
                 # takes -- ".iso .gcm" is every disc the user owns.
                 "needs_what": (entry.get("needs") or {}).get("what", ""),
+                # And which game, which is what identifies a port: its name
+                # rarely resembles the game, and its system is the whole
+                # console's.
+                "plays": entry.get("plays", ""),
                 "source_file": entry.get("source_file", ""),
                 # Projected rather than passed through: the raw requirement
                 # carries a match pattern and a destination path, neither of

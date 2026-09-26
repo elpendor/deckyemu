@@ -146,16 +146,26 @@ function describe(entry: CatalogEmulator, build?: EmulatorBuild): ReactNode {
     ? `needs ${entry.needs_what}`
     : entry.extensions.map((extension) => `.${extension}`).join(" ");
   const parts = [entry.system, extensions, motion(entry)].filter(Boolean);
+  // A port's game goes on a line of its own above the rest. It is the one fact
+  // that identifies the row -- the name rarely resembles the game, and the
+  // system and file types below are the whole console's -- so joining it into
+  // the run would bury the only thing worth reading first.
+  const plays = entry.plays ? <div>{entry.plays}</div> : null;
   // **First and bold, or it is not read.** Everything else on this line is
   // what the emulator *is* -- the system, the file types -- and those never
   // change, so a reader skims them. An update is the one thing on the row that
   // is news and the one thing that wants acting on, and joined into the middle
   // of that run in the same grey it disappeared.
-  if (!version) return parts.join(" · ");
+  if (!version) {
+    return plays ? <>{plays}<div>{parts.join(" · ")}</div></> : parts.join(" · ");
+  }
   return (
     <>
-      <span style={{ fontWeight: 700 }}>{version}</span>
-      {parts.length ? ` · ${parts.join(" · ")}` : ""}
+      {plays}
+      <div>
+        <span style={{ fontWeight: 700 }}>{version}</span>
+        {parts.length ? ` · ${parts.join(" · ")}` : ""}
+      </div>
     </>
   );
 }
@@ -693,7 +703,7 @@ export function EmulatorCatalogPanel({ onChanged, ports = false }: Props) {
           // rival lists rather than one leading into the other.
           description={
             ports
-              ? "Native versions of single games, from the lists you imported. Install one, then add your own copy of the game the usual way and pick it under Run with."
+              ? "Native versions of single games, each naming the game it plays. Install one, then add your own copy of that game the usual way and pick it under Run with."
               : "For the systems RetroArch does not cover. The system, file types and launch arguments are all set up for you. Installing one also registers it below. Not here? Add your own there."
           }
           childrenContainerWidth="min"

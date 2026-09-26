@@ -9,6 +9,7 @@ ENTRY = {
     "id": "lighthouse",
     "name": "Lighthouse",
     "summary": "Native port of an N64 platformer. Needs your own ROM.",
+    "verified": True,
     "port": True,
     "source": {
         "kind": "github",
