@@ -56,7 +56,8 @@ nav:
       - Emulators and ports: emulators.md
       - Transfers: transfers.md
   - Everyday:
-      - Library and saves: library.md
+      - Your library: library.md
+      - Save data: saves.md
       - Artwork: artwork.md
       - Updates and problems: updates.md
   - Going further:

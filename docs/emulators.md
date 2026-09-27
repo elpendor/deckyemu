@@ -5,24 +5,14 @@ emulator yourself.
 
 Back to [the README](https://github.com/elpendor/deckyemu#readme).
 
-**Contents** — [Installing an emulator](#installing-an-emulator) ·
-[Unpacking a PS4 package](#unpacking-a-ps4-package) ·
-[Getting to the emulator's own menu](#getting-to-the-emulators-own-menu) ·
-[Fixes](#fixes) · [Motion controls](#motion-controls) ·
-[Xbox 360 files](#xbox-360-files) · [Arcade ROM sets](#arcade-rom-sets) ·
-[Native ports](#native-ports) ·
-[Removing an emulator](#removing-an-emulator) ·
-[Updating an emulator, or going back](#updating-an-emulator-or-going-back) ·
-[Adding your own emulator](#adding-your-own-emulator)
-
 ## Installing an emulator
 
 ![The Emulators tab, listing ready-made emulators with the system and file types
 each one handles.](images/installing-an-emulator.jpg)
 
-The **Emulators** tab lists emulators for the systems RetroArch does not cover.
-Press install and the emulator is downloaded and set up: the system, the file
-types it accepts and its launch arguments are all filled in for you.
+The **Emulators** tab lists emulators for the systems RetroArch doesn't cover.
+Press install and you get the emulator downloaded and set up — the system, the
+file types it accepts and its launch arguments all filled in.
 
 | Emulator | System | Installed from |
 | --- | --- | --- |
@@ -41,330 +31,365 @@ types it accepts and its launch arguments are all filled in for you.
 | Supermodel | Sega Model 3 arcade | Flathub — [`com.supermodel3.Supermodel`](https://flathub.org/apps/com.supermodel3.Supermodel) |
 | BigPEmu | Atari Jaguar | Direct — [`www.richwhitehouse.com/jaguar`](https://www.richwhitehouse.com/jaguar/) |
 
-Nothing here is a mirror or a repack: the application id or the repository above
-is where the build comes from, and following one takes you to the publisher's
-own page. That is the whole of what this plugin adds — it downloads what those
-projects publish and fills in the system, the file types and the launch
-arguments.
+> **Nothing here is a mirror or a repack.** The application id or repository
+> above is where the build comes from, and following one takes you to the
+> publisher's own page. That's the whole of what this plugin adds: it downloads
+> what those projects publish and fills in the system, file types and launch
+> arguments.
 
-Most come from Flathub and install for your user, so no password is asked for.
-RPCS3, Azahar, Vita3K and Xenia Canary publish no Flatpak and are downloaded
-from their own releases into `~/deckyemu/emulators`. The panel says which is
-which in brackets after the name, because the two behave differently when
-something goes wrong and only one of them has builds you can move between.
+Most come from Flathub and install for your user, so nothing asks for a
+password. RPCS3, Azahar, Vita3K and Xenia Canary publish no Flatpak and get
+downloaded from their own releases into `~/deckyemu/emulators`. The panel says
+which is which in brackets after the name, because the two behave differently
+when something goes wrong and only one of them has builds you can move between.
 
 ### The one marked (Direct)
 
-**BigPEmu** plays the Atari Jaguar, and it is the only way to play the system
-well — RetroArch's Virtual Jaguar core leaves games that do not run at all. Its
-author publishes no flatpak and uses no release page, so the plugin reads the
-same update feed BigPEmu's own **Check for Updates** reads, and downloads the
-build that feed names.
+**BigPEmu** plays the Atari Jaguar, and it's the only way to play the system
+well — RetroArch's Virtual Jaguar core leaves games that don't run at all.
 
-That feed states a checksum for the file, which no other entry here does, so
+Its author publishes no flatpak and uses no release page, so the plugin reads
+the same update feed BigPEmu's own **Check for Updates** reads, and downloads
+the build that feed names.
+
+That feed states a checksum for the file, which no other entry here does. So
 this is the one download the plugin can check against a number the publisher
 published.
 
 It moves between builds like the others, with the list coming from an unusual
 place: the release notes inside the build itself, which name every version back
 to 1.00. Going back to one needs no network beyond the download, and each build
-is checked to be still published before it is offered.
+is checked to be still published before you're offered it.
 
-One difference worth knowing: **an older build cannot be checked against a
-checksum.** The feed states one for the current version only, so a fresh
-install is verified and a rollback is not.
+> **One difference worth knowing:** an older build can't be checked against a
+> checksum. The feed states one for the current version only, so a fresh install
+> is verified and a rollback isn't.
 
 ### What installing also sets up
 
-Several emulators are not playable as they ship — a keyboard is bound instead of
-a controller, or they start in a window — so installing one also writes a
-controller configuration and turns fullscreen on. Those values are not guesses;
-where they came from is under [Credits](https://github.com/elpendor/deckyemu#credits).
+Several emulators aren't playable as they ship — a keyboard is bound instead of
+a controller, or they start in a window. So installing one also writes a
+controller configuration and turns fullscreen on. Those values aren't guesses;
+where they came from is under
+[Credits](https://github.com/elpendor/deckyemu#credits).
 
 The same pass turns off whatever an emulator draws over the game. On a desktop a
 menu bar that slides in, a notification in the corner or a mouse pointer are
-harmless; on a handheld the game is the only thing on screen and there is no
+harmless. On a handheld the game is the only thing on screen and you have no
 pointer to dismiss any of it with. xemu is the clearest case — its menu bar, its
-notifications and its cursor are all switched off on install.
+notifications and its cursor all get switched off on install.
 
 ### BIOS, keys and firmware
 
-**Installing the emulator is not always enough to play.** Some systems need BIOS
+**Installing the emulator isn't always enough to play.** Some systems need BIOS
 files, keys or firmware that are yours to dump and that this plugin will never
-download — PCSX2 and xemu will not boot without them. The install prompt says
+download. PCSX2 and xemu won't boot without them. The install prompt tells you
 which ones before it starts.
 
-A **BIOS and firmware** section appears under the emulator list once you have
-installed something that needs files. Send them from another device and they are
-recognised by name and put where the emulator reads them — press **Install** and
-that is the whole step. Anything already in place is never overwritten: a dump
-you put there by hand is left alone, and only a placeholder the emulator wrote
-for you to fill in is replaced.
+A **BIOS and firmware** section appears under the emulator list once you've
+installed something that needs files. Send them from another device and they're
+recognised by name and put where the emulator reads them. Press **Install** and
+that's the whole step.
+
+> **Anything already in place is never overwritten.** A dump you put there by
+> hand is left alone, and only a placeholder the emulator wrote for you to fill
+> in gets replaced.
 
 **Keys are not a decrypter.** For the 3DS in particular, `aes_keys.txt` opens
-installed eShop titles and DLC; it does nothing for a cartridge dump. Azahar
+installed eShop titles and DLC. It does nothing for a cartridge dump. Azahar
 refuses an encrypted dump outright — it decrypts nothing — so a `.3ds` has to be
 decrypted before you add it, with GodMode9 on a console or a decryption tool on
-a PC. A filename containing "Decrypted" is not evidence: the header is, and a
+a PC.
+
+A filename containing "Decrypted" is not evidence. The header is, and a
 mislabelled file is common enough to be worth suspecting first when a 3DS game
-will not start.
+won't start.
 
 Installing **moves** the file rather than copying it, so `~/deckyemu/firmware`
-does not accumulate a second copy of every BIOS you have ever sent — a PS3
-firmware update is a couple of hundred megabytes. The thing to know is that after
-installing, the transfer folder is empty: your only copy is the one the emulator
-is now using, and removing it from that emulator deletes it.
+doesn't accumulate a second copy of every BIOS you've ever sent — a PS3 firmware
+update is a couple of hundred megabytes.
 
-**A file one emulator already has is shared with the others.** Adding a game to
-an emulator, switching a game to it, installing a BIOS another emulator in use
-wants, or starting the plugin, shares the file straight away — the same file between the two rather
-than a copy — so the row simply reads *In place*. Removing it from one leaves
-the other's copy, the remove dialog says so, and it is not shared back on its
-own: the row reads *Also on the Deck for …* with **Install** to take it again.
+> **So after installing, your transfer folder is empty.** Your only copy is the
+> one the emulator is now using, and removing it from that emulator deletes it.
+
+**A file one emulator has gets shared with the others.** Adding a game to an
+emulator, switching a game to it, installing a BIOS another emulator in use
+wants, or just starting the plugin all share the file straight away — the same
+file between the two rather than a copy — so the row reads *In place*.
+
+Removing it from one leaves the other's copy, and the remove dialog says so. It
+isn't shared back on its own: the row reads *Also on the Deck for …* with an
+**Install** button to take it again.
 
 **RetroArch cores are listed too**, under **RetroArch**, from what each core
-declares it reads, for the cores your games run on. A file a core needs, or one
-already in place, gets a row; files a core can use but does not need are listed
-together on one **Optional files** line at the top of the group, with a send
-button and an info button listing them all and the cores that read each. One you
-send turns into a row of its own. Files go into RetroArch's own system
-folder, wherever `retroarch.cfg` points it (EmuDeck moves it to
-`~/Emulation/bios`), under the exact name the core opens: a `SCPH5501.BIN` sent
-from a phone lands as `scph5501.bin`. A dump under any other name is recognised
-by its contents too, from the checksum list libretro publishes, which the plugin
-downloads and keeps for a month; offline, only the name counts. A file with the
-right name but contents the list does not know is flagged on its row, and
-installing it asks first; it is never shared to another emulator on its own. It
-is not refused outright, because the list does not include every legitimate
-file. Most cores run without any of them; when a
-core says it cannot, adding a game for it warns the same way PCSX2 does.
+declares it reads, for the cores your games run on.
 
-A few cannot be installed for you, because the emulator unpacks them itself:
-RPCS3's `PS3UPDAT.PUP`, a Switch firmware archive, and xemu's BIOS files. Those
-are still detected, and the row tells you the one step left.
+A file a core needs, or one already in place, gets a row. Files a core *can* use
+but doesn't need are listed together on one **Optional files** line at the top
+of the group, with a send button and an info button listing them all and the
+cores that read each. One you send turns into a row of its own.
+
+Files go into RetroArch's own system folder, wherever `retroarch.cfg` points it
+— which isn't always the default — under the exact name the core opens, so a
+`SCPH5501.BIN` sent from a phone lands as `scph5501.bin`.
+
+A dump under any other name is recognised by its contents too, from the checksum
+list libretro publishes, which the plugin downloads and keeps for a month.
+Offline, only the name counts. A file with the right name but contents the list
+doesn't know is flagged on its row, and installing it asks you first; it's never
+shared to another emulator on its own. It isn't refused outright, because the
+list doesn't include every legitimate file.
+
+Most cores run without any of them. When a core says it can't, adding a game for
+it warns you the same way PCSX2 does.
+
+> **Three can't be installed for you**, because the emulator unpacks them itself:
+> RPCS3's `PS3UPDAT.PUP`, a Switch firmware archive, and xemu's BIOS files.
+> They're still detected, and the row tells you the one step left.
 
 ## Unpacking a PS4 package
 
-A PlayStation 4 game arrives as a `.pkg`, and shadPS4 cannot unpack one — the
+A PlayStation 4 game arrives as a `.pkg`, and shadPS4 can't unpack one — the
 code that used to do it was taken out of the emulator and published separately.
+
 So the first time you add a `.pkg`, the plugin downloads a small command-line
 tool to do it: the **PS4 package extractor** from
 [shadPS4Plus](https://github.com/AzaharPlus/shadPS4Plus), GPL-2.0, taken from
 that project's own release page.
 
-It is fetched then rather than with the emulator, because most people never add
-a `.pkg` at all. It lands in `~/deckyemu/tools/`, kept apart from
+It's fetched then rather than with the emulator, because most people never add a
+`.pkg` at all. It lands in `~/deckyemu/tools/`, kept apart from
 `~/deckyemu/emulators/` on purpose — it plays nothing, it turns a `.pkg` into a
-folder shadPS4 can run — and it is not listed as an emulator anywhere. A plugin
-reinstall does not delete it.
+folder shadPS4 can run — and it isn't listed as an emulator anywhere.
+Reinstalling the plugin doesn't delete it.
 
-It is descended from shadPS4's own extractor, which is why it was chosen over
+It's descended from shadPS4's own extractor, which is why it was chosen over
 anything else that reads the format: what comes out is what shadPS4 expects,
 rather than another project's reading of the same file.
 
 The other two consoles need nothing extra. RPCS3 unpacks its own packages, and
 Vita3K installs from a `.pkg` directly once it has the licence key.
 
-**A PS3 licence can be sent on its own.** A `.rap` beside its `.pkg` goes in when
-the game is unpacked, whatever it is called. One sent later, for a game already
-in RPCS3, has **Install** in the transfer list: a `.rap` named for its content
-id, like `UP0000-ABCD12345_00-0000000000000001.rap`, is put where RPCS3 reads it.
-Any other name says nothing about which game it unlocks, so it is refused with a
-note to send it beside its `.pkg`. A Vita `.zrif` key has nothing to go into on
-its own — Vita3K reads it only while it installs the game — so its row says that
-instead.
+### Sending a PS3 licence on its own
+
+A `.rap` next to its `.pkg` goes in when the game is unpacked, whatever it's
+called.
+
+Sending one later, for a game already in RPCS3? Its row in the transfer list has
+**Install**. A `.rap` named for its content id, like
+`UP0000-ABCD12345_00-0000000000000001.rap`, gets put where RPCS3 reads it. Any
+other name says nothing about which game it unlocks, so it's refused with a note
+to send it next to its `.pkg`.
+
+A Vita `.zrif` key has nothing to go into on its own — Vita3K reads it only
+while it installs the game — so its row tells you that instead.
 
 ## Getting to the emulator's own menu
 
-**DuckStation and PCSX2.** Both ship every hotkey bound to a key, and both put
-**Change Disc** in a menu a controller can drive once it is open. Dolphin, the
-other emulator here with multi-disc games, has no menu worth reaching this way:
-its *Change Disc* opens a file browser rather than listing a playlist's discs,
-so it is set to change disc by itself instead.
+**DuckStation and PCSX2** both ship every hotkey bound to a key, and both put
+**Change Disc** in a menu a controller can drive once it's open.
 
-**Select + Start**, the same combo RetroArch uses — see
-[getting into RetroArch's menu](retroarch.md#getting-into-retroarchs-menu). It opens DuckStation's pause
-menu, where save states, settings, quitting and **Change Disc** live.
+The combo is **Select + Start**, the same one RetroArch uses — see
+[getting into RetroArch's menu](retroarch.md#getting-into-retroarchs-menu). It
+opens DuckStation's pause menu, where save states, settings, quitting and
+**Change Disc** live.
 
-It is written for you when DuckStation is set up. Every hotkey DuckStation ships
+It's written for you when DuckStation is set up. Every hotkey DuckStation ships
 is bound to a key — `Escape` for the pause menu — and on a Deck in Game Mode
-there is no keyboard to press, so without this its menu cannot be reached at
-all.
+you have no keyboard to press, so without this its menu can't be reached at all.
 
-**A multi-disc game usually changes disc by itself.** DuckStation is set to
-switch to the next disc when the game stops the CD-ROM motor, which is what a
-game does when it asks you to insert the next one. Upstream is clear that this
-does not work for every game, so the combo above is the way through when it does
-not fire. See
-[multi-disc games](getting-started.md#multi-disc-games) for how a set becomes
-one entry in the first place.
+Dolphin, the other emulator here with multi-disc games, has no menu worth
+reaching this way. Its *Change Disc* opens a file browser rather than listing a
+playlist's discs, so it's set to change disc by itself instead.
+
+> **Multi-disc games usually change disc by themselves.** DuckStation is set to
+> switch to the next disc when the game stops the CD-ROM motor, which is what a
+> game does when it asks you to insert the next one. Upstream is clear this
+> doesn't work for every game, so the combo above is your way through when it
+> doesn't fire. See
+> [multi-disc games](getting-started.md#multi-disc-games).
 
 ## Fixes
 
-Some emulators have bugs this plugin can correct, and those corrections appear
-as **Fixes** when you edit an emulator on the **Emulators** tab. Motion
-controls, below, is the only one today.
+Some emulators have bugs this plugin can correct. Those corrections appear as
+**Fixes** when you edit an emulator on the **Emulators** tab. Motion controls,
+below, is the only one today.
 
 **A fix is temporary, by definition.** Every one names the upstream bug report
 that will make it unnecessary, and it exists to be deleted rather than kept.
-This is not where an emulator is configured: settings that are simply how an
+
+This isn't where an emulator is configured. Settings that are simply how an
 emulator has to run on a Deck are applied for you and never appear here.
 
-**They all start switched off**, because each one costs something. The ❓ beside
-a fix says what it fixes and what that costs, which is the whole basis for
-deciding. **The switch always works**, both ways, whatever else is going on.
+**They all start switched off**, because each one costs something. The ❓ next to
+a fix tells you what it fixes and what that costs, which is the whole basis for
+deciding. The switch always works, both ways, whatever else is going on.
 
-**Set per emulator, or per game.** The emulator's switch is the default for its
-games; edit any game and the same fixes appear there. While the link beside a
-fix is joined, the game follows the emulator and the fix's switch is greyed out,
-showing the emulator's setting. Break the link and the switch can be set for
-that game alone; join it again to hand the fix back to the emulator.
+**Set them per emulator, or per game.** The emulator's switch is the default for
+its games, and editing any game shows you the same fixes. While the link next to
+a fix is joined, the game follows the emulator and the switch is greyed out,
+showing the emulator's setting. Break the link and you can set it for that game
+alone. Join it again to hand the fix back to the emulator.
 
-**A fix tells you when it is not doing its job**, and only then:
+### When a fix stops doing its job
+
+You get told, and only then:
 
 - *"The emulator does this itself now. You can switch this off."* — said only
-  once the build you have actually contains the fix, never merely because
-  DeckyEmu was updated. If yours is older, nothing is said and the fix goes on
+  once the build you have actually contains the fix, never merely because the
+  plugin was updated. If yours is older, nothing is said and the fix goes on
   working.
 - *"This build of the emulator would not take it, so it is not running."* — for
   a fix applied to the emulator's own files, when a build has changed too much
   to accept one. Nothing is altered; the emulator runs exactly as downloaded.
 
-You do not have to go looking for either. Both appear under the emulator on the
-**Emulators** tab, and a game that starts with one shows a dialog as it
+You don't have to go looking for either. Both appear under the emulator on the
+**Emulators** tab, and a game that starts with one shows you a dialog as it
 launches — once per emulator, never while a fix is on and working. The dialog
 only tells you; the switch lives on the Emulators tab and nowhere else.
 
 ## Motion controls
 
 Five consoles here had a motion sensor and games that expect it: the **PS
-Vita**, where Gravity Rush is unplayable without one, the **PS4**, whose
-DualShock has a gyroscope, the **Switch**, the **Wii U**, whose GamePad had one
-that Wind Waker HD, Splatoon and Star Fox Zero all lean on, and the **3DS**,
-which used its gyro for aiming in Ocarina of Time 3D among others. The Deck has
-one too, and it can drive all five — but the PS Vita and the PS4 pay for it, so
-there it is **off until you ask for it**.
+Vita**, the **PS4**, whose DualShock has a gyroscope, the **Switch**, the **Wii
+U**, whose GamePad had one, and the **3DS**, which used its gyro for aiming.
 
-**On the Switch, the Wii U and the 3DS it is simply on, and costs nothing.**
+Your Deck has one too, and it can drive all five. But the PS Vita and the PS4
+pay for it, so there it's **off until you ask for it**.
+
+### Switch, Wii U and 3DS: it just works
+
 Ryujinx, Cemu and Azahar can all take motion over a small local connection
-instead of reading the controller, so your Steam layout is untouched and the
-back buttons keep working. Nothing to switch on and no per-game choice to make:
-the piece that provides it is fetched with the emulator, runs only while a game
-is open, and stops when you close it.
+instead of reading the controller, so your Steam layout is untouched and your
+back buttons keep working.
 
-**A Tools section on the Emulators tab shows where it stands.** The piece that
-provides motion is a small download, listed there by name with the project it
-came from, whether it is installed, and how big it is. It can be removed and
-downloaded again from that row. The emulator's own row says **motion ready**
-too, so it is visible without scrolling.
+Nothing to switch on and no per-game choice to make. The piece that provides it
+is fetched with the emulator, runs only while a game is open, and stops when you
+close it.
 
-If it says it is waiting to retry, that is GitHub limiting how often one address
-may ask; it clears on its own.
+A **Tools** section on the Emulators tab shows you where it stands: the piece
+that provides motion, listed by name with the project it came from, whether it's
+installed, and how big it is. You can remove it and download it again from that
+row. The emulator's own row says **motion ready** too.
 
-**If you have set up the emulator's controller yourself**, your settings are
-kept and never overwritten — which means the emulator is not pointed at the
-motion server and gyro will not work. The row says so rather than claiming it is
-ready. To use it, add a motion source to the emulator's own controller settings,
-all at `127.0.0.1` port `26760`: in Cemu, a second controller with the
-**DSUController** API; in Ryujinx, the motion backend set to **CemuHook**; in
-Azahar, the motion device set to the **UDP** engine.
+> **Says it's waiting to retry?** That's GitHub limiting how often one address
+> may ask. It clears on its own.
 
-**Tools are a separate list from BIOS and firmware on purpose.** Everything
-under BIOS and firmware is yours, and none of it is ever downloaded. Everything
-under Tools is fetched from the project that publishes it, and each row says
-which. Installing Ryujinx or Cemu tells you the motion server is coming before
-it is downloaded.
+**Set up the emulator's controller yourself?** Your settings are kept and never
+overwritten — which means the emulator isn't pointed at the motion server and
+gyro won't work. The row says so rather than claiming it's ready.
 
-If a game still ignores the Deck's tilt, check the game's own settings before
-anything else. Several ship with motion turned off — *Pokémon
-Legends: Arceus* has gyro aiming but sets **Motion Sensitivity** to zero, and it
-is not mentioned anywhere in the game.
+To use it, add a motion source to the emulator's own controller settings, all at
+`127.0.0.1` port `26760`:
 
-The rest of this section is about the PS Vita and the PS4, where it does cost
-something.
+| Emulator | What to set |
+| --- | --- |
+| Cemu | A second controller with the **DSUController** API |
+| Ryujinx | Motion backend set to **CemuHook** |
+| Azahar | Motion device set to the **UDP** engine |
+
+> **Tools are a separate list from BIOS and firmware on purpose.** Everything
+> under BIOS and firmware is yours, and none of it is ever downloaded. Everything
+> under Tools is fetched from the project that publishes it, and each row says
+> which. Installing Ryujinx or Cemu tells you the motion server is coming before
+> it's downloaded.
+
+### My game still ignores the Deck's tilt
+
+Check the game's own settings before anything else. Several ship with motion
+turned off, or with a motion sensitivity slider sitting at zero, and won't
+mention it anywhere.
+
+### PS Vita and PS4: it costs something
 
 **Turning it on.** Edit the emulator on the **Emulators** tab and switch on
 **Motion controls** under *Fixes* — see [Fixes](#fixes) above for how those
 work. Vita3K and shadPS4 are set separately. Ryujinx and Cemu have no such
 switch, because they have nothing to trade.
 
-**Per game, if one differs.** That is the common shape of a PS4 library: one
-game that wants motion and twenty that would rather keep their back buttons.
-Set the emulator off and that one game on.
+**Per game, if one differs.** That's the common shape of a PS4 library: one game
+that wants motion and twenty that would rather keep their back buttons. Set the
+emulator off and that one game on.
 
-**What it costs, and why it is not simply on.** To reach the sensor the emulator
-has to read the Deck's controller directly instead of through Steam Input. Your
-Steam layout then stops shaping it: remapped buttons, stick curves and the
-**back buttons** do nothing. The **STEAM button** opens the Steam menu and
-nothing else. Sticks, triggers and face buttons behave as always, and the right
-trackpad still works as a pointer.
+**What it costs.** To reach the sensor the emulator has to read your Deck's
+controller directly instead of going through Steam Input. Your Steam layout then
+stops shaping it:
+
+- Remapped buttons, stick curves and the **back buttons** do nothing.
+- The **STEAM button** opens the Steam menu and nothing else.
+- Sticks, triggers and face buttons behave as always, and the right trackpad
+  still works as a pointer.
 
 That applies to **every** game of that system, including the ones with no motion
-at all — it cannot be paid per game. So a PS4 library with one motion game
-would lose its back buttons everywhere to gain a gyro in one place, which is a
-choice worth making deliberately rather than one to inherit.
+at all. It can't be paid per game. So a PS4 library with one motion game would
+lose its back buttons everywhere to gain a gyro in one place, which is a choice
+worth making deliberately rather than inheriting.
 
-**Games are put on a controller layout called "Gamepad with Gyro (DeckyEmu)"**
-while motion is on, because Steam switches the Deck's sensor off unless the
-running game's layout uses the gyro. It is Valve's own gyro layout with the gyro
+**Your games get a controller layout called "Gamepad with Gyro (DeckyEmu)"**
+while motion is on, because Steam switches your Deck's sensor off unless the
+running game's layout uses the gyro. It's Valve's own gyro layout with the gyro
 sent to a stick rather than the mouse, since both emulators read the mouse
-pointer as a touch surface. Switching motion off puts those games back on an
-ordinary gamepad layout — which matters, because a gyro layout left in place
-would send your tilting to the right stick and drift the camera.
+pointer as a touch surface.
 
-**If you picked a layout for a game yourself, yours is kept**, in both
-directions: it is never replaced when motion goes on, and never taken away when
-it goes off. So if motion does not work in one game, that is usually why — open
-its **Controller Settings** and choose **Gamepad with Gyro (DeckyEmu)**.
+Switching motion off puts those games back on an ordinary gamepad layout — which
+matters, because a gyro layout left in place would send your tilting to the
+right stick and drift the camera.
 
-Binding the gyro yourself works too, with one catch: a behaviour that activates
+> **Picked a layout for a game yourself? Yours is kept**, in both directions.
+> It's never replaced when motion goes on, and never taken away when it goes off.
+> So if motion doesn't work in one game, that's usually why — open its
+> **Controller Settings** and choose **Gamepad with Gyro (DeckyEmu)**.
+
+Binding the gyro yourself works too, with one catch. A behaviour that activates
 only while you hold or touch something — *Gyro To Mouse* defaults to right-stick
 touch — leaves the sensor powered only while you do, so motion works under your
-thumb and looks broken otherwise. Pick one that is always on, such as **Gyro To
+thumb and looks broken otherwise. Pick one that's always on, such as **Gyro To
 Joystick Camera**.
 
-**If Vita3K says its build came from a source no longer used**, update it once
-from the **Emulators** tab. An emulator already on your Deck is never
-re-downloaded on its own, so an older install stays where it is until you say.
-You are told once as a game starts, and the **Emulators** tab keeps saying it
-until you do.
+> **Vita3K saying its build came from a source no longer used?** Update it once
+> from the **Emulators** tab. An emulator already on your Deck is never
+> re-downloaded on its own, so an older install stays put until you say. You're
+> told once as a game starts, and the **Emulators** tab keeps saying it until you
+> do.
 
 ### The two fixes underneath
 
-Neither console works on a Deck without a correction, and they are different
+Neither console works on a Deck without a correction, and they're different
 ones.
 
-**Vita3K gets four bytes changed in the copy on your Deck.** Motion is broken
-in current builds, where the bundled SDL reports the Deck's sensor timings in the
+**Vita3K gets four bytes changed in the copy on your Deck.** Motion is broken in
+current builds, where the bundled SDL reports your Deck's sensor timings in the
 wrong unit and the maths comes out a thousand times too small. Vita3K builds SDL
-into itself, so unlike shadPS4 below there is nothing to correct from outside —
-the change has to be in the file.
+into itself, so unlike shadPS4 there's nothing to correct from outside — the
+change has to be in the file.
 
 The emulator is still the authors' own build, downloaded from
 [Vita3K/Vita3K-builds](https://github.com/Vita3K/Vita3K-builds/releases) and
-updated like any other — that is their numbered build repository, so DeckyEmu
-can tell you which build you have and offer you an older one.
+updated like any other, so you can be told which build you have and offered an
+older one.
 
-The corrected copy is made when it installs and kept beside the original, and
+The corrected copy is made when it installs and kept next to the original, and
 turning the switch off runs the original, unaltered. If a future build no longer
 matches what the correction describes, nothing is changed at all — the emulator
-runs exactly as downloaded, and the panel says the fix is not running rather than
+runs exactly as downloaded, and the panel says the fix isn't running rather than
 letting the switch imply otherwise. Asked for upstream as
 [Vita3K#4100](https://github.com/Vita3K/Vita3K/pull/4100).
 
-**shadPS4 gets a small correction at launch instead.** It reads the Deck's
+**shadPS4 gets a small correction at launch instead.** It reads your Deck's
 sensor axes in the wrong order — SDL describes a gamepad's axes differently from
-a handheld's, and shadPS4 passes them straight through — so tilting the Deck
-worked while turning it did nothing. The plugin loads a tiny library alongside
-the emulator that rotates the axes back. shadPS4 itself is the ordinary Flathub
-build, untouched and still updating normally. Asked for upstream as
-[shadPS4#3871](https://github.com/shadps4-emu/shadPS4/issues/3871), and this goes
-away when it lands.
+a handheld's, and shadPS4 passes them straight through — so tilting your Deck
+worked while turning it did nothing.
+
+The plugin loads a tiny library alongside the emulator that rotates the axes
+back. shadPS4 itself is the ordinary Flathub build, untouched and still updating
+normally. Asked for upstream as
+[shadPS4#3871](https://github.com/shadps4-emu/shadPS4/issues/3871), and this
+goes away when it lands.
 
 ## Xbox 360 files
 
 Xenia works out what a file is by reading it, not by its name, so the extension
-matters less than it does elsewhere. It runs:
+matters less here than it does elsewhere. It runs:
 
 - `.iso` — a game disc image
 - `.xex` — an extracted executable
@@ -372,67 +397,77 @@ matters less than it does elsewhere. It runs:
 - Xbox Live Arcade titles, DLC and title updates, which are **content packages
   with no extension at all** — the filename is a long string of hex
 
-That last one used to have nowhere to go: everything here matches a game to an
-emulator by its extension, and these files have none. The plugin now reads the
-first few bytes instead, so an XBLA container can be added like any other game
-even though its name says nothing.
+That last one used to have nowhere to go, since everything here matches a game
+to an emulator by its extension. The plugin now reads the first few bytes
+instead, so an XBLA container can be added like any other game even though its
+name says nothing.
 
 **XBLA games start as the full version.** Every Xbox Live Arcade title has a
 trial mode, and Xenia runs them as trials unless told otherwise. Installing
 Xenia from here sets it to report the full-version license, so the game's
-"Unlock Full Game" option does not appear. If you have set Xenia's
-`license_mask` yourself, your value is kept.
+"Unlock Full Game" option doesn't appear. Set Xenia's `license_mask` yourself
+and your value is kept.
 
 **Unzip first.** Xenia refuses `.zip`, `.7z`, `.rar`, `.tar` and `.gz` outright,
-and XBLA titles are almost always distributed zipped. Send the zip to the Deck,
-start adding it, and press **Unpack this zip** in the panel: inside is a folder
-like `58410954/000D0000/` holding one long-named file, and that file — the game —
-comes out named after the zip, ready to add. See
-[Unpacking a zip](transfers.md#unpacking-a-zip).
+and XBLA titles are almost always distributed zipped.
 
-**A profile, once.** Games save to a profile, and the first time Xenia starts
-without one it says so and offers to create it: choose **Create Profile** with
-the controller, and type a gamertag with the on-screen keyboard (Steam + X).
-From then on the plugin signs that profile in whenever a game starts, so no
-game asks you to sign in. Xenia itself would not: it remembers who was signed
-in only when it is quit from its own menu, and a game closed from Steam never
-is.
+1. Send the zip to your Deck.
+2. Start adding it.
+3. Press **Unpack this zip** in the panel.
+
+Inside is a folder like `58410954/000D0000/` holding one long-named file. That
+file — the game — comes out named after the zip, ready to add. See
+[unpacking a zip](transfers.md#unpacking-a-zip).
+
+**You need a profile, once.** Games save to a profile, and the first time Xenia
+starts without one it says so and offers to create it:
+
+1. Choose **Create Profile** with the controller.
+2. Type a gamertag with the on-screen keyboard (Steam + X).
+
+From then on the plugin signs that profile in whenever a game starts, so no game
+asks you to sign in. Xenia itself wouldn't — it remembers who was signed in only
+when it's quit from its own menu, and a game closed from Steam never is.
 
 ## Arcade ROM sets
 
-Supermodel runs the Sega Model 3 board, and an arcade game for it is not one
-file — it is a set of forty-odd chip dumps, kept together in a `.zip` named
-after the game (`scud.zip`, `daytona2.zip`). Supermodel opens the zip and reads
-the dumps out of it by name, exactly as MAME does.
+Supermodel runs the Sega Model 3 board, and an arcade game for it isn't one
+file. It's a set of forty-odd chip dumps, kept together in a `.zip` named after
+the game. Supermodel opens the zip and reads the dumps out of it by name,
+exactly as MAME does.
 
-**Leave it zipped.** This is the one archive on the Deck that is not a wrapper
-around a game: unpacking it produces a folder of files nothing can load, and
-takes away the one file that could be played. The panel knows the difference and
-does not offer **Unpack this zip** for a ROM set.
+> **Leave it zipped.** This is the one archive on your Deck that isn't a wrapper
+> around a game. Unpacking it gives you a folder of files nothing can load, and
+> takes away the one file that could be played. The panel knows the difference
+> and doesn't offer **Unpack this zip** for a ROM set.
 
 It also stops guessing. A ROM set used to be matched on whatever the first chip
-dump inside was called, which meant `scud.zip` looked like a PlayStation image
-and was offered PlayStation cores. It is now matched on `.zip` itself, which is
-what Supermodel, MAME and FinalBurn Neo all declare — and since plenty of other
-cores claim `.zip` only because they unpack archives, the ones that read a ROM
-set *as* the cartridge are sorted to the front and preselected. The rest are
-still in the list if you want them.
+dump inside was called, which meant a racing game's set could look like a
+PlayStation image and get offered PlayStation cores.
 
-Names come from Supermodel's own game list, so `daytona2.zip` is added as
-*Daytona USA 2: Battle on the Edge* rather than as `daytona2` — which also gives
-the artwork search something it can find.
+It's now matched on `.zip` itself, which is what Supermodel, MAME and FinalBurn
+Neo all declare. Since plenty of other cores claim `.zip` only because they
+unpack archives, the ones that read a ROM set *as* the cartridge are sorted to
+the front and preselected. The rest are still in the list if you want them.
 
-**Test and Service are the stick buttons.** Push the **left stick straight down
-until it clicks** — the button usually called L3 — and that is Test. The right
-stick clicked in (R3) is Service. This is pressing the sticks *in*, not moving
-them; nothing happens if you tilt them.
+Names come from Supermodel's own game list, so a set named for its board code is
+added under the game's real title — which also gives the artwork search
+something it can find.
 
-Those two are the buttons inside a real cabinet's coin door, and on this board
-they are not an operator's convenience: they are the only way into a game's own
-settings, and some games do not start without going there.
+### Test and Service are the stick buttons
 
-Daytona USA 2 is one. It arrives configured as a linked cabinet and stops at
-*CANCELLED / NETWORK BOARD NOT PRESENT*. To fix it:
+Push the **left stick straight down until it clicks** — the button usually
+called L3 — and that's Test. The right stick clicked in (R3) is Service.
+
+This is pressing the sticks *in*, not moving them. Nothing happens if you tilt
+them.
+
+Those two are the buttons inside a real cabinet's coin door. On this board
+they're not an operator's convenience — they're the only way into a game's own
+settings, and some games won't start without going there.
+
+**Some racers arrive configured as a linked cabinet** and stop at *CANCELLED /
+NETWORK BOARD NOT PRESENT*. To fix that:
 
 1. Press the **left stick in** (Test). The test menu opens.
 2. Go to **Game System** — the **right stick in** (Service) moves through the
@@ -441,59 +476,66 @@ Daytona USA 2 is one. It arrives configured as a linked cabinet and stops at
 4. Exit the menu.
 
 **Once per game, and then never again.** The setting goes into the game's
-emulated NVRAM — `daytona2.nv` and friends, under the emulator's own data —
-which is written when Supermodel exits and read at every start. There is no
-launch argument or shortcut setting that can do it instead: Link ID is a
-setting on the arcade board, not an emulator option, and Supermodel models it
-as one. The only way to lose it is to clear the emulator's data from **Reset**,
-which deletes the NVRAM along with everything else; the menu steps are then the
-way back.
+emulated NVRAM, under the emulator's own data, written when Supermodel exits and
+read at every start.
 
-Only 63 games were ever made for the board, and it is demanding hardware to
-emulate; the racers are the heaviest of them.
+There's no launch argument or shortcut setting that can do it instead. Link ID
+is a setting on the arcade board, not an emulator option, and Supermodel models
+it as one. The only way to lose it is to clear the emulator's data from
+**Reset**, which deletes the NVRAM along with everything else — and then the menu
+steps above are your way back.
+
+Only 63 games were ever made for the board, and it's demanding hardware to
+emulate. The racers are the heaviest of them.
+
+---
 
 A few emulators are marked as having unconfirmed launch arguments. They install
-the same way, but if a game opens the emulator without loading the game, edit the
-arguments under **All registered emulators** below.
+the same way, but if a game opens the emulator without loading the game, edit
+the arguments under **All registered emulators** below.
 
 Removing an emulator here leaves your saves and configuration alone, and games
-already added to Steam start working again the moment you reinstall it.
+you've already added start working again the moment you reinstall it.
 
 ### Emulators this plugin does not ship
 
 The list above is fixed, and nothing outside it is linked to or named as a
-download here. Anything else can still be set up for you by importing a small
-JSON file that describes it: send the `.deckyemu.json` over **Transfer**, or
-press **Import a definition** at the bottom of this tab to reach one already on
-the Deck, and
-press **Import**. It then behaves like any other entry — right system, right
-file extensions, working launch arguments, firmware rows that say what is
-missing.
+download here.
+
+Anything else can still be set up for you by importing a small JSON file that
+describes it:
+
+1. Send the `.deckyemu.json` over **Transfer**, or press **Import a definition**
+   at the bottom of this tab to reach one already on your Deck.
+2. Press **Import**.
+
+It then behaves like any other entry — right system, right file extensions,
+working launch arguments, firmware rows that say what's missing.
 
 A definition says how the emulator is obtained. It can name a Flathub
-application or a release to download, or say that you will supply the binary
+application, a release to download, or say that you'll supply the binary
 yourself and point at it.
 
-**Which means you are trusting whoever wrote it.** Before storing anything, the
-panel shows what the definition will install and every directory it may write
-to, and asks you to confirm. A definition cannot delete anything, download
-firmware, run a second binary, write outside the directories it declares, or
-replace a built-in emulator — but those bound what it can reach, not whether its
-author meant well. Read the file first; it is a few lines of plain text.
+> **Which means you're trusting whoever wrote it.** Before storing anything, the
+> panel shows you what the definition will install and every directory it may
+> write to, and asks you to confirm. A definition can't delete anything, download
+> firmware, run a second binary, write outside the directories it declares, or
+> replace a built-in emulator — but those bound what it can reach, not whether
+> its author meant well. Read the file first; it's a few lines of plain text.
 
-See [emulator-definitions.md](emulator-definitions.md) for the format,
-a worked example, and what to check when one does not work.
+See [emulator definitions](emulator-definitions.md) for the format, a worked
+example, and what to check when one doesn't work.
 
 ## Native ports
 
-Some games have been rebuilt to run on the Deck directly, with no emulator. A
-port plays one game and needs the disc or cartridge dump you already own; it
+Some games have been rebuilt to run on your Deck directly, with no emulator. A
+port plays one game and needs the disc or cartridge dump you already own. It
 builds its own copy of the assets from that file the first time it runs.
 
 They live under **Ports**, and these ship with the plugin. Unlike every other
-table on this page, the middle column is a game rather than a system: a port
-plays one game, and which one is the only thing that says what to supply. The
-Ports tab says it too, under each name, for the same reason.
+table on this page, the middle column is a game rather than a system — a port
+plays one game, and which one is the only thing that tells you what to supply.
+The Ports tab says it too, under each name.
 
 | Port | Plays | Installed from |
 | --- | --- | --- |
@@ -507,50 +549,53 @@ Ports tab says it too, under each name, for the same reason.
 | Lighthouse | Banjo-Kazooie | GitHub — [`IsleOPorts/Lighthouse`](https://github.com/IsleOPorts/Lighthouse) |
 | PaperBoat | Paper Mario | GitHub — [`HarbourMasters/PaperBoat`](https://github.com/HarbourMasters/PaperBoat) |
 
-A port behaves like everything else once installed. It is offered under **Run
+A port behaves like everything else once installed. It's offered under **Run
 with** for a file it recognises, its game is filed under **Ports** rather than
-the system, and its saves are backed up with the rest.
+the system, and its saves get backed up with the rest.
 
-A port that is not in the table can still be added: import a definition, exactly
-as you would for an emulator. Send a `.deckyemu.json` over **Transfer** and press
-**Import**. One file can hold several, and each is checked on its own, so one
-bad entry costs only itself. An imported one then behaves exactly like the nine
-above, except that it is never marked as verified — nobody here has run it.
+**A port that isn't in the table can still be added.** Import a definition,
+exactly as you would for an emulator: send a `.deckyemu.json` over **Transfer**
+and press **Import**. One file can hold several, and each is checked on its own,
+so one bad entry costs only itself. An imported one then behaves exactly like
+the nine above, except that it's never marked as verified — nobody here has run
+it.
 
 Three things differ from an emulator:
 
-- **The first launch takes minutes and may ask a question.** It is building its
-  own archive from your dump. The screen may stay black while it works.
+- **The first launch takes minutes and may ask you a question.** It's building
+  its own archive from your dump. The screen may stay black while it works.
 - **Its menu opens with Select+Start**, because a port is a PC program whose
   menu wants a keyboard key and Game Mode has none.
 - **It plays one game.** A port is only offered for a file that identifies as
-  that game, and where the port publishes the dumps it accepts, a file that is
-  not one of them is named as such before you add it.
+  that game, and where the port publishes the dumps it accepts, a file that
+  isn't one of them is named as such before you add it.
 
 ## Removing an emulator
 
-**Remove** on its row uninstalls it and forgets its registration. Games you have
-already added keep their shortcuts and launcher scripts and start working again
-the moment the emulator is reinstalled, so removing one is not a decision about
-your library.
+Press **Remove** on its row. That uninstalls it and forgets its registration.
+
+Games you've already added keep their shortcuts and launcher scripts and start
+working again the moment you reinstall the emulator, so removing one isn't a
+decision about your library.
 
 For a Flathub emulator the dialog offers **Also delete its saves and
-configuration**, off by default. Left off, everything the emulator owns stays
-where it is — `flatpak uninstall` does not touch `~/.var/app/<id>` — so
-reinstalling picks up exactly where you left off, memory cards and all. Turned
-on, nothing is left behind, which is what a genuinely fresh install needs: an
-emulator that keeps its old configuration is one that comes back with whatever
-state it was in, including a setup wizard you have already answered once.
+configuration**, off by default:
 
-The switch is not offered for an emulator installed from a GitHub release or one
-of your own, because their data lives in ordinary folders this does not remove.
+| | |
+| --- | --- |
+| **Left off** | Everything the emulator owns stays where it is — `flatpak uninstall` doesn't touch `~/.var/app/<id>` — so reinstalling picks up exactly where you left off, memory cards and all |
+| **Turned on** | Nothing is left behind, which is what a genuinely fresh install needs. An emulator that keeps its old configuration comes back with whatever state it was in, including a setup wizard you've already answered once |
 
-**A port is the exception, and removing one keeps its saves.** The portable kind
-writes its saves and its config beside its own binary rather than in a folder of
-its own elsewhere — which is inside the directory removing it deletes. So what
-the entry declares as saves is left behind, and reinstalling the port finds
-them where it left them. Everything else in there goes: the binary, the archive
-it built from your dump, its logs.
+You aren't offered the switch for an emulator installed from a GitHub release or
+one of your own, because their data lives in ordinary folders this doesn't
+remove.
+
+> **A port is the exception, and removing one keeps its saves.** The portable
+> kind writes its saves and config next to its own binary rather than in a folder
+> elsewhere — which is inside the directory removing it deletes. So what the entry
+> declares as saves is left behind, and reinstalling the port finds them where it
+> left them. Everything else goes: the binary, the archive it built from your
+> dump, its logs.
 
 ## Updating an emulator, or going back
 
@@ -558,58 +603,64 @@ Every emulator installed from the panel can be moved between published builds
 without leaving it, whether it came from Flathub or from the project's own
 releases.
 
-For an emulator, the branch button on its row under **Emulators**. For RetroArch,
-**RetroArch version** on its own tab. Both open the same dialog: which build is
-installed, an **Update** when a newer one is published, and every other build
-that is published, listed by date. Each row opens to show the whole of its
-description, the version, and **how much it would download** — switching build
-re-fetches the entire application, which for RetroArch is around 400MB.
+For an emulator, press the branch button on its row under **Emulators**. For
+RetroArch, **RetroArch version** on its own tab.
+
+Both open the same dialog: which build is installed, an **Update** when a newer
+one is published, and every other published build listed by date. Each row opens
+to show the whole of its description, the version, and **how much it would
+download** — switching build re-fetches the entire application, which for
+RetroArch is around 400MB.
 
 Nothing updates on its own. An emulator moves when you ask it to.
 
 ### The ones marked (GitHub)
 
 RPCS3, Azahar, Vita3K and Xenia Canary publish no Flatpak, so the plugin
-downloads them from the projects' own release pages — which is what the
-**(GitHub)** beside their names on the Emulators tab means. They move between
-builds like the rest, with two differences.
+downloads them from the projects' own release pages. That's what the
+**(GitHub)** next to their names means. They move between builds like the rest,
+with two differences.
 
-**Whether an update exists is not checked when the tab opens.** Finding out
-means asking each project's repository directly, one request per emulator, and a
-tab that did that every time you walked past it would be spending your
-connection on a question nobody asked. So there is a **Check for emulator
-updates** button at the foot of the Emulators tab, and a **Check for port
-updates** at the foot of the Ports tab. Each asks about the list it sits under
-and counts only that list. Press it and the rows say
-*update available* where there is one, and the button says what it found.
+**Whether an update exists isn't checked when the tab opens.** Finding out means
+asking each project's repository directly, one request per emulator, and a tab
+that did that every time you walked past it would be spending your connection on
+a question nobody asked.
 
-Until you press it, the plugin does not claim either way. A row saying nothing
-means nobody has looked — not that the emulator is current.
+So there's a **Check for emulator updates** button at the foot of the Emulators
+tab, and a **Check for port updates** at the foot of the Ports tab. Each asks
+about the list it sits under and counts only that list. Press it and the rows
+say *update available* where there is one, and the button tells you what it
+found.
 
-**They cannot be held.** A hold exists to stop something else moving an
-emulator, and nothing else on the Deck updates an AppImage this plugin
-downloaded. Staying on a build is simply not pressing update.
+> **Until you press it, the plugin doesn't claim either way.** A row saying
+> nothing means nobody has looked — not that the emulator is current.
 
-**Choosing a build also holds it there**, and that is the part worth
+**They can't be held.** A hold exists to stop something else moving an emulator,
+and nothing else on your Deck updates an AppImage this plugin downloaded.
+Staying on a build is simply not pressing update.
+
+**Choosing a build also holds it there**, and that's the part worth
 understanding. Holding stops *anything* moving it, not only this plugin — any
-`flatpak update` on the device does, including whatever you press when you update
-your Deck from Desktop Mode. Without a hold the sequence is: a build breaks a
-game, you go back to one that works, you update your Deck a fortnight later, and
-the game breaks again with nothing connecting the two. The hold is what prevents
-that. It shows on the row as *held*, and is released from the same dialog
-whenever you want updates again.
+`flatpak update` on your device does, including whatever you press when you
+update your Deck from Desktop Mode.
 
-A held emulator receives no updates at all until you release it, security fixes
-included. That is the trade, and it is why the state is stated on the row rather
-than hidden in a dialog.
+Without a hold the sequence is: a build breaks a game, you go back to one that
+works, you update your Deck a fortnight later, and the game breaks again with
+nothing connecting the two. The hold is what prevents that. It shows on the row
+as *held*, and you release it from the same dialog whenever you want updates
+again.
 
-Not offered for:
+> **A held emulator receives no updates at all until you release it**, security
+> fixes included. That's the trade, and it's why the state is stated on the row
+> rather than hidden in a dialog.
+
+You aren't offered this for:
 
 | | Why |
 | --- | --- |
 | A system-wide Flatpak | Root-owned, and the plugin has no way to answer a password prompt |
 | RetroArch from a package or an AppImage | Neither was installed from here and neither has builds to move between |
-| An emulator you registered yourself | The plugin did not install it and does not know where it publishes |
+| An emulator you registered yourself | The plugin didn't install it and doesn't know where it publishes |
 
 For a Flathub build, the note on each row describes its *packaging* — "Restrict
 nvidia-cg-toolkit to x86_64" — not the emulator's own release notes, which live
@@ -618,26 +669,25 @@ it, which is as much as a release listing carries.
 
 ## Adding your own emulator
 
-The Emulators tab has two lists. **Ready-made emulators** is the catalog: what
-the plugin knows how to install and set up. **All registered emulators** below it
-is everything wired up for adding games — whichever list it came from, since
-installing from the catalog registers it too — and it is where each one's
-system, file types and launch arguments are edited.
+The Emulators tab has two lists:
 
-For anything the catalog does not cover, a standalone emulator can be
-registered by hand with **Add an emulator**. Either a Flatpak application id or
-an executable/AppImage path, plus the file extensions it handles and an argument
-template where `{rom}` is substituted.
+| List | What it is |
+| --- | --- |
+| **Ready-made emulators** | The catalog — what the plugin knows how to install and set up |
+| **All registered emulators** | Everything wired up for adding games, whichever list it came from, and where each one's system, file types and launch arguments are edited |
+
+For anything the catalog doesn't cover, register a standalone emulator by hand
+with **Add an emulator**. You need either a Flatpak application id or an
+executable/AppImage path, plus the file extensions it handles and an argument
+template where `{rom}` gets substituted.
 
 **The System field is the one that matters for artwork.** Boxart lookup and the
 SteamGridDB release-era check both key on the libretro system name, so declaring
-it makes a custom emulator behave exactly like a core: same name cleanup, same
-boxart, same collection grouping. Registering Dolphin against
-`Nintendo - GameCube` turns `Metroid Prime (USA).rvz` into *Metroid Prime* with
-real cover art.
+it makes a custom emulator behave exactly like a core — same name cleanup, same
+boxart, same collection grouping.
 
-Leaving the system unset still launches games, but artwork then depends entirely
+Leave the system unset and games still launch, but artwork then depends entirely
 on SteamGridDB matching by title, with no era sanity check.
 
-With at least one emulator registered the plugin is fully usable **without
-RetroArch installed at all**.
+> **With at least one emulator registered, the plugin is fully usable without
+> RetroArch installed at all.**

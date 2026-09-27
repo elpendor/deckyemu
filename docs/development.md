@@ -1,19 +1,22 @@
 # Developing DeckyEmu
 
 How the plugin is put together, how to build it, and how to run it against a
-real Deck. None of this is needed to use it -- [getting-started.md](getting-started.md)
-is the walkthrough, and the rest of these pages are the reference.
+real Deck. You need none of this to *use* it —
+[getting started](getting-started.md) is the walkthrough, and the rest of these
+pages are the reference.
+
+Back to [the README](https://github.com/elpendor/deckyemu#readme).
 
 ## How the pieces fit
 
 **Core selection drives artwork lookup.** Every core installed through
-RetroArch's Core Updater ships an `.info` file whose `database` field is the exact
-libretro playlist name — which is also the exact directory name on
-`thumbnails.libretro.com`. Choosing a core therefore says precisely which
-system's artwork to search. Cores installed without their `.info` fall back to a
-built-in table of common ones.
+RetroArch's Core Updater ships an `.info` file whose `database` field is the
+exact libretro playlist name — which is also the exact directory name on
+`thumbnails.libretro.com`. So choosing a core says precisely which system's
+artwork to search. Cores installed without their `.info` fall back to a built-in
+table of common ones.
 
-**Name and artwork matching**, cheapest step first:
+**Name and artwork matching** goes cheapest step first:
 
 | Step | Cost | Catches |
 | --- | --- | --- |
@@ -21,16 +24,17 @@ built-in table of common ones.
 | De-tagged title + region suffixes (`(USA)`, `(Europe)`, …) | a few HEAD requests | ROMs with no region tag, or the wrong one |
 | Fuzzy match against the system's full boxart index | one directory listing, cached 30 days | Renamed files, article-order mismatches |
 
-If every step misses you still get a cleaned-up name from the filename, and can
-type whatever you like before adding.
+Miss every step and you still get a cleaned-up name from the filename, and you
+can type whatever you like before adding.
 
 **Launching goes through a generated script.** Steam stores a shortcut's
 arguments as one `LaunchOptions` string and re-splits it at launch, which breaks
-on the spaces, apostrophes and brackets that ROM filenames are full of. Instead
-each game gets a small `exec`'d shell script with every argument properly quoted.
-For the Flatpak build of RetroArch the script also passes `--filesystem=` for the
-ROM's directory, so games on an SD card work without opening the sandbox wider
-than needed.
+on the spaces, apostrophes and brackets that ROM filenames are full of. So each
+game gets a small `exec`'d shell script with every argument properly quoted.
+
+For the Flatpak build of RetroArch the script also passes `--filesystem=` for
+the ROM's directory, so games on an SD card work without opening the sandbox
+wider than needed.
 
 ## Building
 
@@ -41,18 +45,20 @@ pnpm run build
 
 ## Developing against a Deck
 
-This plugin has no compiled backend, so the Docker + Decky CLI path from the
-template is unnecessary — only the runtime files need to reach the Deck.
+This plugin has no compiled backend, so you don't need the Docker + Decky CLI
+path from the template. Only the runtime files have to reach the Deck.
 
-One-time setup on the Deck:
+Set the Deck up once:
 
-1. Enable SSH: *Settings → System → Developer Mode*, then enable SSH in the
+1. **Enable SSH.** *Settings → System → Developer Mode*, then enable SSH in the
    Developer menu. In desktop mode run `passwd` to set the `deck` password.
-2. Enable frontend debugging: turn on **Allow Remote CEF Debugging** in Decky's
-   settings, or `touch ~/.steam/steam/.cef-enable-remote-debugging` and restart
-   Steam. Two ports answer and only one is usable from another machine: `8080` is
-   bound to `127.0.0.1`, while **`8081` listens on all interfaces**. Both serve
-   the same browser.
+2. **Enable frontend debugging.** Turn on **Allow Remote CEF Debugging** in
+   Decky's settings, or `touch ~/.steam/steam/.cef-enable-remote-debugging` and
+   restart Steam.
+
+> **Two ports answer and only one is usable from another machine.** `8080` is
+> bound to `127.0.0.1`, while **`8081` listens on all interfaces**. Both serve
+> the same browser.
 
 Then, from this repo:
 
@@ -63,8 +69,8 @@ DECK_HOST=steamdeck.local pnpm run dev     # build + push
 `pnpm run dev` builds and pushes; `pnpm run deploy` pushes without rebuilding.
 Both accept `DECK_HOST`, `DECK_USER`, `DECK_PORT` and `PLUGIN_DIR`.
 
-Decky's file watcher (`LIVE_RELOAD`, on by default) reloads the plugin, so no
-service restart is normally needed. When something gets stuck:
+Decky's file watcher (`LIVE_RELOAD`, on by default) reloads the plugin, so you
+don't normally need a service restart. When something gets stuck:
 
 ```sh
 # Backend log. Decky starts a new one on every reload, so follow the newest.
@@ -76,13 +82,15 @@ ssh deck@steamdeck.local 'sudo systemctl restart plugin_loader'
 
 For frontend logs and React state, open `chrome://inspect` in a desktop Chrome,
 add `<deck-ip>:8081` under *Discover network targets*, and inspect
-**SharedJSContext**. The deployed sourcemap points stack traces at the original
-`.tsx` — deployed only: a published release ships without one, so traces there
-are minified. Deploy from this repo when you need to read them.
+**SharedJSContext**.
 
-The backend log carries no prefix of its own — decky writes the timestamp and
+The deployed sourcemap points stack traces at the original `.tsx` — deployed
+only. A published release ships without one, so traces there are minified.
+Deploy from this repo when you need to read them.
+
+The backend log carries no prefix of its own; decky writes the timestamp and
 level, and the message follows. Every public method on `Plugin` is wrapped, so a
-failing one appears as `<method>() failed` with its traceback, which is the first
+failing one appears as `<method>() failed` with its traceback. That's the first
 thing to grep for:
 
 ```sh
@@ -90,8 +98,8 @@ ssh deck@steamdeck.local 'grep -A 20 "() failed" "$(ls -t ~/homebrew/logs/deckye
 ```
 
 Frontend `console` calls are prefixed `[deckyemu]`, but nothing in Game Mode can
-see them — that is what the diagnostic report under *Diagnostics → Report a problem*
-is for.
+see them. That's what the diagnostic report under *Diagnostics → Report a
+problem* is for.
 
 ### Backend logic tests
 
@@ -102,14 +110,14 @@ python scripts/test_backend.py            # includes live thumbnail lookups
 python scripts/test_backend.py --offline  # pure logic, no network
 ```
 
-The live checks are the valuable ones: they assert that real ROM filenames
+The live checks are the valuable ones. They assert that real ROM filenames
 resolve to real cover art, including the awkward cases. Run them before
 deploying — they catch far more than poking at the UI does.
 
-New backend checks go in `scripts/tests/`, one file per subject, each runnable on
-its own. The frontend suite is vitest (`pnpm run test:ui`) and covers the pure
-logic and the Steam calls that delete things; there is no DOM environment, so it
-does not cover rendering.
+New backend checks go in `scripts/tests/`, one file per subject, each runnable
+on its own. The frontend suite is vitest (`pnpm run test:ui`) and covers the
+pure logic and the Steam calls that delete things. There's no DOM environment,
+so it doesn't cover rendering.
 
 ## Before you commit
 
@@ -117,7 +125,7 @@ does not cover rendering.
 pnpm run check
 ```
 
-That is the whole gate: typecheck, lint, bundle, both test suites, mypy, and the
+That's the whole gate: typecheck, lint, bundle, both test suites, mypy, and the
 release-build guard. CI runs the same things, so a green `check` is a green CI.
 
 One check is deliberately **not** in there, because it makes network calls and
@@ -129,53 +137,60 @@ python scripts/check_workarounds.py vita3k              # one entry
 python scripts/check_workarounds.py vita3k --build 3829 # against one build
 ```
 
-It asks whether each fix is still needed — reading the upstream issue it
-names, and re-running the patch detection against a real build. `--build` names
-a release tag instead of taking the newest, which answers "would the patch fit
+It asks whether each fix is still needed — reading the upstream issue it names,
+and re-running the patch detection against a real build. `--build` names a
+release tag instead of taking the newest, which answers "would the patch fit
 that one" without installing it.
 
 When upstream merges, it asks for a `fixed_in`. Which one depends on how much
-the merge actually retired: `apply.patch.fixed_in` when only the binary patch is
-now unnecessary and the rest of the workaround still is, and the workaround's own
-`fixed_in` when the whole thing is. A patch with a ceiling is not checked against
-newer builds — the bytes it looks for are supposed to be gone.
+the merge actually retired:
 
-Run it when you want to know; there is no schedule. `.github/workflows/workarounds.yml`
-is the same check as a manual dispatch, with the same two arguments, for when you
-would rather not download an emulator over your own connection.
+- `apply.patch.fixed_in` when only the binary patch is now unnecessary and the
+  rest of the workaround still is.
+- The workaround's own `fixed_in` when the whole thing is.
+
+A patch with a ceiling isn't checked against newer builds — the bytes it looks
+for are supposed to be gone.
+
+Run it when you want to know; there's no schedule.
+`.github/workflows/workarounds.yml` is the same check as a manual dispatch, with
+the same two arguments, for when you'd rather not download an emulator over your
+own connection.
 
 Two things about reading its output. It needs `squashfs-tools` to unpack an
 AppImage. And it distinguishes **needs a decision** from **could not be
 checked** — an unauthenticated run hits GitHub's rate limit within a handful of
-calls, and that is not a finding about a fix. Both fail the run, because
-a check that did not happen has no result:
+calls, and that's not a finding about a fix. Both fail the run, because a check
+that didn't happen has no result:
 
 ```sh
 GITHUB_TOKEN=$(gh auth token) python scripts/check_workarounds.py
 ```
 
-It reports rather than editing the catalog: choosing the first build that
+It reports rather than editing the catalog. Choosing the first build that
 carries a fix is a judgement call, and naming one too low tells people to switch
 off a fix they still need.
 
-The lint step is ESLint, and `react-hooks/exhaustive-deps` is why it is there: a
-wrong dependency array is a stale closure, which is found by holding a Deck
+The lint step is ESLint, and `react-hooks/exhaustive-deps` is why it's there: a
+wrong dependency array is a stale closure, which you find by holding a Deck
 rather than by reading a diff. `eslint.config.js` says which rules are off and
-why. Warnings do not fail the gate; errors do.
+why. Warnings don't fail the gate; errors do.
 
-**Prefix the commit subject** with one of `feat:`, `fix:`, `perf:`, `internal:`,
-`docs:`, `chore:` or `refactor:`. Release notes are generated from these subjects
-by `scripts/changelog.py` and the prefix decides which heading the line appears
-under, so the subject should read as the sentence a user would want:
+**Prefix your commit subject** with one of `feat:`, `fix:`, `perf:`,
+`internal:`, `docs:`, `chore:` or `refactor:`. Release notes are generated from
+these subjects by `scripts/changelog.py`, and the prefix decides which heading
+the line appears under — so the subject should read as the sentence a user would
+want:
 
     fix: a renamed game takes back its own shortcut instead of making a second
 
-A scope or a `!` is accepted and ignored (`fix(store):`, `perf!:`). `SECTIONS` in
-that script is the list of prefixes that means anything — a prefix that is not in
-it reaches the notes with the prefix still attached, which is not a tidy fallback
-but machine syntax in front of a reader.
+A scope or a `!` is accepted and ignored (`fix(store):`, `perf!:`).
 
-There is no changelog file to update and no release notes to write: they come
+> **`SECTIONS` in that script is the list of prefixes that means anything.** A
+> prefix that isn't in it reaches the notes with the prefix still attached, which
+> isn't a tidy fallback but machine syntax in front of a reader.
+
+There's no changelog file to update and no release notes to write — they come
 from the log. CI is dispatched by hand (`gh workflow run ci.yml -f publish=true
 -f bump=patch`), which is what bumps the version, tags it and publishes the zip
 the plugin's own updater reads.
@@ -375,17 +390,18 @@ something to look up, a wrong path is something to go looking for.
 
 ## Steam's runtime breaks system binaries
 
-Decky loads plugins inside Steam's environment, where `LD_LIBRARY_PATH` points at
-the Steam Runtime, so any system executable resolves its libraries from there
+Decky loads plugins inside Steam's environment, where `LD_LIBRARY_PATH` points
+at the Steam Runtime. So any system executable resolves its libraries from there
 instead of from the OS:
 
     flatpak: libcrypto.so.3: version `OPENSSL_3.4.0' not found
 
 The binary dies in milliseconds with nothing resembling a normal error, which
-makes it look like the command itself is wrong. It is not — the same command
-works from a shell. `py_modules/sysenv.py` clears those variables for every
-subprocess, and the generated launcher scripts `unset` them too, since Steam runs
-those as well.
+makes it look like the command itself is wrong. It isn't — the same command
+works from a shell.
+
+`py_modules/sysenv.py` clears those variables for every subprocess, and the
+generated launcher scripts `unset` them too, since Steam runs those as well.
 
 ## Notes on the Steam APIs used
 
@@ -393,11 +409,11 @@ These are undocumented internal client APIs, so a few behaviours are worth
 recording:
 
 - `AddShortcut(name, exe, dir, launchOptions)` accepts four arguments but only
-  reliably acts on the first two. The rest have to be re-applied with
-  `SetShortcut*`, and those only stick once Steam has registered the app in
-  `appStore` — hence the overview poll in `src/steam/shortcuts.ts`.
-- `SetCustomArtworkForApp` wants bare base64, not a data URI; the image type is a
-  separate argument. Asset types are `Capsule=0, Hero=1, Logo=2, Header=3,
+  reliably acts on the first two. Re-apply the rest with `SetShortcut*`, and
+  those only stick once Steam has registered the app in `appStore` — hence the
+  overview poll in `src/steam/shortcuts.ts`.
+- `SetCustomArtworkForApp` wants bare base64, not a data URI; the image type is
+  a separate argument. Asset types are `Capsule=0, Hero=1, Logo=2, Header=3,
   Icon=4, HeroBlur=5`; this plugin writes the first four.
 - Collections are managed through the `collectionStore` global. Every call there
   is guarded, and failing to file a game into a collection never fails the add.

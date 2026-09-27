@@ -184,35 +184,25 @@ _wrong = {name: {"table": _listed[name], "catalog": _expected[name]}
 check("and each row names the source the catalog actually uses", _wrong, {})
 
 
-section("every page's Contents lists every section on it")
+section("no page hand-writes a Contents list")
 
-# A page with a Contents list is one nobody reads top to bottom, so a section
-# missing from it does not exist for most readers. Four pages had drifted.
-# `##` only: a `###` may be linked and usually is not.
-def _anchor(heading):
-    """GitHub's anchor for a heading, for the punctuation these pages use."""
-    return re.sub(r"[^a-z0-9 -]", "", heading.lower()).replace(" ", "-")
-
-
-_unlisted = {}
-_pages_with_contents = 0
-for _name in sorted(os.listdir(os.path.join(REPO_ROOT, "docs"))):
-    if not _name.endswith(".md"):
-        continue
-    with open(os.path.join(REPO_ROOT, "docs", _name), encoding="utf-8") as _handle:
-        _page = _handle.read()
-    _contents = re.search(r"^\*\*Contents\*\*(.*?)(?=\n\n)", _page, re.S | re.M)
-    if not _contents:
-        continue
-    _pages_with_contents += 1
-    _links = set(re.findall(r"\]\(#([a-z0-9-]+)\)", _contents.group(1)))
-    _missing = [line[3:].strip() for line in _page.split("\n")
-                if line.startswith("## ") and _anchor(line[3:].strip()) not in _links]
-    if _missing:
-        _unlisted[_name] = _missing
-check("no section is missing from its page's Contents", _unlisted, {})
-# Not a tautology: an empty result means the pages were read.
-check("and it read every page that has one", _pages_with_contents >= 7, True)
+# These pages carried a hand-written `**Contents**` line, and a check that every
+# `##` appeared in it. The site generates a per-page table of contents now, so
+# the hand-written ones were two lists to keep in step instead of one, which
+# is what the old check policed. Removing them retires the drift rather than
+# watching for it, and this is the direction that stays true: a Contents line
+# added back brings the drift back with it.
+_handwritten = sorted(
+    name
+    for name in os.listdir(os.path.join(REPO_ROOT, "docs"))
+    if name.endswith(".md")
+    and re.search(
+        r"^\*\*Contents\*\*",
+        open(os.path.join(REPO_ROOT, "docs", name), encoding="utf-8").read(),
+        re.M,
+    )
+)
+check("no page hand-writes one", _handwritten, [])
 
 
 if __name__ == "__main__":

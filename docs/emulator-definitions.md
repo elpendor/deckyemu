@@ -2,48 +2,46 @@
 
 DeckyEmu installs a fixed set of emulators. Anything outside that set can still
 be *set up* for you — the system, file extensions, launch arguments and firmware
-layout — by importing a small file that describes it. Nothing outside the set is
-linked to or named as a download here; a definition is something you bring.
+layout — by importing a small file that describes it.
 
-**Contents** — [Using one](#using-one) · [After importing](#after-importing) ·
-[Writing one](#writing-one) · [Fields](#fields) ·
-[Several in one file](#several-in-one-file) ·
-[Firmware and keys](#firmware-and-keys) · [Getting it right](#getting-it-right) ·
-[What is refused](#what-is-refused) · [Updating and removing](#updating-and-removing) ·
-[When it does not work](#when-it-does-not-work)
+Nothing outside the set is linked to or named as a download here. A definition
+is something you bring.
+
+Back to [the README](https://github.com/elpendor/deckyemu#readme).
 
 ## Using one
 
 1. Open **Transfer** in the Quick Access panel and send the `.deckyemu.json`
    from your phone or laptop. The suffix is what makes the panel offer
    **Import** instead of **Add**.
-2. Press **Import**. A confirmation appears first, showing what the definition
+2. Press **Import**. You get a confirmation first, showing what the definition
    will install and every directory it may write to.
 3. Read it, then confirm.
 4. The emulator appears under **Emulators**, alongside the built-in ones.
 
-The same thing is reachable from the other end: **Emulators → Import a
-definition** lists every `.deckyemu.json` waiting in the transfer folder,
-including one sent in an earlier session. That dialog also has its own
-**Transfer to Deck** button, so a definition can be sent and imported without
-leaving it.
+You can get there from the other end too. **Emulators → Import a definition**
+lists every `.deckyemu.json` waiting in your transfer folder, including one you
+sent in an earlier session. That dialog has its own **Transfer to Deck** button,
+so you can send and import a definition without leaving it.
 
-Importing takes the file out of the transfer folder — the plugin keeps its own
-copy, and a second one in the inbox would only be there to delete later. A
-definition that is *refused* stays where it is: it is still the only copy on the
-Deck, and the reasons it was refused are what tell its author what to change.
+Importing takes the file out of your transfer folder — the plugin keeps its own
+copy, and a second one in the inbox would only be there for you to delete later.
+
+> **A definition that's *refused* stays where it is.** It's still the only copy
+> on your Deck, and the reasons it was refused are what tell its author what to
+> change.
 
 No Desktop Mode and no typing on the Deck: whatever device you sent the file
 from does the typing.
 
 ## After importing
 
-The row behaves like any other, with two differences. What it offers depends on
-how the definition says the emulator is obtained:
+The row behaves like any other, with two differences. What it offers you depends
+on how the definition says the emulator is obtained:
 
 | Button | When |
 |---|---|
-| **Download** | The definition names a source and the emulator is not installed |
+| **Download** | The definition names a source and the emulator isn't installed |
 | **Folder** | The definition is `byo` — pick the binary you already have |
 | **Bin** | Uninstall what was installed, keeping the definition |
 | **Eraser** | Remove the definition, uninstalling the emulator with it |
@@ -53,16 +51,18 @@ so is the honest half of allowing imports at all.
 
 ## Writing one
 
-A definition is JSON. A template, not a working setup for anything in
-particular — the id, paths and arguments all depend on which emulator you have.
+A definition is JSON. Here's a template — not a working setup for anything in
+particular, since the id, paths and arguments all depend on which emulator you
+have.
 
-`format` is the one field about the file rather than the emulator: it says
-which version of this shape the definition is written in, and a plugin too old
-to read it says so plainly instead of reporting the first field it does not
-recognise. **Put `2` unless you know you need `1`.** Format 2 adds omitting
-`args`, patterns and `{"dir": …}`/`{"file": …}` in `saves`, and a
-`game_config` that takes its file from `setup`; a definition using any of them
-under `"format": 1` is refused here rather than confusing an older Deck.
+`format` is the one field about the file rather than the emulator. It says which
+version of this shape you wrote the definition in, so a plugin too old to read it
+says so plainly instead of reporting the first field it doesn't recognise.
+
+> **Put `2` unless you know you need `1`.** Format 2 adds omitting `args`,
+> patterns and `{"dir": …}`/`{"file": …}` in `saves`, and a `game_config` that
+> takes its file from `setup`. A definition using any of them under
+> `"format": 1` is refused here rather than confusing an older Deck.
 
 ```json
 {
@@ -94,46 +94,48 @@ under `"format": 1` is refused here rather than confusing an older Deck.
 
 ## Fields
 
-Required: `id`, `name`, `summary`, `source`, `args` — and `args` may be left
-out when `game_config` or `game_beside` puts the game there instead. Everything else is
-optional. `py_modules/emulator_catalog/schema.py` is the authority; the importer
-names every problem it finds, so the fastest way to get a definition right is to
+You need `id`, `name`, `summary`, `source` and `args` — and you can leave `args`
+out when `game_config` or `game_beside` puts the game there instead. Everything
+else is optional.
+
+`py_modules/emulator_catalog/schema.py` is the authority. The importer names
+every problem it finds, so the fastest way to get a definition right is to
 import it and read what comes back.
 
 | Field | |
 |---|---|
-| `id` | Lowercase letters, digits, `-` and `_`. Becomes a directory name. Do not change it after sharing one: it is what an installed emulator is recorded under. |
+| `id` | Lowercase letters, digits, `-` and `_`. Becomes a directory name. Don't change it after sharing one: it's what an installed emulator is recorded under. |
 | `name` | What the panel shows. |
 | `summary` | One line. Say which system it runs. |
 | `source` | How the emulator is obtained — see below. |
 | `args` | How to launch a game. `{rom}` is where the ROM path goes. Leave it out entirely for a port that takes the game through `game_config` or `game_beside`. |
 | `fullscreen_args` | The switch that starts fullscreen. Omit if it has none. |
-| `root` | The directory under your home the emulator owns, or a list. Everything the definition writes must sit inside one. A list because emulators following the XDG layout split them: settings under `~/.config/<name>`, saves and keys under `~/.local/share/<name>`. |
-| `saves` | Where it keeps save data, relative to home, so the backup carries it off the device. Each path must sit inside a `root`. A filename may be a `*` or `?` pattern, for a program that numbers its saves — `…/controllerPak_file_*.sav` rather than sixteen lines; the directory holding it becomes the save's place, and only matching names are carried, so a Deck with none of them still knows where they go. An entry may be written as `{"dir": …}` or `{"file": …}` instead of a bare path, and **should be, for a single file**: otherwise it is read off the disk, and a restore runs on the Deck that is missing the file. Omit `saves` entirely and the whole of that directory is backed up — right for an emulator that only reads ROMs off the disk, wrong for one that installs games into itself. |
+| `root` | The directory under your home the emulator owns, or a list. Everything the definition writes must sit inside one. A list, because emulators following the XDG layout split them: settings under `~/.config/<name>`, saves and keys under `~/.local/share/<name>`. |
+| `saves` | Where it keeps save data, relative to home, so the backup carries it off the device. Each path must sit inside a `root`. A filename may be a `*` or `?` pattern, for a program that numbers its saves — `…/controllerPak_file_*.sav` rather than sixteen lines; the directory holding it becomes the save's place, and only matching names are carried, so a Deck with none of them still knows where they go. An entry may be written as `{"dir": …}` or `{"file": …}` instead of a bare path, and **should be, for a single file** — otherwise it's read off the disk, and a restore runs on the Deck that's missing the file. Omit `saves` entirely and the whole of that directory is backed up: right for an emulator that only reads ROMs off the disk, wrong for one that installs games into itself. |
 | `saves_except` | What to leave behind, inside `saves` or inside the directories an entry that declares none owns. A plain name, a `*`/`?` pattern, or a directory and everything under it when it ends in `/` — `logs/`, `*.log`, `sentry/`. Matched wherever it appears. Use it for the caches and crash dumps a program leaves among the saves, and for a config that binds a controller by device id, which breaks the pad when restored onto another Deck. |
 | `platform` **or** `databases` | What it plays. `databases` takes libretro system names, e.g. `["Sony - PlayStation"]`, and buys extensions, boxart and collection grouping at once. `platform` is for systems libretro has no database for. One or the other, never both. |
-| `firmware` | Files you must supply — see [below](#firmware-and-keys). |
+| `firmware` | Files the user must supply — see [below](#firmware-and-keys). |
 | `note` | A caveat shown in the panel. |
-| `setup` | Configuration written once, just after installing — controller bindings, or skipping a first-run wizard. Every path it writes must sit inside a `root`. The formats it understands are in `py_modules/emu_config.py` — `json-flat` is for a settings file whose keys contain dots at the top level, like `"backend.option": true`; this is the most involved field and the one most worth checking against a real install, since it edits a file the emulator owns. |
-| `installed_args` | How to start a title the emulator has already installed, when a file path will not do it. `{title}` is the title id. |
-| `command`, `env` | The binary to run inside a flatpak when it is not the one the manifest names, and any environment it needs. |
+| `setup` | Configuration written once, just after installing — controller bindings, or skipping a first-run wizard. Every path it writes must sit inside a `root`. The formats it understands are in `py_modules/emu_config.py`; `json-flat` is for a settings file whose keys contain dots at the top level, like `"backend.option": true`. This is the most involved field and the one most worth checking against a real install, since it edits a file the emulator owns. |
+| `installed_args` | How to start a title the emulator has already installed, when a file path won't do it. `{title}` is the title id. |
+| `command`, `env` | The binary to run inside a flatpak when it isn't the one the manifest names, and any environment it needs. |
 | `aliases` | Extra names to match when suggesting arguments for a hand-registered binary. |
-| `cannot_open` | Extensions to subtract from the list `databases` derives. That derivation describes a *system*; this is for a format this particular emulator does not read. |
+| `cannot_open` | Extensions to subtract from the list `databases` derives. That derivation describes a *system*; this is for a format this particular emulator doesn't read. |
 | `changes_disc` | `true` when the later discs of a multi-disc game are reachable once the first is running, so only the first is added. |
-| `splits_args` | `true` when the emulator's own launcher word-splits what it is handed, so a path with a space in it arrives as several. |
+| `splits_args` | `true` when the emulator's own launcher word-splits what it's handed, so a path with a space in it arrives as several. |
 | `game_content` | Where it reads each game's updates and DLC: `{"format": "ryujinx", "path": <directory relative to home>}`. Gives the game editor a row for adding them. |
 | `motion` | How it reaches the Deck's gyro: `{"server": {…}}`. The server is fetched the way a helper is and serves the sensors over cemuhook, so the controller stays Steam's. |
-| `seed` | Files a flatpak ships where the application cannot find them, as `{source inside the flatpak's files directory: destination relative to home}`. Flatpak sources only. |
+| `seed` | Files a flatpak ships where the application can't find them, as `{source inside the flatpak's files directory: destination relative to home}`. Flatpak sources only. |
 | `recipe` | Version of the launch arguments. Bump it when you correct `args` or `fullscreen_args`, or the correction reaches nobody who already installed it. |
 | `source_moved` | `{"recipe": <number>, "note": <sentence>}`, set when `source` starts naming a different place, so an install that came from the old one is told. |
-| `verified` | `true` once the launch arguments were confirmed against the emulator rather than read off its help text. Left out, the panel says so — several emulators ignore an argument they do not know, silently. |
-| `workarounds` | Corrections for bugs in the emulator itself, each one a switch. The panel calls them **fixes**; the key keeps its older name because it is written into records already on people's devices. Unlike everything above, one is *temporary*: it must name the upstream issue or pull request that will retire it, say what it costs in the user's terms, and it is off by default. Ordinary configuration that is simply how this emulator has to run does not belong here — it belongs in `env`, `layout` or `setup`. The fields are in `py_modules/emulator_catalog/schema.py`; note that an imported definition may not use one that patches the emulator's files. |
-| `port` | `true` for a native port of one game rather than an emulator for a system. It is listed under **Ports** instead of **Emulators**; installing, setup and launching work the same. |
-| `needs` | For a `port`, the one file it plays: `{"what": <a line shown wherever the port is>, "extensions": [...], "id": {"at": <byte offset>, "is": [...]}, "sha1": [...]}`. A port covers one game, so the extensions its system's cores declare are wrong for it in both directions. `id` reads bytes at a fixed offset and decides whether to offer the port at all; a file that reads as another game is not offered, one that cannot be read still is. `sha1` lists the dumps the port actually accepts — most of these projects publish that list — and is checked only once `id` has matched, so a wrong dump is named while you are still looking at the file rather than by the port itself after a long first launch. Neither may be declared beside a compressed extension, since neither survives compression. |
-| `game_config` | For a program that reads its game from its own settings file instead of the command line. `{"format": "json-flat", "path": <file under a root>, "keys": {key: value}}` — `{rom}` in a value becomes the game's path, written each time a game is saved onto it. With this, `args` may be left out. `format` and `path` may be left out too when `setup` names one file, which is usually the same file: `setup` seeds a recommendation once and leaves what you changed, while this is rewritten on every save. |
-| `first_run` | Arguments for the run that sets a port up: `{"args": "{rom}", "unless": [<file names>]}`. Passed only while none of those files exist beside the program — how a port that builds its own archive from your dump asks for it once and never again. |
+| `verified` | `true` once the launch arguments were confirmed against the emulator rather than read off its help text. Leave it out and the panel says so — several emulators ignore an argument they don't know, silently. |
+| `workarounds` | Corrections for bugs in the emulator itself, each one a switch. The panel calls them **fixes**; the key keeps its older name because it's written into records already on people's devices. Unlike everything above, one is *temporary*: it must name the upstream issue or pull request that will retire it, say what it costs in the user's terms, and it's off by default. Ordinary configuration that's simply how this emulator has to run belongs in `env`, `layout` or `setup` instead. The fields are in `py_modules/emulator_catalog/schema.py`; note that an imported definition may not use one that patches the emulator's files. |
+| `port` | `true` for a native port of one game rather than an emulator for a system. It's listed under **Ports** instead of **Emulators**; installing, setup and launching work the same. |
+| `needs` | For a `port`, the one file it plays: `{"what": <a line shown wherever the port is>, "extensions": [...], "id": {"at": <byte offset>, "is": [...]}, "sha1": [...]}`. A port covers one game, so the extensions its system's cores declare are wrong for it in both directions. `id` reads bytes at a fixed offset and decides whether to offer the port at all; a file that reads as another game isn't offered, one that can't be read still is. `sha1` lists the dumps the port actually accepts — most of these projects publish that list — and is checked only once `id` has matched, so a wrong dump is named while the user is still looking at the file rather than by the port itself after a long first launch. Neither may be declared beside a compressed extension, since neither survives compression. |
+| `game_config` | For a program that reads its game from its own settings file instead of the command line. `{"format": "json-flat", "path": <file under a root>, "keys": {key: value}}` — `{rom}` in a value becomes the game's path, written each time a game is saved onto it. With this, `args` may be left out. `format` and `path` may be left out too when `setup` names one file, which is usually the same file: `setup` seeds a recommendation once and leaves what the user changed, while this is rewritten on every save. |
+| `first_run` | Arguments for the run that sets a port up: `{"args": "{rom}", "unless": [<file names>]}`. Passed only while none of those files exist beside the program — how a port that builds its own archive from a dump asks for it once and never again. |
 | `game_beside` | `true` for a program that looks for its game in the directory it runs in instead of taking a path: the game is linked in and the program runs there. `{"as": <name>}` where it insists on one filename. |
-| `game_picker` | `true` when the port asks for its game through a file picker rather than a path. The picker is answered with the game the shortcut was made for, since there is no navigating one with a controller. |
+| `game_picker` | `true` when the port asks for its game through a file picker rather than a path. The picker is answered with the game the shortcut was made for, since there's no navigating one with a controller. |
 | `menu_key` | The key that opens the port's own menu, e.g. `esc`. Reached by holding Select and pressing Start. |
 | `menu_modifier` | The button held instead of Select, for a port of a console that uses Select — the pad is taken from the game while the chord is held. |
 | `hotkeys` | Further keys on the pad while that button is held, as `{button: key}` in `gptokeyb2`'s names, e.g. `{"y": "f5"}`. |
@@ -150,10 +152,12 @@ import it and read what comes back.
 
 A release that ships the program inside a zip adds `"extract"`, a regex matching
 the file to run, and `"unpack": true` where the whole archive must come out
-because the program has data folders beside it. **Take that name from the
-release asset, not from the project's readme**: they drift, and a pattern that
-matches nothing leaves a folder that looks installed and an entry that never
-appears. If an install fails, the error lists what the archive actually held.
+because the program has data folders beside it.
+
+> **Take that name from the release asset, not from the project's readme.** They
+> drift, and a pattern that matches nothing leaves a folder that looks installed
+> and an entry that never appears. If an install fails, the error lists what the
+> archive actually held.
 
 Add `"host": "git.example.com"` to a `github` source for a project that left
 GitHub and self-hosts the same releases API — its old repository answers HTTP
@@ -175,20 +179,20 @@ sends a dozen instead of pressing **Import** a dozen times:
 }
 ```
 
-Emulators and ports go in the same file or in separate ones, as you like — a
+Put emulators and ports in the same file or in separate ones, as you like. A
 port is a definition with `"port": true` and nothing else about it is different.
 
 Every entry is validated on its own and stored under its own id, so one bad
 entry costs only itself and the rest still import. An id already imported is
-refused unless you press **Replace**, and the confirmation says which entries
-that would be. A file with a refused entry stays in the transfer folder; one
-that imported cleanly is taken out of it.
+refused unless the user presses **Replace**, and the confirmation says which
+entries that would be. A file with a refused entry stays in the transfer folder;
+one that imported cleanly is taken out of it.
 
 ## Firmware and keys
 
 `firmware` is a list of files the emulator needs and this plugin will never
-supply. Each entry becomes a row under **BIOS & firmware** saying whether it is
-present, and files you send over **Transfer** are matched to it by name.
+supply. Each entry becomes a row under **BIOS & firmware** saying whether it's
+present, and files sent over **Transfer** are matched to it by name.
 
 | Key | |
 |---|---|
@@ -196,87 +200,90 @@ present, and files you send over **Transfer** are matched to it by name.
 | `note` | What it is and whether a game runs without it. |
 | `match` | A regex the sent filename must match. |
 | `expects` | What to tell someone whose file was rejected. Required whenever `match` is set — otherwise the only explanation is the pattern itself. |
-| `optional` | The emulator runs without it, so its absence is not a warning. |
-| `dest` | Where to copy it, relative to your home. Must sit inside a `root`. |
+| `optional` | The emulator runs without it, so its absence isn't a warning. |
+| `dest` | Where to copy it, relative to home. Must sit inside a `root`. |
 | `manual` | Instead of copying: what to tell the user to do themselves. |
-| `detect` | `{"path": "…", "label": "installed"}` — a folder whose being non-empty means it is there. Use with `manual`. |
+| `detect` | `{"path": "…", "label": "installed"}` — a folder whose being non-empty means it's there. Use with `manual`. |
 | `sizes`, `lower_ext` | Byte sizes a valid file may have; lowercase the extension before matching. |
 
 An imported definition may use **`dest`** or **`manual`**, and not the routes
-that drive an emulator's own installer. Some firmware cannot be copied into
-place at all — a few hundred encrypted files registered into a content cache
-under hashed names is not a file copy — and for those, `manual` plus `detect` is
-the honest shape: report whether it is there and say where the menu is, rather
-than claim to install it. A requirement that is reported but not installable is
-worth more than silence, because its absence otherwise looks like a game simply
-failing to boot.
+that drive an emulator's own installer.
+
+Some firmware can't be copied into place at all — a few hundred encrypted files
+registered into a content cache under hashed names is not a file copy. For
+those, `manual` plus `detect` is the honest shape: report whether it's there and
+say where the menu is, rather than claim to install it. A requirement that's
+reported but not installable is worth more than silence, because its absence
+otherwise looks like a game simply failing to boot.
 
 ## Getting it right
 
-**`asset`** — anchor it. Releases carry `aarch64` builds beside `x86_64` ones
-and `.zsync` delta files beside the real ones. The wrong pick installs happily
-and dies at exec time with nothing naming the cause. Match the whole filename
-with `^` and `$`, and leave room for the version to move.
+**Anchor your `asset` pattern.** Releases carry `aarch64` builds next to
+`x86_64` ones, and `.zsync` delta files next to the real ones. The wrong pick
+installs happily and dies at exec time with nothing naming the cause. Match the
+whole filename with `^` and `$`, and leave room for the version to move.
 
-**`args`** — the launch arguments and the fullscreen switch interact, so test
-them together. The failure worth knowing about, seen on more than one emulator:
-`<emu> -f <rom>` opens the game list instead of the game, because the flag
-swallows the positional path, while `<emu> -f -g <rom>` works. Several emulators
-ignore arguments they do not understand without complaint, so a wrong recipe
-looks like nothing happening rather than like an error.
+**Test `args` and the fullscreen switch together**, because they interact. The
+failure worth knowing about, seen on more than one emulator: `<emu> -f <rom>`
+opens the game list instead of the game, because the flag swallows the
+positional path, while `<emu> -f -g <rom>` works. Several emulators ignore
+arguments they don't understand without complaint, so a wrong recipe looks like
+nothing happening rather than like an error.
 
-**`root` and `dest`** — run the emulator once and look at what it creates under
-`~/.config`, `~/.local/share` and `~/.cache`. Do not take paths from its source:
-what a program is written to do and what the build you have actually writes come
-apart often enough that it is not worth the guess. The **BIOS & firmware**
-section reports the destination it would use for each file, so a wrong one shows
-itself rather than failing quietly.
+**Get `root` and `dest` from a real run.** Start the emulator once and look at
+what it creates under `~/.config`, `~/.local/share` and `~/.cache`. Don't take
+paths from its source: what a program is written to do and what the build you
+have actually writes come apart often enough that it isn't worth the guess.
+
+The **BIOS & firmware** section reports the destination it would use for each
+file, so a wrong one shows itself rather than failing quietly.
 
 ## What is refused
 
-A definition is not data DeckyEmu reads — it is a list of actions DeckyEmu
+A definition isn't data DeckyEmu reads — it's a list of actions DeckyEmu
 performs, with your user's privileges. One you import was written by whoever
 gave it to you and reviewed by nobody here.
 
 **It may install the emulator it describes.** Refusing that would be friction
 rather than safety: the alternative is downloading a build by hand and
-re-pointing at it on every update, which does not change who you trusted.
+re-pointing at it on every update, which doesn't change who you trusted.
 
-What is refused is everything that is not "install the emulator you asked for":
+What's refused is everything that isn't "install the emulator you asked for":
 
 - **Deleting.** No `removes`, no `data`. Nothing about installing an emulator
   requires the power to delete directory trees.
-- **A second binary.** No `helper` — that is arbitrary code beside the emulator,
-  which the definition did not describe. A definition may still *ask for motion*
+- **A second binary.** No `helper` — that's arbitrary code beside the emulator,
+  which the definition didn't describe. A definition may still *ask for motion*
   with `"motion": {"dsu": true}`, which says the emulator speaks the gyro
-  protocol and nothing more; DeckyEmu supplies the server itself. Naming one —
-  a repository, a download — is refused for the same reason as `helper`.
+  protocol and nothing more; DeckyEmu supplies the server itself. Naming one — a
+  repository, a download — is refused for the same reason as `helper`.
 - **Editing the emulator.** A definition may carry *fixes* — switchable
   corrections for bugs in the emulator, each naming the upstream fix that will
-  retire it — but not one that patches the emulator's own files. That is the
-  same power as `helper`, reached by rewriting a binary rather than fetching
-  one.
+  retire it — but not one that patches the emulator's own files. That's the same
+  power as `helper`, reached by rewriting a binary rather than fetching one.
 - **Downloading firmware.** No `fetch`. Firmware is your own dump; an entry
-  offering to fetch one is offering something it should not have.
+  offering to fetch one is offering something it shouldn't have.
 - **Writing outside its `root`.** Not merely "somewhere under your home" — your
   home also holds Steam's data and your ssh keys.
 - **Replacing a built-in emulator.** If the `id` matches one DeckyEmu ships, the
   built-in entry wins and the import is refused.
 
-These bound what a definition can *reach*. They cannot tell you whether its
-author meant well. **Read the file before importing it** — it is a few lines of
-plain text.
+> **These bound what a definition can *reach*.** They can't tell you whether its
+> author meant well. Read the file before importing it — it's a few lines of
+> plain text.
 
 ## Updating and removing
 
 Importing a definition whose `id` is already in use asks before replacing it,
-because overwriting one you may not be able to obtain again is not recoverable.
+because overwriting one you may not be able to obtain again isn't recoverable.
 
 The **eraser** button removes a definition and uninstalls whatever it installed.
-Both, and in that order: once the definition is gone there is no row left to
+Both, and in that order: once the definition is gone there's no row left to
 uninstall from, and an emulator downloaded through it would sit on disk with
-nothing able to reach it. Games already added to Steam keep their launcher
-scripts, and re-importing brings everything back.
+nothing able to reach it.
+
+Games already added to Steam keep their launcher scripts, and re-importing
+brings everything back.
 
 Definitions live in the plugin's settings directory, one file per emulator, and
 survive a reset that clears emulators.
@@ -289,9 +296,9 @@ survive a reset that clears emulators.
 | The import is refused with a list | Each line names one rule; the importer says which field and why |
 | The emulator never appears | The definition failed to load — the Emulators tab lists refusals |
 | No ROM matches it | `databases` or `platform` names a system with no known extensions |
-| A game opens the emulator but no game | `args` — see *Getting it right* |
+| A game opens the emulator but no game | `args` — see [getting it right](#getting-it-right) |
 | It starts in a window | `fullscreen_args` is wrong, or the emulator uses a setting instead of a flag |
 | Installed but dies immediately | The `asset` pattern took the wrong architecture |
-| Refused: does not match the checksum | The download arrived damaged. Where the release publishes a checksum it is verified before anything is unpacked; try again |
+| Refused: does not match the checksum | The download arrived damaged. Where the release publishes a checksum it's verified before anything is unpacked; try again |
 | Nothing in the download is named like… | The `extract` pattern matched no file. The message lists what the archive held — take the name from there, not from the project's readme |
-| Firmware row says missing when it is not | `detect.path` or `dest` does not match where the emulator really keeps it |
+| Firmware row says missing when it is not | `detect.path` or `dest` doesn't match where the emulator really keeps it |

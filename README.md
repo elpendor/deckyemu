@@ -41,18 +41,18 @@ Steam.](docs/images/a-game-in-steam.jpg)
 
 Everything happens with a controller, from the Quick Access panel. The one
 exception is [Decky Loader](https://github.com/SteamDeckHomebrew/decky-loader)
-itself, which is installed from Desktop Mode: that is the only trip you make.
+itself, which you install from Desktop Mode — that's the only trip you make.
 DeckyEmu's own install happens in Game Mode, and nothing after it needs a
 keyboard, a desktop or a second device.
 
 DeckyEmu ships no games, no BIOS files and no encryption keys, and downloads
 none of them. It installs emulators from their own publishers and points them at
-files you already have. It also fetches four helpers that are not emulators:
-[the PS4 package extractor](docs/emulators.md#unpacking-a-ps4-package), if you
+files you already have. It also fetches four helpers that aren't emulators:
+[the PS4 package extractor](docs/emulators.md#unpacking-a-ps4-package) if you
 add a PlayStation 4 `.pkg`,
-[a motion server](docs/emulators.md#motion-controls), if you install an emulator
-that uses one, a hotkey helper, if you add a native port, and a copy of rclone,
-if you switch on cloud saves.
+[a motion server](docs/emulators.md#motion-controls) if you install an emulator
+that uses one, a hotkey helper if you add a native port, and a copy of rclone if
+you switch on cloud saves.
 
 ## Install it
 
@@ -62,11 +62,11 @@ In Decky's settings, give **Install from URL** this address:
 https://get.deckyemu.xyz
 ```
 
-Decky Loader is the only prerequisite, and nothing else is: RetroArch and its
-cores install from the plugin, and an existing RetroArch is found on its own.
+Decky Loader is the only prerequisite. RetroArch and its cores install from the
+plugin, and an existing RetroArch is found on its own.
 
 [Installing](docs/installing.md) has the rest — an address you can verify before
-pasting, the manual install for a Deck that cannot reach GitHub, and what lands
+pasting, the manual install for a Deck that can't reach GitHub, and what lands
 where on your device.
 
 Then [Getting started](docs/getting-started.md) walks from there to a game
@@ -78,11 +78,12 @@ running: send a ROM, pick what runs it, add it to Steam.
 | --- | --- |
 | [Getting started](docs/getting-started.md) | The walkthrough: install to first game, then everyday tasks and what to do when one misbehaves |
 | [Installing](docs/installing.md) | Installing and uninstalling, the Desktop Mode fallback, and what the plugin puts on your Deck |
-| [Getting files onto the Deck](docs/transfers.md) | Sending ROMs, BIOS files and keys from another device, and where each ends up |
+| [Getting files onto the Deck](docs/transfers.md) | Sending ROMs, BIOS files and keys from another device, and where each one ends up |
 | [RetroArch](docs/retroarch.md) | Installing it and its cores, fullscreen, on-screen chatter, the menu combo, achievements |
 | [Standalone emulators](docs/emulators.md) | The one-press catalog, moving between builds, registering your own |
-| [Artwork](docs/artwork.md) | Where cover art comes from, and getting a SteamGridDB key in without a keyboard |
-| [Your library](docs/library.md) | Editing a game, collections, backing up and restoring save data, and putting things back in order |
+| [Artwork](docs/artwork.md) | Where your cover art comes from, and getting a SteamGridDB key in without a keyboard |
+| [Your library](docs/library.md) | Editing a game, ROM hacks and add-ons, collections, and putting things back in order |
+| [Save data](docs/saves.md) | Backing saves up, copying them to cloud storage of your own, and putting them back |
 | [Updates and problems](docs/updates.md) | Keeping it current, and what to send when something breaks |
 | [Emulator definitions](docs/emulator-definitions.md) | The JSON format for setting up an emulator this plugin does not ship |
 | [Development](docs/development.md) | Building it, running it against a real Deck, and the layout of the tree |

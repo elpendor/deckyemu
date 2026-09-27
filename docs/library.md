@@ -1,315 +1,263 @@
 # Your library
 
-Starting and editing a game, how games are grouped in Big Picture, backing up
-and restoring save data, and putting things back in order.
+Everything about the games you've added: starting them, editing them, romhacks
+and DLC, how they get grouped in Steam, and fixing things that have drifted out
+of sync.
 
 Back to [the README](https://github.com/elpendor/deckyemu#readme).
 
-**Contents** — [Starting a game](#starting-a-game) ·
-[Editing a game](#editing-a-game) ·
-[Setting variables for every launch](#setting-variables-for-every-launch) ·
-[Collections](#collections) · [Orphaned entries](#orphaned-entries) ·
-[Backing up save data](#backing-up-save-data) ·
-[Setting up cloud storage](#setting-up-cloud-storage) ·
-[Sending saves to the cloud](#sending-saves-to-the-cloud) ·
-[Copying when a game closes](#copying-when-a-game-closes) ·
-[Saves coming back before a game starts](#saves-coming-back-before-a-game-starts) ·
-[When there is no network](#when-there-is-no-network) ·
-[Restoring from the cloud](#restoring-from-the-cloud) ·
-[Restoring a backup](#restoring-a-backup) ·
-[Removing everything](#removing-everything)
-
 ## Starting a game
 
-The play button on each row in **Added games** starts that game, closing the
-panel on the way so nothing is left over the top of it. It goes through Steam
-rather than running the emulator directly, so gamescope, Steam Input and the
-overlay all behave as they do when you launch from the library.
+Press play on any row in **Added games**. The panel closes and the game starts.
 
-**A multi-disc game is one entry**, and most of them change disc by themselves.
-When one does not, **Select + Start** opens the emulator's menu, where
-**Change Disc** lists them — see
-[multi-disc games](getting-started.md#multi-disc-games).
+It goes through Steam instead of running the emulator directly, so gamescope,
+Steam Input and the overlay all behave exactly like they do when you launch from
+your library.
 
-### Its icon
+Multi-disc game? It's one entry, and most of them swap discs on their own. If
+yours doesn't, press **Select + Start** in game and look for **Change Disc**.
+More on [multi-disc games](getting-started.md#multi-disc-games).
 
-Every game added here gets an icon — the small picture beside its name in the
-library list and in the Non-Steam section. It comes from SteamGridDB when the
-artwork lookup found one, and otherwise it is a plain gamepad tile, which is
-still better than the blank square a shortcut has by default.
+### Game icons
 
-Games added before this existed are given the plain tile the next time the
-plugin starts. Nothing that already has an icon is touched.
+Every game you add gets an icon — the little picture next to its name in your
+library list. If the artwork lookup found one on SteamGridDB, you get that.
+Otherwise you get a plain gamepad tile.
 
-To swap those plain tiles for real artwork, the **Library** tab has
-**Get real icons for these games**, which appears only while at least one game
-is still using the plain one. It looks each game up on SteamGridDB in turn,
-which takes a moment per game, and leaves anything it finds no icon for as it
-is. A single game can be done on its own from its editor, with **Choose the
-right game** or the look-up button beside it.
+Want real icons instead of the plain ones?
 
-### Its page in your library
+1. Go to the **Library** tab.
+2. Press **Get real icons for these games**.
+
+It looks each game up in turn, so give it a moment per game. The button only
+appears while at least one game is still on the plain tile.
+
+For a single game, open its editor and press **Choose the right game** instead.
+
+### The game's page in Steam
 
 ![A game added from a ROM, open on its own page in the Steam library, with hero
 artwork, a logo and a Play button.](images/its-page-in-steam.jpg)
 
-The ⓘ button beside play opens Steam's own page for that game — where the
-artwork, the play time and the per-game controller and performance settings
-live. The panel closes on the way, for the same reason play does: anything left
-standing comes back on top of the page you asked for.
+Press the ⓘ button next to play. That opens Steam's own page for the game, where
+you'll find the artwork, your play time, and the per-game controller and
+performance settings. The panel closes on the way so nothing sits on top of it.
 
-### If another game is already running
+### Starting a game while another one is running
 
-Steam normally warns you before starting a second game, but that warning never
-appears for games added here — it only applies to Steam's own titles, and these
-are non-Steam shortcuts. Running two at once is worth avoiding: they share the
-Deck's memory and its heat budget, and the first one keeps doing so long after
-you have forgotten it is there.
+Steam normally warns you before launching a second game. It won't for games
+added here, because those are non-Steam shortcuts. So the plugin does the
+warning itself.
 
-So the plugin does the warning itself. Start one of these games while another is
-running — from anywhere, including the game's own page in Big Picture — and you
-will see a flicker back to where you were, then:
+Start one of these while another game is running and you'll see a quick flicker
+back to where you were, then:
 
-> **You are currently running *Mina the Hollower*.** It is not recommended to
-> run multiple games simultaneously as it can impact performance. How would you
-> like to proceed?
+> **You are currently running *Some Game*.** It is not recommended to run
+> multiple games simultaneously as it can impact performance. How would you like
+> to proceed?
 
-with the same three choices Steam offers: close the running game and launch this
-one, launch it anyway, or cancel. The emulator does not start until you pick.
+You get Steam's own three choices: close the running game and launch this one,
+launch anyway, or cancel. Nothing starts until you pick.
 
-**The flicker is the point, not a fault.** Nothing can stop a launch once Steam
-has begun it, so the game's launcher script is what refuses — it is the first
-thing that runs, and it stops before the emulator starts. That brief return to
-the library is it deciding not to continue.
+> **Note:** the flicker is normal. Nothing can stop a launch once Steam has
+> started it, so the game's launcher script is what refuses. That trip back to
+> the library is it deciding not to continue.
 
-If anything about that check goes wrong, the game launches normally. It is built
-to fail in that direction: a missing warning is a far smaller problem than a
-game that will not start.
+If the check itself goes wrong, the game just launches.
 
-### Where a game's name comes from
+### My game won't start and nothing happens
 
-Adding a game looks the name up rather than trusting the filename. If libretro
-recognises it, that name is used. If nothing recognises it but **SteamGridDB**
-identified the game while fetching artwork, its name is used instead — that
-search is what found the artwork now on your game, so it identifies it better
-than the filename does.
+Shortcuts keep working after the things behind them are gone. Usually that's an
+SD card that didn't mount, or an emulator you uninstalled. The launcher checks
+both before it starts anything and tells you which one is missing:
 
-Only when nothing recognises it at all does the filename stand, tidied up. That
-is when a ROM named `... , The (USA (Rev 1) Decrypted` becomes a game called
-`Ocarina of Time 3D, The Decrypted`.
-
-**The panel says which of the three named it**, under the name, whenever the
-name is a guess — and the field is editable right there, so the moment to fix it
-is before you press Add. It says so because SteamGridDB's search occasionally
-answers with a different game in the same series, and a wrong name follows a
-game around in a way a wrong picture does not.
-
-### If the game or its emulator has gone
-
-A shortcut keeps working after the things behind it have gone, and the two
-ordinary ways that happens are an SD card that did not mount and an emulator
-that is no longer installed. Either way the game used to start, fail, and put
-you back in the library a second later with nothing on screen to explain it.
-
-Now the launcher checks both before it starts anything, and if something is
-missing it stops and says which:
-
-- **The game file is not there** — usually a card that has not mounted, so
-  reinsert it and try again. If the file was moved or deleted for good, remove
-  the game and add it again.
-- **The emulator is not installed** — the message names which one, so open the
-  **Emulators** tab and install it. Saves and settings are kept, so this costs a
-  download and nothing else. For a RetroArch game it names the *core*, since
-  that is the piece that goes missing.
-
-Same as the check above, this only ever stops a launch that was going to fail:
-if it cannot tell, the game starts as usual.
+- **The game file is not there.** Reinsert your SD card and try again. If the
+  file is gone for good, remove the game and add it again.
+- **The emulator is not installed.** The message names it. Open the
+  **Emulators** tab and install it — your saves and settings are still there.
+  For a RetroArch game it names the *core*, since that's the part that goes
+  missing.
 
 ![The Added games list, grouped by system, with play, details, edit and remove
 buttons on each row.](images/added-games.jpg)
 
-Each row carries the game's own artwork. A game whose artwork was never found —
-the add flow says so at the time — gets a plain controller icon in its place, so
-the titles still line up in one column.
+Every row shows the game's artwork, or a plain controller icon if none was
+found, so the titles stay lined up.
+
+### Where the game's name comes from
+
+Adding a game looks the name up instead of trusting the filename. In order:
+
+1. **libretro**, if it recognises the ROM.
+2. **SteamGridDB**, if it identified the game while grabbing artwork.
+3. **The filename**, tidied up. That's how `Some Game, The (USA) (Rev 1)
+   Decrypted` becomes *Some Game, The Decrypted*.
+
+When the name is a guess, the panel tells you which of the three produced it,
+and you can edit it right there.
+
+> **Note:** give it a glance before you press Add. SteamGridDB sometimes answers
+> with a different game in the same series, and a wrong name follows a game
+> around in a way a wrong picture doesn't.
 
 ### Grouped, or one tab per system
 
-The list groups games under their system, all in one scroll, so what you own is
-visible on the way past. **Settings → Library → One tab per system** swaps that
-for a tab each, paged with L1 and R1.
+By default your games are grouped under their system in one long scroll. Want a
+tab for each system instead? Go to **Settings → Library → One tab per system**.
+Page between them with L1 and R1.
 
-Which reads better depends on your library rather than on taste. A few games
-spread across many systems suit the grouped list — a tab holding one game is a
-lot of chrome for one row. A lot of games on a few systems suit tabs, where a
-system is one bumper press away instead of a scroll past everything above it.
-The tab you were last on is remembered until the plugin restarts.
+Which one you want depends on your library. A few games across lots of systems
+read better grouped. Lots of games on a few systems read better in tabs, where a
+system is one bumper press away. The tab you were last on is remembered until
+the plugin restarts.
 
 ## Editing a game
 
-The pencil on each row in **Added games** opens an editor for a game already in
-Steam, so its playtime and its place in a collection survive. The game's own
-page in Big Picture reaches the same editor: the cog menu carries a **DeckyEmu**
-entry with **Edit** and **Remove**, for the games this plugin added and no
-others.
+Press the pencil on any row in **Added games**. Your game keeps its Steam entry,
+so your playtime and its place in a collection survive.
 
-The editor is in three tabs, switched with the bumpers: **Game** holds the name,
-artwork and ROM file; **Emulator** holds the core or emulator, the system,
-launch options and fixes; **Add-ons** holds ROM hacks or updates and DLC. **Save**,
-**Save and test** and **Close** sit below all three, and Save covers every tab
-except Add-ons, whose changes apply straight away.
+You can also get there from the game's own page in Big Picture: open the cog
+menu and pick **DeckyEmu → Edit**.
 
-- **Name** — renaming moves the launcher, since its filename embeds the title.
-- **ROM file** — repoint an entry at a moved file, an SD card or a better dump.
-  The launcher filename also embeds a hash of the ROM path, so this relocates the
-  script too. A ROM the chosen core cannot read is refused.
-- **ROM hacks** — translations and hacks, as patch files. RetroArch games only,
-  and described below.
-- **Updates and DLC** — for Switch games on Ryujinx, also described below.
-- **Core or emulator** — changing it can change the system, so the platform label
-  and the per-platform collection follow.
-- **System** — only for a core covering more than one, which is most of them.
-  It says which of that core's systems this game is, and that decides the shelf
-  it is on, the folder its ROM was filed into and which thumbnail directory its
-  cover comes from. It starts on where the game is filed now, so changing it is
-  how a game that landed on the wrong shelf is moved — saving does the move.
-  Worth running **Look up name and artwork again** afterwards, since the cover
-  came from the old system.
-- **Name and artwork** — **Choose the right game** is how you say which game
-  this is when the automatic match got it wrong; it sets the name as well as
-  the cover, unless you have written a name of your own. Artwork lands
-  immediately; a name change waits for Save, like every other edit here.
-  **Look up name and artwork again** is worth running after a core or system
-  change, since the system decides which thumbnail directory is searched. It
-  also sets the game's **icon** — the small picture beside its name in lists —
-  from the artwork it finds, which is how a game added before icons existed
-  gets a real one.
-- **Launch options** — override the global fullscreen or notification setting for
-  one game, and append extra arguments. They are appended rather than inserted,
-  because several argument templates end in the ROM path. An override left on
-  *follow the global setting* still picks up later changes to it.
-- **Save and test** — starts the game through Steam, so gamescope, Steam
-  Input and the overlay behave as they do in normal play. It saves first, since
-  the launcher on disk is what Steam runs.
+The editor has three tabs, switched with the bumpers:
+
+| Tab | What's in it |
+| --- | --- |
+| **Game** | Name, artwork, ROM file |
+| **Emulator** | Core or emulator, system, launch options, fixes |
+| **Add-ons** | ROM hacks, updates and DLC |
+
+**Save**, **Save and test** and **Close** sit under all three. Save covers every
+tab except Add-ons, whose changes apply right away.
+
+Here's what each field does:
+
+- **Name** — renaming moves the launcher, since its filename includes the title.
+- **ROM file** — point the entry at a moved file, an SD card, or a better dump.
+  If the core can't read it, it's refused.
+- **ROM hacks** — patch files. RetroArch games only.
+  [More below](#rom-hacks-and-translations).
+- **Updates and DLC** — Switch games on Ryujinx.
+  [More below](#switch-updates-and-dlc).
+- **Core or emulator** — changing this can change the system, so the platform
+  label and the collection follow along.
+- **System** — for cores that cover more than one, which is most of them. It
+  decides the shelf your game sits on, the folder its ROM goes in, and where its
+  cover comes from. Change it to move a game off the wrong shelf, then run
+  **Look up name and artwork again** — the old cover came from the old system.
+- **Name and artwork** — press **Choose the right game** when the automatic
+  match got it wrong. It sets the name as well as the cover, unless you've
+  written your own name. Artwork lands right away; a name change waits for Save.
+  This also sets the game's icon.
+- **Launch options** — override the global fullscreen or notification setting
+  for one game, and add extra arguments. They're added on the end, because
+  several argument templates finish with the ROM path. Leave an override on
+  *follow the global setting* and it still picks up later changes.
+- **Save and test** — launches the game through Steam. It saves first, since the
+  launcher on disk is what Steam runs.
 
 ### ROM hacks and translations
 
-A romhack is distributed as a *patch* — a small `.ips`, `.bps` or `.ups` file
-that describes the difference from the original ROM — and never as a ROM. Send
-the patch to the Deck the same way you send a game, through the transfer page.
-Its row in the transfer list has **Install**, and so does the add panel if you
-pick it there. A patch does not say which game it is for, so Install asks: it
-lists your RetroArch games, with the ones named in the patch's filename first.
+Romhacks come as a *patch* — a small `.ips`, `.bps` or `.ups` file that
+describes the difference from the original ROM. Never as a ROM.
 
-Or open the game in the editor and press **Install a patch**, whose file browser
-opens on the transfer folder. Either way, installing takes the file out of there,
-the same way adding a game moves its ROM out.
+To install one:
 
-**Your ROM file is never changed.** RetroArch applies patches as the game loads,
-from files sitting next to the ROM, so the original is untouched. The plugin
-keeps its own copy of each patch, which is what lets you switch one off without
-losing it.
+1. Send the patch to your Deck the same way you send a game.
+2. Press **Install** on its row in the transfer list.
+3. Pick which game it's for. Patches don't say, so you're asked. Your RetroArch
+   games are listed, with the ones named in the patch's filename first.
 
-Each patch on the list has a switch and a bin. The switch decides whether it is
-applied; the bin removes it and deletes the copy. Both take effect immediately,
-without saving.
+Already added the game? Open it in the editor and press **Install a patch**.
+Either way the file comes out of your transfer folder.
 
-**Several patches can be on at once**, and the order on the list is the order
-RetroArch applies them — which decides who wins where two hacks change the same
-bytes. A patch added later goes at the end.
+> **Note:** your ROM file is never changed. RetroArch applies patches while the
+> game loads, from files sitting next to the ROM. The plugin keeps its own copy
+> of every patch, which is what lets you switch one off without losing it.
 
-The file is checked before it is taken: anything that is not an IPS, BPS or UPS
-is refused, which catches the two ordinary mistakes — picking the ROM instead of
-the patch, and a browser that renamed the download on the way in.
+Each patch on the list has a switch and a bin. The switch turns it on and off,
+the bin deletes it. Both happen right away — no saving.
 
-Two things it cannot do:
+You can have several patches on at once. The order on the list is the order
+RetroArch applies them, which decides who wins when two hacks change the same
+bytes. New patches go on the end.
 
-- **Emulators other than RetroArch have no list.** This is RetroArch reading
-  files as it loads a game, and nothing else here works that way.
-- **Disc games may ignore patches.** RetroArch patches games it loads into
-  memory, and a disc image is usually read straight from the file instead. The
-  list says so before you add anything. It is a warning rather than a refusal,
-  because the answer depends on the core. Zipped ROMs are fine — they are
-  unpacked into memory and patch normally.
+Anything that isn't an IPS, BPS or UPS gets refused. That catches the two usual
+mistakes: picking the ROM instead of the patch, and a browser that renamed your
+download.
 
-A patch you placed beside a ROM yourself is taken onto the list the first time
-you open the editor, so the screen and the emulator agree about what is applied.
+Two things this can't do:
 
-Removing the game deletes its patches too: the copies the plugin keeps, and the
-files it wrote beside the ROM.
+- **Other emulators don't get a list.** This is RetroArch reading files as it
+  loads a game. Nothing else here works that way.
+- **Disc games might ignore patches.** RetroArch patches games it loads into
+  memory, and disc images are usually read straight from the file. You'll get a
+  warning rather than a refusal, because it depends on the core. Zipped ROMs are
+  fine.
 
-ROMhacking.net, where most of these came from for twenty years, stopped
-accepting submissions in August 2024 and now serves its archive through the
-Internet Archive; hacks are found in a lot of places, and the plugin does not
-care which one a patch came from.
+Put a patch next to a ROM yourself? It gets picked up the first time you open
+the editor.
+
+Removing the game deletes its patches too — both the plugin's copies and the
+files next to your ROM.
 
 ### Switch updates and DLC
 
-A Switch game's updates and DLC arrive as `.nsp` or `.nsz` files of their own,
-and each one says which game it is for. So once one is on the Deck there is
-nothing to choose: its row in the transfer list reads *Update v2.0.2 for* the
-game, with **Install**, and picking it in the add panel offers the same
-**Install** instead of adding it as a game. If that game has not been added yet,
-pressing **Install** says so.
+Updates and DLC come as their own `.nsp` or `.nsz` files, and each one says
+which game it belongs to. So there's nothing for you to pick.
 
-**Sent together, added together.** Send a game with its updates and DLC and pick
-the game in the add panel: a row lists what it found beside it, and pressing
-**Add to Steam** adds the game and installs those with it. While it works the
-button becomes a progress bar naming each step, and the message afterwards names
-what went in. A game sent as an `.nsz` is unpacked first; its updates and DLC are
-listed once it is an `.nsp`.
+Send one over and its row in the transfer list reads *Update v2.0.2 for* your
+game, with an **Install** button. Haven't added that game yet? Pressing
+**Install** tells you so.
 
-The game's editor has the same button, **Install an update or DLC**, whose file
-browser opens on the transfer folder. Installing takes the file out of there,
-the same way adding a game moves its ROM. A file you pick from anywhere else is
-copied instead, so yours stays where it is.
+**Sending a game with its updates?** Send them together, then pick the game in
+the add panel. A row lists what it found alongside, and **Add to Steam** adds the
+game and installs the rest with it. The button turns into a progress bar naming
+each step. An `.nsz` gets unpacked first.
 
-The plugin reads the package to tell what it is, so an update meant for another
-game, a DLC for another game, or a whole game picked by mistake is refused
-before anything moves. No keys are needed for that, and nothing is changed in
-Ryujinx's own window: the game just starts with its update and DLC in place.
+From the editor, press **Install an update or DLC**. Installing takes the file
+out of your transfer folder. Pick a file from anywhere else and it gets copied
+instead, so yours stays put.
 
-**The newest update is the one used.** Keeping an older one does no harm, and
-removing the newest puts the one before it back in charge. **Every DLC is on.**
-Each row has a bin, which deletes that file from the Deck.
+The plugin reads the package to see what it is. An update for a different game,
+a DLC for a different game, or a whole game picked by mistake all get refused
+before anything moves. No keys needed for that.
 
-Removing the game from the library deletes its updates and DLC too.
+A few things to know:
 
-Only Ryujinx takes these today. An `.nsz` is unpacked into the `.nsp` Ryujinx
-reads as it installs, straight into the folder it is kept in, so it is written
-once. A game dumped with its update and DLC merged into one file needs none of
-this.
+- **The newest update wins.** Keeping older ones does no harm, and deleting the
+  newest puts the one before it back in charge.
+- **Every DLC is on.** Each row has a bin to delete that file.
+- **Removing the game removes these too.**
+- **Ryujinx only, for now.** A game dumped with its update and DLC already
+  merged into one file doesn't need any of this.
 
 ## Setting variables for every launch
 
-Anything in `~/deckyemu/env.d/*.sh` is read just before an emulator starts, in
-name order. It is there so another plugin — or a file you write yourself — can
-set an environment variable without touching a shortcut's launch options, which
-is the one field two plugins cannot share.
+Drop a script in `~/deckyemu/env.d/*.sh` and it gets read just before an
+emulator starts, in name order.
 
-A file with a mistake in it costs its own variables and not the game. For a
-flatpak emulator, variables belonging to a Vulkan layer — `LSFGVK_*`, `MAKO_*`
-and their off switches — are carried into the sandbox as well, which `flatpak
-run` does not do by itself.
+It's there so another plugin — or a file you write yourself — can set an
+environment variable without touching a shortcut's launch options, which is the
+one field two plugins can't share.
+
+Made a mistake in one? It costs you that file's variables, not the game.
+
+For flatpak emulators, Vulkan layer variables (`LSFGVK_*`, `MAKO_*` and their
+off switches) get carried into the sandbox too, which `flatpak run` won't do on
+its own.
 
 ## Collections
 
-Added games are filed under a Steam collection so they are findable in Big
-Picture. The collection is called `DeckyEmu` unless you rename it.
+Your added games get filed into a Steam collection so you can actually find them
+in Big Picture. It's called `DeckyEmu` unless you rename it.
 
-**One collection per system** is on by default: each system gets its own shelf,
-named by a selectable format. Turn it off and every system shares the one
-collection.
+**One collection per system** is on by default, so every system gets its own
+shelf. Turn it off and they all share one.
 
-Which system a game is comes from the **System** row on the add panel, which
-starts on what the file says: a `.md` is a Mega Drive cartridge whatever else
-its core reads. Where the file says nothing — a `.cue` or an `.iso` names a
-medium, not a system — the core's first system is used, and the row is there to
-correct it before adding. Games added before that row existed had their system
-inferred from whichever system's cover art matched the filename first, which is
-worth knowing if one is on a shelf you did not expect; the editor's **System**
-row moves it.
+Pick how the shelves are named:
 
-| Format | Result |
+| Format | You get |
 | --- | --- |
 | `[{name}] {platform}` (default) | `[DeckyEmu] SNES` |
 | `{platform}` | `SNES` |
@@ -317,470 +265,84 @@ row moves it.
 | `{name} · {platform}` | `DeckyEmu · SNES` |
 | `{name} - {platform}` | `DeckyEmu - SNES` |
 | `{platform} ({name})` | `SNES (DeckyEmu)` |
-| `{name}\n{platform}` | two lines — but Steam renders collection titles on one line, so expect a space |
+| `{name}\n{platform}` | two lines — but Steam puts collection titles on one line, so expect a space |
 
-An install that already has games keeps whichever layout those games were filed
-under, so an upgrade never moves them. Only a new install takes the default.
+Which system a game counts as comes from the **System** row on the add panel.
+It starts on whatever the file says: a `.md` is a Mega Drive cartridge no matter
+what else its core reads. When the file doesn't say — a `.cue` or an `.iso` names
+a medium, not a system — you get the core's first system, and the row is there
+for you to fix it before adding.
 
-**Platform names** are short by default: `SNES` rather than `Super Nintendo
-Entertainment System`, which is 46 characters of shelf header. Unlisted systems
-fall back to dropping the manufacturer prefix (`Acme - Wonder Machine` →
-`Wonder Machine`).
+> **Note:** games added before that row existed got their system from whichever
+> system's cover art matched the filename first. If one of yours is on a shelf
+> you didn't expect, edit it and change **System**.
 
-Renaming the collection, or toggling per-platform naming, **moves games that were
-already added** rather than only affecting the next one. An old collection is
-deleted only once it is empty, never while it still holds games dragged in by
+Platform names are short by default — `SNES`, not `Super Nintendo Entertainment
+System`, which is 46 characters of shelf header. Systems that aren't listed just
+lose the manufacturer prefix (`Acme - Wonder Machine` → `Wonder Machine`).
+
+Rename the collection or toggle per-platform naming and your existing games move
+too, not just the next one you add. Already have games? You keep whatever layout
+they were filed under, so updating never shuffles them. Old collections get
+deleted once they're empty, never while they still hold games you dragged in by
 hand.
 
-## Orphaned entries
+## Fixing entries that have drifted
 
-**Check for orphaned entries** on the Library tab reports everything that has
-drifted out of sync — a ROM or launcher that has gone, a record whose Steam
-shortcut was deleted, launcher scripts nothing references, and games left behind
-by a previous install under a different plugin name.
+Press **Check for orphaned entries** on the Library tab. It reports everything
+out of sync:
 
-It also reports the other direction: shortcuts **Steam** has that the plugin's
-records do not account for, read from Steam's own `shortcuts.vdf`. They are split
-by what can be done about each:
+- A ROM or launcher that's gone.
+- A record whose Steam shortcut you deleted.
+- Launcher scripts nothing points at.
+- Games left over from a previous install under a different plugin name.
+
+It checks the other direction too, reading Steam's own `shortcuts.vdf` for
+shortcuts the plugin doesn't have records for:
 
 | | |
 | --- | --- |
-| **Cannot start** | The launcher script is gone, so the entry does nothing when launched. Removing it is all there is to do |
-| **Duplicate** | A tracked game already runs this same launcher, so it appears twice in Steam. Removing it keeps the tracked copy |
-| **Untracked** | It still plays, but the plugin has no record of it, so editing and removing from the plugin will not work |
+| **Cannot start** | The launcher script is gone, so the entry does nothing. Removing it is all you can do |
+| **Duplicate** | A tracked game already runs this launcher, so it shows up twice in Steam. Remove it and you keep the tracked copy |
+| **Untracked** | It still plays, but the plugin has no record of it, so you can't edit or remove it from here |
 
-Ownership is decided by the executable being one of the plugin's launcher
-scripts, never by the name — two shortcuts called *Super Mario 3D World* could be
-one of these and one a real Steam game.
+> **Note:** ownership is decided by the executable being one of the plugin's
+> launcher scripts, never by the name. Two shortcuts can share a title where one
+> of them is a real Steam game.
 
-When any are found, the Quick Access panel says so and offers the way through,
-since none of this is visible by looking at your library: an entry whose launcher
-was deleted looks like an ordinary game that happens to do nothing.
+Collections get checked three ways as well: games **missing** from their shelf,
+games still on a shelf they've **left**, and shelves left **empty**. A game
+recorded as filed might simply not be there, because the collection got deleted
+in Steam or filing it failed at the time.
 
-Forgetting a record also takes the game out of the collection it was filed into,
-deleting that collection once it is empty.
+Every fix asks first, and tells you exactly what it'll touch — games, shortcuts,
+files or collections, one to a line. The list rebuilds after each fix.
 
-Collections are checked here too, in all three directions — games **missing**
-from the shelf they belong to, games still on one they have **left**, and shelves
-left **empty**. None of the three is answerable from the plugin's own records: a
-game recorded as filed can simply not be there, because the collection was
-deleted in Steam or because filing it failed as it was added. Each is reported
-before anything is done about it, and the list is rebuilt after every fix.
+When anything turns up, the Quick Access panel says so and offers you the way
+through. You'd never spot this by looking at your library: an entry whose
+launcher was deleted looks like an ordinary game that happens to do nothing.
 
-Every fix asks first, and the question names what it will touch: the games, the
-shortcuts, the files or the collections, one to a line. The card tells you how
-many, which is enough to decide whether something is wrong; the list tells you
-what, which is what you need before pressing.
-
-A previous install can be **discarded** as well as adopted. Games with no
-surviving shortcut are not offered for adoption at all, and discarding deletes
-only the old record — the launcher scripts stay, because they are why any
+**Found a previous install?** You can discard it instead of adopting it. Games
+with no surviving shortcut aren't offered for adoption at all, and discarding
+only deletes the old record — the launcher scripts stay, because they're why any
 still-working shortcut works.
 
-## Backing up save data
-
-**Back up save data**, on the Library tab, collects the saves of every emulator
-on this Deck into one file and offers it to a phone or PC on the same network —
-the same QR code and six-digit code that [send files the other
-way](transfers.md#sending-files-from-another-device). Nothing on the Deck is
-changed or removed by it.
-
-It is worth doing before anything on this page that deletes: removing a game,
-removing everything, and uninstalling an emulator with its data all take saves
-with them, and none of that can be undone.
-
-Each emulator is a row you can untick, with what it would contribute:
-
-| | |
-| --- | --- |
-| **Most emulators** | Only the save directories — RPCS3's saves are 28 KB beside 367 MB of games and firmware in the same folder, and the games are not in the backup |
-| **Some emulators** | Everything they keep, including configuration. The row says so, because it is the difference between a few megabytes and the emulator's whole directory |
-
-RetroArch is asked where its own saves are rather than assumed, so a Deck that
-also has EmuDeck — which points RetroArch at `~/Emulation/saves` — is backed up
-from the directory actually in use.
-
-**The file is deleted from the Deck when you press Done**, so download it first.
-It is a copy of your saves, and leaving one lying in the plugin's working
-directory is a copy nobody asked to keep. It also goes when the transfer server
-times out, as everything else there does.
-
-**A save folder that is a link is not included, and says so.** Moving an
-emulator's saves to the SD card and linking them back is a common trick, and
-nothing here follows such a link — not the .zip and not the copy to a storage.
-Rather than quietly leaving those saves out, the emulator's row on **Back up
-save data** names the folders it skipped, and so does the diagnostic report.
-Move the files themselves back under the emulator's own directory if you want
-them carried.
-
-## Setting up cloud storage
-
-**Set up cloud storage**, under **Save data**, chooses somewhere off the Deck
-for saves to be copied to. The storage is yours and the account is yours: the
-Deck only writes down how to reach it, and the password stays on the device.
-
-The form is filled in from a phone or PC — the same QR code and six digits as
-everything else here — because it means typing an address, a username and a
-password, and the on-screen keyboard is the wrong tool for that.
-
-Two sorts of storage, on the same page.
-
-**Ones you type the details for**, where the form is all there is:
-
-| | |
-| --- | --- |
-| **WebDAV** | The address of the WebDAV endpoint, and the username and password you use for it |
-| **SFTP or SSH** | A hostname, a username and a password — a NAS or any box you can already log into. The port is asked for and can be left empty, which means the usual one |
-| **FTP** | The same, for a server that speaks plain FTP. FTP servers offer no checksums, so copies there compare size and modification time instead — which is what rclone does by default and what catches a save that changed without changing size |
-| **S3 storage** | The endpoint and an access key pair — you are not asked which S3 it is, because the generic settings are what save files need |
-
-**Ones you sign in to** — Dropbox, OneDrive and pCloud. Pick one and the
-page gives you a **Sign in** link. Log in as you normally would, and the browser
-will land on a page that does not load. **That is expected.** Copy the address
-of that page and paste it into the box, and the Deck takes it from there.
-
-The reason for that last step: signing in sends the answer back to
-`localhost`, which from your phone means your phone. The answer is still sitting
-in the address of the page that failed, so pasting it across is what gets it to
-the Deck. Nothing is typed on the Deck either way.
-
-Google Drive is not offered. The shared credentials rclone uses for it are being
-retired during 2026, and the alternative is registering your own application in
-Google's developer console — more work than this feature is worth.
-
-For the storages you sign in to rather than type details for, the sign-in opens
-in its own tab and ends on a page that will not load — that is expected, and the
-address of that page is what carries the code. Copy it, come back to the setup
-tab, and press **Paste the address and finish**: one press reads the clipboard,
-hands the address to the Deck and completes the sign-in. Pasting it into the box
-underneath does the same thing without a second press, for a browser that will
-not share the clipboard.
-
-**WebDAV is taken as typed.** The address goes to the server exactly as you
-enter it, with nothing added and no assumptions about which software is behind
-it — so it is the full WebDAV endpoint, the one your server documents, rather
-than the address you would open in a browser. Copies there are compared by size
-and modification time, because a WebDAV server rarely offers a checksum — which
-is why the Deck asks it to store modification times, and why a server that
-cannot is one where a save that changed without changing size could be missed. Some servers publish how much room
-is left and some do not; where yours does not, the storage simply shows no
-figure.
-
-The page saves the settings and then **checks that the storage actually
-answers**, so a mistyped hostname is a sentence on the screen you are looking at
-rather than a backup that fails days later. If it cannot be reached, nothing is
-kept.
-
-**You are never asked to name anything.** The service is what it is called, on
-the page and on the Deck. Something under the hood does need a name for its
-config file, so one is picked for you and never shown.
-
-Once a storage is set up, the row says so: it reads **Change where saves go**
-and names the service — "Saves go to Dropbox". Where the service will say who you are
-signed in as, that is shown too; most will not, and Dropbox is one of them, so
-the service alone is often all there is to show.
-
-Open it again and every storage set up on this Deck is listed, with **In use**
-beside the one saves go to. Pick another to switch, or sign out of one to remove
-it and its credentials. Signing out of the one saves currently go to hands that
-job to the next storage on the list rather than to nothing, and the question asks
-it that way — *Saves go to Dropbox after this* — because a Deck with three
-storages signed in and no destination would stop copying without saying so. Sign
-out of the last one and cloud saves is off: nothing is copied anywhere, and the
-transfer tool stops being kept for it, until you set a storage up again. There
-is no separate switch for that — the storages are what the feature is, and one
-more toggle saying the same thing is one more thing to disagree with itself.
-**Add another** puts the code back on screen for a
-second account; it says it is waiting, and when the sign-in finishes on the
-phone the Deck returns to the list by itself with the new storage marked in
-use — the two screens take turns because the code and a list of storages do not
-both fit on a Deck. Two accounts of the same service are numbered — here and
-in **Restore save data**, so the storage you copy to and the storage you restore
-from are named the same way — because that is the one case where the service
-alone cannot tell two rows apart.
-
-**That part stays on the Deck.** The web page exists because signing in needs a
-browser and a keyboard; choosing between accounts needs neither, and it is a
-decision about this device.
-
-Setting this up copies nothing. It only records where saves would go.
-
-## Sending saves to the cloud
-
-**Back up save data** is where it happens, because it is the same decision — which
-emulators, and where to. Tick what you want and the dialog offers two
-destinations: **Copy to a device** makes the .zip and hands it to a phone or PC as
-it always did, and **Copy to Dropbox** (or whichever storage is in use) sends the
-same saves straight up. The two are named the same way on purpose — the same
-saves are going somewhere either way, and where is the only difference.
-
-What goes up is loose files, one folder per emulator, not a zip. That is what
-makes a second copy cheap: only what actually changed is sent, rather than a
-hundred megabytes to record a two-kilobyte change. They go up dozens at a time
-rather than one after another, because a save is a small file and almost all of
-the time is spent waiting for the storage to answer rather than sending
-anything: sixty of them measured 50 seconds to Dropbox one way and 11 the other,
-and 168 seconds to pCloud against 11. You can open your own storage
-in its website or app and look at it — it is laid out as
-`DeckyEmu/saves/<emulator>/` and you can delete an emulator's saves from there
-without any tool.
-
-**Everything that removes or replaces something is written down.** Safety copies
-ageing out, saves moved aside by a copy, a restore that overwrote what was here,
-a storage signed out of — each is one line in `destructive.log`, beside the
-settings, with what it was and when. The ordinary log keeps only the last few
-runs and rotates the rest away, which is fine for progress lines and useless for
-the question "what removed this?" a week later. That file is never rotated.
-
-**Nothing is ever deleted from your storage by this plugin.** A save removed from
-the Deck stays in the cloud, and uninstalling an emulator does not empty its
-folder there. That is deliberate: the alternative is one uninstall quietly taking
-your backup with it.
-
-**Copying always sends the Deck's version.** A file already in the cloud that is
-different gets the Deck's copy — so if you restore an old save and then press
-copy, the cloud now holds the old one.
-
-**Nothing this plugin does automatically can destroy a save.** That is what the
-replaced copies are for, and the case they exist for is an ordinary one: a save
-gets corrupted, or you restore an old one, or a game overwrites a slot — then
-you play for five minutes, quit, and the automatic copy sends that state to the
-cloud on top of the good save. Without this it would be gone from both places.
-
-Whatever a copy replaced is kept — in either direction, so taking the cloud's
-copies keeps yours too — and **Restore save data** has it behind a row reading
-*Dropbox — earlier copies (3)*. Open that and each one says which saves it holds
-and when they were set aside: *RetroArch — 3 Sep, 22:10*. Choosing one shows what
-it contains before anything is put back, exactly like choosing a backup: under each storage you will see rows like *Replaced 3 Sep,
-14:51*, one per press that overwrote something, newest first. Choosing one shows
-the same per-emulator rows as anything else and puts those saves back the same
-way.
-
-The list scrolls, showing about three at a time — with several emulators there
-are more of these than of anything else on the screen, and the buttons have to
-stay reachable. Every list in these dialogs is that shape: the emulators to back
-up, the backups and storages to restore from, the storages themselves. Three
-rows and the rest scrolled, so no list can push the buttons off the bottom.
-
-Ten are kept, and ten are what you are offered — the same number on purpose, so
-nothing sits in your storage that you cannot reach from the Deck. One press is
-one of those ten, whether it covered one emulator or fourteen: a copy is a thing
-that happened, so it is one row rather than fourteen rows sharing a timestamp. Older ones are removed after each copy, rather than
-being left somewhere you would need a web browser and another device to reach.
-Your saves themselves are never deleted by any of this; only these safety copies
-age out.
-
-## Copying when a game closes
-
-Once a storage is set up this happens on its own: close a game, and that
-emulator's saves are copied up. Only that emulator, and only the files that
-changed — closing a Mega Drive game sends a few kilobytes.
-
-There is nothing to press and no dialog appears. If you want to know it is
-working, the switch under **Change where saves go** — *Copy saves when a game
-closes* —
-says when saves last went up, and reads *Copying saves now* while one is
-actually running. Turning it off is worth doing if you are on a hotspot and
-would rather choose when to spend the connection.
-
-When something has not made it up yet, the last row of the **Save data**
-section says so — *Saves not copied yet: RetroArch and DuckStation have saves
-newer than your storage* — and pressing **Copy them now** sends those emulators
-up there and then, with a bar under the button while it does. It is worth having because the copy after a game only covers the emulator
-you were playing, so one that failed while you were offline waits for the next
-time you play *that* emulator, which might be never.
-
-**If saves stay uncopied, the plugin's own panel says so.** The row above is on
-the Library tab, where you would have to go looking. When something is still
-waiting after a later copy has been and gone — a storage that has stopped
-accepting saves, or an emulator you have not opened since one failed — nothing
-is going to pick it up on its own, so that one appears on the plugin's front
-panel with the same button. It says nothing about the ordinary wait between
-quitting a game and its copy landing, which would be a light on most of the time
-and mean nothing.
-
-Only one copy runs at a time. Press **Copy now** or start a restore while that
-one is still going and you are asked to try again in a moment, rather than
-having two of them writing the same saves in opposite directions.
-
-It does not run from the launcher, which is why your library tile goes back to
-"Stopped" the moment you quit rather than waiting for the network. The plugin
-notices the game has ended and does the copying itself.
-
-## Saves coming back before a game starts
-
-The other half of the same idea. Starting a game checks your storage for saves
-this Deck does not have, and brings them down before the emulator opens
-anything. Nothing is overwritten by this — a file that is not here cannot
-replace one that is — so it happens silently and asks nothing.
-
-If a fetch takes more than a moment, a dialog says what is happening — *Getting
-your saves* — with a bar and a **Start now** button, so you are never stuck
-looking at a black screen wondering whether the game failed. A launch with
-nothing to fetch shows nothing at all.
-
-**It is one request, and it has a deadline.** The launch waits while it happens,
-usually well under a second, and the game starts within about six seconds
-whatever your storage is doing. If the plugin cannot answer at all — the network
-is gone, decky is reloading — the launcher gives up on its own and starts the
-game with the saves already on the Deck. A game that will not start is worse than
-a game with an old save.
-
-**One case does ask, the way Steam asks it.** If a save exists both here and in
-your storage and the two are different, the game waits and you get a dialog.
-
-**It has its own switch**, above the other one — *Check
-for newer saves when a game starts*. On by default, because it is the half that
-makes a second device work: without it saves only ever go up. Turn it off and a
-game starts straight away and uses whatever is on the Deck, while copies still go
-up when you stop playing. Worth doing on a slow connection, or if this Deck is
-the only place you play and the copies are there as a backup rather than to be
-read back.
-
-**It is about the emulator, not the one game.** Saves cannot reliably be traced
-to a single game — RetroArch names them after the ROM, but RPCS3 files by title
-id and a PS1 memory card holds a dozen games in one file — so a conflict covers
-everything that emulator keeps, and the dialog says so. Starting a RetroArch
-game can therefore raise a question about a save belonging to a different one,
-and whichever button you press applies to all of them.
-
-The dialog gives you a date for each side — *This Deck: changed 2 hours ago* / *Cloud storage: changed
-20 minutes ago* — the files that differ, and three answers:
-
-| | |
-| --- | --- |
-| **Play with this Deck's** | Nothing is written. Your storage keeps its copy, and the next copy up replaces it — keeping what it replaced |
-| **Play with the cloud's** | The cloud copies come down first, and the game starts with them |
-| **Don't start** | The game does not launch at all, so you can go and look before deciding |
-
-Neither of the first two loses anything. It is a question rather than a decision
-because nothing here can tell which copy you want. And the plugin does not ask
-your storage provider what it thinks: a small record is written beside your
-saves each time they go up, and the only thing compared is whether that record
-is the one this Deck wrote. That works the same on every service — Dropbox and
-pCloud cannot even store a file's modification time without re-uploading it,
-which is exactly the kind of difference this avoids depending on.
-
-**You are only asked once.** Whichever you choose is remembered, so the same
-disagreement is not put to you again next time you play. If that other device
-writes again, that is a new situation and you will be asked about that one.
-
-The dialog waits for you — the game is paused, not loading, and pausing costs
-nothing. If it is left long enough that something has clearly gone wrong, the
-game starts with this Deck's saves, which writes nothing.
-
-**Restoring an old backup and then playing brings some of it back.** A restore
-from a .zip only writes to this Deck; your storage still holds what it held, so
-the next launch of that emulator brings down the files it has and this Deck no
-longer does — that is the same rule as ever, since a file that is only up there
-cannot overwrite anything here. If you have deliberately gone back to an older
-set of saves, turn *Check saves before a game starts* off, or copy the older set
-up first so the two agree.
-
-## When there is no network
-
-Nothing about cloud saves stops you playing. With the Deck offline, the check
-before a game gives up in about a second and the game starts on the saves it
-already has — which is what would have happened anyway.
-
-Closing the game still tries. A copy that cannot reach your storage rides out a
-short outage, and if it fails properly nothing is written down as having been
-sent, so the save goes up on the next copy instead: the next game you close, or
-**Copy now**. What you played is not lost by having been played somewhere with
-no signal.
-
-## Restoring from the cloud
-
-**Restore save data** lists your signed-in storages beside the backup files on the
-Deck, because from that screen they are the same thing — somewhere a backup is.
-The one saves are being copied to comes first and is marked **In use**, the same
-words the setup dialog uses, because it is the one a restore usually means.
-Pick one and you get the same per-emulator rows and the same two buttons:
-**Restore missing** writes only what is not already here, and **Restore all**
-writes the lot, overwriting, exactly as with a .zip. The two are named the same
-way on purpose — both put saves back, and how much of the backup they use is the
-only difference. That the second one overwrites and cannot be undone is said on
-the confirmation it asks for.
-
-Either way, a restore that would not fit on the Deck is refused before anything
-is written, saying what it needs and what is free. Half a save set is worse than
-none of it, and the sizes are known before a byte moves. It counts what the
-restore would actually write, so restoring what is missing is not refused
-because the whole backup would not fit twice.
-
-The list appears before it is finished. The emulator names come back in about a
-second and each row then says what it holds as its own answer arrives, so the one
-you came for is usually readable while the rest are still counting — the line
-under the storage's name reads *Reading what it holds - 6 to go* until they have
-all answered. Both buttons wait for that, because until then the totals are not
-the totals.
-
-**Every account is offered, not just the one saves currently go to.** This is what
-makes changing storage cost nothing. If your saves are in Dropbox and you switch
-to pCloud, nothing is moved, nothing is copied across and nothing is stranded —
-Dropbox keeps exactly what it had, and it is still one press away on this screen
-whenever you want it back. New saves simply start going to pCloud.
-
-An emulator you no longer have installed still shows in the list, marked, rather
-than being hidden — so you can see that your Vita saves are safe on a Deck with no
-Vita3K on it right now.
-
-## Restoring a backup
-
-Press **Restore save data** under **Save data** on the Library tab, beside the
-button that made it. With no backup on the Deck yet, **Send a backup to this
-Deck** in that dialog opens the [same transfer
-flow](transfers.md#sending-files-from-another-device) used for everything else —
-you do not have to go and find it. It finds the file itself — you do not point at it, and it is recognised by what is
-inside it rather than by its name, so renaming it changes nothing. With more than
-one on the Deck, you pick which.
-
-**A backup does not land in the transfer folder.** It is recognised as it
-arrives and filed under `~/deckyemu/backups/` instead, so it never appears in the
-ROM picker as something to add to Steam. Everything else you send — ROMs, BIOS
-files, definitions — stays exactly where it lands.
-
-The choice that matters is which of the two buttons you press:
-
-| | |
-| --- | --- |
-| **Restore missing** | Writes only the saves that are **missing** here. Anything already on the Deck is left exactly as it is, so a game played since the backup cannot lose its progress |
-| **Restore all** | The backup's copy wins and whatever is on the Deck now is gone. What you want after wiping a Deck, or when the saves here are the ones you are trying to get rid of. It asks first, and the question says how many files it would overwrite. Restoring everything from a storage also takes that storage's record of what it holds, so the next game to close does not copy the same saves straight back up |
-
-Restoring everything **from a storage** offers a way back: **Keep a copy first**
-uploads the saves it is about to overwrite, and they appear under earlier copies
-as one more dated row — so a restore pressed by mistake is one more restore away
-from being undone. **Replace without keeping** is the other button, for a Deck
-with nothing on it worth keeping and no reason to wait for an upload. Restoring
-from a .zip on the Deck has nowhere to put such a copy, so it asks the way it
-always did.
-
-The screen says how many files are in the backup and how many of them are
-already on this Deck before you press anything, so which of the two you want is
-a decision rather than a guess. **There is no undo for replacing** — take a
-backup first if you are unsure.
-
-Saves for an emulator that is not installed here are named and left in the
-archive rather than written into a folder nothing reads. Install that emulator
-and restore again.
-
-**The backup is deleted from the Deck once it has been read**, the same way
-unpacking a zip consumes it — a restored 75 MB archive left lying there is one
-nothing in Game Mode could remove. The copy you sent it from is untouched, so
-restore again by sending it again. A restore that *fails* leaves the file, since
-then it is the way to try again.
+Forgetting a record also pulls the game out of its collection, and deletes that
+collection once it's empty.
 
 ## Removing everything
 
-**Remove all DeckyEmu games from Steam**, at the bottom of the Library tab,
-undoes everything the plugin has added: every shortcut, every launcher script,
-and any collection it created that ends up empty. It also deletes **the games it
-put on this Deck** — ROMs filed under a system, and games unpacked into an
-emulator — for the same reason removing a single game does. A ROM you keep
-somewhere of your own was never the plugin's to move and is left alone.
+**Remove all DeckyEmu games from Steam** sits at the bottom of the Library tab.
+It undoes everything the plugin added: every shortcut, every launcher script,
+and any collection it made that ends up empty.
 
-A collection is deleted only once it is empty, so one holding games dragged in by
-hand survives. Shelves left empty by anything else — a shortcut deleted in Steam,
-an earlier reset — are swept at the end.
+> **Warning:** this also deletes the games the plugin put on your Deck — ROMs
+> filed under a system, and games unpacked into an emulator. [Back up your
+> saves](saves.md#backing-up-save-data) first. ROMs you keep somewhere of your
+> own are left alone.
 
-It can take a while, so it reports what it is deleting as it goes.
+Collections only get deleted once they're empty, so one holding games you
+dragged in by hand survives. Shelves left empty by anything else — a shortcut you
+deleted in Steam, an earlier reset — get swept up at the end.
+
+It takes a while, and tells you what it's deleting as it goes.
