@@ -16,7 +16,8 @@ Bring your own instead, if you would rather.
 **Or a native port**, where a game has been rebuilt to run on the Deck with no
 emulator at all — Dusklight, Ship of Harkinian, 2 Ship 2 Harkinian, Ghostship,
 Starship, SpaghettiKart, Lighthouse, PaperBoat and DevilutionX. Each plays one
-game and needs the dump you already own.
+game: point it at the dump you already own and it lands in Steam like any other,
+artwork and all, with its own menu on Select+Start.
 
 ![The Emulators tab in the settings page, listing Azahar, Cemu, Dolphin and
 DuckStation with the system and file types each one
@@ -38,11 +39,6 @@ of your own, where closing a game copies that emulator's saves up on their own.
 with its own wide artwork, beside games bought from
 Steam.](docs/images/a-game-in-steam.jpg)
 
-**Run a native port** where one exists. Some games have been rebuilt to run on
-the Deck with no emulator at all: import a list of them, point one at the dump
-you already own, and it lands in Steam like any other game — artwork and all,
-with its own menu on Select+Start.
-
 Everything happens with a controller, from the Quick Access panel. The one
 exception is [Decky Loader](https://github.com/SteamDeckHomebrew/decky-loader)
 itself, which is installed from Desktop Mode: that is the only trip you make.
@@ -58,51 +54,23 @@ add a PlayStation 4 `.pkg`,
 that uses one, a hotkey helper, if you add a native port, and a copy of rclone,
 if you switch on cloud saves.
 
-## Quick start
+## Install it
 
-You need [Decky Loader](https://github.com/SteamDeckHomebrew/decky-loader),
-which is the one thing installed from Desktop Mode. Everything below happens in
-Game Mode with a controller, DeckyEmu's own install included — and nothing else
-is needed first: RetroArch and its cores install from the plugin, and an
-existing RetroArch is detected automatically.
+In Decky's settings, give **Install from URL** this address:
 
-1. Open the **Decky** menu in the Quick Access panel and go to its settings.
-2. Find **Install from URL** and give it:
+```
+https://get.deckyemu.xyz
+```
 
-   ```
-   https://get.deckyemu.xyz
-   ```
+Decky Loader is the only prerequisite, and nothing else is: RetroArch and its
+cores install from the plugin, and an existing RetroArch is found on its own.
 
-3. Confirm Decky's prompt. DeckyEmu appears in the Quick Access panel.
+[Installing](docs/installing.md) has the rest — an address you can verify before
+pasting, the manual install for a Deck that cannot reach GitHub, and what lands
+where on your device.
 
-That short address redirects to the latest release, and is kept short because it
-is typed on an on-screen keyboard. To paste an address you can verify instead —
-reasonable, for a URL that installs software — use
-`https://github.com/elpendor/deckyemu/releases/latest/download/deckyemu.zip`.
-
-For a Deck that cannot reach GitHub, see
-[the manual install](docs/installing.md#manual-install).
-
-## Adding your first game
-
-1. **Send the ROM.** *Send files from another device* in the Quick Access panel
-   shows a QR code, or a short address and a six-digit code. The file lands ready
-   to add.
-2. **Pick a core.** Only cores that can run that file are offered, the one you
-   used last for it first — and for a core covering several systems, which one
-   this game is, starting on what the file says. If nothing installed can run it,
-   the cores that could are offered there and then.
-3. **Add to Steam.** `Super Mario World (USA) [!].smc` becomes *Super Mario
-   World*, boxart is applied, and the game is filed under a collection so it is
-   findable rather than lost among every other non-Steam shortcut.
-
-One ROM at a time, so you see the core, the name and the boxart before anything
-reaches your library. Games added this way are tracked, so the plugin can remove
-a shortcut and its launcher later without touching your ROM.
-
-**[docs/getting-started.md](docs/getting-started.md) walks through it properly**
-— install to first game in three steps, then the everyday tasks and a
-symptom-by-symptom list for when one of them misbehaves.
+Then [Getting started](docs/getting-started.md) walks from there to a game
+running: send a ROM, pick what runs it, add it to Steam.
 
 ## Documentation
 
