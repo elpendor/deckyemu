@@ -42,6 +42,10 @@ jobs:
       # break without anybody touching the repository.
       - run: pip install mkdocs==1.6.1 mkdocs-material==9.5.44
 
+      # The site's front page is the README, with its links moved down one
+      # directory. Generated rather than committed so there is one of it.
+      - run: python scripts/readme_as_index.py
+
       # `--strict` fails on a broken internal link or a page missing from the
       # nav, which is the class of rot the hand-written Contents lists had.
       - run: mkdocs build --strict

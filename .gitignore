@@ -75,3 +75,6 @@ bin/
 
 # MkDocs output. The site is built in CI, never committed.
 /site/
+
+# Generated from README.md at build time by scripts/readme_as_index.py.
+/docs/index.md

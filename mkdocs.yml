@@ -46,6 +46,9 @@ theme:
 # Reading order, not alphabetical. Everything a first-time reader needs is in
 # the first group; the last two are for people writing definitions or code.
 nav:
+  # Generated from the README by scripts/readme_as_index.py, so the site's
+  # front page and the repository's are one file.
+  - Home: index.md
   - Getting started: getting-started.md
   - Setting up:
       - Installing: installing.md
