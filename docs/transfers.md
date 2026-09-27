@@ -3,7 +3,7 @@
 Sending ROMs, BIOS files and emulator definitions from another device, and
 where each one ends up.
 
-Back to [the README](../README.md).
+Back to [the README](https://github.com/elpendor/deckyemu#readme).
 
 **Contents** — [Sending files from another device](#sending-files-from-another-device) ·
 [Fetching a definition by link](#fetching-a-definition-by-link) ·

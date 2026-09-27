@@ -3,7 +3,7 @@
 Installing RetroArch and its cores, the launch behaviour this plugin sets, the
 menu combo, and achievements.
 
-Back to [the README](../README.md).
+Back to [the README](https://github.com/elpendor/deckyemu#readme).
 
 **Contents** — [Installing RetroArch and cores](#installing-retroarch-and-cores) ·
 [Fullscreen and RetroArch's on-screen chatter](#fullscreen-and-retroarchs-on-screen-chatter) ·

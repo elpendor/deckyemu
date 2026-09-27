@@ -1,0 +1,82 @@
+site_name: DeckyEmu
+site_description: >-
+  A complete emulation setup for the Steam Deck: install emulators, transfer
+  ROMs, add games to Steam, back up saves — all with a controller.
+site_url: https://elpendor.github.io/deckyemu/
+repo_url: https://github.com/elpendor/deckyemu
+repo_name: elpendor/deckyemu
+edit_uri: edit/main/docs/
+
+# `docs/` unchanged: the same markdown GitHub renders when somebody browses the
+# repository. This builds a second view of it, never a second copy.
+docs_dir: docs
+site_dir: site
+
+theme:
+  name: material
+  language: en
+  icon:
+    repo: fontawesome/brands/github
+  features:
+    # The left-hand list stays put while a page scrolls, which is what makes a
+    # 780-line page navigable.
+    - navigation.instant
+    - navigation.tracking
+    - navigation.top
+    - toc.follow
+    - search.highlight
+    - search.suggest
+    - content.action.edit
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: brown
+      accent: brown
+      toggle:
+        icon: material/weather-night
+        name: Dark theme
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: brown
+      accent: amber
+      toggle:
+        icon: material/weather-sunny
+        name: Light theme
+
+# Reading order, not alphabetical. Everything a first-time reader needs is in
+# the first group; the last two are for people writing definitions or code.
+nav:
+  - Getting started: getting-started.md
+  - Setting up:
+      - Installing: installing.md
+      - RetroArch and cores: retroarch.md
+      - Emulators and ports: emulators.md
+      - Transfers: transfers.md
+  - Everyday:
+      - Library and saves: library.md
+      - Artwork: artwork.md
+      - Updates and problems: updates.md
+  - Going further:
+      - Adding an emulator: emulator-definitions.md
+      - Development: development.md
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.highlight
+  - pymdownx.superfences
+  # The docs use ```jsonc for definition examples, which highlight.js does not
+  # know; this keeps them as plain blocks rather than failing the build.
+  - pymdownx.inlinehilite
+
+plugins:
+  - search
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/elpendor/deckyemu

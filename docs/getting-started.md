@@ -3,7 +3,7 @@
 From a plugin you have just installed to a game running, in order, with nothing
 that needs Desktop Mode or a keyboard.
 
-The rest of [docs/](.) is the reference — every setting, every table, every
+The rest of these pages are the reference — every setting, every table, every
 option, a page per subject. This is the walkthrough: what to do first, second
 and third, and what to do when one of them does not work.
 

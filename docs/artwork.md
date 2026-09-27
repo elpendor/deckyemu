@@ -3,7 +3,7 @@
 Where cover art comes from, how a wrong match is avoided, and getting a
 SteamGridDB key in without a keyboard.
 
-Back to [the README](../README.md).
+Back to [the README](https://github.com/elpendor/deckyemu#readme).
 
 **libretro thumbnails** need no setup and no API key. They are scans of the
 physical box, so their shape varies by console while Steam's capsule is 600x900

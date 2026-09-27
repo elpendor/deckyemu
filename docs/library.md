@@ -3,7 +3,7 @@
 Starting and editing a game, how games are grouped in Big Picture, backing up
 and restoring save data, and putting things back in order.
 
-Back to [the README](../README.md).
+Back to [the README](https://github.com/elpendor/deckyemu#readme).
 
 **Contents** — [Starting a game](#starting-a-game) ·
 [Editing a game](#editing-a-game) ·

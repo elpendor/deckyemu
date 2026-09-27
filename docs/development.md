@@ -2,7 +2,7 @@
 
 How the plugin is put together, how to build it, and how to run it against a
 real Deck. None of this is needed to use it -- [getting-started.md](getting-started.md)
-is the walkthrough, and the rest of [docs/](.) is the reference.
+is the walkthrough, and the rest of these pages are the reference.
 
 ## How the pieces fit
 

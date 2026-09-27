@@ -3,7 +3,7 @@
 The one-press catalog, moving between published builds, and registering an
 emulator yourself.
 
-Back to [the README](../README.md).
+Back to [the README](https://github.com/elpendor/deckyemu#readme).
 
 **Contents** — [Installing an emulator](#installing-an-emulator) ·
 [Unpacking a PS4 package](#unpacking-a-ps4-package) ·
@@ -79,7 +79,7 @@ install is verified and a rollback is not.
 Several emulators are not playable as they ship — a keyboard is bound instead of
 a controller, or they start in a window — so installing one also writes a
 controller configuration and turns fullscreen on. Those values are not guesses;
-where they came from is under [Credits](../README.md#credits).
+where they came from is under [Credits](https://github.com/elpendor/deckyemu#credits).
 
 The same pass turns off whatever an emulator draws over the game. On a desktop a
 menu bar that slides in, a notification in the corner or a mouse pointer are

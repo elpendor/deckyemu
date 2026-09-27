@@ -3,7 +3,7 @@
 Installing it with a controller, the Desktop Mode fallback for a Deck that
 cannot reach GitHub, and what the plugin puts on your Deck.
 
-Back to [the README](../README.md).
+Back to [the README](https://github.com/elpendor/deckyemu#readme).
 
 **Contents** — [Installing](#installing) · [Manual install](#manual-install) ·
 [Where things live](#where-things-live) · [Uninstalling](#uninstalling)

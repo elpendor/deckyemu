@@ -1,0 +1,64 @@
+name: Docs
+
+# **Manual until somebody turns it on.** Publishing puts a website on the open
+# internet under the repository's name, which is not a thing to start happening
+# as a side effect of editing a paragraph. Add the `push` trigger below once the
+# first dispatched run has produced a site worth keeping.
+#
+#  on:
+#    push:
+#      branches: [main]
+#      paths: ["docs/**", "mkdocs.yml", ".github/workflows/docs.yml"]
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths: ["docs/**", "mkdocs.yml", ".github/workflows/docs.yml"]
+
+# Read to check out, write to publish. `id-token` is what the deploy action
+# exchanges for its upload credential.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One live site, so a second run waits rather than racing the first. Not
+# cancel-in-progress: a half-finished deploy is worse than a queued one.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # Pinned. An unpinned theme turns a docs build into something that can
+      # break without anybody touching the repository.
+      - run: pip install mkdocs==1.6.1 mkdocs-material==9.5.44
+
+      # `--strict` fails on a broken internal link or a page missing from the
+      # nav, which is the class of rot the hand-written Contents lists had.
+      - run: mkdocs build --strict
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  # Only for a run somebody asked for. A pull request builds to prove the docs
+  # still compile and stops there.
+  deploy:
+    if: github.event_name == 'workflow_dispatch'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
