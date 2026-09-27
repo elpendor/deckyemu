@@ -1,15 +1,17 @@
 name: Docs
 
-# **Manual until somebody turns it on.** Publishing puts a website on the open
-# internet under the repository's name, which is not a thing to start happening
-# as a side effect of editing a paragraph. Add the `push` trigger below once the
-# first dispatched run has produced a site worth keeping.
-#
-#  on:
-#    push:
-#      branches: [main]
-#      paths: ["docs/**", "mkdocs.yml", ".github/workflows/docs.yml"]
+# Only when the docs themselves change. A release commit or a backend fix has
+# nothing to republish, and a build per push would queue against `concurrency`
+# for no reason.
 on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "README.md"
+      - "mkdocs.yml"
+      - "scripts/readme_as_index.py"
+      - ".github/workflows/docs.yml"
   workflow_dispatch:
   pull_request:
     branches: [main]
@@ -54,10 +56,10 @@ jobs:
         with:
           path: site
 
-  # Only for a run somebody asked for. A pull request builds to prove the docs
-  # still compile and stops there.
+  # A pull request builds to prove the docs still compile and stops there;
+  # anything on `main` publishes.
   deploy:
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name != 'pull_request'
     needs: build
     runs-on: ubuntu-latest
     environment:
