@@ -417,4 +417,41 @@ check("a stale note is not answered", launchers.take_bounce(999), "")
 check("but is still cleared away", os.path.exists(_stale), False)
 check("a game that never bounced reads as no", launchers.take_bounce(12345), "")
 
+
+section("the marker writes itself into a directory that is not there yet")
+
+# The gates above create that directory, and each of them only runs on a path
+# that refuses a launch -- so an ordinary one reached the marker with nowhere to
+# write. Nothing took off, `_after_play` read every launch as "never started",
+# and the setup an emulator overwrote was never put back. Cloud saves being off
+# was enough to hit it, which is most installs.
+_gate = os.path.join(TMP, "gate-not-created", "launch")
+
+
+def _marker_run():
+    """Run the marker for real against a missing directory."""
+    script = launchers.RAN_MARKER.replace("{gate}", _gate)
+    return subprocess.run(["sh", "-c", "_dke_self=4242\n" + script],
+                          capture_output=True, text=True)
+
+
+_done = _marker_run()
+check("the marker lands", os.path.exists(os.path.join(_gate, "ran-4242")), True)
+# The reason this was visible at all: `printf ... > file 2>/dev/null` silences
+# the wrong thing, because the shell reports a failed redirection before the
+# `2>` applies. Anything on stderr here is that bug coming back.
+check("and says nothing while doing it", _done.stderr, "")
+
+
+def _marker_body():
+    """What landed, or why not -- read so a regression fails rather than raises."""
+    try:
+        with io.open(os.path.join(_gate, "ran-4242"), encoding="utf-8") as handle:
+            return handle.read()
+    except OSError as problem:
+        return str(problem)
+
+
+check("carrying what took_off looks for", _marker_body(), "1")
+
 summary()

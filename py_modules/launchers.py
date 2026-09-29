@@ -227,7 +227,11 @@ LAUNCH_GATE_DIR = os.path.join(decky.DECKY_PLUGIN_RUNTIME_DIR, "launch")
 #      to come down, not after it. The note it leaves was arriving later than
 #      the four seconds the panel waits for one, so whether the dialog appeared
 #      depended on how long the network took.
-FORMAT_VERSION = 38
+#  39  the marker that says a launch reached the emulator makes its own
+#      directory. The gates above create it and each only runs on a path that
+#      refuses a launch, so with cloud saves off nothing took off and the setup
+#      an emulator overwrote was never put back.
+FORMAT_VERSION = 39
 
 # One file per OSD mode rather than one shared file. Games can override the
 # global setting individually, and a single file would mean the last game
@@ -1021,8 +1025,15 @@ fi
 #:
 #: Only the script can answer this, because only the script knows whether it
 #: reached the emulator. It is the line before it does.
+#: `mkdir` here, not at the gates above: those create the directory only on the
+#: paths that refuse a launch, so an ordinary one arrived with nowhere to write
+#: and the marker was never written. `2>` before `>`, or the shell reports the
+#: failed redirection to the stderr it has not silenced yet.
 RAN_MARKER = r"""# Past every gate: what happens after this is the game itself.
-[ -n "$_dke_self" ] && printf 1 > '{gate}/ran-'"$_dke_self" 2>/dev/null
+if [ -n "$_dke_self" ]; then
+  mkdir -p '{gate}' 2>/dev/null
+  printf 1 2>/dev/null > '{gate}/ran-'"$_dke_self"
+fi
 """
 
 
