@@ -150,5 +150,72 @@ finally:
     _plugin.loop.close()
 
 
+section("motion is not offered to a machine with no sensors to read")
+# Measured on an ASUS desktop running Decky before this existed: the Deck's gyro
+# server downloaded, and every launcher for an emulator that speaks DSU was
+# rewritten to start it. It bound its UDP port and sent nothing, because
+# there is no Deck controller behind it -- so the cost was a download, a
+# launch and the `exec` those launchers give up, for no reading ever.
+#
+# Nothing here writes a stand-in binary. `installed_tool` and `ensure_tool` are
+# faked instead, because every suite shares one temporary tree and one process:
+# a stand-in motion server left behind breaks the checks elsewhere that assert a
+# server nobody fetched is absent. Remove whatever a suite creates outside its
+# own section.
+import emu_install  # noqa: E402
+import emulator_catalog  # noqa: E402
+
+_motion_entry = emulator_catalog.find("ryujinx")
+check("the entry under test really does declare a motion server",
+      bool((_motion_entry.get("motion") or {}).get("server")), True)
+
+_real_dmi = hardware._dmi
+_real_installed = emu_install.installed_tool
+_real_ensure = emu_install.ensure_tool
+_fetched = []
+try:
+    # As if the binary were already downloaded, so what is under test is the
+    # decision and not whether a file happens to be there.
+    emu_install.installed_tool = lambda name: "/tmp/gyro-dsu/sdgyrodsu" if name else ""
+    emu_install.ensure_tool = lambda spec, now=None: (_fetched.append(spec.get("name")),
+                                                      ("/tmp/gyro-dsu/sdgyrodsu", ""))[1]
+
+    hardware._dmi = lambda name: {"sys_vendor": "ASUS",
+                                  "product_name": "System Product Name"}.get(name, "")
+    check("a desktop is handed no server to bake into a launcher",
+          emu_install.motion_server(_motion_entry), "")
+    del _fetched[:]
+    check("and nothing is downloaded for it",
+          (emu_install.ensure_motion_server(_motion_entry), _fetched),
+          (("", ""), []))
+    # No new words for this case: `declared` already means "there is motion to
+    # talk about", and the panel's line is empty when it is false.
+    check("and the panel says nothing rather than reporting it missing",
+          emu_install.motion_state(_motion_entry)["declared"], False)
+
+    # The loud half. Refusing motion on a real Deck would take the gyro from
+    # every user who has one, which is far more expensive than the waste above.
+    hardware._dmi = lambda name: {"sys_vendor": "Valve",
+                                  "product_name": "Galileo"}.get(name, "")
+    check("a Deck still gets its server in the launcher",
+          emu_install.motion_server(_motion_entry), "/tmp/gyro-dsu/sdgyrodsu")
+    del _fetched[:]
+    check("a Deck still fetches it",
+          (emu_install.ensure_motion_server(_motion_entry)[0], _fetched),
+          ("/tmp/gyro-dsu/sdgyrodsu", ["gyro-dsu"]))
+    check("and still reports it",
+          emu_install.motion_state(_motion_entry)["declared"], True)
+    # A Valve board nobody has heard of yet keeps its sensors too, for the same
+    # reason the vendor alone decides `supported`.
+    hardware._dmi = lambda name: {"sys_vendor": "Valve",
+                                  "product_name": "Neptune 3"}.get(name, "")
+    check("as does a Valve board this version has never heard of",
+          bool(emu_install.motion_server(_motion_entry)), True)
+finally:
+    hardware._dmi = _real_dmi
+    emu_install.installed_tool = _real_installed
+    emu_install.ensure_tool = _real_ensure
+
+
 if __name__ == "__main__":
     summary()

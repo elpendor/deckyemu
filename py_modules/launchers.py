@@ -231,7 +231,11 @@ LAUNCH_GATE_DIR = os.path.join(decky.DECKY_PLUGIN_RUNTIME_DIR, "launch")
 #      directory. The gates above create it and each only runs on a path that
 #      refuses a launch, so with cloud saves off nothing took off and the setup
 #      an emulator overwrote was never put back.
-FORMAT_VERSION = 39
+#  40  the motion block is left out on a machine with no Deck sensors to read.
+#      It is baked into the script, so a desktop that already recorded 39 keeps
+#      starting a server that cannot send anything until this rewrites them --
+#      and giving up the `exec` for it is the part a user would never see.
+FORMAT_VERSION = 40
 
 # One file per OSD mode rather than one shared file. Games can override the
 # global setting individually, and a single file would mean the last game

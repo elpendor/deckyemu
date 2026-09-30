@@ -110,3 +110,26 @@ def log_once():
             found["vendor"], found["product"], found["why"],
         )
     return found
+
+
+def has_deck_sensors():
+    """Whether this machine has the motion sensors an emulator would be sent to.
+
+    Its own question rather than a second reading of `supported`, because what
+    asks it is narrower: the motion server reads the *Deck's own* IMU off hidraw,
+    and the gyro layout exists to stop Steam powering that IMU down. No other
+    machine has one for either to find.
+
+    Measured on an ASUS desktop running Decky, rather than assumed: the server
+    downloads, starts, binds its UDP port and sends nothing at all, because
+    there is no Deck controller behind it. Every launcher for an emulator that
+    speaks DSU was rewritten to start it, so the cost was real and the benefit
+    was zero.
+
+    **Riding on the vendor check adds no failure mode that is not already
+    there.** If DMI were ever wrong about a real Deck, `_require_supported_device`
+    would already have refused every method in the plugin -- motion is not what
+    anyone would notice breaking first, and one wrong answer is better than two
+    places to be wrong.
+    """
+    return detect()["supported"]

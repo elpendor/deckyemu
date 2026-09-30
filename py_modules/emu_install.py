@@ -42,6 +42,7 @@ import sysenv
 
 import emu_patch
 import emulator_catalog
+import hardware
 import net
 import sysenv
 
@@ -1551,6 +1552,11 @@ def motion_server(entry):
     answers '' -- and a launcher written then is the ordinary one, so motion is
     the only thing missing rather than the game.
     """
+    if not hardware.has_deck_sensors():
+        # Nothing to serve here, so the launcher is the ordinary one. Said in
+        # this function rather than at the call site because the two callers
+        # have to agree, which is the whole reason it exists.
+        return ""
     server = ((entry or {}).get("motion") or {}).get("server") or {}
     name = server.get("name") or ""
     return installed_tool(name) if name else ""
@@ -1616,7 +1622,11 @@ def motion_state(entry, now=None):
     """
     server = ((entry or {}).get("motion") or {}).get("server") or {}
     name = server.get("name") or ""
-    if not name:
+    # A row about a sensor this machine does not have is worse than no row: it
+    # reports a thing as missing that is never going to arrive. `declared`
+    # already means "this emulator has motion to talk about", and here it has
+    # none, so the panel says nothing and needs no new words for the case.
+    if not name or not hardware.has_deck_sensors():
         # Same shape whatever the answer, so a caller never has to ask which
         # keys exist before reading them.
         return {"declared": False, "ready": False, "configured": True, "waiting": 0}
@@ -1682,7 +1692,19 @@ def ensure_tool(spec, now=None):
 
 
 def ensure_motion_server(entry, now=None):
-    """Fetch this emulator's motion server if it is not here yet. (path, error)."""
+    """Fetch this emulator's motion server if it is not here yet. (path, error).
+
+    Not on a machine whose sensors it cannot read: `hardware.has_deck_sensors`.
+    Measured on a desktop before this check existed -- the binary downloaded and
+    every launcher for an emulator that speaks DSU was rewritten to start it, so
+    it cost a download, a process per launch and the `exec` those launchers give
+    up, and it could never send a single reading.
+
+    No error for that, because nothing failed. An empty answer is what every
+    caller already does the right thing with.
+    """
+    if not hardware.has_deck_sensors():
+        return "", ""
     return ensure_tool(((entry or {}).get("motion") or {}).get("server") or {}, now)
 
 
