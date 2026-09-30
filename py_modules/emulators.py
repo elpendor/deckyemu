@@ -475,6 +475,33 @@ def resolved_env(emulator):
                 continue
             value = expanded
         resolved[name] = value
+
+    # **A window somebody can write a rule against.** Only for ports, and only
+    # because nothing else gives them one: an AppImage port ships no .desktop
+    # with a `StartupWMClass`, so SDL names the window after whatever the binary
+    # happens to be called and a compositor rule has nothing stable to match.
+    #
+    # Why that matters off a Deck: an SDL window opens on the *leftmost*
+    # display, which is not the primary, and the emulator's own setting for
+    # this is not a fix -- RetroArch ships `video_monitor_index` and it has been
+    # ignored on Linux since 2021 (libretro/RetroArch#12635), with the reporter
+    # confirming the OS primary setting changes nothing. So the working answer
+    # is a window rule in the compositor, and this is what makes one
+    # writable: force the position of class `deckyemu-<id>` and it holds for
+    # every game that port runs.
+    #
+    # Both spellings, because which one SDL reads depends on the driver it
+    # picked -- measured x11 under XWayland where this was found, and the
+    # bundled SDL knows the Wayland name too.
+    #
+    # Not gated on the hardware. In Game Mode gamescope composites the window
+    # and nothing reads a class, so this is inert on a Deck not wrong there,
+    # and one path is worth more than a branch that buys nothing.
+    #
+    # `setdefault`, so an entry that declares its own class keeps it.
+    if is_port(emulator.get("id") or ""):
+        for name in ("SDL_VIDEO_X11_WMCLASS", "SDL_VIDEO_WAYLAND_WMCLASS"):
+            resolved.setdefault(name, "deckyemu-%s" % emulator["id"])
     return resolved
 
 

@@ -235,7 +235,11 @@ LAUNCH_GATE_DIR = os.path.join(decky.DECKY_PLUGIN_RUNTIME_DIR, "launch")
 #      It is baked into the script, so a desktop that already recorded 39 keeps
 #      starting a server that cannot send anything until this rewrites them --
 #      and giving up the `exec` for it is the part a user would never see.
-FORMAT_VERSION = 40
+#  41  a port's window carries a class of ours, so a compositor rule can be
+#      written against it. Baked into the `env` on the exec line, so a shortcut
+#      that already exists names no class until this rewrites it -- and the
+#      whole point is to be matchable, which an old launcher is not.
+FORMAT_VERSION = 41
 
 # One file per OSD mode rather than one shared file. Games can override the
 # global setting individually, and a single file would mean the last game

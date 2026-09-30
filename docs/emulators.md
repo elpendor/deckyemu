@@ -570,6 +570,18 @@ Three things differ from an emulator:
   that game, and where the port publishes the dumps it accepts, a file that
   isn't one of them is named as such before you add it.
 
+**On a desktop, a port opens on the leftmost screen.** Not on a Deck, where
+there's one display and Game Mode handles it. Elsewhere an SDL window lands on
+whichever screen sits at the far left, which needn't be your primary, and the
+port has no setting for it — RetroArch has had one ignored on Linux
+[since 2021](https://github.com/libretro/RetroArch/issues/12635).
+
+So each port's window is given a name your desktop can match: `deckyemu-` plus
+the port's id, such as `deckyemu-lighthouse`. On KDE, add a window rule for that
+class under **Window Rules** and force **Position** to your screen's offset. The
+simpler fix, if you'd rather not keep a rule, is to make the screen you play on
+the leftmost one in your display settings.
+
 ## Removing an emulator
 
 Press **Remove** on its row. That uninstalls it and forgets its registration.
