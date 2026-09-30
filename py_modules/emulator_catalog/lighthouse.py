@@ -43,6 +43,33 @@ ENTRY = {
         "args": "{rom}",
         "unless": ["bk.o2r"],
     },
+    # **Fullscreen, which only matters off a Deck.** In Game Mode gamescope
+    # composites the window fullscreen whatever the port asked for, so this
+    # changes nothing there. On a desktop there is no gamescope and the port's
+    # own default shows through: measured on one, a 640x480 window
+    # (`imgui.ini` records `Size=640,480`), on whichever display SDL centred it.
+    #
+    # It has to be the config, because there is no flag. The extracted AppImage
+    # has no `--fullscreen` and no window options at all; the readme offers F11
+    # at runtime and nothing else. The key name is read off the binary rather
+    # than guessed -- it knows `Window.Fullscreen`, `Window.Width`,
+    # `Window.Height`, `Window.PositionX` and `Window.PositionY`, and **no
+    # monitor or display key**, which is why which screen it opens on cannot be
+    # answered here.
+    #
+    # `json-keys`, not `json-flat`: this config is genuinely nested, and flat
+    # would write a literal "Window.Fullscreen" key beside the real `Window`
+    # object and do nothing.
+    #
+    # `default` is what keeps somebody's own choice: F11 is a documented toggle,
+    # so a user who turned fullscreen off has `false` written by the port, and
+    # this only replaces the value while it is still the port's own.
+    "setup": {
+        "format": "json-keys",
+        "path": "deckyemu/emulators/lighthouse/lighthouse.cfg.json",
+        "label": "fullscreen",
+        "sections": {"Window.Fullscreen": {"value": True, "default": False}},
+    },
     "note": "The first launch builds its own archive from the ROM, which "
             "takes a few minutes, and asks once at the end whether to run. "
             "Its menu opens with Select+Start. Plays one game: pick it under "
