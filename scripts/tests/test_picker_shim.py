@@ -22,7 +22,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from harness import check, section, summary  # noqa: E402
+from harness import TMP, check, section, summary  # noqa: E402
 
 import decky  # noqa: E402
 import launchers  # noqa: E402
@@ -43,6 +43,30 @@ _PORT = {
 
 _GAME = "/home/deck/deckyemu/roms/n64/Some Game.z64"
 
+# **A stand-in for the real picker, because the real one must never run here.**
+# What the shim does with a dialog it does not answer is hand it to the picker
+# it found, and the first version proved that by letting the *real* zenity
+# be reached and checking it produced nothing -- on the theory that it fails for
+# want of a display.
+#
+# It does not fail. zenity reaches the desktop file chooser through
+# xdg-desktop-portal over the session bus, which needs no display, so on any
+# machine with a session this opened a real file chooser on somebody's screen
+# and answered from their recent files -- then a `--question` dialog, which
+# blocks until a human dismisses it, so the suite hung rather than failing.
+# Clearing DISPLAY is not enough either: GTK falls back to
+# $XDG_RUNTIME_DIR/wayland-0 when WAYLAND_DISPLAY is unset.
+#
+# So the real picker is now unreachable, and the check is the stronger one:
+# delegation is asserted by the stub reporting it, rather than inferred from a
+# failure that turned out not to happen.
+_STUB_MARK = "stub-reached"
+_STUB = os.path.join(TMP, "picker-stub", "zenity")
+os.makedirs(os.path.dirname(_STUB), exist_ok=True)
+with open(_STUB, "w", encoding="utf-8", newline="\n") as _handle:
+    _handle.write("#!/bin/sh\necho %s\n" % _STUB_MARK)
+os.chmod(_STUB, 0o755)
+
 
 section("a port that takes a path gets no shim")
 
@@ -54,7 +78,7 @@ check("and nothing without a game", launchers.picker_shim(_PORT, ""), "")
 section("the picker is answered with the game")
 
 _real_which = launchers.shutil.which
-launchers.shutil.which = lambda name: "/usr/bin/zenity"
+launchers.shutil.which = lambda name: _STUB
 try:
     _shell = launchers.picker_shim(_PORT, _GAME)
 finally:
@@ -79,14 +103,15 @@ _picker = ["--file-selection", "--filename=./", "--title", "Select a file",
 check("a file selection answers with the game", _ran(_picker), (_GAME, 0))
 
 # The port's own questions are readable and worth reading, so they are passed
-# through -- which here means the real zenity is reached and fails for want of
-# a display, rather than being answered by us.
+# through -- which here means the picker is reached, not answered by us.
 _question = ["--question", "--text", "Please provide a ROM."]
-check("a question is not answered here", _ran(_question)[0], "")
+check("a question is handed to the picker, not answered here",
+      _ran(_question)[0], _STUB_MARK)
 
 # No game in the environment is the launcher not having set one, and then the
 # picker must open rather than answer with nothing.
-check("and nothing is claimed when no game was passed", _ran(_picker, "")[0], "")
+check("and nothing is claimed when no game was passed -- the picker opens",
+      _ran(_picker, "")[0], _STUB_MARK)
 
 
 section("only a port answers its own picker")
