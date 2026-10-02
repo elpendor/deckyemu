@@ -301,7 +301,12 @@ def launch_argv(install, core_path, rom_path, appendconfig=""):
     """Argv that starts `rom_path` in `core_path` for this install shape."""
     kind = install["kind"]
     if kind == "flatpak":
-        argv = [install["exe"] or "flatpak", "run"]
+        # `--die-with-parent`: `flatpak run` hands the application to the
+        # session helper and returns, so without this the emulator outlives the
+        # launcher Steam killed -- holding the GPU and the audio device while
+        # the library says the game has stopped. Seen as a live RetroArch
+        # reparented away from its launcher after Steam reported it closed.
+        argv = [install["exe"] or "flatpak", "run", "--die-with-parent"]
         # The flatpak cannot see /run/media (SD card) or arbitrary folders by
         # default. Granting just the ROM's directory keeps the sandbox useful.
         for directory in _dirs_to_share(core_path, rom_path):

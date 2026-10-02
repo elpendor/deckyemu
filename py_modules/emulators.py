@@ -535,7 +535,11 @@ def flatpak_prefix(emulator, extra=()):
     rasteriser -- so every game rendered on the CPU and every game was slow.
     Restricting the loader to the AMD driver leaves one device to choose from.
     """
-    argv = ["flatpak", "run"]
+    # `--die-with-parent`: `flatpak run` hands the application to the session
+    # helper and returns, so without it an emulator outlives the launcher Steam
+    # killed, holding the GPU and the audio device while the library says the
+    # game has stopped.
+    argv = ["flatpak", "run", "--die-with-parent"]
     command = (emulator.get("command") or "").strip()
     if command:
         argv.append("--command=%s" % command)

@@ -1384,7 +1384,8 @@ check("but a plain executable is not",
 # wrong for reaching the windows where firmware and PKGs get installed.
 gui = emulators.gui_argv(fs)
 check("opening the interface passes no game arguments", gui, [
-    "flatpak", "run", emulators.GAMESCOPE_SOCKET_ARG, "dev.nimbus.Nimbus",
+    "flatpak", "run", "--die-with-parent", emulators.GAMESCOPE_SOCKET_ARG,
+    "dev.nimbus.Nimbus",
 ])
 check("and leaves no empty argument where a ROM would be", "" in gui, False)
 check("a plain executable opens on its own",
@@ -1399,7 +1400,7 @@ _cmd_emu = {"kind": "flatpak", "target": "net.shadps4.shadPS4", "command": "shad
             "args": "-g {rom}", "fullscreen_args": "--fullscreen true"}
 check("a launch goes straight to the named binary",
       emulators.launch_argv(_cmd_emu, "/roms/eboot.bin"),
-      ["flatpak", "run", "--command=shadps4", "--filesystem=/roms",
+      ["flatpak", "run", "--die-with-parent", "--command=shadps4", "--filesystem=/roms",
        emulators.GAMESCOPE_SOCKET_ARG, "net.shadps4.shadPS4",
        "--fullscreen", "true", "-g", "/roms/eboot.bin"])
 
@@ -1553,7 +1554,7 @@ check("an emulator with no installed_args is unaffected",
 # is the only reason those are buttons in the panel rather than instructions.
 tool = emulators.tool_argv(fs, ["--headless", "--installpkg", "/x/game.pkg"], ["/x"])
 check("a headless run passes its arguments through", tool, [
-    "flatpak", "run", "--filesystem=/x", "dev.nimbus.Nimbus",
+    "flatpak", "run", "--die-with-parent", "--filesystem=/x", "dev.nimbus.Nimbus",
     "--headless", "--installpkg", "/x/game.pkg",
 ])
 # Nothing is being displayed, so asking for a gamescope socket the run will
