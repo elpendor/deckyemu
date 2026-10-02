@@ -24,7 +24,49 @@ import decky
 import net
 
 BUILDBOT = "https://buildbot.libretro.com"
-CORE_BASE_URL = BUILDBOT + "/nightly/linux/x86_64/latest"
+
+#: The buildbot's directory for this machine, by `platform.machine()`.
+#:
+#: A core is a shared library the running RetroArch has to `dlopen`, so the
+#: wrong one is not a degraded core but no core: it reports "cannot open shared
+#: object file: No such file or directory" about a file sitting right there,
+#: which reads as a download that failed rather than one that cannot be loaded.
+#: Measured on an aarch64 machine against a 610KB x86-64 core.
+#:
+#: Only the two the buildbot actually serves. `armv8` and `arm64` are both 404
+#: there -- checked, because `armv8` was the obvious guess and it is wrong.
+BUILDBOT_ARCHES = {
+    "x86_64": "x86_64",
+    "amd64": "x86_64",
+    "aarch64": "aarch64",
+    "arm64": "aarch64",
+}
+
+#: x86-64 when the machine says something unrecognised: every other arch the
+#: buildbot serves is one this plugin has never run on, and a 404 at download
+#: time says less than a core that loads.
+DEFAULT_ARCH = "x86_64"
+
+
+def _machine():
+    """What the kernel calls this machine, lowercased, or "" if it will not say.
+
+    `os.uname` rather than `platform.machine`: decky's frozen interpreter is
+    not known to carry `platform`, and `scripts/tests/test_module_guard.py` is
+    what says which modules it does.
+    """
+    try:
+        return os.uname().machine.strip().lower()
+    except (AttributeError, OSError):
+        return ""
+
+
+def buildbot_arch():
+    """The buildbot directory this machine's cores come from."""
+    return BUILDBOT_ARCHES.get(_machine(), DEFAULT_ARCH)
+
+
+CORE_BASE_URL = "%s/nightly/linux/%s/latest" % (BUILDBOT, buildbot_arch())
 INFO_ZIP_URL = BUILDBOT + "/assets/frontend/info.zip"
 
 FLATPAK_ID = "org.libretro.RetroArch"
@@ -101,7 +143,7 @@ _ZIP_NAME_RE = re.compile(r"([A-Za-z0-9_\-]+)_libretro\.so\.zip")
 
 
 def _available_core_ids(force=False):
-    """Core ids the buildbot currently publishes for linux/x86_64."""
+    """Core ids the buildbot currently publishes for this machine."""
     if not force and _fresh(_AVAILABLE_PATH, _AVAILABLE_TTL):
         try:
             with open(_AVAILABLE_PATH, "r", encoding="utf-8") as handle:
@@ -238,7 +280,7 @@ def database_extensions(force=False):
     """{libretro database name: [extensions]}, from every core info.zip carries.
 
     Deliberately *not* built from `core_catalog`. That list is filtered to what
-    the buildbot publishes for linux/x86_64, which is the right question for
+    the buildbot publishes for this machine, which is the right question for
     "what can I install" and the wrong one for "what formats does this system
     use". The Wii U and original Xbox cores are both in info.zip and both absent
     from the nightly listing, so a standalone emulator for either derived an
