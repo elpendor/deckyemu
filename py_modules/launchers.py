@@ -239,7 +239,14 @@ LAUNCH_GATE_DIR = os.path.join(decky.DECKY_PLUGIN_RUNTIME_DIR, "launch")
 #      written against it. Baked into the `env` on the exec line, so a shortcut
 #      that already exists names no class until this rewrites it -- and the
 #      whole point is to be matchable, which an old launcher is not.
-FORMAT_VERSION = 41
+#  42  withdrawn. It unset `WAYLAND_DISPLAY` to push a launch onto X, and the
+#      variable is read by two things that disagree: libwayland falls back to
+#      the name `wayland-0` and connects anyway, while gamescope's Vulkan layer
+#      reads the variable, finds nothing, and fails -- so the emulator died at
+#      startup instead of drawing. Devices recorded it, so the number is spent.
+#  43  nothing of its own: the number past the withdrawal, so a device holding
+#      42 rewrites its launchers back to a script that works.
+FORMAT_VERSION = 43
 
 # One file per OSD mode rather than one shared file. Games can override the
 # global setting individually, and a single file would mean the last game
