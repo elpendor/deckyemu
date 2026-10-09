@@ -455,12 +455,12 @@ class Emulators(plugin_base.PluginContext):
             # has to produce one instead of dying into decky's log.
             self._detach(
                 self._install_emulator_flatpak(entry, steps),
-                "emulator_install_done", entry["id"],
+                "emulator_install_done", entry["id"], once=True,
             )
         else:
             self._detach(
                 self._install_emulator_appimage(entry),
-                "emulator_install_done", entry["id"],
+                "emulator_install_done", entry["id"], once=True,
             )
 
         return {"ok": True, "started": True}
@@ -842,7 +842,7 @@ class Emulators(plugin_base.PluginContext):
 
         self._detach(
             self._change_emulator_build(entry, [argv], "Updating"),
-            "emulator_build_done", entry["id"],
+            "emulator_build_done", entry["id"], once=True,
         )
         return {"ok": True, "started": True}
 
@@ -880,7 +880,7 @@ class Emulators(plugin_base.PluginContext):
             # deploying the very commit it was asked for, and a hold on a version
             # that was never reached is the worst of both outcomes.
             self._change_emulator_build(entry, [argv], "Going back", hold_after=True),
-            "emulator_build_done", entry["id"],
+            "emulator_build_done", entry["id"], once=True,
         )
         return {"ok": True, "started": True}
 
@@ -932,7 +932,7 @@ class Emulators(plugin_base.PluginContext):
 
         self._detach(
             self._change_appimage_build(entry, tag),
-            "emulator_build_done", entry["id"],
+            "emulator_build_done", entry["id"], once=True,
         )
         return {"ok": True, "started": True}
 

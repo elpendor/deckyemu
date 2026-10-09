@@ -63,6 +63,24 @@ export const installRetroArch = callable<
 >("install_retroarch");
 
 /**
+ * One piece of background work still going: the event it will end with, and
+ * the arguments that event carries (`["cemu"]` for an emulator, none for
+ * RetroArch).
+ */
+export interface RunningWork {
+  event: string;
+  args: unknown[];
+}
+
+/**
+ * What the backend is still doing. A panel's own "running" does not survive
+ * Steam closing it, and the done event fires whether or not anything is
+ * listening -- so a panel opened mid-install asks, and draws the bar rather
+ * than the button.
+ */
+export const runningWork = callable<[], RunningWork[]>("running_work");
+
+/**
  * Why removal is or is not on offer. `reason` is written to be shown as-is:
  * a disabled button that does not say why is worse than no button.
  *

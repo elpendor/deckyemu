@@ -55,8 +55,18 @@ class PluginContext:
         """
         raise NotImplementedError
 
-    def _detach(self, coro: Any, event: str, *args: Any) -> "asyncio.Task[None]":
-        """Start background work whose end the UI is waiting on `event` to hear."""
+    def _detach(
+        self, coro: Any, event: str, *args: Any, once: bool = False
+    ) -> "asyncio.Task[None]":
+        """Start background work whose end the UI is waiting on `event` to hear.
+
+        `once=True` makes it one of each by `event` and `args`: starting it
+        again while it runs returns the running task and starts nothing, so a
+        panel that lost its own "running" flag cannot launch a second install on
+        top of the first. Opt-in, because it turns a second request into a
+        no-op, which is right for an install and not something to assume of work
+        that has its own way of refusing a second one.
+        """
         raise NotImplementedError
 
     def _run_emulator_tool(

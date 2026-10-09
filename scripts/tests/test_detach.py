@@ -159,6 +159,108 @@ finally:
 # What must not happen is a second exception escaping on top of the first.
 check("a failure that cannot even be reported does not escape", survived, True)
 
+section("the same work is never started twice")
+
+# The panel keeps "running" in component state, and Steam throws that away each
+# time the Quick Access panel closes. So the button came back mid-install and a
+# second press started a second `flatpak install` of the same app: two
+# identical processes under one plugin, 78 seconds apart, on one repo lock,
+# behind a bar that cannot tell either of them from a hang.
+started = []
+_gate = {}
+
+
+async def _slow(tag):
+    started.append(tag)
+    await _gate["open"].wait()
+
+
+async def _twice():
+    _gate["open"] = asyncio.Event()
+    emitted.clear()
+    started.clear()
+
+    first = plugin._detach(_slow("first"), "emulator_install_done", "cemu", once=True)
+    await asyncio.sleep(0)
+    again = _slow("again")
+    second = plugin._detach(again, "emulator_install_done", "cemu", once=True)
+    await asyncio.sleep(0)
+    # A different emulator is different work, and must not be refused for it.
+    other = plugin._detach(_slow("other"), "emulator_install_done", "azahar", once=True)
+    await asyncio.sleep(0)
+    listed = await plugin.running_work()
+
+    _gate["open"].set()
+    await asyncio.gather(first, other)
+    return first, second, other, again, listed
+
+
+_first, _second, _other, _again, _listed = run(_twice())
+
+check("a second start returns the one already running", _second is _first, True)
+check("and runs nothing", sorted(started), ["first", "other"])
+# Closed, not dropped: a coroutine nobody awaits warns on collection, and the
+# warning names nothing.
+check("the refused coroutine is closed rather than left to warn",
+      _again.cr_frame is None, True)
+check("different arguments are different work", _other is not _first, True)
+check("a panel asking what is running is told, with the event it will hear",
+      sorted((w["event"], tuple(w["args"])) for w in _listed),
+      [("emulator_install_done", ("azahar",)), ("emulator_install_done", ("cemu",))])
+check("and nothing is listed once it is over", run(plugin.running_work()), [])
+
+
+async def _again_after():
+    _gate["open"] = asyncio.Event()
+    _gate["open"].set()
+    started.clear()
+    await plugin._detach(_slow("later"), "emulator_install_done", "cemu", once=True)
+
+
+run(_again_after())
+check("finished work can be started again", started, ["later"])
+
+
+async def _fails_then_again():
+    started.clear()
+    await plugin._detach(_boom(), "retroarch_install_done", once=True)
+    _gate["open"] = asyncio.Event()
+    _gate["open"].set()
+    await plugin._detach(_slow("after-failure"), "retroarch_install_done", once=True)
+
+
+run(_fails_then_again())
+# The failure path is where a stuck entry would hide: if only a clean finish
+# removed the key, one crash would refuse every install after it until reload.
+check("work that failed does not block the next attempt", started, ["after-failure"])
+
+
+# --- and only where asked --------------------------------------------------
+
+# Opt-in, because it turns a second request into a no-op. Cloud saves pass a
+# list among their arguments and have their own way of refusing a second copy;
+# an unhashable argument must not break them, and they must not be made to
+# swallow a request they used to answer.
+async def _unrelated():
+    _gate["open"] = asyncio.Event()
+    started.clear()
+    a = plugin._detach(_slow("a"), "cloud_sync_done", False, "", [])
+    await asyncio.sleep(0)
+    b = plugin._detach(_slow("b"), "cloud_sync_done", False, "", [])
+    await asyncio.sleep(0)
+    listed = await plugin.running_work()
+    _gate["open"].set()
+    await asyncio.gather(a, b)
+    return a, b, listed
+
+
+_a, _b, _unlisted = run(_unrelated())
+check("without once, the same call starts both, as it always did", _b is not _a, True)
+# Reaching this line is the check that a list among the arguments (as the cloud
+# sites pass) did not raise: `once` is what would have hashed it.
+check("and both ran", sorted(started), ["a", "b"])
+check("and it is not listed as work a panel should resume", _unlisted, [])
+
 plugin.loop.close()
 decky.logger.setLevel(_log_level)
 

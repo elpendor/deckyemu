@@ -2,8 +2,10 @@ import { ButtonItem, Field, PanelSection, PanelSectionRow } from "@decky/ui";
 import { addEventListener, removeEventListener, toaster } from "@decky/api";
 import { useCallback, useEffect, useState } from "react";
 
-import { canInstallRetroArch, installRetroArch } from "./backend";
+import { canInstallRetroArch, installRetroArch, runningWork } from "./backend";
 import { InstallProgress } from "./InstallProgress";
+import { logError } from "./logError";
+import { isRunning } from "./runningWork";
 
 interface Props {
   onInstalled: () => void;
@@ -25,6 +27,22 @@ export function InstallRetroArchPanel({ onInstalled, onRescan }: Props) {
     canInstallRetroArch()
       .then((result) => setFlatpakAvailable(result.flatpak_available))
       .catch(() => setFlatpakAvailable(false));
+  }, []);
+
+  // Steam throws this panel's state away whenever the Quick Access panel
+  // closes, so `running` comes back false with the install still going -- and
+  // the button, pressed again, started a second `flatpak install` of the same
+  // app. Asked on mount, so the bar returns instead. The percent is not known
+  // until the next progress line, which is why it starts empty.
+  useEffect(() => {
+    runningWork()
+      .then((work) => {
+        if (isRunning(work, "retroarch_install_done")) {
+          setRunning(true);
+          setStatus("Installing...");
+        }
+      })
+      .catch((askError) => logError("could not ask what is running", askError));
   }, []);
 
   useEffect(() => {

@@ -172,7 +172,9 @@ class RetroArchInstall(plugin_base.PluginContext):
                 "error": "flatpak is not available on this system, so RetroArch cannot be installed automatically.",
             }
 
-        self._detach(self._run_retroarch_install(steps), "retroarch_install_done")
+        self._detach(
+            self._run_retroarch_install(steps), "retroarch_install_done", once=True
+        )
         return {"ok": True, "started": True}
 
     async def _run_retroarch_install(self, steps):

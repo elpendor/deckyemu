@@ -449,7 +449,7 @@ class Plugin(
     async def _run(self, func, *args, **kwargs):
         return await self.loop.run_in_executor(None, functools.partial(func, *args, **kwargs))
 
-    def _detach(self, coro, event, *args):
+    def _detach(self, coro, event, *args, once=False):
         """Run `coro` in the background, guaranteeing `event` fires either way.
 
         An install runs detached because it takes minutes and streams progress,
@@ -469,10 +469,30 @@ class Plugin(
         shapes in use: `emulator_install_done(id, ok, message)` when an id is
         passed and `retroarch_install_done(ok, message)` when nothing is.
 
+        **`once=True`: one of each, by event and arguments.** A second start
+        while the first is running returns the first task and runs nothing. The
+        panel holds
+        "running" in component state, which Steam throws away every time the
+        Quick Access panel closes, so the button comes back while the install is
+        still going and a second press started a second `flatpak install` of the
+        same app -- two transactions on one repo lock, behind a progress bar that
+        cannot tell either of them from a hang. Seen as two identical processes
+        under one plugin, 78 seconds apart.
+
         Returns the task. Callers discard it -- detached is the point -- but a
         test needs something to await, and polling for an event that is supposed
         to arrive is how a test passes by timing out slowly.
         """
+        tasks = self._detached_tasks()
+        key = (event,) + args
+        running = tasks.get(key) if once else None
+        if running is not None and not running.done():
+            # Closed rather than dropped: a coroutine that is never awaited
+            # warns when it is collected, and the warning names nothing.
+            coro.close()
+            decky.logger.info("%s is already running; not starting a second", event)
+            return running
+
         async def guarded():
             try:
                 await coro
@@ -494,7 +514,40 @@ class Plugin(
                     # original exception above stays the one in the log.
                     decky.logger.exception("Could not report the failure of %s", event)
 
-        return self.loop.create_task(guarded())
+        task = self.loop.create_task(guarded())
+        if once:
+            tasks[key] = task
+            # Only if it is still this task's entry: a finished one must not
+            # take a newer start's entry out with it.
+            task.add_done_callback(
+                lambda finished, key=key: tasks.pop(key, None)
+                if tasks.get(key) is finished else None
+            )
+        return task
+
+    def _detached_tasks(self):
+        """The running `once` work, by (event, *args). Made on first use."""
+        tasks = self.__dict__.get("_detached")
+        if tasks is None:
+            tasks = self._detached = {}
+        return tasks
+
+    async def running_work(self):
+        """What is still running in the background, for a panel that just opened.
+
+        The panel's own notion of "running" does not survive Steam closing it,
+        and the done event fires whether or not anything is listening -- so a
+        panel that reopens mid-install has nothing to tell it a bar belongs
+        there. Asked for on mount, so the bar comes back instead of the button.
+
+        Each item is `{"event": ..., "args": [...]}`, the same pair the work
+        will emit its done event under.
+        """
+        return [
+            {"event": key[0], "args": list(key[1:])}
+            for key, task in list(self._detached_tasks().items())
+            if not task.done()
+        ]
 
     # ------------------------------------------------- running other programs
     #

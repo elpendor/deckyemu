@@ -39,6 +39,7 @@ import {
   prepareEmulatorGui,
   registerEmulator,
   removeImportedEmulator,
+  runningWork,
   uninstallEmulator,
   type CatalogEmulator,
   type EmulatorBuild,
@@ -53,6 +54,7 @@ import { byName } from "./order";
 import { openSetupShortcut } from "./setupShortcut";
 import { callWithRetry, OVER_THE_NETWORK } from "./timeout";
 import { logError } from "./logError";
+import { runningId } from "./runningWork";
 import { openModal } from "./modalStack";
 import { importProblems } from "./importProblems";
 import { ICON_BUTTON } from "./iconButton";
@@ -320,6 +322,24 @@ export function EmulatorCatalogPanel({ onChanged, ports = false }: Props) {
   }, []);
 
   useEffect(load, [load]);
+
+  // Steam throws this panel's state away whenever the Quick Access panel
+  // closes, so `busyId` comes back empty with the install still going and the
+  // row offers Install again -- which started a second flatpak transaction on
+  // the same lock. Asked on mount, so the row that is installing says so. The
+  // backend refuses the duplicate too; this is the half that shows the truth.
+  useEffect(() => {
+    runningWork()
+      .then((work) => {
+        const id = runningId(work, "emulator_install_done");
+        if (id) {
+          setBusyId(id);
+          setBusyLabel("Installing");
+          setStatus("Installing...");
+        }
+      })
+      .catch((askError) => logError("could not ask what is running", askError));
+  }, []);
 
   useEffect(() => {
     const onProgress = (_id: string, text: string, pct: number) => {

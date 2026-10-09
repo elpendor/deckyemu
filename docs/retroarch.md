@@ -13,6 +13,11 @@ You don't need either of them set up beforehand.
 (`flatpak install --user`), so nothing asks for a password. You get a progress
 bar rather than one long wait.
 
+> **Note:** it's a big download, and the bar may not show a percentage — flatpak
+> doesn't always print one. Close the panel and come back and the bar is still
+> there. Pressing install again does nothing while one is running, so you don't
+> end up with two.
+
 **Cores** come from the libretro buildbot — the same place RetroArch's own Core
 Downloader uses.
 
