@@ -101,7 +101,8 @@ WHOLE_FILE = "whole-file"
 # matters. Keyed by what was written rather than a timestamp, so a user edit
 # made after ours is still recognised as theirs.
 #
-# In the settings directory rather than the runtime one: decky wipes runtime on
+# In the settings directory rather than the runtime one: a reset wipes runtime
+# on
 # uninstall, and losing this makes the plugin conservative about settings that
 # are genuinely its own.
 STATE_PATH = os.path.join(appenv.SETTINGS_DIR, "emulator_setup.json")

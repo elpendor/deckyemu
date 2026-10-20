@@ -31,7 +31,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from harness import TMP, check, section, summary  # noqa: E402  -- installs the decky stub
+from harness import TMP, check, section, summary  # noqa: E402  -- points appenv at scratch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -155,7 +155,7 @@ try:
     # ---- and the shortcut left by an uninstall, which is the way back --------
     #
     # Uninstalling the plugin removes the settings and the launcher scripts and
-    # cannot touch Steam: decky has no frontend uninstall hook, and the only one
+    # cannot touch Steam: there is no frontend uninstall hook, and the only one
     # it does have fires on every reload, so removing shortcuts there would
     # delete somebody's library every time the plugin restarted. The setup
     # shortcut therefore outlives an uninstall as a hidden entry that starts

@@ -3,8 +3,8 @@
 
     python scripts/tests/test_update_watch.py
 
-Self-distribution is why this exists. A plugin in decky's store gets an update
-notice from the loader -- a toast and a dot on decky's own icon, on a six-hour
+Self-distribution is why this exists. Something installed from a store gets an
+update notice from the store -- a toast and a dot on its own icon, on a six-hour
 timer -- and none of that reaches a plugin installed from its own releases page.
 So the timer is ours to run.
 
@@ -70,7 +70,7 @@ _plugin.loop = asyncio.new_event_loop()
 
 _calls = []
 # The last entry ends the watch: the handler re-raises CancelledError, which is
-# also the real way this loop stops -- decky unloading the plugin.
+# also the real way this loop stops -- the service stopping.
 #
 # Two kinds of failure on purpose. A raised exception is the network being
 # unreachable; a reply with checked=False is GitHub refusing, which does not
@@ -173,7 +173,8 @@ section("and it can be stopped")
 
 # The structural checks below say the wiring is there. This says the task
 # actually ends when asked -- a watch that ignored its cancel would hold a
-# plugin decky has finished with and wake up hours later to call methods on it.
+# backend the service has finished with and wake up hours later to call methods
+# on it.
 _second = plugin_main.Plugin()
 _second.loop = asyncio.new_event_loop()
 
@@ -205,7 +206,7 @@ check("and stops as a cancellation, not as a failure", _task.cancelled(), True)
 _second.loop.close()
 
 
-# decky calls _unload when it is done with the plugin. A watch left running
+# the service calls _unload when it stops. A watch left running
 # holds a reference to a plugin nobody wants and wakes up hours later to call
 # methods on it.
 check("_unload cancels the task it started",

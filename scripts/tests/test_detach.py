@@ -12,7 +12,7 @@ hung" report, and indistinguishable from the backend having died.
 The handlers inside those coroutines only ever covered the expected failures
 (flatpak missing, a non-zero exit). Everything else -- a KeyError on an entry
 field, a permission error writing a config, anything from the registration step
-that runs *after* a successful download -- escaped into decky's own log where
+that runs *after* a successful download -- escaped into the service's own log where
 nothing was watching for it.
 """
 
@@ -23,7 +23,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from harness import REPO_ROOT, check, section  # noqa: E402  -- installs the decky stub
+from harness import REPO_ROOT, check, section  # noqa: E402  -- points appenv at scratch
 
 sys.path.insert(0, REPO_ROOT)
 

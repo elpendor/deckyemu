@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Listing files without `glob`, which decky's bundle does not carry.
+"""Listing files without `glob`, which an earlier interpreter did not carry.
 
     python scripts/tests/test_findfiles.py
 
 `import glob` worked on a Deck only because SteamOS's own Python sits on
-`sys.path` behind decky's executable -- the same shape of luck that ran out for
+`sys.path` behind that executable -- the same shape of luck that ran out for
 `http.server` and stopped the plugin loading at all. The core scan, the launcher
 sweep and the Steam shortcut list all went through it, so the replacement has to
 behave the same where it matters: hidden files, directories, a folder that is
@@ -17,7 +17,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from harness import TMP, check, section, summary  # noqa: E402  -- installs the decky stub
+from harness import TMP, check, section, summary  # noqa: E402  -- points appenv at scratch
 
 import findfiles  # noqa: E402
 

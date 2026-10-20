@@ -445,7 +445,8 @@ def to_core_entry(emulator, system_name=""):
 
 # `{plugin}` in an env value becomes the directory this plugin is installed in,
 # so a catalog entry can point at a file the plugin ships without knowing where
-# Decky put it. shadPS4's `LD_PRELOAD` is the only user: the shim in `shim/` has
+# it was installed. shadPS4's `LD_PRELOAD` is the only user: the shim in `shim/`
+# has
 # to be named by absolute path, and that path is not knowable when the entry is
 # written.
 PLUGIN_PLACEHOLDER = "{plugin}"
@@ -608,7 +609,7 @@ def gui_argv(emulator, args=(), allow=()):
     return env_prefix(emulator) + [emulator.get("target", "")] + list(args)
 
 
-#: Where the space-free links below are kept. decky's runtime directory rather
+#: Where the space-free links below are kept. The runtime directory rather
 #: than the user's own folder: nothing here is theirs to look at or keep, and it
 #: being wiped on uninstall is correct.
 ARG_LINK_DIR = os.path.join(appenv.DATA_DIR, "argpaths")

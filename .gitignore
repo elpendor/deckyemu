@@ -46,28 +46,11 @@ __pycache__/
 /.yalc
 yalc.lock
 
-# Editor-local, all of it. The template's .vscode tasks were removed: they
-# implemented a deploy path this project does not use -- decky plugin build,
-# which would Docker-build a backend that no longer exists -- and they piped a
-# sudo password over ssh, which is not a pattern to ship as though sanctioned.
+# Editor-local, all of it.
 .vscode/
 
-# Ignore output folder
-
-backend/out
-
-# Make sure to ignore any instance of the loader's decky_plugin.py
-decky_plugin.py
-
-# Ignore decky CLI for building plugins
-out
-out/*
-cli/
-cli/*
-cli/decky
-
-# A runtime cache that decky writes under its own data dir; a copy here is a
-# stale 260KB of somebody else metadata that nothing reads.
+# A runtime cache the backend writes under its data dir; a copy here is a
+# stale 260KB of metadata that nothing reads.
 installer/
 
 # Built by CI and by deploy.sh from shim/, the same way dist/ is built from src/.

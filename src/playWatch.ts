@@ -18,7 +18,7 @@ import { onGameLaunch, runningGames } from "./steam";
  * over hotel wifi is minutes of a game that has already quit, and there is
  * nothing on screen to explain it.
  *
- * So the copy runs in decky's own process, which the reaper knows nothing
+ * So the copy runs in the service's own process, which the reaper knows nothing
  * about, and this is the part that notices when to ask for it.
  *
  * **Watched rather than notified**, because Steam offers nothing better.

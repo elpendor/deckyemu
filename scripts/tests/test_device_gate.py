@@ -73,7 +73,7 @@ check("the answer does not come from the distribution",
       False)
 
 
-section("the gate over the methods decky can call")
+section("the gate over the methods the panel can call")
 # A backstop, not the user interface -- the panel shows the explanation and does
 # not call the rest. So what stays reachable is only what is needed to see that
 # explanation, act on it, and report it if it is wrong.

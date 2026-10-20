@@ -1,18 +1,11 @@
 """Find out whether a newer DeckyEmu has been released.
 
-Not called `updater`: decky_loader has a module by that name, and since py_modules
-is appended to a sys.path that already holds decky's packages, `import updater`
-resolved to theirs. Everything loaded and only the update check failed, with
-"module 'decky_loader.updater' has no attribute 'check'".
+Not called `updater`: a generic name like that can resolve to some other
+package's module first. Everything loaded and only the update check failed,
+with "module 'updater' has no attribute 'check'".
 
-This module only *looks*. Installing is decky's job: its loader runs as root and
-already knows how to download a plugin zip, verify it, unpack it into
-~/homebrew/plugins and reload the result. This plugin's backend runs as `deck` and
-cannot write its own directory, so anything else would mean either a privileged
-helper or asking the user to loosen permissions on the plugin folder.
-
-The frontend passes what is found here to decky's `utilities/install_plugin`
-route. See src/updater.ts for that half.
+This module only *looks*. Installing is selfupdate.py's job, through
+`stage_update`.
 
 Releases come from the GitHub API, which needs no credentials to read a public
 repository. There was a stored token here for the period when this repository
@@ -41,8 +34,8 @@ CACHE_SECONDS = 60 * 60
 
 #: Where a successful check is kept, so a restart does not repeat it.
 #:
-#: The cache below is module state, and decky restarts this backend every time
-#: the plugin's files change -- so without a copy on disk the hour it promises
+#: The cache below is module state, and the service restarts on every update
+#: and every deploy -- so without a copy on disk the hour it promises
 #: only lasts as long as the process. That was survivable while the only caller
 #: was a button somebody pressed; it is not, now that opening the panel asks.
 #:
@@ -241,7 +234,7 @@ def _save_cache():
 #: fifteen seconds** from one backend process, against a budget of sixty an
 #: hour. The panel wraps this call in a retry with a two-second per-attempt
 #: timeout -- reasonable for a backend call that takes milliseconds, wrong for
-#: one that crosses the network -- and decky cannot cancel work, so every
+#: one that crosses the network -- and a call cannot be cancelled, so every
 #: abandoned attempt left its request running and started another.
 #:
 #: Taken without blocking, deliberately. A caller who cannot have the lock is

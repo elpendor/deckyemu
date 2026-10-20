@@ -22,7 +22,7 @@ import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from harness import REPO_ROOT, check, section  # noqa: E402  -- installs the decky stub
+from harness import REPO_ROOT, check, section  # noqa: E402  -- points appenv at scratch
 
 sys.path.insert(0, REPO_ROOT)
 
@@ -295,7 +295,7 @@ section("a track with no sheet at all")
 # tracks are or what mode they are in, so without the sheet the disc cannot be
 # assembled -- and nothing on screen said so.
 
-import romshelf  # noqa: E402  -- read after the harness stubbed decky
+import romshelf  # noqa: E402  -- read after the harness pointed appenv at scratch
 
 with tempfile.TemporaryDirectory() as folder:
     touch(folder,

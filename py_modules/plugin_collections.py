@@ -24,7 +24,7 @@ What did *not* come along: `_menu_combo`, `_launch_options` and `_clean_options`
 were in the collections block and are not about collections -- they are how a
 game runs. They went to the shortcuts block, next to their callers.
 
-Mixed into `Plugin` rather than called by it, like the others: decky exposes the
+Mixed into `Plugin` rather than called by it, like the others: the service exposes the
 methods it finds on the plugin object, so the names have to stay there while the
 code lives somewhere findable. Nothing here may be instantiated alone.
 """

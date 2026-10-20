@@ -164,10 +164,11 @@ const SWEEP = `
 /**
  * A progress bar, hand-rolled.
  *
- * @decky/ui does export Steam's own ProgressBar, but it is resolved at runtime by
- * searching the webpack bundle for a matching module -- it returns undefined when
- * Steam renames or reshapes it, and rendering undefined takes the whole dialog
- * with it. The same reasoning as steam.ts: a Steam change should cost a feature,
+ * Steam does have its own ProgressBar, but finding it at runtime means
+ * searching the webpack bundle for a matching module -- it comes back undefined
+ * when Steam renames or reshapes it, and rendering undefined takes the whole
+ * dialog with it. The same reasoning as steam.ts: a Steam change should cost a
+ * feature,
  * not the panel. Two divs and a width owe nothing to Steam's internals.
  */
 /**

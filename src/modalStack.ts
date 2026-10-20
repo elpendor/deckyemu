@@ -32,15 +32,15 @@ const open = new Set<ShowModalResult>();
  * -- the B button, its own Close, a dialog closing itself -- takes itself out,
  * so `closeOpenModals` is never calling `Close` on things that went long ago.
  *
- * The two defaults are decky's own, restated because passing props at all
- * replaces them.
+ * The two defaults -- the popup's title, and leaving the main window shown --
+ * are restated because passing props at all replaces them.
  */
 export function openModal(modal: ReactNode): ShowModalResult {
   // `fnOnClose` closes over `handle` before the assignment completes, which is
   // fine and not a trick: the arrow is only built here, and by the time Steam
   // calls it the binding is the same object the caller was handed back.
   const handle: ShowModalResult = showModal(modal, undefined, {
-    strTitle: "Decky Dialog",
+    strTitle: "DeckyEmu",
     bHideMainWindowForPopouts: false,
     fnOnClose: () => {
       open.delete(handle);

@@ -44,7 +44,7 @@ GAMES_XML = ("bin", "Config", "Games.xml")
 #: A MAME set name: what a ROM set's filename is, and all it ever is.
 _SET_NAME_RE = re.compile(r"^[a-z0-9]+$")
 
-# Read with a regex rather than a parser, and not for speed: **the decky plugin
+# Read with a regex rather than a parser, and not for speed: **the backend
 # sandbox has no `xml.etree`**. Importing it is not a slow path or a degraded
 # feature, it is `ModuleNotFoundError` at import time and the whole backend fails
 # to start -- which is exactly what happened. Nothing else in py_modules imports

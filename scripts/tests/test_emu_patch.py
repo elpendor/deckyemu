@@ -20,7 +20,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from harness import TMP, check, section, summary  # noqa: E402  -- decky stub
+from harness import TMP, check, section, summary  # noqa: E402  -- points appenv at scratch
 
 import emu_patch  # noqa: E402
 import emulator_catalog  # noqa: E402

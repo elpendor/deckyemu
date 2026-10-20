@@ -97,7 +97,7 @@ export function SaveBackupModal({ closeModal }: Props) {
       /*
        * Every way out, not just Done. A modal is also dismissed with B and with
        * the X, and hanging this off one button would leave a copy of somebody's
-       * save files in decky's runtime directory for anyone who left by either of
+       * save files in the runtime directory for anyone who left by either of
        * the other two -- which is most people.
        *
        * Only when something was actually staged: with no backup of ours out

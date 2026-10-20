@@ -131,7 +131,7 @@ check("and so is nothing at all", emu_install.nothing_to_uninstall(""), False)
 section("the leftover is swept, and only when flatpak has disowned it")
 
 # Against the real user root, which is what `remove_flatpak_husk` reads: the
-# harness points DECKY_USER_HOME at the scratch directory for the whole run.
+# harness points DECKYEMU_USER_HOME at the scratch directory for the whole run.
 _system, _user_root = sysenv.flatpak_roots()
 
 _clear(APP, _user_root)

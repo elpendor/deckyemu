@@ -1,6 +1,6 @@
-"""Listing files without `glob`, which decky's bundle does not carry.
+"""Listing files without `glob`, which an earlier interpreter did not carry.
 
-Measured on a Deck running decky v3.2.9: `glob` is not in the executable at all,
+Measured on a Deck in September 2026: `glob` was not in that executable at all,
 and `import glob` works only because SteamOS's own Python 3.13 sits on
 `sys.path` behind the bundle -- `/usr/lib/python3.13/glob.py` is the file that
 loads. That is luck. The same luck ran out for `http.server` when a dependency

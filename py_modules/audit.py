@@ -1,6 +1,7 @@
 """An append-only note of everything that removed or replaced somebody's data.
 
-**Decky keeps five logs and rotates the rest away.** That is the right call for
+**The service keeps ten logs and rotates the rest away.** That is the right call
+*for
 a log that is mostly progress lines, and the wrong one for the only question
 that matters after data goes missing: what removed it, and when. Measured -- a
 storage was found holding 23 files where it had held 608 six

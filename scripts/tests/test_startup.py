@@ -25,7 +25,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from harness import REPO_ROOT, check, section  # noqa: E402  -- installs the decky stub
+from harness import REPO_ROOT, check, section  # noqa: E402  -- points appenv at scratch
 
 sys.path.insert(0, REPO_ROOT)
 
@@ -80,7 +80,8 @@ _loop = asyncio.new_event_loop()
 asyncio.set_event_loop(_loop)
 try:
     # Reaching the end at all is half the check: `_main` returning is what tells
-    # decky the plugin loaded, and an exception here is what this prevents.
+    # the service the backend started, and an exception here is what this
+    # prevents.
     _loop.run_until_complete(_plugin._main())
 finally:
     asyncio.set_event_loop(None)

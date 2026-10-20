@@ -10,7 +10,7 @@ export const VERSION_POLL_MS = 4000;
 /**
  * Which build of the plugin is on disk, kept current while a panel is open.
  *
- * Decky owns installing an update and the plugin reload that follows, and tells
+ * The service owns installing an update and the restart that follows, and tells
  * this side nothing about either — so a version read once at mount went stale
  * the moment an update landed, and the panel went on showing the build it had
  * under a line still offering the update you had just installed. Leaving the

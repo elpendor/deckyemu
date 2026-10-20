@@ -38,7 +38,8 @@ export interface ReleaseInfo {
   notes: string;
   asset_url: string;
   asset_name: string;
-  /** From the release body, for decky to verify the download. "" if absent. */
+  /** From the release body, for stage_update to verify the download. "" if
+   * absent. */
   sha256: string;
   prerelease: boolean;
   published_at: string;

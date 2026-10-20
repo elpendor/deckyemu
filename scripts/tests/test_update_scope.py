@@ -23,7 +23,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from harness import REPO_ROOT, check, section  # noqa: E402  -- installs the decky stub
+from harness import REPO_ROOT, check, section  # noqa: E402  -- points appenv at scratch
 
 sys.path.insert(0, REPO_ROOT)
 
@@ -57,7 +57,7 @@ def _fake_latest_tag(one):
 
 
 plugin = main.Plugin()
-# The endpoints run on a loop the plugin normally gets from decky.
+# The endpoints run on a loop the backend normally gets from the service.
 plugin.loop = asyncio.new_event_loop()
 _real = (emulator_catalog.CATALOG, emu_install.latest_tag,
          emu_install.installed_appimage, emu_install.read_build_record,

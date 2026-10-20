@@ -18,7 +18,7 @@ having it in a file named for the library is most of the reason this file
 exists -- somebody looking for what removes everything should find it by
 looking.
 
-Mixed into `Plugin` rather than called by it, like the others: decky exposes the
+Mixed into `Plugin` rather than called by it, like the others: the service exposes the
 methods it finds on the plugin object, so the names have to stay there while the
 code lives somewhere findable. Nothing here may be instantiated alone.
 """

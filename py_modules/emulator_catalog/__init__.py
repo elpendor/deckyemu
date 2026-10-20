@@ -202,7 +202,7 @@ def reload_imported():
     """
     global CATALOG, import_problems
 
-    from . import imported as _imported  # deferred: it imports decky
+    from . import imported as _imported  # deferred: it reads appenv's paths
 
     known = [label for label, _full, _short in platforms.NO_LIBRETRO_PLATFORMS]
     entries, problems = _imported.load(known)

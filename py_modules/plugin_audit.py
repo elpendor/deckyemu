@@ -7,7 +7,7 @@ still exists is only knowable in the frontend, which is why `audit_library`
 returns the registry for it to cross-check rather than answering that itself.
 
 Also the way back from a previous install under a different plugin folder name.
-decky derives the settings directory from the folder, so renaming it orphans
+older installs derived the settings directory from a folder name, so renaming it orphaned
 every record while leaving the Steam shortcuts working -- these are what adopt
 those games or forget them.
 

@@ -19,7 +19,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from harness import TMP, check, section, summary  # noqa: E402  -- installs the decky stub
+from harness import TMP, check, section, summary  # noqa: E402  -- points appenv at scratch
 
 import emu_firmware  # noqa: E402
 import emu_install  # noqa: E402

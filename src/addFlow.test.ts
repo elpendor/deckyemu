@@ -10,8 +10,9 @@ import { describe, expect, it, vi } from "vitest";
  * another file. Landing after a *different* ROM was picked is the quieter half
  * of the same bug: the previous game's name and cover on this one.
  *
- * `./backend` is mocked because it imports `@decky/api`, which will not load
- * under Node -- and `@decky/api` itself now, because `addFlow` reaches it
+ * `./backend` is mocked because it calls the service through `./host`, which
+ * has no service under Node -- and `./host` itself now, because `addFlow`
+ * reaches it
  * directly for the toast and the emulator install events. `./romDraft` is not:
  * the draft is the thing under test.
  */

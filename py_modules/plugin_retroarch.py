@@ -20,7 +20,7 @@ not got. EmuDeck installs one that way, so this is an ordinary case rather than
 an edge one, and `can_uninstall_retroarch` exists so the interface can say why
 the button is not there instead of offering a dead one.
 
-Mixed into `Plugin` rather than called by it, like the others: decky exposes the
+Mixed into `Plugin` rather than called by it, like the others: the service exposes the
 methods it finds on the plugin object, so the names have to stay there while the
 code lives somewhere findable. Nothing here may be instantiated alone.
 """

@@ -3,7 +3,7 @@ import type { HelperTool } from "./backend/firmware";
 /**
  * The description under a tool's name: what it is for, and where it stands.
  *
- * Its own module so it can be checked without dragging `@decky/ui` into a test
+ * Its own module so it can be checked without dragging `./steamui` into a test
  * runner, which is the same reason `emulatorLegend` and `firmwareState` are not
  * inside their panels.
  *

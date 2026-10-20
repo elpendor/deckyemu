@@ -9,7 +9,8 @@ import { type UpdateCheck } from "./backend";
  * icon, which is rendered once when the plugin loads and outlives every panel.
  * Neither can be the other's parent, so the answer belongs to neither.
  *
- * Two things write here. The backend's timer, through decky's event channel,
+ * Two things write here. The backend's timer, through the service's event
+ * channel,
  * which is what makes the dot right before anybody opens anything; and the
  * panel's own check on open, which is the one that governs what a user sees:
  * the timer is a floor for a device nobody opens the panel on, and it counts

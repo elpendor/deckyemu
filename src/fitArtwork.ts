@@ -8,7 +8,7 @@ import { backdropRect, containRect, needsFitting, SLOT_SIZE, type FittableSlot }
  * reason -- every decision it makes is made next door.
  *
  * Done here rather than in the backend because the backend is stdlib-only on
- * decky's frozen Python: there is no Pillow and there will not be one. The
+ * the system Python: there is no Pillow and there will not be one. The
  * browser already has everything needed.
  */
 

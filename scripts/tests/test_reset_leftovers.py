@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""A state reset must empty decky's runtime directory, not two thirds of it.
+"""A state reset must empty the runtime directory, not two thirds of it.
 
     python scripts/tests/test_reset_leftovers.py
 
@@ -27,7 +27,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from harness import check, section, summary  # noqa: E402  -- installs the decky stub
+from harness import check, section, summary  # noqa: E402  -- points appenv at scratch
 
 import appenv  # noqa: E402
 import devreset  # noqa: E402
@@ -92,7 +92,8 @@ _left = sorted(
 )
 check("and the reset leaves none of them behind", _left, [])
 
-# Not a tautology: the directory itself stays, because decky owns it and the
+# Not a tautology: the directory itself stays, because the service owns it and
+# the
 # plugin only writes inside it.
 check("the runtime directory itself is still there", os.path.isdir(RUNTIME), True)
 

@@ -1,4 +1,4 @@
-# difflib from CPython 3.11.9 (Lib/difflib.py), carried here because decky's
+# difflib from CPython 3.11.9 (Lib/difflib.py), carried here because a trimmed
 # bundle stopped packing it in v3.2.9. `import difflib` still worked after that,
 # but only by resolving to SteamOS's /usr/lib/python3.13/difflib.py, which sits
 # on sys.path behind the bundle. It has a name of its own, so it cannot resolve

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Exercise the backend logic without a Steam Deck.
 
-Everything under py_modules/ is plain Python whose only decky dependency is a
+Everything under py_modules/ is plain Python whose only tie to the device is a
 logger and a few directory paths, so it can run anywhere once those are stubbed.
 That covers the parts most likely to be wrong -- name cleanup and artwork
 matching -- and leaves only the Steam client calls needing a real Deck.
@@ -39,7 +39,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-# Before any py_modules import: this is what puts the fake `decky` in place.
+# Before any py_modules import: this is what points appenv at the scratch tree.
 from harness import (  # noqa: E402
     OFFLINE,
     REPO_ROOT,
@@ -1398,7 +1398,8 @@ check("an emulator with no environment gets no --env",
       False)
 
 # `{plugin}` in an env value, so a catalog entry can name a file the plugin
-# ships without knowing where Decky unpacked it. shadPS4's motion shim is the
+# ships without knowing where the version was unpacked. shadPS4's motion shim is
+# the
 # only user: `LD_PRELOAD` has to be an absolute path and that path is not
 # knowable when the entry is written.
 _plugin_dir = os.path.join(TMP, "plugin-dir")
@@ -2201,8 +2202,8 @@ store.set_settings({"add_to_collection": True})
 
 section("install progress -- a bogus percentage drives the bar off screen")
 # Output is read in fixed-size chunks, so a number can be split across reads.
-# "1425%" must not be read as 425: nProgress is 0-100 (decky-loader emits
-# round(raw/total*100)), and anything above 100 renders past the bar's track.
+# "1425%" must not be read as 425: progress is 0-100, and anything above 100
+# renders past the bar's track.
 check("a split number is rejected", Plugin._parse_percent("1425%"), -1)
 check("a plain percentage is read", Plugin._parse_percent("Downloading 45%"), 45)
 check("the last one wins", Plugin._parse_percent("1/5 12% ... 87%"), 87)
@@ -3056,7 +3057,8 @@ else:
 section("Steam runtime -- system binaries must not load Steam's libraries")
 import sysenv  # noqa: E402
 
-# Decky runs plugins inside Steam's environment, where LD_LIBRARY_PATH points at
+# Steam starts launchers inside its own environment, where LD_LIBRARY_PATH
+# points at
 # the Steam Runtime. flatpak then loads Steam's libcrypto and dies instantly:
 #   libcrypto.so.3: version `OPENSSL_3.4.0' not found
 dirty = {
@@ -3123,7 +3125,7 @@ _real_roots = ra_detect._flatpak_system_roots
 _real_data = ra_detect._flatpak_data_dir
 _real_which = ra_detect.shutil.which
 # A function now, not a constant: as a constant the per-user root was expanded at
-# import time and ignored DECKY_USER_HOME.
+# import time and ignored DECKYEMU_USER_HOME.
 ra_detect._flatpak_system_roots = lambda: (fake_flatpak_root,)
 ra_detect._flatpak_data_dir = lambda: fake_data_dir
 # `flatpak info` would otherwise be consulted and could answer either way.
@@ -5094,7 +5096,7 @@ os.makedirs(fake_home, exist_ok=True)
 _saved_home = os.environ.get("DECKYEMU_USER_HOME")
 os.environ["DECKYEMU_USER_HOME"] = fake_home
 
-check("the home is DECKY_USER_HOME when the loader sets it", sysenv.user_home(), fake_home)
+check("the home is DECKYEMU_USER_HOME when it is set", sysenv.user_home(), fake_home)
 check("and ra_detect agrees rather than resolving its own", ra_detect.user_home(), fake_home)
 
 # The ROM picker opens at the transfer folder: on a device with nothing added
@@ -5140,7 +5142,7 @@ check("it is one level below the plugin's own folder",
 check("and is created if it was missing", os.path.isdir(transfer_dir), True)
 check("including its parent", os.path.isdir(user_dir), True)
 check("asking again returns the same folder", fileserver.default_dir(), transfer_dir)
-check("the plugin's user folder is separate from what decky owns",
+check("the user folder is separate from the runtime directory",
       sysenv.user_dir() != appenv.DATA_DIR, True)
 check(
     "and it is where the ROM picker opens when nothing else is known",
@@ -5163,7 +5165,7 @@ check(
 )
 
 # `~` in retroarch.cfg means the *user's* home. os.path.expanduser would read the
-# home of whatever account the backend runs as, which decky does not guarantee.
+# home of whatever account the backend runs as, which nothing guarantees.
 tilde_cores = os.path.join(fake_home, "cores")
 os.makedirs(tilde_cores, exist_ok=True)
 os.makedirs(os.path.join(cfg_dir, "info"), exist_ok=True)
@@ -5531,7 +5533,8 @@ finally:
 
 # **A rewrite that did not happen must not be recorded as one.** The stamp went
 # in before the rebuild, so an update interrupted here -- a Deck asleep during
-# startup, a decky reload, a rebuild that threw -- left the setting claiming the
+# startup, a service restart, a rebuild that threw -- left the setting claiming
+# the
 # new format over scripts still on the old one, and nothing tried again. Since
 # format 22 a launcher carries the wait for cloud saves, so those games would
 # quietly never look for their saves before starting.
@@ -6003,7 +6006,7 @@ parsed = releases.parse_release(
 )
 check("the leading v is dropped", parsed["version"], "1.2.3")
 check("the download url is picked up", parsed["asset_url"], "https://example/deckyemu.zip")
-# CI writes the digest into the body so decky can verify what it downloads.
+# CI writes the digest into the body so stage_update can verify the download.
 check("the sha256 is read from the notes", parsed["sha256"], "a" * 64)
 check("notes survive", parsed["notes"].startswith("Notes here"), True)
 # The digest is for stage_update to verify against, not for a reader. Leaving it
@@ -6244,7 +6247,7 @@ check("referenced launchers are not strays", good_launcher in audit["strays"], F
 check("deleting strays works", run(plugin.delete_stray_launchers([stray]))["deleted"], 1)
 check("and it is gone", os.path.isfile(stray), False)
 
-# Renaming the plugin leaves the old install's library behind under DECKY_HOME.
+# Renaming the plugin left an older install's library behind under the old root.
 old_dir = os.path.join(appenv.PREVIOUS_ROOT, "settings", "an-older-name")
 os.makedirs(old_dir, exist_ok=True)
 with open(os.path.join(old_dir, "library.json"), "w", encoding="utf-8") as handle:
@@ -6279,7 +6282,7 @@ check(
     False,
 )
 
-# Files that merely live under DECKY_HOME must not be mistaken for a library.
+# Files that merely live under the old root must not be mistaken for a library.
 junk_dir = os.path.join(appenv.PREVIOUS_ROOT, "settings", "unrelated-plugin")
 os.makedirs(junk_dir, exist_ok=True)
 with open(os.path.join(junk_dir, "library.json"), "w", encoding="utf-8") as handle:
@@ -6321,7 +6324,7 @@ section("dev reset -- gated on the build, and honest about what it deletes")
 # The gate is the whole safety story on the backend side, and it is keyed on
 # CI's build stamp rather than a setting: a setting can be switched on by
 # anyone, and these actions delete save games.
-import devreset  # noqa: E402  -- imported here so the stub decky is in place
+import devreset  # noqa: E402  -- imported here, after the harness set appenv up
 # Not to test them -- that is tests/test_emu_config.py and test_emu_firmware.py.
 # The reset is compared against every module that writes into the settings
 # directory, so it has to be able to see all of them.

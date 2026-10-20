@@ -118,7 +118,6 @@ const OWED: readonly (readonly [string, string])[] = [
   ["RetroAchievements", "achievements"],
   ["rclone", "cloud saves"],
   ["SteamDeckGyroDSU", "motion"],
-  ["Decky Loader", "plugins"],
 ];
 
 const NAME: CSSProperties = { fontSize: "26px", letterSpacing: "0.01em" };

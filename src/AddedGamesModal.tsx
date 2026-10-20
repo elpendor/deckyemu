@@ -27,7 +27,7 @@ interface Props {
 
 /**
  * **Steam's navigation components fill a sized parent; they do not size to
- * their content.** `Tabs` is the library's own tab row -- `@decky/ui` finds it
+ * their content.** `Tabs` is the library's own tab row -- `./steamui` finds it
  * by matching `TabRowTabs` in Steam's bundle -- and it is built for a
  * full-screen route, where the height is simply there.
  *

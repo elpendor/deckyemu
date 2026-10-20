@@ -8,7 +8,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  * shortcut when a later step fails, and what gets written down about where the
  * game was filed.
  *
- * `./backend` is mocked because it imports `@decky/api`, which will not load
+ * `./backend` is mocked because it calls the service through `./host`, which
+ * has none
  * under Node. `./steam` is not -- the filing is the thing under test, so it runs
  * for real against the same fake Steam globals every other suite here uses.
  */

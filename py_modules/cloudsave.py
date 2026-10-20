@@ -11,7 +11,7 @@ explicitly, so a Deck that already runs rclone for something else keeps its
 `~/.config/rclone/rclone.conf` untouched: a plugin that quietly edited a config
 file it did not create would be a genuinely bad surprise, and there is no way to
 undo it. Ours lives beside the plugin's settings, which is also what decides its
-lifetime -- decky clears that directory on uninstall, and a cloud token left
+lifetime -- a reset clears that directory, and a cloud token left
 behind by a plugin somebody removed is exactly the wrong thing to keep.
 
 **Why the plain command line and not the rc API.** rclone can be driven over
@@ -613,7 +613,7 @@ def _drive_settings(token):
     put the question to. One request, with the token that has just arrived.
 
     Through `net` rather than through `urllib` directly, and that is not
-    housekeeping. Decky runs plugins in a frozen interpreter whose bundled CA
+    housekeeping. The backend once ran in a frozen interpreter whose bundled CA
     store is older than the operating system's, so a plain `urlopen` to
     Microsoft fails with `CERTIFICATE_VERIFY_FAILED ... unable to get local
     issuer certificate` on a Deck whose own trust store has the root perfectly
@@ -791,7 +791,7 @@ def remote_kinds():
     through here to find out that a remote is a Dropbox.
 
     Parsed by hand rather than with `configparser`, which is not among the
-    modules this plugin has shown decky's bundled Python to have. Two line
+    modules that interpreter was shown to have. Two line
     shapes matter and both are trivial, so the dependency buys nothing -- and
     every other line, the token included, is ignored rather than read.
     """

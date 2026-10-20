@@ -155,7 +155,7 @@ def _state_files():
 
 
 def _runtime_leftovers():
-    """[(path, label, is_dir)] the plugin wrote into decky's runtime directory.
+    """[(path, label, is_dir)] DeckyEmu wrote into its runtime directory.
 
     `clear_state` used to name the launcher scripts and the artwork cache and
     stop there, which left two thirds of that directory standing after an action
@@ -189,7 +189,7 @@ def _runtime_leftovers():
     # written before the split.
     for path in list(launchers.OVERRIDE_CONFIGS.values()) + [launchers.OVERRIDE_CONFIG]:
         items.append((path, "RetroArch override config", False))
-    # An update downloaded and handed to decky. Named from the release asset, so
+    # An update downloaded for installing. Named from the release asset, so
     # it is found rather than assumed.
     try:
         for name in sorted(os.listdir(runtime)):

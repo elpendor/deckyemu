@@ -9,7 +9,7 @@
  * These are the primitives. Anything that has to tell the backend what happened
  * -- which collections are ours, which have gone -- lives in `src/collections.ts`
  * instead, because this package must stay free of backend imports: it is
- * exercised by tests that run under Node, where `@decky/api` will not load.
+ * exercised by tests that run under Node, where `../host` has no service.
  */
 import {
   collectionStore,

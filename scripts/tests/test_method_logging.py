@@ -3,7 +3,7 @@
 
     python scripts/tests/test_method_logging.py
 
-Decky hands an exception back to whoever called the method and writes it
+The service hands an exception back to the panel and writes it
 nowhere. So the frontend shows its own wording for "that did not work" and the
 plugin log -- the one place anybody looks afterwards, and the only thing a bug
 report can carry -- has nothing in it.
@@ -86,7 +86,8 @@ section("a method that succeeds is untouched")
 
 check("its answer comes back", run(_subject.works()), "fine")
 check("and nothing is logged", _capture.records, [])
-# Decky finds the methods it can call by name on the plugin object, so a wrapper
+# The service finds the methods it can call by name on the Plugin object, so a
+# wrapper
 # that renamed them would take the whole API with it.
 check("the method keeps its name", Subject.works.__name__, "works")
 
@@ -119,7 +120,7 @@ try:
 except asyncio.CancelledError:
     pass
 # CancelledError is a BaseException, so `except Exception` misses it by
-# construction -- decky cancels in-flight work when it unloads the plugin, and
+# construction -- the service cancels in-flight work when it stops, and
 # logging that as a fault would fill the log with noise at every shutdown.
 check("a cancelled call logs nothing", _capture.records, [])
 

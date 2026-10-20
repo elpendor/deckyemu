@@ -1,7 +1,7 @@
 /**
  * Guard against backend calls that never answer.
  *
- * Decky reloads a plugin's backend whenever its files change, and any call in
+ * The service restarts on every update and every deploy, and any call in
  * flight at that moment is destroyed without a reply -- the loader logs "Task was
  * destroyed but it is pending". The promise then stays pending forever, so a
  * `.finally()` that clears a loading flag never runs and the UI sits on a spinner
@@ -45,7 +45,7 @@ export interface RetryOptions {
  * The defaults below assume the work takes single-digit milliseconds, so two
  * seconds without an answer means the reply was dropped by a reload and
  * retrying recovers it. That reasoning does not survive a call to GitHub: two
- * seconds is an ordinary duration there, decky cannot cancel the abandoned
+ * seconds is an ordinary duration there, a call cannot cancel the abandoned
  * attempt, and the retry starts a second request while the first is still
  * running. Measured against a timing-out GitHub, the defaults turned one slow
  * check into 23 requests in fifteen seconds -- against a budget of sixty an
@@ -76,7 +76,7 @@ export async function callWithRetry<T>(
       if (attempt >= attempts) break;
 
       // Backs off because the usual cause is a burst of reloads, not one: a
-      // deploy touches many files and decky's watcher reloads on each, so the
+      // deploy restarts the service, which drops every call in flight, so the
       // backend can be unavailable for several seconds in a row.
       console.log(`[deckyemu] backend call attempt ${attempt}/${attempts} failed, retrying`, error);
       onAttempt?.(attempt, attempts);

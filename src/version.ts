@@ -1,7 +1,8 @@
 /**
  * What this bundle is, and whether it matches the backend it is talking to.
  *
- * The two halves of a decky plugin load independently: decky restarts the Python
+ * The two halves of DeckyEmu load independently: the service restarts the
+ * Python
  * backend whenever its files change, while the Steam client keeps whatever
  * frontend bundle it has already evaluated. After an update those can disagree for
  * as long as Steam stays running, and the symptom is that a change appears to have

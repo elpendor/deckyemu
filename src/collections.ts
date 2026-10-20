@@ -15,7 +15,8 @@ import { logError } from "./logError";
  * three that do.
  *
  * Kept out of `steam.ts` because that file must stay free of backend imports:
- * it is exercised by tests that run under Node, where `@decky/api` will not
+ * it is exercised by tests that run under Node, where `./host` has no service
+ * and will not
  * load. Same reason `reuseShortcut.ts` and `addGame.ts` sit beside it.
  */
 

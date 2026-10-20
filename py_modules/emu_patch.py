@@ -44,7 +44,7 @@ import emulator_catalog
 #: Which patched builds exist, written beside the AppImage they were made from.
 #:
 #: Beside the binary rather than in the settings directory, for the same reason
-#: `emu_install.BUILD_RECORD` is: decky owns its settings directory and clears
+#: `emu_install.BUILD_RECORD` is: the settings directory is cleared
 #: it, and a patched file whose provenance was forgotten is worse than one that
 #: was never made.
 PATCH_RECORD = ".patches.json"

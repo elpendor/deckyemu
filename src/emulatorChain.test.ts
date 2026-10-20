@@ -16,7 +16,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  * So these run the whole chain with no component anywhere, which is the
  * condition the device version failed under.
  *
- * `./backend` and `@decky/api` are mocked because neither loads under Node.
+ * `./backend` and `./host` are mocked because neither has a service under Node.
  * `./romDraft` is real — the draft is half of what is being checked.
  */
 

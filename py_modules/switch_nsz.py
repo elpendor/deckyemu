@@ -17,7 +17,7 @@ so the `.nca` written back has to hash to the `.ncz`'s own name. Either it is
 the original file bit for bit, or the unpack fails and leaves nothing behind.
 
 **libzstd and libcrypto through ctypes.** The standard library has neither
-zstd nor AES and nothing can be installed into Decky's Python, but both are
+zstd nor AES and nothing is installed into the system Python, but both are
 part of SteamOS itself -- pacman depends on them. Measured on the Deck: a
 577 MB NSZ became a 1.34 GB NSP in 4.7 seconds, two of them zstd and one the
 hash. AES runs at about 10 GB/s there and is not what costs the time.

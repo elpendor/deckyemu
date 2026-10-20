@@ -184,12 +184,14 @@ DEFAULT_SETTINGS = {
     "allow_unsupported_device": False,
     # The orange dot on the plugin's Quick Access icon when a newer release
     # exists. On, because a self-distributed plugin has no other way to say so:
-    # decky notifies for the plugins in its store and will never notify for this
+    # nothing else notifies about DeckyEmu's releases, so this is the only
+    # notice for this
     # one.
     #
-    # Off is a real preference rather than a courtesy. decky has a notification
+    # Off is a real preference rather than a courtesy. Steam has its own
+    # notification
     # setting of its own for plugin updates, and a plugin cannot read it --
-    # nothing in @decky/api exposes decky's settings -- so somebody who has
+    # DeckyEmu cannot read Steam's -- so somebody who has
     # already said "do not tell me about plugin updates" would be told anyway.
     # This is the only way to answer them.
     "show_update_dot": True,

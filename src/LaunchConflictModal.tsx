@@ -88,7 +88,7 @@ export function LaunchConflictModal({ closeModal, title, running, onLaunch }: Pr
   // swaps the label rather than acting, which is the whole mechanism: the
   // button that can lose unsaved data is never the one under a thumb that was
   // already moving. Owning the footer is what makes it possible -- `ConfirmModal`
-  // closes itself, and the prop that stops it is not one @decky/ui declares.
+  // closes itself, and the prop that stops it is not one our types declare.
   const [confirming, setConfirming] = useState(false);
 
   const other = running[0].title;

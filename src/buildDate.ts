@@ -6,7 +6,7 @@
  * the seconds never are.
  *
  * Its own module rather than living beside the dialog that uses it, because
- * anything importing `@decky/ui` cannot be imported under Node -- Steam's
+ * anything importing `./steamui` cannot be imported under Node -- Steam's
  * components are resolved by sniffing webpack modules at import time -- so a
  * helper kept in the .tsx is a helper with no tests.
  */

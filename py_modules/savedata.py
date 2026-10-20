@@ -56,7 +56,7 @@ from emulator_catalog import schema
 #: extract half of it somewhere plausible.
 FORMAT = 1
 
-#: Where a built archive waits to be read off the device. decky's runtime
+#: Where a built archive waits to be read off the device. The runtime
 #: directory rather than the transfer folder: this is the plugin's own working
 #: file, and the transfer folder is scanned for arrivals the user is meant to act
 #: on. Whoever builds one owns deleting it -- a backup left here is a copy of
@@ -64,7 +64,7 @@ FORMAT = 1
 BACKUP_DIR = os.path.join(appenv.DATA_DIR, "backups")
 
 #: Where a backup *arriving* from another device is kept, under the user's own
-#: `~/deckyemu` rather than decky's runtime directory.
+#: `~/deckyemu` rather than the runtime directory.
 #:
 #: Not the transfer folder. That is the ROM inbox: everything in it is offered as
 #: something to add to Steam, so a 75MB archive of save files sat in the picker
@@ -300,7 +300,7 @@ def _matching(path):
     -- and that directory is the prefix the schema already checked sits inside a
     root this entry owns. One in a directory name simply matches nothing.
 
-    `fnmatch` rather than `glob`, and the difference is what decky's frozen
+    `fnmatch` rather than `glob`, and the difference is what a frozen
     runtime carries. A PyInstaller bundle packs what its analysis saw imported:
     `shutil` is proven present and imports `fnmatch` at module scope, so
     `fnmatch` comes with it, while nothing proven imports `glob`. That

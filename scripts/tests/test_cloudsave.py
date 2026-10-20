@@ -26,7 +26,7 @@ import urllib.parse
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from harness import check, section, summary  # noqa: E402  -- installs the decky stub
+from harness import check, section, summary  # noqa: E402  -- points appenv at scratch
 
 sys.path.insert(0, os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "py_modules"))
@@ -537,7 +537,7 @@ def with_drive(reply, action, status=None):
     """Run `action` with the Graph call answering `reply`. Records the headers.
 
     Through `net`, which is the only way this can work on the device: the
-    interpreter decky bundles has a CA store too old for Microsoft's chain, and
+    interpreter the backend once ran on had a CA store too old for Microsoft's chain, and
     `net` is where the retry against the system trust store lives.
     """
     real = cloudsave.net.get_json

@@ -17,7 +17,7 @@ Split out of main.py because it answers a different question from the file it
 sat in: adding a game to a library is not the same subject as getting the file
 onto the device in the first place, and neither half reads the other.
 
-Mixed into `Plugin` rather than called by it, like the others: decky exposes the
+Mixed into `Plugin` rather than called by it, like the others: the service exposes the
 methods it finds on the plugin object, so the names have to stay there while the
 code lives somewhere findable. Nothing here may be instantiated alone.
 """
@@ -894,7 +894,7 @@ class Transfers(plugin_base.PluginContext):
         of the script it started, so an upload in an exit trap holds the library
         tile on "Running" until the network is done -- for a big save directory
         over hotel wifi, minutes of a game that has already quit. This runs in
-        decky's own process instead, which the reaper knows nothing about, and
+        the service's own process instead, which the reaper knows nothing about, and
         the panel calls it when it sees the game leave `RunningApps`.
 
         One emulator, not all of them: that is the whole reason the layout is
@@ -1187,7 +1187,7 @@ class Transfers(plugin_base.PluginContext):
 
         **Why the backend watches rather than the panel telling it.** Steam
         announces a launch to the panel at about the moment the launcher script
-        runs, and the round trip from that announcement through decky is slower
+        runs, and the round trip from that announcement through the service is slower
         than a shell reaching its next line -- so two versions of this, one with
         a two-second grace on it, both let the game start before the save
         arrived. Measured on the device, twice.
@@ -1474,7 +1474,7 @@ class Transfers(plugin_base.PluginContext):
         camera and six digits for anything else. What differs is that this one
         writes a real file, so it has a lifetime -- `end_save_backup` deletes it,
         and so does the next backup, because two copies of somebody's saves in
-        decky's runtime directory is one more than anybody asked for.
+        the runtime directory is one more than anybody asked for.
         """
         await self._run(self._clear_backups)
 
@@ -1510,7 +1510,7 @@ class Transfers(plugin_base.PluginContext):
         """Withdraw the backup, delete it, and stop the server if that was all it did.
 
         The deletion is the part that matters. A report is a log tail held in
-        memory; this is a copy of somebody's save files sitting in decky's
+        memory; this is a copy of somebody's save files sitting in DeckyEmu's
         runtime directory, and leaving it there means the next person to read
         that directory finds it. Pressing Done means it is gone.
 

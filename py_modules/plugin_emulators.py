@@ -452,7 +452,7 @@ class Emulators(plugin_base.PluginContext):
                 }
             # Detached through `_detach` rather than create_task: the panel's only
             # way to learn this ended is the done event, so an unexpected failure
-            # has to produce one instead of dying into decky's log.
+            # has to produce one instead of dying into the service's log.
             self._detach(
                 self._install_emulator_flatpak(entry, steps),
                 "emulator_install_done", entry["id"], once=True,

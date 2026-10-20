@@ -10,7 +10,7 @@
  * Shared by the three modules beside this one. Not exported from the package:
  * nothing outside `steam/` should be reading a global directly.
  */
-/** Matches ELibraryAssetType in decky-frontend-lib / generated Steam types. */
+/** Matches Steam's ELibraryAssetType. */
 export const enum LibraryAssetType {
   Capsule = 0,
   Hero = 1,

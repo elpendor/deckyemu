@@ -1,6 +1,6 @@
 """Run system binaries outside Steam's bundled libraries.
 
-Decky loads plugins inside Steam's environment, which points LD_LIBRARY_PATH at
+Anything Steam starts runs inside Steam's environment, which points LD_LIBRARY_PATH at
 the Steam Runtime. System executables then resolve their libraries from there
 instead of from the OS, and the versions do not match:
 
@@ -36,10 +36,10 @@ def user_home():
     """The user's home directory.
 
     The single place this is worked out. `os.path.expanduser("~")` is not enough:
-    decky can run the backend as root, where it returns /root, and every path
+    a service can be started as root, where it returns /root, and every path
     derived from it -- the flatpak data directory, RetroArch's config, the ROM
     picker's starting point -- would then point somewhere the user never sees.
-    DECKY_USER_HOME is the loader telling us who it is really acting for.
+    DECKYEMU_USER_HOME, when set, says who the service is really acting for.
 
     Resolved on each call rather than at import, so a test or a service change can
     set it and be believed.
@@ -54,7 +54,7 @@ def user_dir(*parts, create=True):
     """A folder under `<home>/deckyemu`, created on demand.
 
     The plugin's user-visible working area, kept separate from
-    DECKY_PLUGIN_RUNTIME_DIR (`~/homebrew/data/deckyemu`) which decky owns and
+    appenv.DATA_DIR (`~/.local/share/deckyemu/data`) which a reset clears and
     wipes on uninstall. Anything the *user* is meant to see or keep goes here, so
     `deckyemu` itself stays a container: `transfer/` is the inbox files arrive
     in, `roms/<system>/` is where a game's ROM is moved once it is added, and
@@ -174,7 +174,7 @@ def flatpak_roots():
 
     A function rather than a constant, and that is not style. As a constant this
     used `os.path.expanduser("~")` evaluated at import time, which ignores
-    DECKY_USER_HOME and freezes the per-user root at whatever home the backend
+    DECKYEMU_USER_HOME and freezes the per-user root at whatever home the backend
     process happened to have -- running as root it looked in /root and reported
     everything as absent.
     """

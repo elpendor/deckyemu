@@ -11,7 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  * Getting either wrong looks like a layout quirk rather than a bug, which is the
  * shape of thing this suite exists for.
  *
- * `@decky/api` is mocked because it does not load under Node (see
+ * `./host` is mocked because it has no service under Node (see
  * `addGame.test.ts`), and `./LaunchConflictModal` because it renders: `react` is
  * not an installed package here, so importing anything that does takes the file
  * down before a check runs. What the dialog would have been handed is asserted
@@ -30,7 +30,7 @@ vi.mock("./LaunchConflictModal", () => ({
   showLaunchConflict: (...args: unknown[]) => showLaunchConflict(...args),
 }));
 // `./backend` for the reason `launchGate.test.ts` mocks it: its `callable()`
-// bindings run at import time and there is no decky behind them here.
+// bindings run at import time and there is no service behind them here.
 vi.mock("./backend", () => ({
   approveLaunch: (...args: unknown[]) => approveLaunch(...args),
 }));

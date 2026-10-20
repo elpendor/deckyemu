@@ -87,12 +87,14 @@ check("the wait is in the launcher",
       "launching-" in _body and "kill -STOP" in _body, True)
 # The race this closes: the panel hears about a launch at the same moment the
 # script runs, so asking once whether it has claimed the launch asks too early.
-# Measured on the device -- the script won and the round trip through decky
+# Measured on the device -- the script won and the round trip through the
+# service
 # lost, and the game started while the save was still coming down.
 check("and none of it happens without somewhere for saves to go",
       _body.index(launchers.CLOUD_ON_FILE) < _body.index("launching-"), True)
 # **"Nobody has answered yet" and "nobody is there" are different questions.**
-# They used to be one number and it had to be short, because a Deck with decky
+# They used to be one number and it had to be short, because a Deck with the
+# backend
 # reloading must still start its games -- so a dialog somebody was reading got
 # thirty seconds and then the game ran anyway.
 check("a launch believes that file only while it is fresh",
@@ -337,7 +339,8 @@ else:
           launchers.which_launch(321) == _first, False)
     launchers.forget_launch(321)
 
-    # Nobody answers at all -- decky reloading, the plugin gone. The script
+    # Nobody answers at all -- the service restarting, or not installed. The
+    # script
     # wakes itself. Rebuilt with a short watchdog so the suite does not sit
     # through the real one, which is deliberately generous.
     _was = launchers.CLOUD_MAX_SECONDS

@@ -23,7 +23,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from harness import REPO_ROOT, check, section  # noqa: E402  -- installs the decky stub
+from harness import REPO_ROOT, check, section  # noqa: E402  -- points appenv at scratch
 
 import fileserver  # noqa: E402
 import sysenv  # noqa: E402

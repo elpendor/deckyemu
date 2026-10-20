@@ -143,7 +143,7 @@ export function TransferStatusPanel() {
             flow every time an idle server happens to be up would be worse than
             the problem.
 
-            `autoFocus` is absent from decky's ButtonItem typings but reaches the
+            `autoFocus` is absent from our ButtonItem typings but reaches the
             focusable Steam renders; see the same trick in ArtworkPanel for why it
             has to go through Steam's focus manager rather than a DOM .focus().
             Mount-only by nature, so a poll cannot re-steal the cursor from

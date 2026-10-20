@@ -509,7 +509,7 @@ def _set_declined(entry_id, requirement_name, declined):
 
 
 def same_bytes(one, other):
-    """Whether two files hold the same bytes. Not `filecmp`: decky's bundled
+    """Whether two files hold the same bytes. Not `filecmp`: the frozen
     Python has not been shown to carry it, and a BIOS is small enough to read."""
     try:
         if os.path.samefile(one, other):

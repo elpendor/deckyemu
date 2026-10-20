@@ -73,7 +73,7 @@ let lastStep: "signin" | "key" | "paste" | null = null;
 /**
  * Ask Steam to focus this step on mount, if it is the one you left from.
  *
- * `autoFocus` is missing from decky's `ButtonItem` typings but reaches the
+ * `autoFocus` is missing from our `ButtonItem` typings but reaches the
  * focusable Steam renders: the component spreads every prop it does not
  * recognise onto it, and its own nav code reads `autoFocus` (`BWantsAutoFocus`)
  * to claim focus as it mounts. Going through Steam's focus manager rather than

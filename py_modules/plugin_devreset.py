@@ -19,7 +19,7 @@ around it: the file it sat in is about adding games to a library, and this is
 about there not being one. Nothing else here reads it, and a release never runs
 it.
 
-Mixed into `Plugin` rather than called by it, like the others: decky exposes the
+Mixed into `Plugin` rather than called by it, like the others: the service exposes the
 methods it finds on the plugin object, so the names have to stay there while the
 code lives somewhere findable. Nothing here may be instantiated alone.
 """

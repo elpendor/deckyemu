@@ -5,7 +5,8 @@ import { FRONTEND_BUILD, FRONTEND_VERSION, describe as describeBuild, isStale, s
 /**
  * Whether the running frontend is the one that shipped with this backend.
  *
- * The two halves load independently -- decky restarts the Python side when its
+ * The two halves load independently -- the service restarts the Python side
+ * when its
  * files change while Steam keeps whatever bundle it already evaluated -- so
  * after an update they can disagree for as long as Steam stays running, and the
  * symptom is a change appearing to have done nothing at all.

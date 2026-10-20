@@ -25,7 +25,7 @@ const sources = (dir: string) =>
 
 describe("the steam package's boundaries", () => {
   /*
-   * `@decky/api` will not load under Node, so a backend import anywhere in here
+   * `../host` has no service under Node, so a backend import anywhere in here
    * takes every test that touches Steam down with it -- including the ones
    * covering the calls that delete somebody's games, which are the tests least
    * worth losing. That is why `reuseShortcut.ts`, `addGame.ts` and
@@ -35,7 +35,7 @@ describe("the steam package's boundaries", () => {
   it("brings no value in from the backend", () => {
     // A *type* import is erased before anything runs, so it costs nothing --
     // `artwork.ts` has always taken `ArtImage` that way. A value import is the
-    // one that pulls @decky/api in behind it. The rule is that distinction, not
+    // one that pulls ../host in behind it. The rule is that distinction, not
     // the word "backend", and stating it loosely would have banned a line that
     // was always fine.
     const fromBackend = /import\s+(type\s+)?\{([^}]*)\}\s*from\s*"\.\.?\/backend"/g;
@@ -56,8 +56,8 @@ describe("the steam package's boundaries", () => {
       // The import, not the name: these files explain in prose why they do not
       // import it, and a substring match reads that explanation as the offence.
       expect(
-        /from\s*"@decky\/api"/.test(body),
-        `${name} imports @decky/api, which will not load under Node`,
+        /from\s*"\.\.\/host(\/[^"]*)?"/.test(body),
+        `${name} imports ../host, which has no service under Node`,
       ).toBe(false);
     }
   });
@@ -102,7 +102,7 @@ describe("the steam package's boundaries", () => {
        * thing this package exists to prevent.
        *
        * `contextMenu` is the opposite problem -- it *cannot* be re-exported.
-       * It imports @decky/ui's webpack helpers, which initialise against
+       * It reads Steam's webpack registry, which initialises against
        * `window.webpackChunksteamui` when the module loads, and that global
        * does not exist under Node. Re-exporting it took five unrelated test
        * files down on the first run after it was written, because they import

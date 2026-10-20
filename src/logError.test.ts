@@ -48,7 +48,8 @@ describe("logError", () => {
 
   /*
    * Anything can be thrown, and a log entry reading "[object Object]" is worth
-   * less than none: a rejected `callable` comes back as a string, and decky
+   * less than none: a rejected `callable` comes back as a string, and the
+   * service
    * hands a Python traceback over as one.
    */
   it.each([
@@ -62,7 +63,7 @@ describe("logError", () => {
 
   /*
    * The backend being unreachable is one of the reasons a frontend call fails
-   * in the first place -- decky drops every in-flight call when the plugin
+   * in the first place -- the service drops every in-flight call when it
    * reloads. Throwing here would turn a logged problem into an unlogged one, on
    * the path taken *because* something already went wrong.
    */

@@ -25,7 +25,7 @@ from itertools import zip_longest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from harness import REPO_ROOT, check, section  # noqa: E402  -- installs the decky stub
+from harness import REPO_ROOT, check, section  # noqa: E402  -- points appenv at scratch
 
 sys.path.insert(0, REPO_ROOT)
 
@@ -161,7 +161,8 @@ check("no module reads a name it never imported", _unbound, {})
 check("and the scan is actually reading the package",
       len(glob.glob(os.path.join(REPO_ROOT, "py_modules", "*.py"))) > 20, True)
 
-# The frontend reaches these by name through getattr, which is what decky does.
+# The frontend reaches these by name through getattr, which is what the service
+# does.
 # Covered from the other direction by the contract check in test_backend.py;
 # this is the half that proves inheritance is what makes it work.
 _instance = main.Plugin()

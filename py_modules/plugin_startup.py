@@ -553,7 +553,8 @@ class Startup(plugin_base.PluginContext):
         """
         # Written on every start, whichever way the answer goes: the launcher
         # reads this file rather than asking the plugin, so a Deck that had
-        # cloud saves switched off while decky was not running would otherwise
+        # cloud saves switched off while the service was not running would
+        # otherwise
         # keep pausing every launch for a panel that will never claim it.
         await self._run(self._note_cloud_state)
 
@@ -642,7 +643,7 @@ class Startup(plugin_base.PluginContext):
         done = await self.rebuild_launchers()
 
         # **Stamped afterwards, and only if it worked.** Written first, an
-        # update interrupted here -- a Deck put to sleep mid-startup, a decky
+        # update interrupted here -- a Deck put to sleep mid-startup, a service
         # reload, a rebuild that threw -- left the setting claiming the new
         # format while the scripts on disk were still the old one, and nothing
         # ever tried again. Harmless when a launcher version only carried a log

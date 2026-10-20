@@ -10,7 +10,7 @@ import { logError } from "./logError";
  * Plugin code is evaluated in SharedJSContext but *renders* into Steam's own
  * React tree -- the Quick Access panel for the panel content, Steam's router for
  * the settings page. React unwinds a thrown render to the nearest boundary
- * above it, so with none of our own the nearest one is whatever Steam or decky
+ * above it, so with none of our own the nearest one is whatever Steam
  * happens to have, and everything between here and there is unmounted. That is
  * how a single undefined field in a backend reply becomes an empty Quick Access
  * panel, or an empty screen in Game Mode, with no way back short of restarting

@@ -28,7 +28,8 @@ import { logError } from "./logError";
  * would rewrite somebody's actual game.
  *
  * Kept out of `steam.ts` because that file must stay free of backend imports:
- * it is exercised by tests that run under Node, where `@decky/api` will not
+ * it is exercised by tests that run under Node, where `./host` has no service
+ * and will not
  * load.
  */
 export async function createOrReuseShortcut(args: {

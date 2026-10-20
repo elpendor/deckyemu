@@ -3,7 +3,7 @@
 
     python scripts/tests/test_ca_fallback.py
 
-Decky's frozen interpreter carries a CA bundle older than the machine's, and
+A frozen interpreter can carry a CA bundle older than the machine's, and
 thumbnails.libretro.com is served under a chain it does not know. The answer is
 to retry against the OS trust store -- but artwork probes several candidate
 names at once, and the flag saying "this has been looked into" went up before
@@ -92,7 +92,7 @@ section("every probe goes through the one path that knows about the fallback")
 
 # **This is the bug the section exists for.** A second HTTP helper was written
 # to read a file's size, opening its own connection rather than going through
-# `_once`. It therefore knew nothing about decky's stale CA bundle, every HEAD
+# `_once`. It therefore knew nothing about a stale CA bundle, every HEAD
 # against a perfectly good server failed with CERTIFICATE_VERIFY_FAILED, and
 # the build list reported that none of the published builds existed.
 import inspect  # noqa: E402

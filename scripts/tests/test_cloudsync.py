@@ -12,7 +12,7 @@ Three things are pinned, and each of them is a decision that would be invisible
 in a screenshot of a working feature:
 
 **`copy`, never `sync`.** `sync` makes the remote match the Deck, which means an
-emulator uninstalled here silently empties its saves there. Both comparable decky
+emulator uninstalled here silently empties its saves there. Both comparable cloud-save
 plugins refuse to delete from the remote for the same reason and say so in their
 own READMEs.
 
@@ -44,7 +44,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from harness import check, section, summary  # noqa: E402  -- installs the decky stub
+from harness import check, section, summary  # noqa: E402  -- points appenv at scratch
 
 sys.path.insert(0, os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "py_modules"))
@@ -248,7 +248,7 @@ finally:
 # is kept for the life of the plugin, because what a backend can hash does not
 # change under a running one -- but a lookup made while the network is down
 # returns nothing for a reason that has nothing to do with the backend, and
-# storing it left a storage comparing size and time until decky restarted.
+# storing it left a storage comparing size and time until the service restarted.
 _real_rclone = cloudsave.rclone
 cloudsave.rclone = lambda args, seconds: (False, "connection refused")
 try:

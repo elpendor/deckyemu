@@ -9,9 +9,9 @@ way -- see emu_firmware for which is which and why.
 `_run_emulator_tool` lives here because firmware is what it mostly runs, but it
 belongs to the composed class: installing a PS3 package uses it too.
 
-Mixed into `Plugin` rather than called by it. decky exposes the methods it finds
+Mixed into `Plugin` rather than called by it. The service exposes the methods it finds
 on the plugin object, so an endpoint's name has to stay there; inheritance keeps
-the name where decky looks while the code lives somewhere findable.
+the name where the service looks while the code lives somewhere findable.
 """
 
 import asyncio

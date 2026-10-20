@@ -66,7 +66,7 @@ export function DiagnosticsPanel() {
           </div>
         </PanelSectionRow>
 
-        {/* The two halves load independently: decky restarts the backend on
+        {/* The two halves load independently: the service restarts the backend on
             every update while Steam keeps the bundle it already evaluated. The
             symptom is that an update appears to have changed nothing. */}
         {stale && backend && (

@@ -13,7 +13,7 @@ interface Props {
  * The Updates tab's own component with its checking and settings left out, so
  * installing is the same flow wherever it starts -- never a second one. A
  * dialog rather than a jump to the tab because a dialog does not go through
- * decky's router: when a Steam client breaks decky's pages, the settings page
+ * our route: when a Steam client breaks the route patch, the settings page
  * is blank, and this row is then the only way left to install the build that
  * fixes it.
  */

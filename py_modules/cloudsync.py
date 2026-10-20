@@ -25,7 +25,7 @@ out. Nothing is left for a website to deal with.
 
 **Nothing here deletes, and nothing here merges.** `rclone copy`, never `sync`:
 a save removed on the Deck stays on the remote, because the alternative is that
-one uninstall silently empties somebody's cloud backup. Both comparable decky
+one uninstall silently empties somebody's cloud backup. Both comparable cloud-save
 plugins made the same call and say so in their own READMEs. What comes back down
 is governed by `replace`, which is the same switch the local restore already
 has -- off writes only what is missing here, on overwrites -- so the two ways of
@@ -124,7 +124,8 @@ def replaced_of(remote):
 
 #: Long enough to send a large emulator's save directory over a phone's wifi,
 #: short enough that a remote that has stopped answering does not hold the
-#: executor thread until decky is restarted. Measured against the thing this
+#: executor thread until the service is restarted. Measured against the thing
+#: this
 #: actually copies: memory cards and save states, tens of megabytes, not the
 #: gigabytes an emulator's whole directory can reach.
 TRANSFER_SECONDS = 900

@@ -92,7 +92,7 @@ _OLD_ENTRY = {
     "options": {"hide_osd": "keep", "fullscreen": False, "extra_args": "--verbose"},
 }
 
-# A previous install is any other plugin folder under decky's settings root.
+# A previous install is any other folder under the old settings root.
 _PREVIOUS_DIR = os.path.join(appenv.PREVIOUS_ROOT, "settings", "retroarch-to-steam")
 os.makedirs(_PREVIOUS_DIR, exist_ok=True)
 _PREVIOUS = os.path.join(_PREVIOUS_DIR, "library.json")

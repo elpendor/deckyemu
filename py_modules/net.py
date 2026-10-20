@@ -1,7 +1,7 @@
 """Small blocking HTTP helpers, meant to be run through an executor.
 
 Deliberately stdlib-only: the plugin sandbox's third-party packages vary
-between decky versions, and none of this needs more than urllib.
+between Python builds, and none of this needs more than urllib.
 """
 
 import base64
@@ -23,7 +23,7 @@ DEFAULT_TIMEOUT = 20
 # we asked, so it is capped rather than read into memory unbounded.
 _MAX_JSON_BYTES = 64 * 1024
 
-# Decky runs plugins inside a frozen interpreter whose bundled CA store can be
+# A Python can carry its own CA store, and one that ships frozen can be
 # older than the operating system's. That is not academic: thumbnails.libretro.com
 # is served under a recent Let's Encrypt root which the bundled store may not
 # know, so artwork lookups fail with CERTIFICATE_VERIFY_FAILED while other hosts
@@ -190,7 +190,7 @@ def _once(method, url, headers=None, timeout=DEFAULT_TIMEOUT):
     The length is `Content-Length` where the server sent one, so a caller
     asking whether a file is there learns what it weighs from the same request.
     It is here rather than in a second helper because everything that makes
-    this work -- the CA fallback for decky's stale bundle, the retry on a
+    this work -- the CA fallback for a stale bundle, the retry on a
     kept-alive connection the server closed -- would have to be repeated there,
     and the copy that skipped the fallback reported every build on a working
     server as unpublished.
@@ -277,7 +277,7 @@ def head_size(url, headers=None, timeout=DEFAULT_TIMEOUT):
     """How big `url` is, or 0 when it is not there or cannot be read.
 
     One HEAD, following redirects, through the same request path as every other
-    probe -- which is the point: decky's frozen interpreter carries a CA bundle
+    probe -- which is the point: a frozen interpreter carries a CA bundle
     too old for some hosts, and only that path knows to retry against the
     system trust store.
     """

@@ -35,7 +35,7 @@ export function logError(where: string, error: unknown, detail?: string): void {
  * An error as one line of text.
  *
  * Anything can be thrown, and the log is worth more than a `[object Object]`:
- * a rejected `callable` comes back as a string, decky returns a Python
+ * a rejected `callable` comes back as a string, the service returns a Python
  * traceback as one, and a genuine Error has a name and a message.
  */
 function describe(error: unknown): string {

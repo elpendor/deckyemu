@@ -10,7 +10,7 @@ The two halves are `probe_rom`, which answers "what is this and what could run
 it" for a file nobody has chosen a core for yet, and `resolve_game`, which
 answers "what is this called and what does it look like" once one is chosen.
 
-Mixed into `Plugin` rather than called by it, like the others: decky exposes
+Mixed into `Plugin` rather than called by it, like the others: the service exposes
 the methods it finds on the plugin object, so the names have to stay there
 while the code lives somewhere findable. Nothing here may be instantiated
 alone.

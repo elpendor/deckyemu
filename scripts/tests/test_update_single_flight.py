@@ -12,7 +12,7 @@ That is measured, not imagined. While GitHub was returning 504 for this
 repository, one backend process made **23 requests in about fifteen seconds**,
 against an unauthenticated budget of sixty an hour. The panel wraps the check in
 a retry whose per-attempt timeout is two seconds, which is right for a backend
-call that takes milliseconds and wrong for one that crosses the network; decky
+call that takes milliseconds and wrong for one that crosses the network; a call
 cannot cancel work, so every abandoned attempt left its request running and
 started another. Being slow turned into being rate-limited.
 

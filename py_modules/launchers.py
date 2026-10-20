@@ -935,7 +935,8 @@ CLOUD_MAX_SECONDS = 600
 #: that file may be before a launch stops believing it.
 #:
 #: **This is what tells "nobody has answered yet" from "nobody is there".** The
-#: two used to be one number and it had to be short, because a Deck with decky
+#: two used to be one number and it had to be short, because a Deck with the
+#: backend
 #: reloading must still start its games -- so a dialog somebody was reading got
 #: thirty seconds and then the game ran anyway. A file with a recent timestamp
 #: on it answers the second question on its own, and leaves the first one to the
@@ -947,7 +948,7 @@ CLOUD_STALE_SECONDS = 120
 #:
 #: The launcher's way of knowing whether waiting for anything is worth it,
 #: without asking the plugin -- which is the whole point: a launch must not
-#: depend on decky being up, and reading a file cannot.
+#: depend on the service being up, and reading a file cannot.
 CLOUD_ON_FILE = "cloud-on"
 
 #: The shell that waits for the panel to bring saves down before the game starts.
@@ -956,7 +957,7 @@ CLOUD_ON_FILE = "cloud-on"
 #: network round trip, and doing that in the launcher would put it on the front
 #: of every launch of every game, whether or not there is anything to fetch --
 #: with Steam's runtime stripped, no rclone on the path, and nothing to show
-#: somebody while it happened. So the panel does the asking, in decky's process,
+#: somebody while it happened. So the panel does the asking, in Steam's process,
 #: where it can also put a dialog on screen; this waits for the answer.
 #:
 #: **And it only waits when it has been told to.** `cloudwait` is written by the
@@ -970,13 +971,15 @@ _CLOUD_GATE = r"""# Saves coming down before the game opens them. See launchers.
 # Steam, one gave up 0.2s before the answer arrived, and one left a stop note
 # that refused the *next* launch. None of that exists here. A stopped process
 # waits exactly as long as it is left stopped, at no cost, and the plugin says
-# when by resuming it. Both decky cloud-save plugins reach the same conclusion
+# when by resuming it. Other cloud-save tools for the Deck reach the same
+# conclusion
 # from the other end, suspending the game once it has started; stopping before
 # the emulator runs is the same idea without the window where it could already
 # have read a save.
 # `-newermt` rather than a plain `-f`: the file says cloud saves are on, and
 # its timestamp says the plugin is still there to answer. Without the second
-# half, a Deck with decky reloading would stop every launch and wait out the
+# half, a Deck with the service restarting would stop every launch and wait out
+# the
 # whole watchdog.
 if [ -n "$_dke_self" ] && [ -n "$(find "$_dke_gate/{onfile}" \
       -newermt '-{stale} seconds' 2>/dev/null)" ]; then
@@ -991,7 +994,8 @@ if [ -n "$_dke_self" ] && [ -n "$(find "$_dke_gate/{onfile}" \
   # or end it, and needs nothing else from it.
   printf '%s
 %s' "$_dke_me" "$0" > "$_dke_gate/launching-$_dke_self" 2>/dev/null
-  # Nobody there -- decky reloading, the plugin gone -- and the game still
+  # Nobody there -- the service restarting, or not installed -- and the game
+  # still
   # starts, this late rather than never.
   #
   # **`setsid`, and its output thrown away, both for the same reason.** Steam's
@@ -1689,7 +1693,7 @@ def launches_waiting():
 #: The one signal a stopped launch understands, by number.
 #:
 #: Not `signal.SIGCONT`, because `signal` is not on the
-#: list of stdlib modules proven to exist in decky's trimmed Python -- and one
+#: list of stdlib modules proven to exist in a trimmed Python -- and one
 #: that is not there is not a degraded feature, it is the backend failing to
 #: import. The numbers are fixed by Linux on every architecture this runs on,
 #: and `os.kill` takes an int.

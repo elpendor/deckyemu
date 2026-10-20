@@ -138,7 +138,7 @@ export function UpdatePanel({
   const [update, setUpdate] = useState<UpdateCheck | null>(null);
   const [checking, setChecking] = useState(false);
   const [installing, setInstalling] = useState(false);
-  // The wait after an install outlives the panel whenever decky tears the
+  // The wait after an install outlives the panel whenever the service tears the
   // frontend down, which is half the time and not knowable in advance.
   const live = useRef(true);
   useEffect(() => () => { live.current = false; }, []);
@@ -181,7 +181,8 @@ export function UpdatePanel({
   const check = useCallback(async (force: boolean) => {
     setChecking(true);
     try {
-      // Through callWithRetry like every other call here: decky restarts the
+      // Through callWithRetry like every other call here: the service restarts
+      // the
       // backend whenever its files change and drops whatever was in flight, so a
       // single attempt reports "the backend did not answer" for what is really a
       // reload that has already finished.
@@ -191,7 +192,8 @@ export function UpdatePanel({
       // each -- are justified by the work behind a backend call taking single
       // -digit milliseconds. This one crosses the network to GitHub, so two
       // seconds is a perfectly ordinary duration rather than evidence of a lost
-      // reply. Retrying then does not recover anything: decky cannot cancel, so
+      // reply. Retrying then does not recover anything: a call cannot be
+      // cancelled, so
       // the abandoned attempt's request keeps running and the retry starts
       // another. Measured while GitHub was timing out: 23 requests in fifteen
       // seconds against a budget of sixty an hour, which is how a slow check
@@ -213,9 +215,11 @@ export function UpdatePanel({
       logError("update check failed", error);
       const detail =
         error instanceof Error ? error.message : String(error ?? "no detail");
-      // The *end* of a Python traceback, not the start: decky returns the whole
+      // The *end* of a Python traceback, not the start: the service returns the
+      // whole
       // thing and the exception line -- the only part that says what went wrong --
-      // is the last one. Truncating from the front showed only decky's own frames.
+      // is the last one. Truncating from the front showed only the service's
+      // own frames.
       const tail = detail.trim().split(/\r?\n/).filter(Boolean).slice(-3).join(" | ");
       setUpdate({
         available: false,
@@ -402,7 +406,7 @@ export function UpdatePanel({
         </PanelSectionRow>
 
         {/* Only the dot has a switch, and only because it is the only part of
-            this that arrives without being asked for. decky has a setting of its
+            this that arrives without being asked for. Steam has a setting of its
             own for exactly this and honours it for the plugins in its store; a
             plugin cannot read that setting, so somebody who has already said
             they do not want to hear about plugin updates can only be answered

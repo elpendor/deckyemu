@@ -9,7 +9,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  * all. That asymmetry is what these checks are really about -- the grouping is
  * the easy half.
  *
- * `./backend` is mocked because it imports `@decky/api`, which will not load
+ * `./backend` is mocked because it calls the service through `./host`, which
+ * has none
  * under Node. `./steam` runs for real against the same fake Steam globals the
  * rest of the suite uses, since the whole question is what Steam is asked to do.
  */

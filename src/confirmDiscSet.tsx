@@ -184,7 +184,7 @@ export function confirmJoinDisc(
  *
  * Here rather than in `addFlow` for a mechanical reason worth writing down:
  * `addFlow` is imported by tests that run without Steam's webpack, and pulling
- * `@decky/ui` into it through this made two suites fail to load at all.
+ * `./steamui` into it through this made two suites fail to load at all.
  *
  * Asked before `selectRom` rather than inside it, because the transfer dialog
  * navigates away the moment the flow starts, and the question has to be

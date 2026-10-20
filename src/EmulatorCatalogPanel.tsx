@@ -425,7 +425,7 @@ export function EmulatorCatalogPanel({ onChanged, ports = false }: Props) {
           onOK={() => void start(entry)}
           // Through strDescription rather than as children: it is typed as a
           // ReactNode and it is the form every other modal here already uses,
-          // and @decky/ui's props are a description of Steam's components
+          // and ./steamui's props are a description of Steam's components
           // rather than a contract worth testing on the device.
           strDescription={
             <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>

@@ -122,9 +122,9 @@ def _check_own_modules():
 
 
 def _log_failures(cls):
-    """Make every method decky can call write down why it failed.
+    """Make every method the panel can call write down why it failed.
 
-    Decky hands an exception back to whoever called the method and nothing
+    The service hands an exception back to the panel and nothing
     writes it anywhere. So the frontend gets a message, shows the user its own
     wording for "that did not work", and the plugin log -- the one place anybody
     looks afterwards, and the only thing a bug report can carry -- has nothing
@@ -145,7 +145,7 @@ def _log_failures(cls):
 
     The exception is logged and re-raised, never swallowed: the frontend still
     has to hear about it. `except Exception` and not `BaseException`, so an
-    `asyncio.CancelledError` from decky unloading the plugin passes through
+    `asyncio.CancelledError` from the service stopping passes through
     without being dressed up as a failure.
     """
     def wrap(name, method):
@@ -292,7 +292,7 @@ class Plugin(
         # ladder. Nothing here blocks on it -- it is a task -- and one hanging
         # migration must not be the reason nobody is ever told about the fix
         # for it.
-        # Whatever was watching before this call stops first. decky calls `_main`
+        # Whatever was watching before this call stops first. `_main` can run
         # once per load, so this should never find anything -- but if it ever
         # did, the old task would keep checking forever against a plugin nobody
         # holds any more, and nothing would ever say so.
@@ -365,7 +365,7 @@ class Plugin(
                 await step()
             except Exception:
                 # Not CancelledError, which is a BaseException and so not caught
-                # here: a cancelled startup is decky shutting the plugin down,
+                # here: a cancelled startup is the service shutting down,
                 # and it must be allowed to.
                 appenv.logger.exception("Startup: could not %s -- carrying on", label)
 
@@ -385,21 +385,23 @@ class Plugin(
         # failure that makes the *next* start unable to bind its port.
         # Not in the list below: that one runs sync callables in the executor,
         # and this is a task to cancel. An update watch left running would hold
-        # a reference to a plugin decky has finished with, and would wake up six
+        # a reference to a backend the service has finished with, and would wake
+        # up six
         # hours later to call methods on it.
         task = getattr(self, "_update_task", None)
         if task is not None:
             task.cancel()
             # Waited for, briefly. A cancel only *requests*, and a task still
             # pending when the loop goes away is logged by asyncio as "Task was
-            # destroyed but it is pending!" -- noise in decky's own output that
+            # destroyed but it is pending!" -- noise in the service's own output
+            # that
             # reads like a bug of ours. Sleeping is the state it is in almost
             # always, and that unwinds instantly.
             #
             # Bounded rather than awaited outright: if the cancel lands while the
             # check is inside the executor, the request has to reach its own
             # 20-second timeout before the thread returns, and an unload must not
-            # hold decky up for that.
+            # hold the service up for that.
             try:
                 await asyncio.wait({task}, timeout=2)
             except Exception:
@@ -427,9 +429,10 @@ class Plugin(
 
     async def _uninstall(self):
         # Nothing to clean up, and nothing is cleaned up for us either -- this
-        # comment used to say decky removes the runtime dir, which it does not.
+        # comment used to say an uninstall removes the runtime dir, which it
+        # does not.
         # Checked against the loader's own source at v3.2.6: the only `rmtree`
-        # in it takes `~/homebrew/plugins/<name>`, the plugin's code. The
+        # in it takes the installed versions, the code itself. The
         # settings and runtime directories are left exactly where they are.
         #
         # That turns out to be the behaviour worth having, so it is left alone
@@ -448,7 +451,7 @@ class Plugin(
         An install runs detached because it takes minutes and streams progress,
         so the panel's only way to learn it is over is the done event. A
         detached task that raises reaches nobody: asyncio logs "Task exception
-        was never retrieved" into decky's own output and the panel keeps its
+        was never retrieved" into the service's own output and the panel keeps its
         progress bar and its disabled button forever, which is the shape of
         every "it just hung" report.
 

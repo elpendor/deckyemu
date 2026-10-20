@@ -57,8 +57,8 @@ MAX_APPIMAGE_BYTES = 400 * 1024 * 1024
 def emulators_dir(*parts, create=True):
     """Where AppImage emulators live: `~/deckyemu/emulators`.
 
-    Under the user's own directory rather than DECKY_PLUGIN_RUNTIME_DIR, which
-    decky wipes on uninstall. A libretro core is a few megabytes and trivially
+    Under the user's own directory rather than appenv.DATA_DIR, which
+    a reset wipes. A libretro core is a few megabytes and trivially
     re-downloaded; a 200MB emulator that vanishes because the plugin was
     reinstalled is a different thing entirely.
     """
@@ -1349,7 +1349,7 @@ def _unpack_tarball(archive, destination, pattern):
     Tar carries things zip cannot -- symlinks, hard links, devices, absolute
     names -- and `extractall` honours all of them. Only regular files and
     directories come out here, so a link pointing anywhere is simply not
-    written. Python 3.12 gained `filter="data"` for this; decky's runtime is
+    written. Python 3.12 gained `filter="data"` for this; the backend's runtime was
     3.11, so the check is here rather than delegated.
     """
     try:
@@ -1733,7 +1733,7 @@ def ensure_cloud_tool(now=None):
 #: What was installed, written beside the AppImage it describes.
 #:
 #: In the emulator's own folder rather than the settings directory so it travels
-#: with the install: decky owns the settings directory and clears it on
+#: with the install: the settings directory is cleared on
 #: uninstall, and an emulator whose build became unknown because the plugin was
 #: reinstalled is exactly the case this exists to avoid.
 BUILD_RECORD = ".build.json"

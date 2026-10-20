@@ -25,12 +25,12 @@ vi.mock("./backend", () => ({
   cloudBeforePlay: () => Promise.resolve({ ok: true, differing: [], restored: 0 }),
 }));
 vi.mock("./CloudDifferModal", () => ({ showCloudDiffer: () => undefined }));
-// @decky/api reaches for a manifest that only exists in a built plugin.
+// ./host reaches for a service that only exists inside Steam.
 vi.mock("./host", () => ({
   addEventListener: () => () => undefined,
   removeEventListener: () => undefined,
 }));
-// Pulls in @decky/ui, which needs Steam's webpack chunk to exist. There is no
+// Pulls in ./steamui, which needs Steam's webpack chunk to exist. There is no
 // DOM here on purpose -- see the repo's test notes.
 vi.mock("./CloudFetchModal", () => ({ showCloudFetch: () => () => undefined }));
 vi.mock("./addedGames", () => ({ addedGame: () => undefined }));

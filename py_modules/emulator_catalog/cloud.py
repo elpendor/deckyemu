@@ -6,7 +6,7 @@ each entry would fetch the same file several times and disagree with itself
 about whether it was there.
 
 **Why rclone and not something written here.** Every comparable project reached
-the same answer -- Ludusavi, EmuDeck's CloudSync, decky-cloud-save -- and none
+the same answer -- Ludusavi, EmuDeck's CloudSync, other cloud-save tools -- and none
 of them wrote a transfer layer. Seventy-odd storage backends behind one command,
 and no account of this project's anywhere in it: the remote is the user's, the
 credentials are the user's, and nothing here ever sees a password.

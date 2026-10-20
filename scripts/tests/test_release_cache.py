@@ -3,7 +3,7 @@
 
     python scripts/tests/test_release_cache.py
 
-The check is cached for an hour, but the cache was module state and decky
+The check is cached for an hour, but the cache was module state and the service
 restarts this backend whenever the plugin's files change. So the hour only ever
 lasted as long as the process, and every restart spent one of the sixty
 unauthenticated requests an hour the whole address shares.
@@ -73,7 +73,7 @@ def _refuse_plainly(url, headers=None, failure=None):
 
 
 def _restart():
-    """The same plugin coming back after decky reloaded it.
+    """The same backend coming back after the service restarted.
 
     A new process keeps nothing but the file, which is the whole point of the
     file -- so anything else surviving here would make the checks below pass for

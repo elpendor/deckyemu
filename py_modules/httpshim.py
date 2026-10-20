@@ -56,7 +56,7 @@ class _Request:
     `/usr/lib/python3.13/socketserver.py` -- SteamOS's own Python, reached
     because its stdlib sits on `sys.path` behind the bundle. That works until
     SteamOS moves or drops it, and it means running 3.13 source under the
-    bundle's 3.11. `socket` and `threading` are in decky's bundle, so this
+    bundle's 3.11. `socket` and `threading` were in that bundle, so this
     borrows nothing.
     """
 

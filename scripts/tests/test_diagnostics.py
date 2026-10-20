@@ -62,7 +62,7 @@ with open(_LOG, "w", encoding="utf-8") as _handle:
                 "[WARNING]: GET failed for https://www.steamgriddb.com/api/v2/"
                 "search/autocomplete/A%20Private%20Game: timed out",
                 # A live token in a URL, which is what stage_update logs.
-                "[INFO]: Staged 1.2.3 for decky at "
+                "[INFO]: Staged 1.2.3 at "
                 "http://127.0.0.1:41234/tHiSiSaLiVeToKeN123456/deckyemu.zip",
                 # Verbatim from a real device. Synthetic fixtures missed both
                 # of these: the token here is a bare request path, which no URL

@@ -3,7 +3,7 @@
 
     python scripts/tests/test_httpshim.py
 
-Decky Loader v3.2.9 shipped a Python without `http.server`, and `fileserver`
+An interpreter the backend once ran on shipped without `http.server`, and `fileserver`
 imported it at the top -- so the whole plugin failed to load, library and
 launchers and all, over a module only the transfer server needs. The import is
 allowed to fail now, and what it gave us is rebuilt from `socketserver` and
@@ -21,7 +21,7 @@ import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from harness import check, section, summary  # noqa: E402  -- installs the decky stub
+from harness import check, section, summary  # noqa: E402  -- points appenv at scratch
 
 import http.client as _http_client  # noqa: E402
 import httpshim  # noqa: E402

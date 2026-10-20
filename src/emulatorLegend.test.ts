@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { EMULATOR_LEGEND } from "./emulatorLegend";
 
 /*
- * The panel cannot be imported here -- it pulls in @decky/ui, which does not
+ * The panel cannot be imported here -- it pulls in ./steamui, which does not
  * load under Node -- so it is read as text instead. Crude, and it earns its
  * place: the failure this guards against is a button added later whose icon
  * nothing explains, and that is invisible until somebody meets it on a Deck in

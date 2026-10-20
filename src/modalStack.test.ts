@@ -58,10 +58,10 @@ describe("openModal", () => {
     expect(typeof handle.Close).toBe("function");
   });
 
-  it("keeps decky's own defaults, which passing props would otherwise replace", () => {
+  it("keeps the defaults, which passing props would otherwise replace", () => {
     openModal(null);
     const props = showModal.mock.calls[0][2];
-    expect(props.strTitle).toBe("Decky Dialog");
+    expect(props.strTitle).toBe("DeckyEmu");
     expect(props.bHideMainWindowForPopouts).toBe(false);
   });
 

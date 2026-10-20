@@ -109,7 +109,7 @@ class Updates(plugin_base.PluginContext):
     async def check_for_update(self, force: bool = False):
         """Whether a newer release exists, and what the frontend needs to install it.
 
-        Only looks. Decky's loader does the installing -- it runs as root and this
+        Only looks. `stage_update` does the installing -- this
         backend runs as `deck`, which cannot write the plugin's own directory.
         """
         current = (await self.plugin_version())["version"]
@@ -126,7 +126,7 @@ class Updates(plugin_base.PluginContext):
         )
         return result
 
-    #: How long to wait after a check that answered. Decky's own updater uses
+    #: How long to wait after a check that answered. A store-style updater uses
     #: six hours, and six hours is four requests a day against a budget of sixty
     #: an hour that every unauthenticated caller on the address shares.
     #:
@@ -153,7 +153,7 @@ class Updates(plugin_base.PluginContext):
 
     #: How long to wait after a check that did *not* answer, per attempt.
     #:
-    #: This replaces the fixed 30-second delay decky puts before its first check
+    #: This replaces a fixed 30-second delay before the first check
     #: ("Internet might not immediately be up"). That delay is a guess about how
     #: long the network takes to arrive: it covers a wifi association that
     #: finishes in ten seconds and does nothing for one that finishes in four
@@ -211,7 +211,7 @@ class Updates(plugin_base.PluginContext):
                         (found.get("latest") or {}).get("version", ""),
                     )
             except asyncio.CancelledError:
-                # decky shutting the plugin down. Must be allowed to.
+                # the service shutting down. Must be allowed to.
                 raise
             except Exception:
                 # A failed check is expected here -- no network at a Deck's

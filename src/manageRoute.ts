@@ -21,7 +21,7 @@ import { Navigation } from "./steamui";
 /**
  * A route per tab, because the route *is* the selection.
  *
- * SidebarNavigation has no "selected page" prop, whatever `@decky/ui`'s types
+ * SidebarNavigation has no "selected page" prop, whatever its types
  * suggest. Steam's own component picks the tab by matching the current URL
  * against each page's `route` and falls back to the first page, then navigates
  * with `history.replace` when a tab is tapped. Pages carrying no route all

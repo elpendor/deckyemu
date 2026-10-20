@@ -19,7 +19,7 @@ import zipfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from harness import check, section, summary, TMP  # noqa: E402  -- installs the decky stub
+from harness import check, section, summary, TMP  # noqa: E402  -- points appenv at scratch
 
 sys.path.insert(0, os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "py_modules"))

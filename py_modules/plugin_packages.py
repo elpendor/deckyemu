@@ -6,9 +6,9 @@ afterwards lives under a product code inside that emulator's own directory. All
 three need the same four things -- read the package, install it, list what is
 installed, and delete one -- and none of that resembles adding a ROM.
 
-Mixed into `Plugin` rather than called by it, because decky exposes the methods
+Mixed into `Plugin` rather than called by it, because the service exposes the methods
 it finds on the plugin object and these are endpoints the frontend calls by
-name. Inheritance keeps the names where decky looks for them while keeping the
+name. Inheritance keeps the names where the service looks for them while keeping the
 code somewhere a reader can find it: main.py was 3,791 lines and this was 435 of
 them, sitting in the middle of the emulator installer.
 
