@@ -31,7 +31,7 @@ import threading
 import time
 import urllib.parse
 
-import decky
+import appenv
 
 import httpshim
 
@@ -62,7 +62,7 @@ class _Handler(httpshim.BASE):
     sys_version = ""
 
     def log_message(self, fmt, *args):
-        decky.logger.info("relay: " + fmt, *args)
+        appenv.logger.info("relay: " + fmt, *args)
 
     def do_GET(self):  # noqa: N802 - BaseHTTPRequestHandler's naming
         global _served
@@ -97,7 +97,7 @@ class _Handler(httpshim.BASE):
 
         with _lock:
             _served = True
-        decky.logger.info("relay: served %s (%d bytes)", name, size)
+        appenv.logger.info("relay: served %s (%d bytes)", name, size)
 
 
 def _watch():
@@ -116,7 +116,7 @@ def _watch():
             stop()
             return
         if expired:
-            decky.logger.info("relay: nothing collected it, stopping")
+            appenv.logger.info("relay: nothing collected it, stopping")
             stop()
             return
 
@@ -133,7 +133,7 @@ def serve(path):
     try:
         server = httpshim.SERVER(("127.0.0.1", 0), _Handler)
     except OSError as error:
-        decky.logger.warning("relay: could not listen: %s", error)
+        appenv.logger.warning("relay: could not listen: %s", error)
         return ""
     server.daemon_threads = True
 
@@ -152,7 +152,7 @@ def serve(path):
 
     threading.Thread(target=server.serve_forever, name="deckyemu-relay", daemon=True).start()
     threading.Thread(target=_watch, name="deckyemu-relay-watch", daemon=True).start()
-    decky.logger.info("relay: offering %s on port %d", _name, server.server_port)
+    appenv.logger.info("relay: offering %s on port %d", _name, server.server_port)
     return url
 
 
@@ -168,7 +168,7 @@ def stop():
             server.shutdown()
             server.server_close()
         except OSError as error:
-            decky.logger.warning("relay: did not stop cleanly: %s", error)
+            appenv.logger.warning("relay: did not stop cleanly: %s", error)
 
 
 def running():

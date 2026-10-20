@@ -16,7 +16,7 @@ Mixed into `Plugin` rather than called by it -- see plugin_firmware for why.
 import asyncio
 import os
 
-import decky
+import appenv
 
 import plugin_base
 
@@ -290,21 +290,21 @@ class Emulators(plugin_base.PluginContext):
         if not problems:
             path = await self._run(fileserver.inbox_path, name)
             if path and not await self._run(_discard, path):
-                decky.logger.warning("Imported %s but could not clear it from %s",
+                appenv.logger.warning("Imported %s but could not clear it from %s",
                                      name, path)
 
         await self._run(emulator_catalog.reload_imported)
         try:
             await self._upgrade_emulator_recipes()
         except Exception as failure:  # noqa: BLE001
-            decky.logger.warning("Imported %s but could not apply it yet: %s",
+            appenv.logger.warning("Imported %s but could not apply it yet: %s",
                                  name, failure)
-        decky.logger.info("Imported %d definition(s) from %s", len(saved), name)
+        appenv.logger.info("Imported %d definition(s) from %s", len(saved), name)
         # The catalog changed, and whoever is looking at it may not be whoever
         # imported it: the transfer dialog can do this with the Emulators tab
         # open behind it. Emitted rather than returned so the list reloads
         # wherever it is, instead of only where the button was pressed.
-        await decky.emit("emulator_catalog_changed")
+        await appenv.emit("emulator_catalog_changed")
         return {
             "ok": True,
             "error": "",
@@ -362,7 +362,7 @@ class Emulators(plugin_base.PluginContext):
         await self._refresh_emulators()
         # Same reason as the import: the catalog is shorter than it was, and a
         # list already on screen should say so.
-        await decky.emit("emulator_catalog_changed")
+        await appenv.emit("emulator_catalog_changed")
         return {"ok": True, "error": ""}
 
 
@@ -638,7 +638,7 @@ class Emulators(plugin_base.PluginContext):
             tag, error = await self._run(emu_install.latest_tag, entry)
             if not tag:
                 failures.append(entry["name"])
-                decky.logger.warning(
+                appenv.logger.warning(
                     "Could not check %s for updates: %s", entry["id"], error
                 )
                 continue
@@ -948,7 +948,7 @@ class Emulators(plugin_base.PluginContext):
         """
         source = entry["source"]
         try:
-            await decky.emit(
+            await appenv.emit(
                 "emulator_build_progress", entry["id"],
                 "Looking up %s" % (tag or "the newest release"), -1,
             )
@@ -1003,7 +1003,7 @@ class Emulators(plugin_base.PluginContext):
                 )
 
             if error or not asset:
-                await decky.emit("emulator_build_done", entry["id"], False,
+                await appenv.emit("emulator_build_done", entry["id"], False,
                                  error or "No download was found.")
                 return
 
@@ -1021,7 +1021,7 @@ class Emulators(plugin_base.PluginContext):
                     return
                 last[0] = percent
                 asyncio.run_coroutine_threadsafe(
-                    decky.emit(
+                    appenv.emit(
                         "emulator_build_progress", entry["id"],
                         "Downloading %s" % asset["name"], percent,
                     ),
@@ -1032,14 +1032,14 @@ class Emulators(plugin_base.PluginContext):
                 emu_install.install_appimage, entry, asset, on_progress
             )
             if error:
-                await decky.emit("emulator_build_done", entry["id"], False, error)
+                await appenv.emit("emulator_build_done", entry["id"], False, error)
                 return
 
             notice = await self._register_installed_emulator(entry, path)
-            await decky.emit("emulator_build_done", entry["id"], True, notice)
+            await appenv.emit("emulator_build_done", entry["id"], True, notice)
         except OSError as error:
-            decky.logger.exception("Changing the build of %s failed", entry["id"])
-            await decky.emit("emulator_build_done", entry["id"], False, str(error))
+            appenv.logger.exception("Changing the build of %s failed", entry["id"])
+            await appenv.emit("emulator_build_done", entry["id"], False, str(error))
 
     async def _flatpak_entry(self, entry_id):
         """(entry, app_id, error) for an installed user-scope flatpak emulator.
@@ -1082,14 +1082,14 @@ class Emulators(plugin_base.PluginContext):
         """
         app_id = entry["source"]["id"]
         try:
-            await decky.emit(
+            await appenv.emit(
                 "emulator_build_progress", entry["id"], "%s %s" % (label, entry["name"]), -1
             )
             ok, reason = await self._stream_flatpak(
                 entry["id"], steps, must_succeed=("update",)
             )
             if not ok:
-                await decky.emit("emulator_build_done", entry["id"], False, reason)
+                await appenv.emit("emulator_build_done", entry["id"], False, reason)
                 return
 
             notice = ""
@@ -1106,11 +1106,11 @@ class Emulators(plugin_base.PluginContext):
                     )
 
             build = await self._run(emu_install.flatpak_installed_commit, app_id)
-            decky.logger.info("%s is now on %s", entry["id"], build[:12] or "an unknown build")
-            await decky.emit("emulator_build_done", entry["id"], True, notice)
+            appenv.logger.info("%s is now on %s", entry["id"], build[:12] or "an unknown build")
+            await appenv.emit("emulator_build_done", entry["id"], True, notice)
         except OSError as error:
-            decky.logger.exception("Changing the build of %s failed", entry["id"])
-            await decky.emit("emulator_build_done", entry["id"], False, str(error))
+            appenv.logger.exception("Changing the build of %s failed", entry["id"])
+            await appenv.emit("emulator_build_done", entry["id"], False, str(error))
 
     async def _stream_flatpak(self, entry_id, steps, must_succeed=("install",)):
         """Run flatpak commands in order, streaming their output as progress.
@@ -1126,7 +1126,7 @@ class Emulators(plugin_base.PluginContext):
         """
         env = self._subprocess_env()
         for argv in steps:
-            decky.logger.info("Running: %s", " ".join(argv))
+            appenv.logger.info("Running: %s", " ".join(argv))
             try:
                 process = await asyncio.create_subprocess_exec(
                     *argv,
@@ -1135,13 +1135,13 @@ class Emulators(plugin_base.PluginContext):
                     env=env,
                 )
             except (OSError, NotImplementedError) as error:
-                decky.logger.exception("Could not start %s", argv[0])
+                appenv.logger.exception("Could not start %s", argv[0])
                 return False, "Could not run flatpak: %s" % error
 
             output = procout.Output()
             async for text in output.segments(process.stdout):
-                decky.logger.info("flatpak: %s", text)
-                await decky.emit(
+                appenv.logger.info("flatpak: %s", text)
+                await appenv.emit(
                     "emulator_install_progress",
                     entry_id,
                     text,
@@ -1160,29 +1160,29 @@ class Emulators(plugin_base.PluginContext):
         try:
             ok, reason = await self._stream_flatpak(entry["id"], steps)
             if not ok:
-                await decky.emit("emulator_install_done", entry["id"], False, reason)
+                await appenv.emit("emulator_install_done", entry["id"], False, reason)
                 return
 
             if not await self._run(emu_install.flatpak_installed, entry["source"]["id"]):
-                await decky.emit(
+                await appenv.emit(
                     "emulator_install_done", entry["id"], False,
                     "flatpak reported success but %s was still not found." % entry["name"],
                 )
                 return
 
             notice = await self._register_installed_emulator(entry, entry["source"]["id"])
-            await decky.emit("emulator_install_done", entry["id"], True, notice)
+            await appenv.emit("emulator_install_done", entry["id"], True, notice)
         # Not CancelledError: this runs detached, and `_detach` re-raises a
         # cancellation rather than swallowing it into an emit over a socket that
         # is closing. Everything unexpected is reported there too.
         except OSError as error:
-            decky.logger.exception("Installing %s failed", entry["id"])
-            await decky.emit("emulator_install_done", entry["id"], False, str(error))
+            appenv.logger.exception("Installing %s failed", entry["id"])
+            await appenv.emit("emulator_install_done", entry["id"], False, str(error))
 
 
     async def _install_emulator_appimage(self, entry):
         source = entry["source"]
-        await decky.emit(
+        await appenv.emit(
             "emulator_install_progress", entry["id"], "Looking up the latest release", -1
         )
 
@@ -1202,7 +1202,7 @@ class Emulators(plugin_base.PluginContext):
                 source["repo"], source["asset"], source.get("host", ""),
             )
         if error:
-            await decky.emit("emulator_install_done", entry["id"], False, error)
+            await appenv.emit("emulator_install_done", entry["id"], False, error)
             return
 
         # Progress arrives from a worker thread, so the emit has to be handed
@@ -1220,7 +1220,7 @@ class Emulators(plugin_base.PluginContext):
                 return
             last[0] = percent
             asyncio.run_coroutine_threadsafe(
-                decky.emit(
+                appenv.emit(
                     "emulator_install_progress",
                     entry["id"],
                     "Downloading %s" % asset["name"],
@@ -1231,11 +1231,11 @@ class Emulators(plugin_base.PluginContext):
 
         path, error = await self._run(emu_install.install_appimage, entry, asset, on_progress)
         if error:
-            await decky.emit("emulator_install_done", entry["id"], False, error)
+            await appenv.emit("emulator_install_done", entry["id"], False, error)
             return
 
         notice = await self._register_installed_emulator(entry, path)
-        await decky.emit("emulator_install_done", entry["id"], True, notice)
+        await appenv.emit("emulator_install_done", entry["id"], True, notice)
 
 
     async def _register_installed_emulator(self, entry, target):
@@ -1296,7 +1296,7 @@ class Emulators(plugin_base.PluginContext):
             return "%s was installed but could not be registered: %s" % (entry["name"], error)
 
         await self._refresh_emulators()
-        decky.logger.info(
+        appenv.logger.info(
             "Registered %s for %s (%d extensions)",
             saved["name"],
             emulator_catalog.system_label(entry) or saved.get("platform_full"),
@@ -1329,7 +1329,7 @@ class Emulators(plugin_base.PluginContext):
         if motion_error:
             # Never fatal. The emulator is installed and every game will run;
             # what is missing is gyro, in an emulator that has never had it.
-            decky.logger.warning(
+            appenv.logger.warning(
                 "Could not fetch the motion server for %s: %s", entry["id"], motion_error
             )
 
@@ -1337,7 +1337,7 @@ class Emulators(plugin_base.PluginContext):
         # same rule and for the same reason as the motion server above.
         _keys, keys_error = await self._run(emu_install.ensure_hotkey_helper, entry)
         if keys_error:
-            decky.logger.warning(
+            appenv.logger.warning(
                 "Could not fetch the hotkey helper for %s: %s", entry["id"], keys_error
             )
 
@@ -1408,7 +1408,7 @@ class Emulators(plugin_base.PluginContext):
         # the second is why reinstalling an emulator did not help: `flatpak
         # uninstall` leaves `~/.var/app/<id>` alone, so the config survives the
         # emulator and the next install saw a file and asked for nothing.
-        decky.logger.info(
+        appenv.logger.info(
             "Letting %s write its own config first", entry["id"]
         )
         # Two attempts, cheapest first, and the second one drops the offscreen
@@ -1433,13 +1433,13 @@ class Emulators(plugin_base.PluginContext):
 
         left = await self._run(emu_config.missing_files, setup)
         if left:
-            decky.logger.warning(
+            appenv.logger.warning(
                 "%s wrote no config with no display; settings will be written into a "
                 "new file and re-applied after its first run (%s)",
                 entry["id"], ", ".join(left),
             )
             return False
-        decky.logger.info("%s wrote its own config; applying settings into it", entry["id"])
+        appenv.logger.info("%s wrote its own config; applying settings into it", entry["id"])
         return True
 
     async def register_emulator(self, entry_id: str):
@@ -1564,7 +1564,7 @@ class Emulators(plugin_base.PluginContext):
 
         result = await self._run_flatpak(argv)
         if not result.get("ok") and emu_install.nothing_to_uninstall(result.get("error")):
-            decky.logger.info("%s was already gone; treating the removal as done", app_id)
+            appenv.logger.info("%s was already gone; treating the removal as done", app_id)
             result = {"ok": True}
         if result.get("ok"):
             await self._run(emu_install.remove_flatpak_husk, app_id)
@@ -1599,7 +1599,7 @@ class Emulators(plugin_base.PluginContext):
         try:
             script = await self._run(launchers.write_gui_launcher, emulator, entry["name"])
         except OSError as error:
-            decky.logger.exception("Failed writing GUI launcher")
+            appenv.logger.exception("Failed writing GUI launcher")
             return {"ok": False, "error": "Could not write launcher script: %s" % error}
 
         # Refreshed every time rather than once at setup, because a package

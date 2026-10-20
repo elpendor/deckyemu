@@ -29,7 +29,7 @@ from harness import REPO_ROOT, check, section, summary  # noqa: E402  -- install
 
 sys.path.insert(0, REPO_ROOT)
 
-import decky  # noqa: E402
+import appenv  # noqa: E402
 import devreset  # noqa: E402
 import emu_install  # noqa: E402
 import emulator_catalog  # noqa: E402
@@ -207,5 +207,5 @@ check("while the unrestricted one still finds it",
 for _path in _refused_data:
     shutil.rmtree(_path, ignore_errors=True)
 
-decky.logger.info("done")
+appenv.logger.info("done")
 summary()

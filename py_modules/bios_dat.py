@@ -24,12 +24,12 @@ import os
 import re
 import time
 
-import decky
+import appenv
 
 import net
 
 URL = "https://raw.githubusercontent.com/libretro/libretro-database/master/dat/System.dat"
-CACHE_PATH = os.path.join(decky.DECKY_PLUGIN_RUNTIME_DIR, "bios_dat.json")
+CACHE_PATH = os.path.join(appenv.DATA_DIR, "bios_dat.json")
 TTL_SECONDS = 30 * 24 * 60 * 60
 
 #: The largest BIOS in the list is 16MB; nothing bigger is worth hashing.
@@ -104,11 +104,11 @@ def refresh():
                 with open(CACHE_PATH, "w", encoding="utf-8") as handle:
                     json.dump({"fetched_at": time.time(), "table": table}, handle)
             except OSError as error:
-                decky.logger.warning("Could not cache the BIOS checksum list: %s", error)
+                appenv.logger.warning("Could not cache the BIOS checksum list: %s", error)
         else:
             table = _load_cache(allow_stale=True)
     use(table or {})
-    decky.logger.info("BIOS checksum list: %d known files", len(_table))
+    appenv.logger.info("BIOS checksum list: %d known files", len(_table))
 
 
 def loaded():

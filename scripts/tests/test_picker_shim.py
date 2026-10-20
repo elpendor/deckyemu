@@ -24,7 +24,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from harness import TMP, check, section, summary  # noqa: E402
 
-import decky  # noqa: E402
+import appenv  # noqa: E402
 import launchers  # noqa: E402
 from emulator_catalog import schema  # noqa: E402
 
@@ -84,7 +84,7 @@ try:
 finally:
     launchers.shutil.which = _real_which
 
-_shim = os.path.join(decky.DECKY_PLUGIN_RUNTIME_DIR, "pickers", "asking-port", "zenity")
+_shim = os.path.join(appenv.DATA_DIR, "pickers", "asking-port", "zenity")
 check("the launcher puts it first on PATH and names the game",
       "PATH=" in _shell and _GAME in _shell, True)
 check("and the shim is written where PATH points", os.path.isfile(_shim), True)

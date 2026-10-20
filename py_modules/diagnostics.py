@@ -37,7 +37,7 @@ import os
 import re
 import urllib.parse
 
-import decky
+import appenv
 
 import findfiles
 
@@ -197,7 +197,7 @@ def _log_tail(lines=LOG_LINES):
     """The end of the newest log file, or a line saying why there is none."""
     try:
         paths = sorted(
-            findfiles.in_directory(decky.DECKY_PLUGIN_LOG_DIR, ".log"),
+            findfiles.in_directory(appenv.LOG_DIR, ".log"),
             key=os.path.getmtime,
         )
     except OSError as error:

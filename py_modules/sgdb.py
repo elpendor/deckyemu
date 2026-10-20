@@ -6,89 +6,16 @@ purpose-made capsules, heroes and logos.
 """
 
 import concurrent.futures
-import json
-import os
 import re
 import time
 import urllib.parse
 
-import decky
-
-import findfiles
+import appenv
 
 import net
 import vendored_difflib as difflib
 
 API_BASE = "https://www.steamgriddb.com/api/v2"
-
-# SteamGridDB keys are long alphanumeric strings. Used to spot one in a config
-# file without relying on a particular field name.
-_KEY_RE = re.compile(r"^[A-Za-z0-9_-]{16,80}$")
-
-# Deliberately strict. A bare "key" substring would also match hotkey/keybind
-# fields, and importing the wrong value silently would be worse than not
-# offering the import at all.
-_KEY_FIELD_NAMES = {
-    "api_key",
-    "apikey",
-    "api-key",
-    "sgdb_api_key",
-    "sgdbapikey",
-    "steamgriddb_api_key",
-    "token",
-    "api_token",
-}
-
-
-def _is_key_field(leaf):
-    leaf = leaf.lower()
-    return leaf in _KEY_FIELD_NAMES or ("api" in leaf and "key" in leaf)
-
-
-def _looks_like_key(value):
-    return isinstance(value, str) and bool(_KEY_RE.match(value.strip()))
-
-
-def _search_json_for_key(payload):
-    """Depth-first search for a plausible API key in a parsed config file."""
-    stack = [("", payload)]
-    while stack:
-        path, node = stack.pop()
-        if isinstance(node, dict):
-            for name, value in node.items():
-                stack.append(("%s/%s" % (path, name), value))
-        elif isinstance(node, list):
-            for index, value in enumerate(node):
-                stack.append(("%s/%d" % (path, index), value))
-        elif _looks_like_key(node) and _is_key_field(path.rsplit("/", 1)[-1]):
-            return node.strip(), path
-    return "", ""
-
-
-def discover_existing_key():
-    """Look for a SteamGridDB key already stored by another decky plugin.
-
-    Saves the user typing a long key on a touchscreen keyboard. Only reads
-    plugin settings under DECKY_HOME, and is only ever called when the user
-    explicitly asks to import.
-    """
-    settings_root = os.path.join(decky.DECKY_HOME, "settings")
-    candidates = []
-    for name in ("decky-steamgriddb", "SteamGridDB", "steamgriddb"):
-        candidates.extend(findfiles.in_directory(os.path.join(settings_root, name), ".json"))
-
-    for path in candidates:
-        try:
-            with open(path, "r", encoding="utf-8") as handle:
-                payload = json.load(handle)
-        except (OSError, ValueError):
-            continue
-        key, field = _search_json_for_key(payload)
-        if key:
-            decky.logger.info("Found a candidate API key in %s (%s)", path, field)
-            return {"key": key, "source": os.path.basename(os.path.dirname(path))}
-
-    return {"key": "", "source": ""}
 
 
 def _headers(api_key):
@@ -287,11 +214,11 @@ def search_exact(api_key, name):
     matches = [candidate for candidate in _autocomplete(api_key, name)
                if _exact_key(candidate.get("name", "")) == wanted]
     if len(matches) > 1:
-        decky.logger.info("SteamGridDB: %r names %d entries, so none of them "
+        appenv.logger.info("SteamGridDB: %r names %d entries, so none of them "
                           "is this port", name, len(matches))
         return 0
     if matches:
-        decky.logger.info("SteamGridDB: %r is its own entry (%s)",
+        appenv.logger.info("SteamGridDB: %r is its own entry (%s)",
                           name, matches[0].get("id"))
         return matches[0].get("id") or 0
     return 0
@@ -362,12 +289,12 @@ def search_game(api_key, title, databases=None, matched_name=""):
 
     ranked = search_candidates(api_key, title, databases, matched_name, limit=1)
     if not ranked:
-        decky.logger.info("SteamGridDB: no candidates for %r", title)
+        appenv.logger.info("SteamGridDB: no candidates for %r", title)
         return 0
 
     best = ranked[0]
     if best["score"] < _MIN_SCORE:
-        decky.logger.info(
+        appenv.logger.info(
             "SteamGridDB: rejected best match %r (score %.2f) for %r; using libretro instead",
             best["name"],
             best["score"],
@@ -375,7 +302,7 @@ def search_game(api_key, title, databases=None, matched_name=""):
         )
         return 0
 
-    decky.logger.info(
+    appenv.logger.info(
         "SteamGridDB: matched %r (id=%s, score %.2f) for %r",
         best["name"],
         best["id"],
@@ -481,7 +408,7 @@ def art_urls(api_key, game_id):
         found = list(pool.map(fetch, _ART_SLOTS))
 
     art = {slot[0]: url for slot, url in zip(_ART_SLOTS, found) if url}
-    decky.logger.info(
+    appenv.logger.info(
         "SteamGridDB art for %d: %s",
         game_id,
         ", ".join(art.keys()) or "none",

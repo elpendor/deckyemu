@@ -46,7 +46,7 @@ import re
 import shutil
 import time
 
-import decky
+import appenv
 
 import audit
 import cloudsave
@@ -358,7 +358,7 @@ def learn_compare(remote):
     # comparison that catches what `--checksum` misses where there are no
     # hashes; it is the wrong thing to conclude about the backend.
     if not ok:
-        decky.logger.info(
+        appenv.logger.info(
             "Could not ask %s what it can be compared by; this copy compares "
             "size and time, and the question is asked again next time", remote)
         return []
@@ -378,7 +378,7 @@ def learn_compare(remote):
     if hashes and cloudsave.remote_kinds().get(remote) in _CLAIMED_HASHES:
         hashes = []
     if not hashes:
-        decky.logger.info(
+        appenv.logger.info(
             "%s offers no checksums; copies there compare size and time", remote)
     _COMPARES[remote] = list(_BY_CONTENT) if hashes else []
     return _COMPARES[remote]
@@ -513,7 +513,7 @@ def push_steps(remote, ids=None):
         for segment, path in _roots_of(source):
             target = _safe(source["id"], segment)
             if not target:
-                decky.logger.warning(
+                appenv.logger.warning(
                     "Cloud push skipped %s: not a usable folder name", source["id"])
                 continue
             command = cloudsave.argv(
@@ -631,10 +631,10 @@ def prune(remote, keep=KEEP):
         if ok:
             gone += 1
         else:
-            decky.logger.warning(
+            appenv.logger.warning(
                 "Could not remove replaced copy %s: %s", old["stamp"], output)
     if gone:
-        decky.logger.info("Removed %d replaced cop(ies) from %s", gone, remote)
+        appenv.logger.info("Removed %d replaced cop(ies) from %s", gone, remote)
     return gone
 
 
@@ -930,7 +930,7 @@ STATE_FILE = ".deckyemu-state.json"
 
 #: Where the same record is kept on this side, so "did somebody else write to
 #: the storage since we last did?" is one comparison rather than a guess.
-STATE_DIR = os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "cloudstate")
+STATE_DIR = os.path.join(appenv.SETTINGS_DIR, "cloudstate")
 
 #: How long the check before a launch may take.
 #:
@@ -991,7 +991,7 @@ def _device():
         with open(path, "w", encoding="utf-8") as handle:
             handle.write(made)
     except OSError as error:
-        decky.logger.warning("Could not keep a device name: %s", error)
+        appenv.logger.warning("Could not keep a device name: %s", error)
     return made
 
 
@@ -1082,7 +1082,7 @@ def _keep_mine(source_id, state, remote=""):
         with open(_mine_path(source_id), "w", encoding="utf-8") as handle:
             json.dump(state, handle)
     except OSError as error:
-        decky.logger.warning("Could not keep the cloud record: %s", error)
+        appenv.logger.warning("Could not keep the cloud record: %s", error)
 
 
 def changed_since_push(source_id, remote=""):
@@ -1441,7 +1441,7 @@ def preserve_local(remote, source_id, names):
             pass
         if not ok:
             return False, output
-    decky.logger.info(
+    appenv.logger.info(
         "Kept this Deck's copy of %d file(s) for %s before replacing them",
         len(names), source_id)
     return True, ""
@@ -1650,7 +1650,7 @@ def _forget_gone(remote, entries, only):
         if not gone:
             continue
         kept = {name: said for name, said in held.items() if name in names}
-        decky.logger.info(
+        appenv.logger.info(
             "Cloud record for %s named %d file(s) the storage no longer has",
             emulator, len(gone))
         _keep_mine(emulator, dict(mine, files=kept), remote)

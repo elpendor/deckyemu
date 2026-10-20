@@ -23,7 +23,7 @@ methods it finds on the plugin object, so the names have to stay there while the
 code lives somewhere findable. Nothing here may be instantiated alone.
 """
 
-import decky
+import appenv
 
 import plugin_base
 
@@ -189,7 +189,7 @@ class Library(plugin_base.PluginContext):
         total = len(library) or 1
         freed = 0
         for index, entry in enumerate(library.values()):
-            await decky.emit(
+            await appenv.emit(
                 "clear_library_progress",
                 "Deleting %s" % (entry.get("title") or "game"),
                 # By count, not by bytes. The sizes are not known until each one
@@ -203,7 +203,7 @@ class Library(plugin_base.PluginContext):
                 await self._run(gamecontent.games_root_for, entry.get("core_id", "")))
             await self._run(rompatch.forget, entry.get("app_id"), entry.get("rom_path", ""))
 
-        await decky.emit("clear_library_progress", "Removing launchers", 90)
+        await appenv.emit("clear_library_progress", "Removing launchers", 90)
         removed = 0
         for entry in library.values():
             if await self._run(launchers.remove_launcher, entry.get("launcher_path", "")):
@@ -212,13 +212,13 @@ class Library(plugin_base.PluginContext):
         # nothing to preserve between the individual deletions.
         await self._run(store.clear_library)
 
-        await decky.emit("clear_library_progress", "Tidying up leftover launchers", 96)
+        await appenv.emit("clear_library_progress", "Tidying up leftover launchers", 96)
         strays = await self._run(self._stray_launchers, set())
         for path in strays:
             if await self._run(launchers.remove_launcher, path):
                 removed += 1
 
-        decky.logger.info(
+        appenv.logger.info(
             "Cleared the library: %d game(s), %d launcher(s), %d bytes freed",
             len(games), removed, freed,
         )
@@ -246,13 +246,13 @@ class Library(plugin_base.PluginContext):
             if info.get("ok") and info.get("title_id"):
                 gone, error = await self._run(module.delete_game, info["title_id"])
                 if error:
-                    decky.logger.warning("Could not delete %s: %s", rom_path, error)
+                    appenv.logger.warning("Could not delete %s: %s", rom_path, error)
                 return gone
 
         library = await self._run(romshelf.library_dir)
         if await self._run(romshelf.owned, rom_path, library):
             gone, error = await self._run(romshelf.delete_rom, rom_path, library)
             if error:
-                decky.logger.warning("Could not delete %s: %s", rom_path, error)
+                appenv.logger.warning("Could not delete %s: %s", rom_path, error)
             return gone
         return 0

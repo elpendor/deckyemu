@@ -22,11 +22,11 @@ import json
 import os
 import time
 
-import decky
+import appenv
 
 #: Beside the settings rather than in the log directory, which is the directory
 #: this exists to survive.
-PATH = os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "destructive.log")
+PATH = os.path.join(appenv.SETTINGS_DIR, "destructive.log")
 
 #: Past this, the oldest half goes. Reached after roughly ten thousand
 #: destructive acts, which is not a number this plugin can produce in a year.
@@ -54,7 +54,7 @@ def record(what, **facts):
             handle.write(line + "\n")
         _trim()
     except (OSError, ValueError, TypeError) as error:
-        decky.logger.warning("Could not write the destructive-acts note: %s", error)
+        appenv.logger.warning("Could not write the destructive-acts note: %s", error)
 
 
 def _trim():
@@ -67,7 +67,7 @@ def _trim():
         with open(PATH, "w", encoding="utf-8") as handle:
             handle.writelines(lines[len(lines) // 2:])
     except OSError as error:
-        decky.logger.warning("Could not trim the destructive-acts note: %s", error)
+        appenv.logger.warning("Could not trim the destructive-acts note: %s", error)
 
 
 def entries(limit=200):

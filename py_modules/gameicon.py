@@ -15,7 +15,7 @@ id. When there is none, every game falls back to the picture shipped in
 import base64
 import os
 
-import decky
+import appenv
 
 import sysenv
 
@@ -41,7 +41,7 @@ def generic():
     so a path to a file that is not there would be written into `shortcuts.vdf`
     and stay wrong after the file appeared.
     """
-    plugin_dir = getattr(decky, "DECKY_PLUGIN_DIR", "") or ""
+    plugin_dir = getattr(appenv, "APP_DIR", "") or ""
     if not plugin_dir:
         return ""
     icon = os.path.join(plugin_dir, "assets", NAME)
@@ -155,7 +155,7 @@ def save(app_id, payload):
         with open(path, "wb") as handle:
             handle.write(payload)
     except OSError as error:
-        decky.logger.warning("Could not write the icon for %s: %s", app_id, error)
+        appenv.logger.warning("Could not write the icon for %s: %s", app_id, error)
         return ""
     return path
 

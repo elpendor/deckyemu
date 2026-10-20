@@ -23,7 +23,7 @@ import os
 import re
 import shutil
 
-import decky
+import appenv
 import sfo
 import sysenv
 
@@ -181,7 +181,7 @@ def delete_game(title_id, root=None):
     except OSError as error:
         return 0, "Could not delete %s: %s" % (directory, error)
 
-    decky.logger.info("Deleted PS4 game %s, freeing %d bytes", title_id, freed)
+    appenv.logger.info("Deleted PS4 game %s, freeing %d bytes", title_id, freed)
     return freed, ""
 
 
@@ -210,7 +210,7 @@ def unpacked_game(directory):
             if os.path.isdir(nested) and os.path.isfile(os.path.join(nested, "eboot.bin")):
                 return nested
     except OSError as error:
-        decky.logger.warning("Could not look inside %s: %s", directory, error)
+        appenv.logger.warning("Could not look inside %s: %s", directory, error)
     return ""
 
 
@@ -245,5 +245,5 @@ def settle(target):
         # wrong. Report it rather than lose it.
         return found, "Unpacked, but could not be moved into place: %s" % error
 
-    decky.logger.info("Flattened %s out of its own folder", target)
+    appenv.logger.info("Flattened %s out of its own folder", target)
     return target, ""

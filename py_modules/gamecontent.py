@@ -24,7 +24,7 @@ import os
 import re
 import shutil
 
-import decky
+import appenv
 
 import emulator_catalog
 import emulators
@@ -174,7 +174,7 @@ def add(app_id, path, base_id, inbox, progress=None):
             try:
                 os.remove(path)
             except OSError as remove_error:
-                decky.logger.warning("Could not clear %s from the inbox: %s",
+                appenv.logger.warning("Could not clear %s from the inbox: %s",
                                      path, remove_error)
         return dict(found, file=name, path=kept), ""
 
@@ -193,7 +193,7 @@ def add(app_id, path, base_id, inbox, progress=None):
             pass
         return None, "Could not keep %s: %s" % (os.path.basename(path), move_error)
 
-    decky.logger.info("Kept %s %s for app %s (%s)", found["kind"], name, app_id,
+    appenv.logger.info("Kept %s %s for app %s (%s)", found["kind"], name, app_id,
                       "moved" if from_inbox else "copied")
     return dict(found, file=name, path=target), ""
 
@@ -218,14 +218,14 @@ def _keep_unpacked(app_id, path, found, directory, from_inbox, progress):
         if error:
             return None, error
         kept = os.path.join(directory, name)
-        decky.logger.info("Kept %s %s for app %s (unpacked from %s)", found["kind"], name,
+        appenv.logger.info("Kept %s %s for app %s (unpacked from %s)", found["kind"], name,
                           app_id, os.path.basename(path))
     # Otherwise the same package, sent a second time and already kept.
     if from_inbox:
         try:
             os.remove(path)
         except OSError as remove_error:
-            decky.logger.warning("Could not clear %s from the inbox: %s", path, remove_error)
+            appenv.logger.warning("Could not clear %s from the inbox: %s", path, remove_error)
     return dict(switch_content.inspect(kept), file=name, path=kept), ""
 
 
@@ -376,10 +376,10 @@ def forget(app_id, games_root):
     for base_id in {row["base_id"] for row in kept}:
         problem = sync(app_id, base_id, games_root) if games_root else ""
         if problem:
-            decky.logger.warning("Could not tidy Ryujinx's list for %s: %s",
+            appenv.logger.warning("Could not tidy Ryujinx's list for %s: %s",
                                  base_id, problem)
     if kept:
-        decky.logger.info("Deleted %d update(s) and DLC for app %s, freeing %d bytes",
+        appenv.logger.info("Deleted %d update(s) and DLC for app %s, freeing %d bytes",
                           len(kept), app_id, freed)
     return freed
 

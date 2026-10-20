@@ -37,7 +37,7 @@ import shutil
 import struct
 import subprocess
 
-import decky
+import appenv
 
 import emulator_catalog
 
@@ -364,7 +364,7 @@ def apply_to_appimage(stock_path, spec, out_path):
         # Into place in one step, so a patched build is either whole or absent
         # and never half-written for a launcher to find.
         os.replace(staged, out_path)
-        decky.logger.info("Patched %s at 0x%x -> %s",
+        appenv.logger.info("Patched %s at 0x%x -> %s",
                           member, at, os.path.basename(out_path))
         return ""
     except subprocess.TimeoutExpired:
@@ -402,7 +402,7 @@ def _write_record(entry_id, record):
         with open(record_path(entry_id), "w", encoding="utf-8") as handle:
             json.dump(record, handle, indent=2)
     except OSError as error:
-        decky.logger.warning("Could not record patches for %s: %s", entry_id, error)
+        appenv.logger.warning("Could not record patches for %s: %s", entry_id, error)
 
 
 def refresh(entry, stock_path, installed_build=""):
@@ -435,7 +435,7 @@ def refresh(entry, stock_path, installed_build=""):
             pass
         error = apply_to_appimage(stock_path, spec, out_path)
         if error:
-            decky.logger.warning("No patched build for %s/%s: %s",
+            appenv.logger.warning("No patched build for %s/%s: %s",
                                  entry_id, workaround_id, error)
             record[workaround_id] = {"file": "", "error": error}
         else:

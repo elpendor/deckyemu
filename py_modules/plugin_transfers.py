@@ -26,7 +26,7 @@ import asyncio
 import os
 import time
 
-import decky
+import appenv
 
 import plugin_base
 
@@ -273,7 +273,7 @@ class Transfers(plugin_base.PluginContext):
                 return {"ok": False, "error": started["error"]}
 
         await self._run(fileserver.offer_report, report)
-        decky.logger.info("Diagnostic report ready (%d characters)", len(report))
+        appenv.logger.info("Diagnostic report ready (%d characters)", len(report))
         return {"ok": True, **await self._run(fileserver.status)}
 
     async def start_cloud_setup(self):
@@ -318,7 +318,7 @@ class Transfers(plugin_base.PluginContext):
             cloudsave.offered(cloudsave.BACKENDS), self._cloud_setup,
             cloudsave.offered(cloudsave.OAUTH_BACKENDS), self._cloud_login
         )
-        decky.logger.info("Cloud storage setup ready")
+        appenv.logger.info("Cloud storage setup ready")
         return {"ok": True, **await self._run(fileserver.status)}
 
     def _cloud_setup(self, kind, values):
@@ -600,7 +600,7 @@ class Transfers(plugin_base.PluginContext):
         # Said rather than polled: the panel wants to show that saves are
         # moving, and the two copies worth showing are the two nobody presses a
         # button to start -- so there is no moment the panel could know to ask.
-        await decky.emit("cloud_copying", kind)
+        await appenv.emit("cloud_copying", kind)
         try:
             return await self._each_copy(steps, total, env, kind)
         finally:
@@ -631,11 +631,11 @@ class Transfers(plugin_base.PluginContext):
                 return False, "Could not run rclone: %s" % error
 
             async for text in output.segments(process.stdout):
-                decky.logger.info("rclone: %s", text)
+                appenv.logger.info("rclone: %s", text)
                 within = cloudsync.percent_in(text)
                 if within is None:
                     continue
-                await decky.emit(
+                await appenv.emit(
                     "cloud_sync_progress",
                     step["name"],
                     int((index * 100 + within) / total),
@@ -654,7 +654,7 @@ class Transfers(plugin_base.PluginContext):
                 # six lines of red saying one thing three times.
                 return False, "%s: %s" % (
                     step["name"], cloudsync.readable(output.reason))
-            await decky.emit(
+            await appenv.emit(
                 "cloud_sync_progress", step["name"],
                 int((index + 1) * 100 / total), "", kind)
         return True, ""
@@ -669,7 +669,7 @@ class Transfers(plugin_base.PluginContext):
         found everything still waiting. Reported on the device as a row that
         would not go away.
         """
-        await decky.emit("cloud_copying", "")
+        await appenv.emit("cloud_copying", "")
 
     async def _record_pushes(self, remote, steps):
         """Write the record for every emulator a copy just covered.
@@ -685,7 +685,7 @@ class Transfers(plugin_base.PluginContext):
             cloudsync.record_pushes, remote,
             sorted({step["id"] for step in steps}))
         if not ok and error:
-            decky.logger.warning("Could not record what went up: %s", error)
+            appenv.logger.warning("Could not record what went up: %s", error)
 
     async def _adopt_records(self, remote, steps):
         """Take the storage's record for every emulator a restore covered.
@@ -698,7 +698,7 @@ class Transfers(plugin_base.PluginContext):
         for source_id in sorted({step["id"] for step in steps}):
             ok, error = await self._run(cloudsync.adopt_state, remote, source_id)
             if not ok and error:
-                decky.logger.warning(
+                appenv.logger.warning(
                     "Could not take the storage's record for %s: %s", source_id, error)
 
     async def _carry_saves(self, steps, done_event, tidy="", adopt="", kind=""):
@@ -731,7 +731,7 @@ class Transfers(plugin_base.PluginContext):
             if ok and adopt:
                 await self._adopt_records(adopt, steps)
             await self._copy_settled()
-            await decky.emit(done_event, ok, reason, names if ok else [], kind)
+            await appenv.emit(done_event, ok, reason, names if ok else [], kind)
             if ok and tidy:
                 await self._run(cloudsync.prune, tidy)
         # Not CancelledError: this runs detached, and `_detach` re-raises a
@@ -739,7 +739,7 @@ class Transfers(plugin_base.PluginContext):
         # is closing.
         except OSError as error:
             await self._copy_settled()
-            await decky.emit(done_event, False, str(error), [], kind)
+            await appenv.emit(done_event, False, str(error), [], kind)
 
     @staticmethod
     def _links_skipped():
@@ -911,7 +911,7 @@ class Transfers(plugin_base.PluginContext):
         # gate refused and one declined at the save conflict both end like a
         # session. The launcher says which it was -- see `launchers.took_off`.
         if app_id and not await self._run(launchers.took_off, app_id):
-            decky.logger.info("Launch %s never started; nothing copied up", app_id)
+            appenv.logger.info("Launch %s never started; nothing copied up", app_id)
             return {"ok": True, "skipped": "never started"}
 
         # Before the switch below, because this is not about cloud saves: it is
@@ -935,7 +935,7 @@ class Transfers(plugin_base.PluginContext):
         # saves, which is how "Don't start" at a save conflict ended up doing
         # the thing it was pressed to avoid. See `changed_since_push`.
         if not await self._run(cloudsync.changed_since_push, source, remote):
-            decky.logger.info("Nothing changed for %s; nothing copied up", source)
+            appenv.logger.info("Nothing changed for %s; nothing copied up", source)
             return {"ok": True, "skipped": "nothing changed"}
 
         await self._run(cloudsync.learn_compare, remote)
@@ -944,13 +944,13 @@ class Transfers(plugin_base.PluginContext):
             # Ordinary, not a failure: an emulator with no save directory yet
             # has nothing to send, and a game closing is a bad moment to be told
             # about it either way.
-            decky.logger.info("Nothing to copy up for %s: %s", source, error)
+            appenv.logger.info("Nothing to copy up for %s: %s", source, error)
             return {"ok": True, "skipped": error}
 
         ok, reason = await self._stream_cloud(steps, "after-play")
         if not ok:
             await self._copy_settled()
-            decky.logger.warning("Could not copy %s up after play: %s", source, reason)
+            appenv.logger.warning("Could not copy %s up after play: %s", source, reason)
             return {"ok": False, "error": reason}
 
         # The record of what just went up, beside the saves and here. Without it
@@ -964,7 +964,7 @@ class Transfers(plugin_base.PluginContext):
         })
         await self._copy_settled()
         await self._run(cloudsync.prune, remote)
-        decky.logger.info("Copied %s up after play", source)
+        appenv.logger.info("Copied %s up after play", source)
         return {"ok": True}
 
     async def _settle_conflict(self, app_id, remote, source, found):
@@ -987,7 +987,7 @@ class Transfers(plugin_base.PluginContext):
         # question is about everything that emulator keeps, not about the game
         # being started, and a dialog that names only the game reads as a
         # narrower promise than the answer delivers.
-        await decky.emit(
+        await appenv.emit(
             "cloud_conflict", app_id, differing, found["here"], found["there"],
             await self._run(cloudsync.name_of, source))
         chosen = await self._wait_for_answer(app_id)
@@ -995,7 +995,7 @@ class Transfers(plugin_base.PluginContext):
         if chosen == "went":
             # The launch this was about has gone. Say so, so the dialog standing
             # over a game that is no longer starting comes down with it.
-            await decky.emit("cloud_fetch_done", app_id, [])
+            await appenv.emit("cloud_fetch_done", app_id, [])
             return {"ok": True, "differing": [], "restored": 0}
 
         if chosen == "stop":
@@ -1024,7 +1024,7 @@ class Transfers(plugin_base.PluginContext):
                 # storage is having a bad minute, so the answer is refused
                 # rather than half-done, and the Deck keeps what it has -- which
                 # is the outcome that can still be changed afterwards.
-                decky.logger.error(
+                appenv.logger.error(
                     "Not overwriting %s: could not keep this Deck's copies "
                     "first (%s)", source, keep_error)
                 await self._run(cloudsync.remember_answer, source, found["theirs"])
@@ -1084,7 +1084,7 @@ class Transfers(plugin_base.PluginContext):
             return
         result = await self._run(emu_config.apply_setup, entry)
         if not result.get("ok"):
-            decky.logger.warning("Could not re-apply %s settings after saves came down: %s",
+            appenv.logger.warning("Could not re-apply %s settings after saves came down: %s",
                                  source, result.get("error"))
 
     async def cloud_before_play(self, app_id: int, core_id: str):
@@ -1130,7 +1130,7 @@ class Transfers(plugin_base.PluginContext):
                 # A storage that cannot be reached is not a reason to stop
                 # somebody playing. The saves on the Deck are the ones that get
                 # used, which is what would have happened anyway.
-                decky.logger.info("Could not compare %s before play: %s", source, error)
+                appenv.logger.info("Could not compare %s before play: %s", source, error)
                 return {"ok": True, "differing": [], "restored": 0}
 
             restored = 0
@@ -1156,11 +1156,11 @@ class Transfers(plugin_base.PluginContext):
                     ok, reason = await self._stream_cloud(steps, "launch")
                     if ok:
                         restored = missing
-                        decky.logger.info(
+                        appenv.logger.info(
                             "Brought %d file(s) down for %s before play", missing, source)
                         await self._reapply_setup(source)
                     else:
-                        decky.logger.warning(
+                        appenv.logger.warning(
                             "Could not bring %s down before play: %s", source, reason)
             # `differing` is emptied once it has been answered: whatever the
             # answer was, there is no question left standing for the panel.
@@ -1224,7 +1224,7 @@ class Transfers(plugin_base.PluginContext):
             except asyncio.CancelledError:
                 raise
             except Exception as error:  # noqa: BLE001 -- a loop that must not die
-                decky.logger.exception("Launch watch failed: %s", error)
+                appenv.logger.exception("Launch watch failed: %s", error)
 
     async def _answer_launch(self, app_id):
         """Fetch what one held launch is missing, then let it go."""
@@ -1236,9 +1236,9 @@ class Transfers(plugin_base.PluginContext):
                 # Not one of ours, or a record we no longer have. Either way the
                 # launcher is waiting and nothing here can help it.
                 return
-            await decky.emit("cloud_fetch_started", app_id, entry.get("title") or "")
+            await appenv.emit("cloud_fetch_started", app_id, entry.get("title") or "")
             result = await self.cloud_before_play(app_id, core_id)
-            await decky.emit(
+            await appenv.emit(
                 "cloud_fetch_done", app_id, result.get("differing") or [])
         finally:
             # Whatever happened, the launch goes and the id is free to be seen
@@ -1280,14 +1280,14 @@ class Transfers(plugin_base.PluginContext):
                 now = await self._run(launchers.which_launch, app_id)
                 if now != mine:
                     self._asked.pop(app_id, None)
-                    decky.logger.info(
+                    appenv.logger.info(
                         "The launch asking about %s is gone; nothing to answer",
                         app_id)
                     return "went"
         self._asked.pop(app_id, None)
         # Nobody there. Keep what is on the Deck, which writes nothing and
         # loses nothing -- the storage still holds its copy.
-        decky.logger.info("Save conflict for %s went unanswered; kept the Deck's",
+        appenv.logger.info("Save conflict for %s went unanswered; kept the Deck's",
                           app_id)
         return "deck"
 
@@ -1500,7 +1500,7 @@ class Transfers(plugin_base.PluginContext):
             built.get("bytes", 0),
             built.get("emulators") or [],
         )
-        decky.logger.info(
+        appenv.logger.info(
             "Save backup ready: %s (%d bytes)", os.path.basename(destination),
             built.get("bytes", 0),
         )
@@ -1580,7 +1580,7 @@ class Transfers(plugin_base.PluginContext):
             await self._run(os.remove, path)
         except OSError as error:
             return {"ok": False, "error": "Could not delete it: %s" % error}
-        decky.logger.info("Discarded save backup %s", os.path.basename(path))
+        appenv.logger.info("Discarded save backup %s", os.path.basename(path))
         return {"ok": True, "removed": True}
 
     async def describe_save_backup(self, path: str):
@@ -1622,7 +1622,7 @@ class Transfers(plugin_base.PluginContext):
         except OSError as error:
             # The saves are back, which is what was asked for. An archive that
             # could not be deleted is untidy, not a failed restore.
-            decky.logger.warning("Restored from %s but could not remove it: %s", path, error)
+            appenv.logger.warning("Restored from %s but could not remove it: %s", path, error)
         return result
 
     @staticmethod
@@ -1644,7 +1644,7 @@ class Transfers(plugin_base.PluginContext):
                 if os.path.isfile(path):
                     os.remove(path)
             except OSError as error:
-                decky.logger.warning("Could not remove old backup %s: %s", path, error)
+                appenv.logger.warning("Could not remove old backup %s: %s", path, error)
 
     async def end_report(self):
         """Withdraw the report, and stop the server if it was only serving that.
@@ -1772,7 +1772,7 @@ class Transfers(plugin_base.PluginContext):
             }
 
         await self._run(store.set_settings, {"transfer_port": 0, "transfer_token": ""})
-        decky.logger.info("Reset the transfer link; saved bookmarks no longer work")
+        appenv.logger.info("Reset the transfer link; saved bookmarks no longer work")
 
         # Restarted rather than left running, so the old link stops working now
         # instead of at the end of a session the user thinks they have revoked.
@@ -1841,7 +1841,7 @@ class Transfers(plugin_base.PluginContext):
                         "error": "Could not delete %s: %s"
                                  % (os.path.basename(victim), error)}
 
-        decky.logger.info("Discarded %s from the transfer folder, with %d "
+        appenv.logger.info("Discarded %s from the transfer folder, with %d "
                           "file(s) it named", name, len(group))
         return {"ok": True, "removed": True,
                 "received": await self._run(fileserver.received_files)}
@@ -1903,7 +1903,7 @@ class Transfers(plugin_base.PluginContext):
             def report(done, total):
                 percent = int(done * 100 / total) if total else -1
                 asyncio.run_coroutine_threadsafe(
-                    decky.emit("nsz_unpack_progress", name, percent), loop)
+                    appenv.emit("nsz_unpack_progress", name, percent), loop)
 
             written, error = await self._run(
                 switch_nsz.into_folder, path, destination, report)
@@ -1932,7 +1932,7 @@ class Transfers(plugin_base.PluginContext):
             # The contents are out, which is what was asked for. A zip that
             # could not be deleted is a tidiness problem with a delete button
             # next to it, not a failed unpack.
-            decky.logger.warning("Unpacked %s but could not remove it: %s", name, error)
+            appenv.logger.warning("Unpacked %s but could not remove it: %s", name, error)
 
         return {"ok": True, "written": written,
                 "received": await self._run(fileserver.received_files)}

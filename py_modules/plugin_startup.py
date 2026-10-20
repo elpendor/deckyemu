@@ -29,7 +29,7 @@ Mixed into `Plugin` rather than called by it, like the other five: these use
 class (see plugin_base.py), and nothing here may be instantiated alone.
 """
 
-import decky
+import appenv
 
 import plugin_base
 
@@ -70,7 +70,7 @@ class Startup(plugin_base.PluginContext):
 
         if not await self._run(store.get_library):
             return
-        decky.logger.info("Adding the %s menu shortcut to existing launchers", combo)
+        appenv.logger.info("Adding the %s menu shortcut to existing launchers", combo)
         await self.rebuild_launchers()
 
     async def _pin_collection_layout(self):
@@ -124,14 +124,14 @@ class Startup(plugin_base.PluginContext):
 
         if per_platform:
             await self._run(store.set_settings, {"collection_per_platform": True})
-            decky.logger.info(
+            appenv.logger.info(
                 "Library is already filed per system (%s); keeping that layout",
                 ", ".join(sorted(per_platform)[:3]),
             )
             return
 
         await self._run(store.set_settings, {"collection_per_platform": False})
-        decky.logger.info(
+        appenv.logger.info(
             "Existing library: staying on one shared collection until it is changed",
         )
 
@@ -166,7 +166,7 @@ class Startup(plugin_base.PluginContext):
         if error:
             # Not fatal: without it a Vita game lands on whatever Steam chose,
             # which is the situation this improves rather than depends on.
-            decky.logger.warning("Could not write the gyro layout: %s", error)
+            appenv.logger.warning("Could not write the gyro layout: %s", error)
 
     async def _upgrade_emulator_recipes(self):
         """Carry a corrected launch recipe to an emulator already installed.
@@ -230,7 +230,7 @@ class Startup(plugin_base.PluginContext):
             elif stored is not None and emulator.get("args") != stored:
                 # Edited here, so the recipe is no longer ours to change. The
                 # version is still recorded, or this would ask again forever.
-                decky.logger.info(
+                appenv.logger.info(
                     "Leaving %s launch arguments alone; they were edited", emulator["id"]
                 )
             else:
@@ -257,7 +257,7 @@ class Startup(plugin_base.PluginContext):
                     entry["seed"],
                 )
                 if _seed_error:
-                    decky.logger.warning(
+                    appenv.logger.warning(
                         "Could not seed %s: %s", emulator["id"], _seed_error)
 
             # Taken from the entry whenever the recipe moved, unlike the
@@ -355,7 +355,7 @@ class Startup(plugin_base.PluginContext):
             if derived and (extension_map or not entry.get("databases")):
                 stored_ext = emulator.get("catalog_extensions")
                 if stored_ext is not None and emulator.get("extensions") != stored_ext:
-                    decky.logger.info(
+                    appenv.logger.info(
                         "Leaving %s file extensions alone; they were edited", emulator["id"]
                     )
                 elif emulator.get("extensions") != derived:
@@ -389,7 +389,7 @@ class Startup(plugin_base.PluginContext):
         if changed:
             # Every launcher already written bakes in the old argv, so the fix
             # reaches nothing until they are rewritten.
-            decky.logger.info("Updated launch recipe for %s", ", ".join(changed))
+            appenv.logger.info("Updated launch recipe for %s", ", ".join(changed))
             await self._refresh_emulators()
             await self.rebuild_launchers()
 
@@ -435,7 +435,7 @@ class Startup(plugin_base.PluginContext):
                 emu_install.ensure_motion_server, entry
             )
             if motion_error:
-                decky.logger.warning(
+                appenv.logger.warning(
                     "Could not fetch the motion server for %s: %s",
                     entry["id"], motion_error,
                 )
@@ -448,7 +448,7 @@ class Startup(plugin_base.PluginContext):
                 # whose first startup was rate-limited recorded format 15 with
                 # no server present, and nothing would ever have rewritten
                 # them. So the download itself asks.
-                decky.logger.info(
+                appenv.logger.info(
                     "Motion server arrived for %s; rewriting launchers", entry["id"]
                 )
                 # Directly, not by a flag: `_upgrade_launchers` runs *before*
@@ -461,10 +461,10 @@ class Startup(plugin_base.PluginContext):
             if not stale:
                 continue
 
-            decky.logger.info("Updating recommended settings for %s", entry["id"])
+            appenv.logger.info("Updating recommended settings for %s", entry["id"])
             result = await self._run(emu_config.apply_setup, entry)
             if not result.get("ok"):
-                decky.logger.warning(
+                appenv.logger.warning(
                     "Could not update %s settings: %s", entry["id"], result.get("error")
                 )
 
@@ -490,7 +490,7 @@ class Startup(plugin_base.PluginContext):
             stock = await self._run(emu_install.installed_appimage, entry["id"])
             if not stock:
                 continue
-            decky.logger.info("Preparing patched builds for %s", entry["id"])
+            appenv.logger.info("Preparing patched builds for %s", entry["id"])
             await self._run(emu_patch.refresh, entry, stock, build)
             changed = True
 
@@ -532,11 +532,11 @@ class Startup(plugin_base.PluginContext):
         try:
             await self._upgrade_emulator_setups()
         except Exception:
-            decky.logger.exception("Could not re-check emulator settings")
+            appenv.logger.exception("Could not re-check emulator settings")
         try:
             await self._prepare_patched_builds()
         except Exception:
-            decky.logger.exception("Could not prepare patched builds")
+            appenv.logger.exception("Could not prepare patched builds")
 
     async def _fetch_cloud_tool(self):
         """Keep rclone present for as long as cloud saves are switched on.
@@ -562,7 +562,7 @@ class Startup(plugin_base.PluginContext):
             return
         _path, error = await self._run(emu_install.ensure_cloud_tool)
         if error:
-            decky.logger.warning("Could not fetch rclone for cloud saves: %s", error)
+            appenv.logger.warning("Could not fetch rclone for cloud saves: %s", error)
 
     async def _claim_filed_collections(self):
         """Record the collections an existing library is already filed into.
@@ -584,7 +584,7 @@ class Startup(plugin_base.PluginContext):
             [entry.get("collection", "") for entry in library.values()],
         )
         if added:
-            decky.logger.info(
+            appenv.logger.info(
                 "Claiming %d collection(s) this library is already filed into: %s",
                 len(added), ", ".join(added),
             )
@@ -635,7 +635,7 @@ class Startup(plugin_base.PluginContext):
             })
             return
 
-        decky.logger.info(
+        appenv.logger.info(
             "Rewriting launchers for format %d (motion: %s)",
             launchers.FORMAT_VERSION, fingerprint or "none"
         )
@@ -649,7 +649,7 @@ class Startup(plugin_base.PluginContext):
         # flag; since version 22 it carries the wait for cloud saves, so those
         # games would quietly never look for their saves before starting.
         if not (done or {}).get("ok"):
-            decky.logger.warning(
+            appenv.logger.warning(
                 "Launchers were not rewritten; leaving the format stale so the "
                 "next start tries again")
             return
@@ -676,10 +676,10 @@ class Startup(plugin_base.PluginContext):
             if removed:
                 dropped.append(entry_id)
             elif error:
-                decky.logger.warning("Could not drop %s's definition: %s",
+                appenv.logger.warning("Could not drop %s's definition: %s",
                                      entry_id, error)
         if dropped:
-            decky.logger.info(
+            appenv.logger.info(
                 "Dropped imported definition(s) now shipped with the plugin: %s",
                 ", ".join(dropped),
             )
@@ -696,7 +696,7 @@ class Startup(plugin_base.PluginContext):
         """
         gone = await self._run(store.forget_removed)
         if gone:
-            decky.logger.info("Removed setting(s) no longer used: %s", ", ".join(gone))
+            appenv.logger.info("Removed setting(s) no longer used: %s", ", ".join(gone))
 
     async def _resplit_firmware_records(self):
         """Re-file records written when one requirement accepted several files.
@@ -725,7 +725,7 @@ class Startup(plugin_base.PluginContext):
                 emu_firmware.resplit_record, entry_id, old_name, entry
             )
             if moved:
-                decky.logger.info(
+                appenv.logger.info(
                     "Re-filed %s firmware records from %r: %s",
                     entry_id,
                     old_name,
@@ -764,4 +764,4 @@ class Startup(plugin_base.PluginContext):
         # per game rewrote the entire registry once per game backfilled.
         if filled:
             await self._run(store.remember_games, filled)
-            decky.logger.info("Backfilled platform for %d existing game(s)", len(filled))
+            appenv.logger.info("Backfilled platform for %d existing game(s)", len(filled))

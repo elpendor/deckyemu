@@ -29,7 +29,7 @@ from harness import REPO_ROOT, check, section  # noqa: E402  -- installs the dec
 
 sys.path.insert(0, REPO_ROOT)
 
-import decky  # noqa: E402
+import appenv  # noqa: E402
 import emu_install  # noqa: E402
 import installer  # noqa: E402
 import main  # noqa: E402
@@ -98,8 +98,8 @@ section("and the runner carries what flatpak needs to work at all")
 
 # The failures below are logged with tracebacks, which is correct and also reads
 # like a broken run. Restored at the end.
-_log_level = decky.logger.level
-decky.logger.setLevel(logging.CRITICAL)
+_log_level = appenv.logger.level
+appenv.logger.setLevel(logging.CRITICAL)
 
 
 class _FakeProcess:
@@ -194,7 +194,7 @@ try:
     check("and names what could not be run", "flatpak" in _result.get("error", ""), True)
 finally:
     asyncio.create_subprocess_exec = _real_spawn
-    decky.logger.setLevel(_log_level)
+    appenv.logger.setLevel(_log_level)
     asyncio.set_event_loop(None)
     LOOP.close()
 

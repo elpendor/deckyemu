@@ -7,13 +7,13 @@
     python scripts/diagnose.py --log 500       # more of the log than the report keeps
 
 The same report the plugin offers a user under Updates -> Report a problem, and
-the same module builds it -- run against the installed plugin's own settings,
+the same module builds it -- run against the installed version's own settings,
 library and log. What it replaces is the four commands this was assembled from a
 dozen times in one session:
 
-    ssh deck@steamdeck.local 'ls -t ~/homebrew/logs/deckyemu/*.log | head -1'
+    ssh deck@steamdeck.local 'ls -t ~/.local/share/deckyemu/logs/*.log | head -1'
     ssh deck@steamdeck.local 'tail -n 200 "<that>"'
-    ssh deck@steamdeck.local 'cat ~/homebrew/settings/deckyemu/library.json'
+    ssh deck@steamdeck.local 'cat ~/.local/share/deckyemu/settings/library.json'
     ...and then reading four files to work out which build was running.
 
 `--raw` skips the redaction, which is the right default for your own device and
@@ -30,36 +30,23 @@ import argparse
 import subprocess
 import sys
 
-#: Run on the Deck, under its own Python, against the installed plugin.
+#: Run on the Deck, under its own Python, against the installed version.
 #:
-#: `decky` is the module the loader injects and it does not exist outside it, so
-#: it is stubbed here the way the test harness stubs it -- the directories are
-#: the ones decky derives from the plugin folder name, which is why renaming
-#: that folder orphans everything.
+#: The version that is running is the `current` link under the service's root,
+#: and its own `appenv` module knows every other path, so nothing is restated
+#: here.
 REMOTE = r'''
-import json, logging, os, sys, types
+import json, logging, os, sys
 
 home = os.path.expanduser("~")
-root = os.path.join(home, "homebrew")
-plugin = os.path.join(root, "plugins", "deckyemu")
-
-decky = types.ModuleType("decky")
-decky.DECKY_PLUGIN_SETTINGS_DIR = os.path.join(root, "settings", "deckyemu")
-decky.DECKY_PLUGIN_RUNTIME_DIR = os.path.join(root, "data", "deckyemu")
-decky.DECKY_PLUGIN_LOG_DIR = os.path.join(root, "logs", "deckyemu")
-decky.DECKY_USER_HOME = home
-decky.DECKY_HOME = root
-decky.DECKY_PLUGIN_NAME = "DeckyEmu"
-decky.DECKY_PLUGIN_VERSION = "unknown"
-decky.logger = logging.getLogger("decky")
-sys.modules["decky"] = decky
-os.environ["DECKY_USER_HOME"] = home
+plugin = os.path.realpath(os.path.join(home, ".local", "share", "deckyemu", "current"))
 
 if not os.path.isdir(plugin):
-    print("No plugin at %s -- is it installed under that name?" % plugin)
+    print("No DeckyEmu at %s -- is it installed?" % plugin)
     raise SystemExit(1)
 sys.path.insert(0, os.path.join(plugin, "py_modules"))
 
+import appenv  # noqa: F401 -- first, so every path below is the installed one
 import diagnostics, store
 
 version = {"version": "?", "build": "?", "built_at": ""}

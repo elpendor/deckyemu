@@ -29,15 +29,15 @@ from harness import REPO_ROOT, check, section  # noqa: E402  -- installs the dec
 
 sys.path.insert(0, REPO_ROOT)
 
-import decky  # noqa: E402
+import appenv  # noqa: E402
 import main  # noqa: E402
 
 section("startup survives a step that fails")
 
 # The failure below is logged with a traceback, which is correct and also reads
 # like a broken run. Restored at the end.
-_log_level = decky.logger.level
-decky.logger.setLevel(logging.CRITICAL)
+_log_level = appenv.logger.level
+appenv.logger.setLevel(logging.CRITICAL)
 
 ran = []
 
@@ -98,7 +98,7 @@ check("the steps after the failure are the ones that matter", ran[2:],
 # none of its migrations. The list above is what says each one was attempted.
 check("and the guard did not skip anything", len(ran), 7)
 
-decky.logger.setLevel(_log_level)
+appenv.logger.setLevel(_log_level)
 
 
 if __name__ == "__main__":

@@ -27,7 +27,7 @@ from harness import REPO_ROOT, check, section  # noqa: E402  -- installs the dec
 
 sys.path.insert(0, REPO_ROOT)
 
-import decky  # noqa: E402  -- the stub; its recording emit is replaced below
+import appenv  # noqa: E402  -- the stub; its recording emit is replaced below
 import main  # noqa: E402
 
 section("detached work always reports a result")
@@ -36,8 +36,8 @@ section("detached work always reports a result")
 # which is the behaviour being checked, and also eleven passing lines buried
 # under stack traces that read like a broken run. Quietened for this file only,
 # and restored at the end so nothing after it loses its logging.
-_log_level = decky.logger.level
-decky.logger.setLevel(logging.CRITICAL)
+_log_level = appenv.logger.level
+appenv.logger.setLevel(logging.CRITICAL)
 
 emitted = []
 
@@ -46,7 +46,7 @@ async def _record(event, *args):
     emitted.append((event, args))
 
 
-decky.emit = _record
+appenv.emit = _record
 
 plugin = main.Plugin()
 plugin.loop = asyncio.new_event_loop()
@@ -144,7 +144,7 @@ async def _also_boom():
     raise ValueError("something went wrong")
 
 
-decky.emit = _refuses
+appenv.emit = _refuses
 try:
     detached(_also_boom(), "emulator_install_done", "vita3k")
     survived = True
@@ -153,7 +153,7 @@ except Exception:
     # a logged line, which is the thing being guarded against.
     survived = False
 finally:
-    decky.emit = _record
+    appenv.emit = _record
 
 # The socket is the only way to report anything, so its failure ends the matter.
 # What must not happen is a second exception escaping on top of the first.
@@ -262,7 +262,7 @@ check("and both ran", sorted(started), ["a", "b"])
 check("and it is not listed as work a panel should resume", _unlisted, [])
 
 plugin.loop.close()
-decky.logger.setLevel(_log_level)
+appenv.logger.setLevel(_log_level)
 
 
 if __name__ == "__main__":

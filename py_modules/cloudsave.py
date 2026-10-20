@@ -33,14 +33,14 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-import decky
+import appenv
 
 import audit
 import emu_install
 import net
 
 #: Where rclone's configuration lives. Never `~/.config/rclone`.
-CONFIG_PATH = os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "rclone.conf")
+CONFIG_PATH = os.path.join(appenv.SETTINGS_DIR, "rclone.conf")
 
 #: Long enough for a slow remote to answer, short enough that a wrong hostname
 #: does not hang the panel. Creating a remote writes a file and needs none of
@@ -221,7 +221,7 @@ def _restrict(path):
     try:
         os.chmod(path, 0o600)
     except OSError as error:
-        decky.logger.warning("Could not restrict %s: %s", path, error)
+        appenv.logger.warning("Could not restrict %s: %s", path, error)
 
 
 #: The host out of a Go dial error: `lookup nas.local on 127.0.0.53:53`. The
@@ -310,7 +310,7 @@ def create_remote(name, kind, values):
     if not ok:
         return False, output
     _restrict(CONFIG_PATH)
-    decky.logger.info("Created cloud remote %r (%s)", name, kind)
+    appenv.logger.info("Created cloud remote %r (%s)", name, kind)
     return True, ""
 
 
@@ -529,7 +529,7 @@ def login_start(kind):
 
     _login.update({"process": process, "kind": kind, "started": time.time(),
                    "url": signin})
-    decky.logger.info("Cloud login started for %s", kind)
+    appenv.logger.info("Cloud login started for %s", kind)
     return signin, ""
 
 
@@ -766,7 +766,7 @@ def login_finish(name, kind, pasted):
     if not ok:
         return False, error
     _restrict(CONFIG_PATH)
-    decky.logger.info("Created cloud remote %r (%s) by login", name, kind)
+    appenv.logger.info("Created cloud remote %r (%s) by login", name, kind)
     return True, ""
 
 

@@ -32,7 +32,7 @@ to do properly, and neither is a format that shows up without a name.
 import os
 import zipfile
 
-import decky
+import appenv
 
 #: The first four bytes of an Xbox 360 content package. `CON ` carries the
 #: trailing space -- it is a four-character code, not a word.
@@ -59,7 +59,7 @@ def extension_from_header(path):
         # in a file browser, and if it cannot be read the failure belongs to
         # whatever tries to use it next, with a message about that rather than
         # about a header.
-        decky.logger.debug("no header read from %s: %s", path, error)
+        appenv.logger.debug("no header read from %s: %s", path, error)
         return ""
 
     return _identify(magic)
@@ -98,7 +98,7 @@ def inside_archive(path):
                 with archive.open(entry) as handle:
                     return _identify(handle.read(4))
     except (OSError, zipfile.BadZipFile, RuntimeError, ValueError) as error:
-        decky.logger.debug("could not look inside %s: %s", path, error)
+        appenv.logger.debug("could not look inside %s: %s", path, error)
     return ""
 
 

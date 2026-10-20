@@ -3,19 +3,19 @@
 import os
 import threading
 
-import decky
+import appenv
 
 import jsonstore
 
-SETTINGS_PATH = os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "settings.json")
-LIBRARY_PATH = os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "library.json")
+SETTINGS_PATH = os.path.join(appenv.SETTINGS_DIR, "settings.json")
+LIBRARY_PATH = os.path.join(appenv.SETTINGS_DIR, "library.json")
 #: Every collection name this plugin has filed a game into, ever.
 #:
 #: Its own file rather than a key in settings.json, because it is neither a
 #: setting nor derived from one: it is a record of what was done to somebody's
 #: Steam library, and the only thing that can say which shelves are ours to
 #: tidy away once no game names them any more.
-COLLECTIONS_PATH = os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "collections.json")
+COLLECTIONS_PATH = os.path.join(appenv.SETTINGS_DIR, "collections.json")
 
 #: How a per-system collection is named when nothing says otherwise.
 #:

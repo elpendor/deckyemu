@@ -23,7 +23,7 @@ from harness import REPO_ROOT, check, section  # noqa: E402  -- installs the dec
 
 sys.path.insert(0, REPO_ROOT)
 
-import decky  # noqa: E402
+import appenv  # noqa: E402
 import main  # noqa: E402
 import store  # noqa: E402
 
@@ -39,9 +39,9 @@ def run(coro):
 
 def clear():
     """Clear, and hand back only the progress events it emitted."""
-    decky.emitted.clear()
+    appenv.emitted.clear()
     run(plugin.clear_library())
-    return [args for event, args in decky.emitted if event == "clear_library_progress"]
+    return [args for event, args in appenv.emitted if event == "clear_library_progress"]
 
 
 # The registry only, not `plugin.clear_library` -- when this file runs as part of

@@ -44,7 +44,7 @@ import shutil
 import time
 import zipfile
 
-import decky
+import appenv
 
 import emulator_catalog
 import ra_detect
@@ -61,7 +61,7 @@ FORMAT = 1
 #: file, and the transfer folder is scanned for arrivals the user is meant to act
 #: on. Whoever builds one owns deleting it -- a backup left here is a copy of
 #: somebody's saves that nothing is going to clean up.
-BACKUP_DIR = os.path.join(decky.DECKY_PLUGIN_RUNTIME_DIR, "backups")
+BACKUP_DIR = os.path.join(appenv.DATA_DIR, "backups")
 
 #: Where a backup *arriving* from another device is kept, under the user's own
 #: `~/deckyemu` rather than decky's runtime directory.
@@ -510,7 +510,7 @@ def build(destination, ids=None):
                         except OSError as error:
                             # One unreadable file must not cost the whole backup.
                             # It is named in the log; every other save still goes.
-                            decky.logger.warning(
+                            appenv.logger.warning(
                                 "Save backup skipped %s: %s", absolute, error
                             )
                             continue
@@ -518,7 +518,7 @@ def build(destination, ids=None):
             bundle.writestr("manifest.json", json.dumps(manifest, indent=2))
         os.replace(partial, destination)
     except OSError as error:
-        decky.logger.error("Could not build the save backup: %s", error)
+        appenv.logger.error("Could not build the save backup: %s", error)
         try:
             os.remove(partial)
         except OSError:
@@ -526,7 +526,7 @@ def build(destination, ids=None):
         return {"ok": False, "error": "The backup could not be written: %s" % error}
 
     size = os.path.getsize(destination)
-    decky.logger.info(
+    appenv.logger.info(
         "Save backup: %d file(s) from %d emulator(s), %d bytes",
         written, len(listed), size,
     )
@@ -660,9 +660,9 @@ def take_delivery(path):
             attempt += 1
         shutil.move(path, final)
     except OSError as error:
-        decky.logger.warning("Could not file the save backup %s: %s", path, error)
+        appenv.logger.warning("Could not file the save backup %s: %s", path, error)
         return path
-    decky.logger.info("Filed save backup %s under %s", os.path.basename(path), arrivals_dir())
+    appenv.logger.info("Filed save backup %s under %s", os.path.basename(path), arrivals_dir())
     return final
 
 
@@ -800,7 +800,7 @@ def restore(path, ids=None, replace=False):
                     # A member naming its way out of the root it belongs to.
                     # Counted and logged rather than silently dropped: an archive
                     # that contains one is not an archive this plugin wrote.
-                    decky.logger.warning(
+                    appenv.logger.warning(
                         "Save restore refused a member outside its root: %s",
                         info.filename,
                     )
@@ -816,12 +816,12 @@ def restore(path, ids=None, replace=False):
                         shutil.copyfileobj(reading, writing)
                     os.replace(partial, landing)
                 except OSError as error:
-                    decky.logger.warning("Could not restore %s: %s", landing, error)
+                    appenv.logger.warning("Could not restore %s: %s", landing, error)
                     refused += 1
                     continue
                 written += 1
 
-    decky.logger.info(
+    appenv.logger.info(
         "Save restore: %d written, %d already there, %d refused", written, skipped, refused
     )
     return {

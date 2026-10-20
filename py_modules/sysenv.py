@@ -44,7 +44,7 @@ def user_home():
     Resolved on each call rather than at import, so a test or a service change can
     set it and be believed.
     """
-    return os.environ.get("DECKY_USER_HOME") or os.path.expanduser("~")
+    return os.environ.get("DECKYEMU_USER_HOME") or os.path.expanduser("~")
 
 
 USER_DIR_NAME = "deckyemu"

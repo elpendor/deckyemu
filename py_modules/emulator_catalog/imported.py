@@ -37,7 +37,7 @@ amount of validation could close: importing the module *is* running it.
 import json
 import os
 
-import decky
+import appenv
 
 from . import deck_gyro
 from . import schema
@@ -45,7 +45,7 @@ from . import schema
 #: Imported definitions live beside the plugin's other settings rather than in
 #: the user's home, so a reset that clears emulators does not silently discard
 #: definitions the user supplied and may not be able to obtain again.
-STORE = os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "emulators.d")
+STORE = os.path.join(appenv.SETTINGS_DIR, "emulators.d")
 
 #: What the transfer panel offers to import. Distinctive enough that a stray
 #: `.json` in the inbox is not mistaken for one.
@@ -159,7 +159,7 @@ def load(known_platforms=()):
 
     if problems:
         for problem in problems:
-            decky.logger.warning("Imported emulator: %s", problem)
+            appenv.logger.warning("Imported emulator: %s", problem)
     return entries, problems
 
 

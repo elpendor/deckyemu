@@ -54,7 +54,7 @@ import re
 import shutil
 import zipfile
 
-import decky
+import appenv
 
 import bios_dat
 import emu_config
@@ -68,7 +68,7 @@ import sysenv
 # `emu_config.STATE_PATH`: without a record, the only way to undo something is
 # to take away whatever is sitting at the destination, and a BIOS somebody
 # placed themselves is exactly the wrong thing to move out from under them.
-STATE_PATH = os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "firmware_installed.json")
+STATE_PATH = os.path.join(appenv.SETTINGS_DIR, "firmware_installed.json")
 
 
 def read_state():
@@ -87,7 +87,7 @@ def _write_state(state):
     except OSError as error:
         # The copy still happened; the only cost is that a later removal has to
         # say it cannot tell whose file it is.
-        decky.logger.warning("Could not record what was installed: %s", error)
+        appenv.logger.warning("Could not record what was installed: %s", error)
 
 
 def _recorded(entry_id, requirement_name, state=None):
@@ -196,7 +196,7 @@ def under_home(relative):
     # mangles them on Windows, where the tests run.
     target = os.path.normpath(os.path.join(home, *posixpath.normpath(relative).split("/")))
     if target != home and not target.startswith(home + os.sep):
-        decky.logger.error("Refusing firmware path outside the home: %s", relative)
+        appenv.logger.error("Refusing firmware path outside the home: %s", relative)
         return ""
     return target
 
@@ -239,7 +239,7 @@ def _matching(requirement, files):
     try:
         matcher = re.compile(pattern)
     except re.error as error:
-        decky.logger.warning("Bad firmware pattern %r: %s", pattern, error)
+        appenv.logger.warning("Bad firmware pattern %r: %s", pattern, error)
         return []
 
     # By content, for a file whose name says nothing. `as` accepts the file the
@@ -405,7 +405,7 @@ def imported(spec, fallback=""):
                 if match:
                     return [match.group(1) if match.groups() else match.group(0)]
         except (OSError, re.error) as error:
-            decky.logger.warning("Could not read %s: %s", marker, error)
+            appenv.logger.warning("Could not read %s: %s", marker, error)
 
     return [fallback or os.path.basename(marker)]
 
@@ -482,7 +482,7 @@ def _elsewhere(entry, requirement, destination, installed, shared):
 #: Requirements whose shared copy somebody removed, so sharing does not put it
 #: back. `{entry id: [requirement name]}`. Kept apart from the install record,
 #: which says what is in place; this says what was turned down.
-DECLINED_PATH = os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "firmware_declined.json")
+DECLINED_PATH = os.path.join(appenv.SETTINGS_DIR, "firmware_declined.json")
 
 
 def _declined():
@@ -505,7 +505,7 @@ def _set_declined(entry_id, requirement_name, declined):
     try:
         jsonstore.write_json(DECLINED_PATH, state, sort_keys=True)
     except OSError as error:
-        decky.logger.warning("Could not record a declined firmware share: %s", error)
+        appenv.logger.warning("Could not record a declined firmware share: %s", error)
 
 
 def same_bytes(one, other):
@@ -824,7 +824,7 @@ def status(entry, files=None, state=None, shared=None):
 #: There is nothing else to go on. That install is a Steam shortcut opening the
 #: emulator, and the emulator never reports back -- so whether it happened can
 #: only be answered by looking at what changed while it was open.
-HANDOFF_PATH = os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "firmware_handoff.json")
+HANDOFF_PATH = os.path.join(appenv.SETTINGS_DIR, "firmware_handoff.json")
 
 
 def _read_handoff():
@@ -837,7 +837,7 @@ def _write_handoff(state):
     except OSError as error:
         # Not fatal: without the record nothing is swept, which is the safe
         # direction -- the file stays and the button is still there.
-        decky.logger.warning("Could not record the firmware handoff: %s", error)
+        appenv.logger.warning("Could not record the firmware handoff: %s", error)
 
 
 def _handoff_key(entry_id, requirement_name):
@@ -964,7 +964,7 @@ def remove(names, directory=None):
             return {"ok": False, "error": "Could not delete %s: %s" % (name, error)}
         removed.append(name)
 
-    decky.logger.info("Deleted %d file(s) from the firmware folder", len(removed))
+    appenv.logger.info("Deleted %d file(s) from the firmware folder", len(removed))
     return {"ok": True, "removed": removed, "missing": missing}
 
 
@@ -1084,7 +1084,7 @@ def install(entry, requirement_name, files=None, shared=None):
 
     configured, config_error = _configure(requirement, destination, placed or kept)
 
-    decky.logger.info(
+    appenv.logger.info(
         "Installed %d firmware file(s) for %s into %s (%d shared, %d already there)",
         len(placed), entry.get("id"), destination, len(linked), len(kept),
     )
@@ -1207,7 +1207,7 @@ def fetch(entry, requirement_name):
         written = [name]
 
     configured, config_error = _configure(requirement, destination, written)
-    decky.logger.info(
+    appenv.logger.info(
         "Fetched %s for %s into %s", ", ".join(written), entry.get("id"), destination
     )
     return {
@@ -1328,7 +1328,7 @@ def _uninstall_tree(entry, requirement):
     for relative in targets:
         path = os.path.realpath(under_home(relative))
         if not path.startswith(home + os.sep):
-            decky.logger.warning("Refusing to remove %s: outside the home", path)
+            appenv.logger.warning("Refusing to remove %s: outside the home", path)
             continue
         if not os.path.isdir(path):
             continue
@@ -1342,7 +1342,7 @@ def _uninstall_tree(entry, requirement):
     if not removed:
         return {"ok": False, "error": "There was nothing left to remove."}
 
-    decky.logger.info(
+    appenv.logger.info(
         "Removed %s for %s, freeing %d bytes", ", ".join(removed), entry.get("id"), freed
     )
     return {"ok": True, "removed": removed, "foreign": [], "freed": freed}
@@ -1408,7 +1408,7 @@ def uninstall(entry, requirement_name):
     if removed or foreign:
         _set_declined(entry["id"], requirement_name, True)
 
-    decky.logger.info(
+    appenv.logger.info(
         "Removed %d firmware file(s) for %s from %s (%d not installed by us)",
         len(removed), entry.get("id"), destination, len(foreign),
     )

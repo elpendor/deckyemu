@@ -47,7 +47,7 @@ import threading
 import time
 import urllib.parse
 
-import decky
+import appenv
 
 import diagnostics
 import fileserver_page
@@ -387,7 +387,7 @@ def _keep_alive(connection):
     except OSError as error:
         # Not fatal: without it a dead connection is noticed late rather than
         # never, which is where this started.
-        decky.logger.info("Could not set keepalive: %s", error)
+        appenv.logger.info("Could not set keepalive: %s", error)
 
 
 class _Handler(httpshim.BASE):
@@ -400,7 +400,7 @@ class _Handler(httpshim.BASE):
 
     # BaseHTTPRequestHandler logs to stderr; route it to the plugin log instead.
     def log_message(self, fmt, *args):
-        decky.logger.info("fileserver: " + fmt, *args)
+        appenv.logger.info("fileserver: " + fmt, *args)
 
     def _authorised(self):
         """Path segments after the token, or None when the token is wrong.
@@ -484,7 +484,7 @@ class _Handler(httpshim.BASE):
                         break
                     self.wfile.write(chunk)
             except OSError as error:
-                decky.logger.debug("Download stopped early: %s", error)
+                appenv.logger.debug("Download stopped early: %s", error)
 
     def _check_pin(self, given):
         """Whether `given` is the current code, counting failures.
@@ -504,7 +504,7 @@ class _Handler(httpshim.BASE):
             _pin_attempts += 1
             if _pin_attempts >= PIN_ATTEMPTS:
                 _pin_locked = True
-        decky.logger.warning(
+        appenv.logger.warning(
             "fileserver: wrong code (%d/%d)%s",
             _pin_attempts,
             PIN_ATTEMPTS,
@@ -734,7 +734,7 @@ class _Handler(httpshim.BASE):
         except Exception as problem:
             # Inside a request thread. A throw here would answer nothing and the
             # page would sit on "Checking..." forever.
-            decky.logger.exception("Cloud setup failed: %s", problem)
+            appenv.logger.exception("Cloud setup failed: %s", problem)
             ok, error, url = False, "The Deck could not finish that.", ""
         finally:
             # Released whichever way it went, and before the answer is written:
@@ -832,7 +832,7 @@ class _Handler(httpshim.BASE):
                 _cancelled.pop(partial, None)
             refused = not restart and partial in _cancelled
         if refused:
-            decky.logger.info("Refusing to restart %s; it was cancelled", name)
+            appenv.logger.info("Refusing to restart %s; it was cancelled", name)
             self._send(410, "Cancelled on the Deck.")
             return
 
@@ -913,7 +913,7 @@ class _Handler(httpshim.BASE):
         try:
             self._send(status, body)
         except OSError as error:
-            decky.logger.info("No one left to reply to: %s", error)
+            appenv.logger.info("No one left to reply to: %s", error)
 
     def _receive(self, upload_id, partial, destination, name, length, directory, offset=0):
         received = 0
@@ -946,7 +946,7 @@ class _Handler(httpshim.BASE):
             # the expected way this ends rather than a fault worth warning about.
             cancelled = cancelled or _was_cancelled(upload_id)
             if not cancelled:
-                decky.logger.warning("Upload of %s failed: %s", name, error)
+                appenv.logger.warning("Upload of %s failed: %s", name, error)
                 # The partial stays. This is what a dropped connection looks
                 # like from here, and throwing away an hour of a 4 GB ROM
                 # because the wifi blinked is the failure resuming exists to
@@ -959,7 +959,7 @@ class _Handler(httpshim.BASE):
             # A newer request is appending to this very file, so this one only
             # steps aside: it is not a cancel, and must not be logged or answered
             # as one -- nothing the user did stopped it.
-            decky.logger.info(
+            appenv.logger.info(
                 "Gave %s up at %d of %d bytes; a newer request has it",
                 name, offset + received, total,
             )
@@ -974,7 +974,7 @@ class _Handler(httpshim.BASE):
             # `_cancelled` is what keeps it stopped. Sending the file again
             # carries on from here, and the next server session sweeps what
             # nobody came back for.
-            decky.logger.info(
+            appenv.logger.info(
                 "Cancelled %s at %d of %d bytes; kept in case it is sent again",
                 name, offset + received, total,
             )
@@ -984,7 +984,7 @@ class _Handler(httpshim.BASE):
         if received != length:
             # Kept, so the sender can carry on from here. Nothing is renamed
             # into place, so a half-file is still never mistaken for a game.
-            decky.logger.info(
+            appenv.logger.info(
                 "Upload of %s stopped at %d of %d bytes; keeping it to resume",
                 name, offset + received, total,
             )
@@ -999,7 +999,7 @@ class _Handler(httpshim.BASE):
         # sender's retry asks again and starts over.
         on_disk = _partial_size(partial)
         if on_disk != total:
-            decky.logger.warning(
+            appenv.logger.warning(
                 "Discarded %s: %d bytes on disk where %d were sent",
                 name, on_disk, total,
             )
@@ -1025,7 +1025,7 @@ class _Handler(httpshim.BASE):
         # and the original path is still a real file.
         name = _file_arrived(destination, total)
 
-        decky.logger.info("Received %s (%d bytes) into %s", name, total, directory)
+        appenv.logger.info("Received %s (%d bytes) into %s", name, total, directory)
         self._reply(200, "ok")
 
 
@@ -1050,7 +1050,7 @@ def _file_arrived(destination, total):
             destination = arrived(destination) or destination
             name = os.path.basename(destination)
         except Exception as error:  # noqa: BLE001 - see above
-            decky.logger.warning("Arrival handler failed for %s: %s", name, error)
+            appenv.logger.warning("Arrival handler failed for %s: %s", name, error)
 
     with _state_lock:
         # The whole file, not one request's share of it: a resumed upload sends
@@ -1116,7 +1116,7 @@ def fetch_definition(url):
         # `<urlopen error [Errno 111] Connection refused>` on a phone screen is
         # the plugin thinking aloud. The detail belongs in the log, where
         # somebody diagnosing it will look.
-        decky.logger.warning("Could not fetch %s: %s", url, error)
+        appenv.logger.warning("Could not fetch %s: %s", url, error)
         return "", "The Deck could not reach that address."
     try:
         with open(partial, "r", encoding="utf-8") as handle:
@@ -1139,7 +1139,7 @@ def fetch_definition(url):
         return "", "Could not finish the file: %s" % problem
 
     name = _file_arrived(destination, total)
-    decky.logger.info("Fetched %s (%d bytes) from %s", name, total, url)
+    appenv.logger.info("Fetched %s (%d bytes) from %s", name, total, url)
     return name, ""
 
 
@@ -1201,7 +1201,7 @@ def cancel(upload_id=None):
             pass
 
     if targets:
-        decky.logger.info("Cancelling %d upload(s)", len(targets))
+        appenv.logger.info("Cancelling %d upload(s)", len(targets))
     return len(targets)
 
 
@@ -1251,7 +1251,7 @@ def supersede(partial):
             pass
 
     if targets:
-        decky.logger.info(
+        appenv.logger.info(
             "Superseded %d earlier request(s) for %s",
             len(targets), os.path.basename(partial),
         )
@@ -1306,7 +1306,7 @@ def sweep_partials(directory):
     try:
         names = os.listdir(directory)
     except OSError as error:
-        decky.logger.warning("Could not scan %s for leftovers: %s", directory, error)
+        appenv.logger.warning("Could not scan %s for leftovers: %s", directory, error)
         return []
 
     for name in names:
@@ -1320,7 +1320,7 @@ def sweep_partials(directory):
             removed.append(path)
 
     if removed:
-        decky.logger.info("Removed %d unfinished upload(s) from %s", len(removed), directory)
+        appenv.logger.info("Removed %d unfinished upload(s) from %s", len(removed), directory)
     return removed
 
 
@@ -1515,7 +1515,7 @@ def discard_partial(partial):
         os.remove(path)
     except OSError as error:
         return False, "Could not delete it: %s" % error
-    decky.logger.info("Discarded the stopped transfer %s", partial)
+    appenv.logger.info("Discarded the stopped transfer %s", partial)
     return True, ""
 
 
@@ -1623,7 +1623,7 @@ def _bind(port):
             if candidate:
                 # A remembered port that something else has taken should cost a
                 # changed address, not a failed transfer.
-                decky.logger.warning(
+                appenv.logger.warning(
                     "Port %d is unavailable (%s); taking any free port instead",
                     candidate,
                     error,
@@ -1714,7 +1714,7 @@ def start(target_dir, port=0, token="", uploads=True):
 
     threading.Thread(target=_watch_idle, name="deckyemu-fileserver-idle", daemon=True).start()
 
-    decky.logger.info(
+    appenv.logger.info(
         "File server listening on %s:%d, saving into %s", ip, server.server_port, target_dir
     )
     return status()
@@ -1729,7 +1729,7 @@ def _watch_idle():
                 return
             idle = _now() - _last_activity
         if idle >= IDLE_TIMEOUT:
-            decky.logger.info("File server idle for %.0fs, stopping", idle)
+            appenv.logger.info("File server idle for %.0fs, stopping", idle)
             stop()
             return
 
@@ -1765,7 +1765,7 @@ def stop_if_idle():
     if not running:
         return status()
     if arriving or paused or leaving or settling:
-        decky.logger.info(
+        appenv.logger.info(
             "Leaving the file server up: %d arriving, %d paused, %d downloading,"
             " %d settling",
             arriving, paused, leaving, settling,
@@ -1811,8 +1811,8 @@ def stop():
             server.shutdown()
             server.server_close()
         except OSError as error:
-            decky.logger.warning("File server did not stop cleanly: %s", error)
-        decky.logger.info("File server stopped")
+            appenv.logger.warning("File server did not stop cleanly: %s", error)
+        appenv.logger.info("File server stopped")
 
     _thread = None
     return status()

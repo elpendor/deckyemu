@@ -11,7 +11,7 @@ import os
 import re
 import zipfile
 
-import decky
+import appenv
 
 import findfiles
 
@@ -222,7 +222,7 @@ def list_cores(install):
             }
 
     result = sorted(cores.values(), key=lambda core: core["display_name"].lower())
-    decky.logger.info("Found %d libretro cores", len(result))
+    appenv.logger.info("Found %d libretro cores", len(result))
     return result
 
 
@@ -259,7 +259,7 @@ def _zip_members(rom_path):
                 if not entry.is_dir()
             ]
     except (OSError, zipfile.BadZipFile, RuntimeError) as error:
-        decky.logger.warning("Could not inspect archive %s: %s", rom_path, error)
+        appenv.logger.warning("Could not inspect archive %s: %s", rom_path, error)
         return None
 
 

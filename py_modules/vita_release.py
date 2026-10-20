@@ -22,7 +22,7 @@ exactly as before.
 import posixpath
 import zipfile
 
-import decky
+import appenv
 import sfo
 
 # What every Vita release carries and no ROM archive does.
@@ -64,7 +64,7 @@ def inspect(path):
             with bundle.open(param) as handle:
                 data = handle.read(sfo.MAX_BYTES)
     except (OSError, zipfile.BadZipFile, ValueError, RuntimeError) as error:
-        decky.logger.info("Could not read %s as a Vita release: %s", path, error)
+        appenv.logger.info("Could not read %s as a Vita release: %s", path, error)
         return found
 
     parsed = sfo.read_bytes(data)

@@ -24,7 +24,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from harness import check, section, summary  # noqa: E402
 
-import decky  # noqa: E402
+import appenv  # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 import main as plugin_main  # noqa: E402
@@ -112,25 +112,25 @@ async def _record(event, *args):
     _emitted.append((event, args))
 
 
-# A recorder of our own, saved and put back. `decky.emitted` is not usable here:
-# two other files in this suite install their own `decky.emit` and do not
+# A recorder of our own, saved and put back. `appenv.emitted` is not usable
+# here: two other files in this suite install their own `appenv.emit` and do not
 # restore it, so whichever ran first decides where these events land. This is
 # the shared-state hazard the suite is full of -- it passed alone and failed
 # together, which is the tell.
-_level = decky.logger.level
-_real_emit = decky.emit
+_level = appenv.logger.level
+_real_emit = appenv.emit
 try:
     asyncio.sleep = _fake_sleep
-    decky.emit = _record
-    decky.logger.level = logging.CRITICAL  # the failed check is deliberate
+    appenv.emit = _record
+    appenv.logger.level = logging.CRITICAL  # the failed check is deliberate
     try:
         _plugin.loop.run_until_complete(_plugin._watch_for_updates())
     except asyncio.CancelledError:
         pass
 finally:
     asyncio.sleep = _real_sleep
-    decky.emit = _real_emit
-    decky.logger.level = _level
+    appenv.emit = _real_emit
+    appenv.logger.level = _level
 
 _emitted = [entry for entry in _emitted if entry[0] == "update_available"]
 

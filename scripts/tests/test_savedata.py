@@ -23,9 +23,9 @@ from emulator_catalog import schema  # noqa: E402
 section("what a save backup carries, and what it leaves behind")
 
 _home = os.path.join(TMP, "savehome")
-_previous_home = os.environ.get("DECKY_USER_HOME")
+_previous_home = os.environ.get("DECKYEMU_USER_HOME")
 _previous_catalog = emulator_catalog.CATALOG
-os.environ["DECKY_USER_HOME"] = _home
+os.environ["DECKYEMU_USER_HOME"] = _home
 
 
 def _archive_not_ours():
@@ -426,9 +426,9 @@ check("and a backup from a newer layout is refused rather than attempted",
 # home and a catalog that are not the suite's.
 emulator_catalog.CATALOG = _previous_catalog
 if _previous_home is None:
-    os.environ.pop("DECKY_USER_HOME", None)
+    os.environ.pop("DECKYEMU_USER_HOME", None)
 else:
-    os.environ["DECKY_USER_HOME"] = _previous_home
+    os.environ["DECKYEMU_USER_HOME"] = _previous_home
 
 if __name__ == "__main__":
     summary()

@@ -24,12 +24,12 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from harness import check, section, summary  # noqa: E402
 
-import decky  # noqa: E402
+import appenv  # noqa: E402
 import net  # noqa: E402
 import releases  # noqa: E402
 
 _real_get_json = net.get_json
-_real_level = decky.logger.level
+_real_level = appenv.logger.level
 
 #: One release, in the shape the API answers with.
 _PAYLOAD = [
@@ -120,7 +120,7 @@ try:
 
     releases.clear_cache()
     net.get_json = _refuse
-    decky.logger.level = logging.CRITICAL  # the failure is deliberate
+    appenv.logger.level = logging.CRITICAL  # the failure is deliberate
     _restart()
     releases.fetch_releases()
     check("a refusal writes nothing", os.path.exists(releases.CACHE_PATH), False)
@@ -131,7 +131,7 @@ try:
     releases.fetch_releases()
     check("so a restart tries again rather than serving the failure back",
           _asked[0], 1)
-    decky.logger.level = _real_level
+    appenv.logger.level = _real_level
 
     section("and neither is a file that cannot be trusted")
 
@@ -170,7 +170,7 @@ try:
     # without anybody doing anything wrong.
     releases.clear_cache()
     net.get_json = _refuse_plainly
-    decky.logger.level = logging.CRITICAL  # the failures are deliberate
+    appenv.logger.level = logging.CRITICAL  # the failures are deliberate
     _restart()
     releases.fetch_releases()
     _asked[0] = 0
@@ -229,7 +229,7 @@ try:
     releases.fetch_releases(force=True)
     check("a check that works clears the wait rather than serving it out",
           releases._cache["failed_at"], 0.0)
-    decky.logger.level = _real_level
+    appenv.logger.level = _real_level
 
     section("clearing it clears both halves")
 
@@ -243,7 +243,7 @@ finally:
     # The suite shares one of everything. A stub left on `net`, or an hour of
     # cached releases left behind, is a failure in whichever file runs next.
     net.get_json = _real_get_json
-    decky.logger.level = _real_level
+    appenv.logger.level = _real_level
     releases.clear_cache()
 
 

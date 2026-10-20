@@ -14,7 +14,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-import decky
+import appenv
 
 USER_AGENT = "DeckyEmu/1.0 (+https://github.com/SteamDeckHomebrew)"
 DEFAULT_TIMEOUT = 20
@@ -70,11 +70,11 @@ def _system_ca_context():
         try:
             context = ssl.create_default_context(cafile=path)
         except (OSError, ssl.SSLError) as error:
-            decky.logger.warning("Could not load CA bundle %s: %s", path, error)
+            appenv.logger.warning("Could not load CA bundle %s: %s", path, error)
             continue
-        decky.logger.info("Using system CA bundle %s for TLS verification", path)
+        appenv.logger.info("Using system CA bundle %s for TLS verification", path)
         return context
-    decky.logger.error(
+    appenv.logger.error(
         "No usable system CA bundle found; HTTPS requests to some hosts may fail"
     )
     return None
@@ -197,7 +197,7 @@ def _once(method, url, headers=None, timeout=DEFAULT_TIMEOUT):
     """
     parsed = urllib.parse.urlsplit(url)
     if parsed.scheme not in ("http", "https") or not parsed.netloc:
-        decky.logger.warning("Refusing to probe non-HTTP url %s", url)
+        appenv.logger.warning("Refusing to probe non-HTTP url %s", url)
         return None, None, 0
 
     key = (parsed.scheme, parsed.netloc)
@@ -240,12 +240,12 @@ def _once(method, url, headers=None, timeout=DEFAULT_TIMEOUT):
                 if _ensure_fallback_context() is not None:
                     continue
             if attempt:
-                decky.logger.warning("%s failed for %s: %s", method, url, error)
+                appenv.logger.warning("%s failed for %s: %s", method, url, error)
                 return None, None, 0
         except http.client.HTTPException as error:
             _discard(key)
             if attempt:
-                decky.logger.warning("%s failed for %s: %s", method, url, error)
+                appenv.logger.warning("%s failed for %s: %s", method, url, error)
                 return None, None, 0
     return None, None, 0
 
@@ -265,11 +265,11 @@ def _status_for(method, url, headers=None, timeout=DEFAULT_TIMEOUT):
         if status not in (301, 302, 303, 307, 308) or not location:
             return status
         if location in seen:
-            decky.logger.warning("Redirect loop probing %s", url)
+            appenv.logger.warning("Redirect loop probing %s", url)
             return status
         seen.add(location)
         url = location
-    decky.logger.warning("Too many redirects probing %s", url)
+    appenv.logger.warning("Too many redirects probing %s", url)
     return None
 
 
@@ -289,13 +289,13 @@ def head_size(url, headers=None, timeout=DEFAULT_TIMEOUT):
             return 0
         if status in (301, 302, 303, 307, 308) and location:
             if location in seen:
-                decky.logger.warning("Redirect loop sizing %s", url)
+                appenv.logger.warning("Redirect loop sizing %s", url)
                 return 0
             seen.add(location)
             target = location
             continue
         return length if 200 <= status < 300 else 0
-    decky.logger.warning("Too many redirects sizing %s", url)
+    appenv.logger.warning("Too many redirects sizing %s", url)
     return 0
 
 
@@ -313,13 +313,13 @@ def head_location(url, headers=None, timeout=DEFAULT_TIMEOUT):
             return ""
         if status in (301, 302, 303, 307, 308) and location:
             if location in seen:
-                decky.logger.warning("Redirect loop following %s", url)
+                appenv.logger.warning("Redirect loop following %s", url)
                 return ""
             seen.add(location)
             target = location
             continue
         return target if 200 <= status < 300 else ""
-    decky.logger.warning("Too many redirects following %s", url)
+    appenv.logger.warning("Too many redirects following %s", url)
     return ""
 
 
@@ -388,9 +388,9 @@ def _note_request(url, headers_out=None):
             return
         remaining = (headers_out or {}).get("X-RateLimit-Remaining")
         if remaining is None:
-            decky.logger.info("GitHub request: %s", url)
+            appenv.logger.info("GitHub request: %s", url)
         else:
-            decky.logger.info(
+            appenv.logger.info(
                 "GitHub request: %s (%s of the hourly budget left)", url, remaining
             )
     except Exception:  # noqa: BLE001 - a log line may never break a request
@@ -407,7 +407,7 @@ def get_bytes(url, headers=None, max_bytes=12 * 1024 * 1024, failure=None):
     all. Only callers that will say something different per status need it.
     """
     if not is_web_url(url):
-        decky.logger.warning("Refusing to fetch non-HTTP url %s", url)
+        appenv.logger.warning("Refusing to fetch non-HTTP url %s", url)
         return None, None
     try:
         with _urlopen(_request(url, headers)) as response:
@@ -418,7 +418,7 @@ def get_bytes(url, headers=None, max_bytes=12 * 1024 * 1024, failure=None):
                 # cannot be acted on: it does not say whether the cap is a
                 # little too low or the file is absurd. This line is what a
                 # diagnostic report has to explain an empty artwork slot with.
-                decky.logger.warning(
+                appenv.logger.warning(
                     "Refusing download over %d bytes (read at least %d): %s",
                     max_bytes, len(payload), url,
                 )
@@ -432,7 +432,7 @@ def get_bytes(url, headers=None, max_bytes=12 * 1024 * 1024, failure=None):
         # arrived. The body is deliberately not read -- GitHub's rate-limit
         # message names the caller's public address, and this text reaches the
         # log and the diagnostic report a user is asked to share.
-        decky.logger.warning("GET failed for %s: %s", url, error)
+        appenv.logger.warning("GET failed for %s: %s", url, error)
         # A refused or failed answer is still a request that was charged for --
         # the 504s that started this were counted like any other.
         _note_request(url, error.headers or {})
@@ -448,7 +448,7 @@ def get_bytes(url, headers=None, max_bytes=12 * 1024 * 1024, failure=None):
             failure["rate_reset"] = headers_out.get("X-RateLimit-Reset", "")
         return None, None
     except (urllib.error.URLError, OSError) as error:
-        decky.logger.warning("GET failed for %s: %s", url, error)
+        appenv.logger.warning("GET failed for %s: %s", url, error)
         return None, None
 
 
@@ -500,7 +500,7 @@ def download(url, dest, headers=None, max_bytes=512 * 1024 * 1024, on_progress=N
                     if on_progress is not None:
                         on_progress(done, total)
     except (urllib.error.URLError, OSError) as error:
-        decky.logger.warning("Download failed for %s: %s", url, error)
+        appenv.logger.warning("Download failed for %s: %s", url, error)
         try:
             os.remove(tmp)
         except OSError:
@@ -537,17 +537,17 @@ def post_json(url, fields, headers=None, timeout=DEFAULT_TIMEOUT):
         try:
             payload = error.read(_MAX_JSON_BYTES)
         except OSError:
-            decky.logger.warning("POST failed for %s: %s", url, error)
+            appenv.logger.warning("POST failed for %s: %s", url, error)
             return None
     except (urllib.error.URLError, OSError) as error:
         # Never log `fields`: it holds the password.
-        decky.logger.warning("POST failed for %s: %s", url, error)
+        appenv.logger.warning("POST failed for %s: %s", url, error)
         return None
 
     try:
         return json.loads(payload.decode("utf-8"))
     except (ValueError, UnicodeDecodeError) as error:
-        decky.logger.warning("Bad JSON from %s: %s", url, error)
+        appenv.logger.warning("Bad JSON from %s: %s", url, error)
         return None
 
 
@@ -558,7 +558,7 @@ def get_json(url, headers=None, failure=None):
     try:
         return json.loads(payload.decode("utf-8"))
     except (ValueError, UnicodeDecodeError) as error:
-        decky.logger.warning("Bad JSON from %s: %s", url, error)
+        appenv.logger.warning("Bad JSON from %s: %s", url, error)
         return None
 
 

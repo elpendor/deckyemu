@@ -46,7 +46,7 @@ from harness import (  # noqa: E402
     SAMPLE_SFO,
     TMP,
     check,
-    decky,
+    appenv,
     deploy_flatpak,
     failures,
     section,
@@ -624,34 +624,12 @@ seven = os.path.join(TMP, "game.7z")
 open(seven, "w").close()
 check("7z falls back to its own extension", ra_cores.content_extension(seven), "7z")
 
-section("SteamGridDB key entry -- avoiding the on-screen keyboard")
+section("SteamGridDB artwork lookups")
 import json as _json  # noqa: E402
 
 import sgdb  # noqa: E402
 
 SAMPLE_KEY = "ab12cd34ef56ab78cd90ef12ab34cd56"
-
-# discover_existing_key reads other plugins' settings under DECKY_HOME, so it
-# must only accept values in fields that actually look like key fields.
-sgdb_dir = os.path.join(decky.DECKY_HOME, "settings", "decky-steamgriddb")
-os.makedirs(sgdb_dir, exist_ok=True)
-discovered = os.path.join(sgdb_dir, "settings.json")
-
-
-def discover(payload):
-    with open(discovered, "w", encoding="utf-8") as handle:
-        _json.dump(payload, handle)
-    return sgdb.discover_existing_key()["key"]
-
-
-check("finds a flat api_key", discover({"api_key": SAMPLE_KEY}), SAMPLE_KEY)
-check("finds a nested apiKey", discover({"a": {"b": {"apiKey": SAMPLE_KEY}}}), SAMPLE_KEY)
-check("ignores unrelated fields", discover({"unrelated_id": SAMPLE_KEY}), "")
-check("no key present", discover({"window_width": 1280}), "")
-# Field names that merely contain "key" must not be mistaken for an API key.
-check("ignores hotkey fields", discover({"hotkey_binding": SAMPLE_KEY}), "")
-check("ignores keyboard fields", discover({"keyboard_layout": SAMPLE_KEY}), "")
-check("accepts steamgriddb_api_key", discover({"steamgriddb_api_key": SAMPLE_KEY}), SAMPLE_KEY)
 
 # The four artwork lookups run concurrently, so each reply has to find its way
 # back to the slot that asked for it. Getting this wrong would put the hero image
@@ -1430,8 +1408,8 @@ os.makedirs(os.path.join(_plugin_dir, "bin"), exist_ok=True)
 # on the machine this suite usually runs on and match nothing.
 _shim = _plugin_dir + "/bin/gyroshim.so"
 _token_emu = dict(_cmd_emu, env={"LD_PRELOAD": "{plugin}/bin/gyroshim.so"})
-_real_plugin_dir = getattr(decky, "DECKY_PLUGIN_DIR", "")
-decky.DECKY_PLUGIN_DIR = _plugin_dir
+_real_plugin_dir = getattr(appenv, "APP_DIR", "")
+appenv.APP_DIR = _plugin_dir
 
 # Missing first, because that is the state a build without the shim is in and
 # the one that must not reach the dynamic linker. A path to nothing in
@@ -1463,7 +1441,7 @@ check("an entry with no plugin-relative value gets no grant",
       any(a.startswith("--filesystem=" + _plugin_dir)
           for a in emulators.launch_argv(_env_emu, "/roms/eboot.bin")),
       False)
-decky.DECKY_PLUGIN_DIR = _real_plugin_dir
+appenv.APP_DIR = _real_plugin_dir
 
 # Outside a sandbox the same setting has to be baked into the argv, because a
 # launcher is a script Steam runs with no caller to set it. This was dropped
@@ -5113,8 +5091,8 @@ check("a missing config reads as empty", ra_detect.parse_cfg(os.path.join(TMP, "
 # these would read the real home of whatever machine runs the tests.
 fake_home = os.path.join(TMP, "fake-home")
 os.makedirs(fake_home, exist_ok=True)
-_saved_home = os.environ.get("DECKY_USER_HOME")
-os.environ["DECKY_USER_HOME"] = fake_home
+_saved_home = os.environ.get("DECKYEMU_USER_HOME")
+os.environ["DECKYEMU_USER_HOME"] = fake_home
 
 check("the home is DECKY_USER_HOME when the loader sets it", sysenv.user_home(), fake_home)
 check("and ra_detect agrees rather than resolving its own", ra_detect.user_home(), fake_home)
@@ -5163,7 +5141,7 @@ check("and is created if it was missing", os.path.isdir(transfer_dir), True)
 check("including its parent", os.path.isdir(user_dir), True)
 check("asking again returns the same folder", fileserver.default_dir(), transfer_dir)
 check("the plugin's user folder is separate from what decky owns",
-      sysenv.user_dir() != decky.DECKY_PLUGIN_RUNTIME_DIR, True)
+      sysenv.user_dir() != appenv.DATA_DIR, True)
 check(
     "and it is where the ROM picker opens when nothing else is known",
     fileserver.default_dir(),
@@ -5218,9 +5196,9 @@ check("a directory that does not exist is otherwise still dropped",
       [])
 
 if _saved_home is None:
-    del os.environ["DECKY_USER_HOME"]
+    del os.environ["DECKYEMU_USER_HOME"]
 else:
-    os.environ["DECKY_USER_HOME"] = _saved_home
+    os.environ["DECKYEMU_USER_HOME"] = _saved_home
 
 # A native install is launched directly rather than through flatpak, and must not
 # be handed any --filesystem arguments.
@@ -5838,7 +5816,7 @@ check("and stays gone across an audit", len(run(plugin.audit_library())["registr
 
 # A previous install is offered for adoption forever unless it can be discarded.
 # Adopt-then-forget was a loop: the old registry survived every cycle.
-old_dir = os.path.join(decky.DECKY_HOME, "settings", "an-older-build")
+old_dir = os.path.join(appenv.PREVIOUS_ROOT, "settings", "an-older-build")
 os.makedirs(old_dir, exist_ok=True)
 old_library = os.path.join(old_dir, "library.json")
 with open(old_library, "w", encoding="utf-8") as handle:
@@ -5872,7 +5850,7 @@ check(
     "our own registry is refused",
     "own registry"
     in run(plugin.discard_previous_install(
-        os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "library.json")))["error"],
+        os.path.join(appenv.SETTINGS_DIR, "library.json")))["error"],
     True,
 )
 check(
@@ -6299,7 +6277,7 @@ check("deleting strays works", run(plugin.delete_stray_launchers([stray]))["dele
 check("and it is gone", os.path.isfile(stray), False)
 
 # Renaming the plugin leaves the old install's library behind under DECKY_HOME.
-old_dir = os.path.join(decky.DECKY_HOME, "settings", "an-older-name")
+old_dir = os.path.join(appenv.PREVIOUS_ROOT, "settings", "an-older-name")
 os.makedirs(old_dir, exist_ok=True)
 with open(os.path.join(old_dir, "library.json"), "w", encoding="utf-8") as handle:
     _json.dump(
@@ -6324,17 +6302,17 @@ check("and their ROMs checked",
       all(g["rom_exists"] for g in audit["previous_installs"][0]["games"]), True)
 
 # Our own settings dir must never be reported as a previous install.
-with open(os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "library.json"), "r", encoding="utf-8") as handle:
+with open(os.path.join(appenv.SETTINGS_DIR, "library.json"), "r", encoding="utf-8") as handle:
     pass
 check(
     "our own library is not a previous install",
-    any(item["name"] == os.path.basename(decky.DECKY_PLUGIN_SETTINGS_DIR)
+    any(item["name"] == os.path.basename(appenv.SETTINGS_DIR)
         for item in audit["previous_installs"]),
     False,
 )
 
 # Files that merely live under DECKY_HOME must not be mistaken for a library.
-junk_dir = os.path.join(decky.DECKY_HOME, "settings", "unrelated-plugin")
+junk_dir = os.path.join(appenv.PREVIOUS_ROOT, "settings", "unrelated-plugin")
 os.makedirs(junk_dir, exist_ok=True)
 with open(os.path.join(junk_dir, "library.json"), "w", encoding="utf-8") as handle:
     _json.dump({"window": {"width": 1280}}, handle)
@@ -6478,7 +6456,7 @@ for _module in (store, emulators, emu_config, emu_firmware, ps3_games):
     for _name in dir(_module):
         _value = getattr(_module, _name)
         if isinstance(_value, str) and _value.endswith(".json") and os.sep in _value:
-            if os.path.dirname(_value) == decky.DECKY_PLUGIN_SETTINGS_DIR:
+            if os.path.dirname(_value) == appenv.SETTINGS_DIR:
                 _writers.add(os.path.basename(_value))
 check("no module keeps state the reset does not know about",
       sorted(_writers - _listed), [])
@@ -6546,7 +6524,7 @@ for _path in sorted(_glob_tests.glob(os.path.join(os.path.dirname(os.path.abspat
         print("SKIPPED the rest of %s" % os.path.basename(_path))
 
 import zipfile as _zip_motion  # noqa: E402
-import decky  # noqa: E402
+import appenv  # noqa: E402
 import emu_install  # noqa: E402
 import emulator_catalog  # noqa: E402
 from emulator_catalog import deck_gyro  # noqa: E402
@@ -6556,7 +6534,7 @@ section("the preflight: a game that cannot start is stopped, and says why")
 # and the shortcut used to start, fail, and return to the library in a second
 # with nothing on screen. The error went to the launch log, which is the file
 # nobody reads.
-_pf_rom = os.path.join(decky.DECKY_USER_HOME, "roms", "Preflight.nsp")
+_pf_rom = os.path.join(appenv.USER_HOME, "roms", "Preflight.nsp")
 os.makedirs(os.path.dirname(_pf_rom), exist_ok=True)
 open(_pf_rom, "w").close()
 _pf_emu = {"id": "ryujinx", "kind": "flatpak", "target": "io.github.ryubing.Ryujinx",
@@ -6704,7 +6682,7 @@ check(
 
 _ryu = {"id": "ryujinx", "kind": "flatpak", "target": "io.github.ryubing.Ryujinx",
         "name": "Ryujinx", "args": "{rom}", "fullscreen_args": "--fullscreen"}
-_switch_rom = os.path.join(decky.DECKY_USER_HOME, "roms", "Game.nsp")
+_switch_rom = os.path.join(appenv.USER_HOME, "roms", "Game.nsp")
 os.makedirs(os.path.dirname(_switch_rom), exist_ok=True)
 open(_switch_rom, "w").close()
 
@@ -6771,7 +6749,7 @@ check(
 # made their own, so somebody who saved anything in Cemu's controller settings
 # keeps their profile and gets no motion. The binary is still on disk, so a
 # check that only looked for the binary called that ready.
-_owned = os.path.join(decky.DECKY_USER_HOME, ".var", "app", "info.cemu.Cemu",
+_owned = os.path.join(appenv.USER_HOME, ".var", "app", "info.cemu.Cemu",
                       "config", "Cemu", "controllerProfiles")
 os.makedirs(_owned, exist_ok=True)
 with open(os.path.join(_owned, "controller0.xml"), "w", encoding="utf-8") as _fh:
@@ -6855,7 +6833,7 @@ import re  # noqa: E402
 import emu_config as _emu_config  # noqa: E402
 import json as _json_motion  # noqa: E402
 
-_ryu_cfg = os.path.join(decky.DECKY_USER_HOME, "Config.json")
+_ryu_cfg = os.path.join(appenv.USER_HOME, "Config.json")
 _already = _json_motion.loads(_json_motion.dumps(
     _motion_entry["setup"]["files"][
         ".var/app/io.github.ryubing.Ryujinx/config/Ryujinx/Config.json"

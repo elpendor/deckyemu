@@ -24,7 +24,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from harness import check, section, summary  # noqa: E402
 
-import decky  # noqa: E402
+import appenv  # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 import main as plugin_main  # noqa: E402
@@ -48,12 +48,12 @@ class _Capture(logging.Handler):
 
 
 _capture = _Capture()
-decky.logger.addHandler(_capture)
+appenv.logger.addHandler(_capture)
 # Set rather than assumed. The suite shares one logger and other files quiet it
 # while they provoke failures on purpose; this one is *about* what reaches the
 # log, so it cannot inherit whichever level ran last.
-_log_level = decky.logger.level
-decky.logger.setLevel(logging.ERROR)
+_log_level = appenv.logger.level
+appenv.logger.setLevel(logging.ERROR)
 _loop = asyncio.new_event_loop()
 
 
@@ -176,8 +176,8 @@ run(plugin_main.Plugin.log_frontend_error(
 check("a caller cannot flood the log",
       len(_capture.text()) < 2 * plugin_main.Plugin._FRONTEND_ERROR_LIMIT + 500, True)
 
-decky.logger.setLevel(_log_level)
-decky.logger.removeHandler(_capture)
+appenv.logger.setLevel(_log_level)
+appenv.logger.removeHandler(_capture)
 _loop.close()
 
 

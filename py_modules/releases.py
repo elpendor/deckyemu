@@ -27,7 +27,7 @@ import re
 import threading
 import time
 
-import decky
+import appenv
 
 import jsonstore
 import net
@@ -48,7 +48,7 @@ CACHE_SECONDS = 60 * 60
 #:
 #: Only a successful fetch is written. A failure kept for an hour would be a
 #: check that refuses to retry, which is the opposite of what a cache is for.
-CACHE_PATH = os.path.join(decky.DECKY_PLUGIN_RUNTIME_DIR, "releases.json")
+CACHE_PATH = os.path.join(appenv.DATA_DIR, "releases.json")
 
 #: Bumped when the shape of a cached release changes. An older file is ignored
 #: rather than migrated: it is a cache, so the cost of throwing it away is one
@@ -228,7 +228,7 @@ def _save_cache():
     except OSError as error:
         # The `.tmp` this used to clear up itself is jsonstore's job now, and
         # it does it for every caller rather than only the one that remembered.
-        decky.logger.warning("Could not keep the release cache: %s", error)
+        appenv.logger.warning("Could not keep the release cache: %s", error)
 
 
 #: Held while a check is talking to GitHub, so callers cannot overlap.
@@ -313,7 +313,7 @@ def _fetch_locked(force):
     try:
         raw = net.get_json(RELEASES_URL, API_HEADERS, failure=failure)
     except Exception as error:  # noqa: BLE001 - a failed check must not break the UI
-        decky.logger.warning("Could not read releases: %s", error)
+        appenv.logger.warning("Could not read releases: %s", error)
         _cache["ok"] = False
         _cache["error"] = str(error)
         _cache["failed_at"] = now
@@ -333,7 +333,7 @@ def _fetch_locked(force):
     if not isinstance(raw, list):
         # An object here is GitHub's error shape, e.g. {"message": "Bad credentials"}.
         message = raw.get("message") if isinstance(raw, dict) else ""
-        decky.logger.warning("Unexpected reply from the releases API: %s", message or raw)
+        appenv.logger.warning("Unexpected reply from the releases API: %s", message or raw)
         _cache["ok"] = False
         _cache["error"] = message or "Unexpected reply from GitHub."
         _cache["failed_at"] = now

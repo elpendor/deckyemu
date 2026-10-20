@@ -24,7 +24,7 @@ methods it finds on the plugin object, so the names have to stay there while the
 code lives somewhere findable. Nothing here may be instantiated alone.
 """
 
-import decky
+import appenv
 
 import plugin_base
 
@@ -54,7 +54,7 @@ class DevReset(plugin_base.PluginContext):
         if not devreset.available(sysenv.PLUGIN_ROOT):
             return {"ok": False, "error": "Not a development build."}
 
-        decky.logger.warning("Dev reset requested: %s", action)
+        appenv.logger.warning("Dev reset requested: %s", action)
 
         if action == "retroarch":
             return await self._dev_reset_retroarch()
@@ -77,7 +77,7 @@ class DevReset(plugin_base.PluginContext):
         # whoever asks next, because the answer they would get is wrong and
         # nothing about it looks stale.
         await self.refresh_retroarch()
-        decky.logger.warning("Dev reset %s freed %d bytes", action, freed)
+        appenv.logger.warning("Dev reset %s freed %d bytes", action, freed)
         return {"ok": True, "freed": freed}
 
     async def _dev_reset_emulators(self):
@@ -124,7 +124,7 @@ class DevReset(plugin_base.PluginContext):
                 failed.append("%s (%s)" % (entry["name"], result.get("error", "")))
         freed = await self._run(devreset.clear_emulator_data, cleared)
         await self.refresh_retroarch()
-        decky.logger.warning(
+        appenv.logger.warning(
             "Dev reset emulators: %d removed, %d refused, %d bytes of data deleted",
             len(removed), len(failed), freed,
         )

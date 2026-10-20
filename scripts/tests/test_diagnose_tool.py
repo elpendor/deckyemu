@@ -59,9 +59,9 @@ check("it imports the installed module",
       "import diagnostics" in _filled and "diagnostics.build(" in _filled, True)
 check("and the plugin's own registry rather than a guess",
       "store.get_library()" in _filled, True)
-# The stub is what lets the plugin's modules import at all outside decky.
-check("with decky stubbed the way the harness stubs it",
-      'sys.modules["decky"] = decky' in _filled, True)
+# The installed version's own `appenv` is what knows where everything lives.
+check("with the installed version's own paths rather than restated ones",
+      "import appenv" in _filled and "homebrew" not in _filled, True)
 
 
 section("--raw is the flag that must be hard to use by accident")

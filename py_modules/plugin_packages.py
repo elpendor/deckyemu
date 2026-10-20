@@ -19,7 +19,7 @@ has them. Nothing here may be instantiated on its own, and nothing tries.
 
 import os
 
-import decky
+import appenv
 
 import plugin_base
 
@@ -252,12 +252,12 @@ class PackagedGames(plugin_base.PluginContext):
 
     async def _install_ps3_package(self, emulator, package):
         name = package["name"]
-        await decky.emit("ps3_install_progress", name, "Unpacking %s" % name, -1)
+        await appenv.emit("ps3_install_progress", name, "Unpacking %s" % name, -1)
 
         before = await self._run(ps3_games.installed_title_ids)
 
         async def on_line(text):
-            await decky.emit("ps3_install_progress", name, text, self._parse_percent(text))
+            await appenv.emit("ps3_install_progress", name, text, self._parse_percent(text))
 
         ok, error = await self._run_emulator_tool(
             emulator,
@@ -310,7 +310,7 @@ class PackagedGames(plugin_base.PluginContext):
         removed = await self._run(
             emu_firmware.remove, [name], os.path.dirname(package["path"])
         )
-        decky.logger.info(
+        appenv.logger.info(
             "Installed %s as %s (deleted %s, licence %s)",
             name, title, removed.get("removed", []), licence or "none",
         )
@@ -385,12 +385,12 @@ class PackagedGames(plugin_base.PluginContext):
         if error:
             return {"ok": False, "error": error}
 
-        await decky.emit(
+        await appenv.emit(
             "ps4_install_progress", os.path.basename(path), "Unpacking %s" % title_id, -1
         )
 
         async def on_line(text):
-            await decky.emit(
+            await appenv.emit(
                 "ps4_install_progress", os.path.basename(path), text,
                 self._parse_percent(text),
             )
@@ -428,7 +428,7 @@ class PackagedGames(plugin_base.PluginContext):
         removed = await self._run(
             emu_firmware.remove, [os.path.basename(path)], os.path.dirname(path)
         )
-        decky.logger.info(
+        appenv.logger.info(
             "Unpacked %s to %s (deleted %s)", path, game_dir, removed.get("removed", [])
         )
         return {
@@ -443,7 +443,7 @@ class PackagedGames(plugin_base.PluginContext):
         if existing:
             return existing, ""
 
-        await decky.emit(
+        await appenv.emit(
             "ps4_install_progress", "", "Fetching the %s" % helper["label"], -1
         )
         asset, error = await self._run(
@@ -528,7 +528,7 @@ class PackagedGames(plugin_base.PluginContext):
                 "decrypt a package without one.",
             }
 
-        await decky.emit(
+        await appenv.emit(
             "vita_install_progress", os.path.basename(path),
             "Installing %s" % (title_id or "package"), -1,
         )
@@ -542,7 +542,7 @@ class PackagedGames(plugin_base.PluginContext):
         async def on_line(text):
             if "header signature is invalid" in text.lower():
                 mismatch.append(text)
-            await decky.emit(
+            await appenv.emit(
                 "vita_install_progress", os.path.basename(path), text,
                 self._parse_percent(text),
             )
@@ -587,7 +587,7 @@ class PackagedGames(plugin_base.PluginContext):
         if key_file and os.path.dirname(key_file) == os.path.dirname(path):
             spent.append(os.path.basename(key_file))
         removed = await self._run(emu_firmware.remove, spent, os.path.dirname(path))
-        decky.logger.info(
+        appenv.logger.info(
             "Installed %s as %s (deleted %s, exit ok=%s)",
             os.path.basename(path), game["title"], removed.get("removed", []), ok,
         )

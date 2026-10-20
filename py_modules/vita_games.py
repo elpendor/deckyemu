@@ -22,7 +22,7 @@ import re
 import shutil
 import struct
 
-import decky
+import appenv
 import sfo
 import sysenv
 
@@ -218,7 +218,7 @@ def write_zrif(pkg_path, key, title_id=""):
     except OSError as error:
         return "", "Could not save the key: %s" % error
 
-    decky.logger.info("Saved a pasted licence key as %s", name)
+    appenv.logger.info("Saved a pasted licence key as %s", name)
     return target, ""
 
 
@@ -330,7 +330,7 @@ def delete_game(title_id, root=None):
     except OSError as error:
         return 0, "Could not delete %s: %s" % (directory, error)
 
-    decky.logger.info("Deleted Vita game %s, freeing %d bytes", title_id, freed)
+    appenv.logger.info("Deleted Vita game %s, freeing %d bytes", title_id, freed)
     return freed, ""
 
 

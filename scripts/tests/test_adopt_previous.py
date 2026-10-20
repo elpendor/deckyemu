@@ -25,7 +25,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from harness import TMP, check, section, summary  # noqa: E402
 
-import decky  # noqa: E402
+import appenv  # noqa: E402
 import store  # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -93,7 +93,7 @@ _OLD_ENTRY = {
 }
 
 # A previous install is any other plugin folder under decky's settings root.
-_PREVIOUS_DIR = os.path.join(decky.DECKY_HOME, "settings", "retroarch-to-steam")
+_PREVIOUS_DIR = os.path.join(appenv.PREVIOUS_ROOT, "settings", "retroarch-to-steam")
 os.makedirs(_PREVIOUS_DIR, exist_ok=True)
 _PREVIOUS = os.path.join(_PREVIOUS_DIR, "library.json")
 with open(_PREVIOUS, "w", encoding="utf-8") as _handle:

@@ -28,7 +28,7 @@ import os
 import re
 import shutil
 
-import decky
+import appenv
 
 import jsonstore
 import sfo
@@ -216,9 +216,9 @@ def delete_game(title_id, root=None):
             freed += directory_bytes(cache)
             shutil.rmtree(cache)
         except OSError as error:
-            decky.logger.warning("Left the cache for %s behind: %s", title_id, error)
+            appenv.logger.warning("Left the cache for %s behind: %s", title_id, error)
 
-    decky.logger.info("Deleted PS3 game %s, freeing %d bytes", title_id, freed)
+    appenv.logger.info("Deleted PS3 game %s, freeing %d bytes", title_id, freed)
     return freed, ""
 
 
@@ -285,7 +285,7 @@ def package_content_id(path):
 # did carry it was deleted once the game came out of it. So the one moment the
 # id is knowable is the moment of installing, and it is written down here
 # rather than recovered later, because later it cannot be.
-CONTENT_IDS_PATH = os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "ps3_content_ids.json")
+CONTENT_IDS_PATH = os.path.join(appenv.SETTINGS_DIR, "ps3_content_ids.json")
 
 
 def _read_content_ids():
@@ -309,7 +309,7 @@ def remember_content_id(title_id, content_id):
         jsonstore.write_json(CONTENT_IDS_PATH, known, sort_keys=True)
     except OSError as error:
         # Only costs the licence warning for this game; the install is done.
-        decky.logger.warning("Could not record the content id: %s", error)
+        appenv.logger.warning("Could not record the content id: %s", error)
 
 
 def content_id_for(title_id):
@@ -342,7 +342,7 @@ def exdata_dir(create=False):
         try:
             os.makedirs(path, exist_ok=True)
         except OSError as error:
-            decky.logger.warning("Could not create %s: %s", path, error)
+            appenv.logger.warning("Could not create %s: %s", path, error)
     return path
 
 
@@ -418,12 +418,12 @@ def install_licence(content_id, directories=(), pkg_path=""):
     try:
         shutil.move(source, target)
     except OSError as error:
-        decky.logger.warning("Could not install %s: %s", source, error)
+        appenv.logger.warning("Could not install %s: %s", source, error)
         return ""
     if os.path.basename(source) != name:
-        decky.logger.info("Installed licence %s as %s", os.path.basename(source), name)
+        appenv.logger.info("Installed licence %s as %s", os.path.basename(source), name)
     else:
-        decky.logger.info("Installed licence %s", name)
+        appenv.logger.info("Installed licence %s", name)
     return name
 
 
@@ -477,7 +477,7 @@ def install_licence_file(path):
         shutil.move(path, target)
     except OSError as error:
         return "", "Could not install that licence: %s" % error
-    decky.logger.info("Installed licence %s on its own", name)
+    appenv.logger.info("Installed licence %s on its own", name)
     return name, ""
 
 
@@ -616,7 +616,7 @@ def stage_packages(source_dir, target_dir=None):
                 os.unlink(link)
             os.symlink(source, link)
         except OSError as error:
-            decky.logger.warning("Could not stage package %s: %s", name, error)
+            appenv.logger.warning("Could not stage package %s: %s", name, error)
             continue
         staged.append(link)
 

@@ -25,7 +25,7 @@ file underneath a running Steam would be overwritten at best.
 import os
 import struct
 
-import decky
+import appenv
 
 import findfiles
 
@@ -92,7 +92,7 @@ def parse_shortcuts(data):
     try:
         root, _ = _parse_map(data, 0)
     except (ValueError, struct.error, IndexError):
-        decky.logger.exception("Could not parse shortcuts.vdf")
+        appenv.logger.exception("Could not parse shortcuts.vdf")
         return []
 
     shortcuts = root.get("shortcuts")
@@ -137,7 +137,7 @@ def ours():
             with open(path, "rb") as handle:
                 data = handle.read()
         except OSError as error:
-            decky.logger.warning("Could not read %s: %s", path, error)
+            appenv.logger.warning("Could not read %s: %s", path, error)
             continue
 
         for entry in parse_shortcuts(data):

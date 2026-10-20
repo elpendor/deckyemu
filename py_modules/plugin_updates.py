@@ -35,7 +35,7 @@ import hashlib
 import json
 import os
 
-import decky
+import appenv
 
 import plugin_base
 
@@ -105,7 +105,7 @@ class Updates(plugin_base.PluginContext):
         result = await self._run(releases.check, current, force, False)
         # Logged either way. When this only spoke up for an available update, a
         # check that never ran looked exactly like one that found nothing.
-        decky.logger.info(
+        appenv.logger.info(
             "Update check: current=%s checked=%s releases=%d available=%s%s",
             current,
             result.get("checked"),
@@ -194,7 +194,7 @@ class Updates(plugin_base.PluginContext):
                     # Both directions when it did answer, though: "no longer
                     # available" is a real transition, and an event that only
                     # ever means yes can light the dot but never put it out.
-                    await decky.emit(
+                    await appenv.emit(
                         "update_available",
                         bool(found.get("available")),
                         (found.get("latest") or {}).get("version", ""),
@@ -207,7 +207,7 @@ class Updates(plugin_base.PluginContext):
                 # first boot of the day is the ordinary case -- so it is logged
                 # and the loop continues. Raising would end the task and there
                 # would be no more checks until the next restart.
-                decky.logger.exception("Update watch: could not check")
+                appenv.logger.exception("Update watch: could not check")
 
             if answered:
                 attempt = 0
@@ -243,20 +243,20 @@ class Updates(plugin_base.PluginContext):
         try:
             payload = await self._run(releases.download, release)
         except Exception as error:  # noqa: BLE001 - reported, not raised, to the UI
-            decky.logger.exception("Could not download the release")
+            appenv.logger.exception("Could not download the release")
             return {"ok": False, "error": "Could not download it: %s" % error}
 
         if not payload:
             return {"ok": False, "error": "The release could not be downloaded."}
 
         def _write():
-            os.makedirs(decky.DECKY_PLUGIN_RUNTIME_DIR, exist_ok=True)
+            os.makedirs(appenv.DATA_DIR, exist_ok=True)
             # The asset name is whatever the releases API said, so it decides a
             # path here. A basename cannot climb out of the runtime directory,
             # and an empty one falls back rather than naming the directory
             # itself. `handoff` serves this file back under the same name.
             name = os.path.basename(release.get("asset_name") or "") or "deckyemu.zip"
-            path = os.path.join(decky.DECKY_PLUGIN_RUNTIME_DIR, name)
+            path = os.path.join(appenv.DATA_DIR, name)
             with open(path, "wb") as handle:
                 handle.write(payload)
             return path, hashlib.sha256(payload).hexdigest()
@@ -272,5 +272,5 @@ class Updates(plugin_base.PluginContext):
         if not url:
             return {"ok": False, "error": "Could not offer the download to decky."}
 
-        decky.logger.info("Staged %s for decky at %s", release["version"], url)
+        appenv.logger.info("Staged %s for decky at %s", release["version"], url)
         return {"ok": True, "url": url, "version": release["version"], "sha256": digest}

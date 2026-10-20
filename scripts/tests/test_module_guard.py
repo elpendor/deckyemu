@@ -29,7 +29,7 @@ from harness import REPO_ROOT, check, section  # noqa: E402  -- installs the dec
 
 sys.path.insert(0, REPO_ROOT)
 
-import decky  # noqa: E402  -- the stub, whose logger these checks read
+import appenv  # noqa: E402  -- the stub, whose logger these checks read
 import main  # noqa: E402
 
 section("module shadowing -- the guard covers every name py_modules offers")
@@ -66,10 +66,10 @@ class _Recorder:
         self.errors.append(message % args)
 
 
-_real_logger = decky.logger
+_real_logger = appenv.logger
 _recorder = _Recorder()
-decky.logger = _recorder
-main.decky.logger = _recorder
+appenv.logger = _recorder
+main.appenv.logger = _recorder
 try:
     # The clean case first: whatever this run has imported is ours, so a guard
     # that reports nothing here is reporting nothing for the right reason.
@@ -101,8 +101,8 @@ try:
           "decky_loader" in _recorder.errors[0], True)
 finally:
     # The suite shares one logger; a file that swaps it must put it back.
-    decky.logger = _real_logger
-    main.decky.logger = _real_logger
+    appenv.logger = _real_logger
+    main.appenv.logger = _real_logger
 
 
 section("the standard library the sandbox actually has")
@@ -141,7 +141,7 @@ PROVEN_STDLIB = frozenset((
     # `savedata` matches its save patterns with this instead.
     "fnmatch",
     "functools",
-    "hashlib", "heapq", "html", "http", "importlib", "inspect", "io", "json", "os",
+    "hashlib", "heapq", "html", "http", "importlib", "inspect", "io", "json", "logging", "os",
     "posixpath", "re", "secrets", "shlex", "shutil", "socket", "ssl", "stat",
     "struct", "subprocess", "sys", "tarfile", "threading", "time", "types",
     "typing", "urllib",
@@ -155,7 +155,6 @@ _local = {os.path.splitext(name)[0]
           if name.endswith(".py")}
 _local |= {name for name in os.listdir(os.path.join(REPO_ROOT, "py_modules"))
            if os.path.isdir(os.path.join(REPO_ROOT, "py_modules", name))}
-_local.add("decky")
 
 _sources = [os.path.join(REPO_ROOT, "main.py")]
 for _root, _dirs, _names in os.walk(os.path.join(REPO_ROOT, "py_modules")):

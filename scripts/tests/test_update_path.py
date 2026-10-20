@@ -22,7 +22,7 @@ from harness import check, section, summary, REPO_ROOT, TMP  # noqa: E402
 # that it follows the method rather than a filename.
 sys.path.insert(0, REPO_ROOT)
 
-import decky  # noqa: E402
+import appenv  # noqa: E402
 import fileserver  # noqa: E402
 import handoff  # noqa: E402
 import net  # noqa: E402
@@ -118,8 +118,8 @@ def _refuse(_request, **_kwargs):
 
 
 _real_urlopen = net._urlopen
-_level = decky.logger.level
-decky.logger.setLevel(logging.CRITICAL)  # the failure is the point; do not print it
+_level = appenv.logger.level
+appenv.logger.setLevel(logging.CRITICAL)  # the failure is the point; do not print it
 net._urlopen = _refuse
 try:
     _failure = {}
@@ -138,7 +138,7 @@ try:
           any("203.0.113.7" in str(value) for value in _failure.values()), False)
 finally:
     net._urlopen = _real_urlopen
-    decky.logger.setLevel(_level)
+    appenv.logger.setLevel(_level)
 
 
 if __name__ == "__main__":

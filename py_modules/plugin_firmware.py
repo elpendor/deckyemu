@@ -19,7 +19,7 @@ import os
 import re
 import shutil
 
-import decky
+import appenv
 
 import plugin_base
 
@@ -105,12 +105,12 @@ class CollapsedLog:
         # run, so output that drifts -- a path walking down a tree -- stays one
         # run instead of restarting every time it moves far enough.
         self._last = text
-        decky.logger.info("%s: %s", self._label, text)
+        appenv.logger.info("%s: %s", self._label, text)
 
     def finish(self):
         """Summarise a run still in progress. Called when it ends, and at the end."""
         if self._count > REPEATS_SHOWN:
-            decky.logger.info(
+            appenv.logger.info(
                 "%s: ... and %d more like the above",
                 self._label, self._count - REPEATS_SHOWN,
             )
@@ -200,9 +200,9 @@ class Firmware(plugin_base.PluginContext):
 
             done = await self._run(_share)
             if done:
-                decky.logger.info("Shared firmware already on the Deck: %s", ", ".join(done))
+                appenv.logger.info("Shared firmware already on the Deck: %s", ", ".join(done))
         except Exception:
-            decky.logger.exception("Could not share firmware")
+            appenv.logger.exception("Could not share firmware")
 
     async def _refresh_bios_dat(self):
         """Load libretro's BIOS checksum list, fetching it when it is old."""
@@ -466,7 +466,7 @@ class Firmware(plugin_base.PluginContext):
         # delete it twice makes the second one a failure.
         result = await self._run(emu_firmware.remove, sorted(set(done)))
         if result.get("removed"):
-            decky.logger.info(
+            appenv.logger.info(
                 "Tidied %s from the firmware folder; already installed",
                 ", ".join(result["removed"]),
             )
@@ -578,7 +578,7 @@ class Firmware(plugin_base.PluginContext):
         # pressing Install twice was doing. Once, here, instead of asking the
         # user to guess that.
         if not installed:
-            decky.logger.info(
+            appenv.logger.info(
                 "%s installed nothing on the first run; trying once more, in case "
                 "that run was the emulator starting for the first time",
                 entry["name"],
@@ -608,7 +608,7 @@ class Firmware(plugin_base.PluginContext):
         # the first time that happens.
         if await self._run(emu_config.needs_setup, entry):
             result = await self._run(emu_config.apply_setup, entry)
-            decky.logger.info(
+            appenv.logger.info(
                 "Re-applied %s settings after import: %s",
                 entry["id"], result.get("error") or "ok",
             )
@@ -617,7 +617,7 @@ class Firmware(plugin_base.PluginContext):
         # emulator that started cleanly and one whose first run was the
         # bootstrap described above. Worth having in the log for the next
         # emulator that behaves this way.
-        decky.logger.info(
+        appenv.logger.info(
             "Imported %s into %s: %s%s",
             name, entry["id"], installed,
             "" if attempts == 1 else " (on the second run; the first started the emulator)",
@@ -646,7 +646,7 @@ class Firmware(plugin_base.PluginContext):
         # headless backend, for an emulator that will not start without a real
         # display even to write a config. Outside that one use it is empty.
         argv = list(wrapper) + emulators.tool_argv(emulator, args, allow, env_overrides)
-        decky.logger.info("Running: %s", " ".join(argv))
+        appenv.logger.info("Running: %s", " ".join(argv))
 
         env = self._subprocess_env()
         # Both halves: `tool_argv` put these on the flatpak command line, where
@@ -674,7 +674,7 @@ class Firmware(plugin_base.PluginContext):
                 env=env,
             )
         except (OSError, NotImplementedError) as error:
-            decky.logger.exception("Could not start %s", argv[0])
+            appenv.logger.exception("Could not start %s", argv[0])
             return False, "Could not run %s: %s" % (emulator.get("name", "emulator"), error)
 
         output = procout.Output()
@@ -803,7 +803,7 @@ class Firmware(plugin_base.PluginContext):
                 "# Opens %s to install %s." % (entry["name"], waiting[0]),
             )
         except OSError as error:
-            decky.logger.exception("Failed writing firmware GUI launcher")
+            appenv.logger.exception("Failed writing firmware GUI launcher")
             return {"ok": False, "error": "Could not write launcher script: %s" % error}
 
         # What the install folder held before the emulator was given the file.
@@ -813,7 +813,7 @@ class Firmware(plugin_base.PluginContext):
         await self._run(emu_firmware.record_handoff, entry_id, spec, waiting[0])
 
         settings = await self._run(store.get_settings)
-        decky.logger.info("Opening %s to install %s", entry["name"], waiting[0])
+        appenv.logger.info("Opening %s to install %s", entry["name"], waiting[0])
         return {
             "ok": True,
             # The same one shortcut the Emulators tab uses, repointed. Two doors

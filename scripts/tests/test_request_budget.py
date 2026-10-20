@@ -31,7 +31,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from harness import check, section, summary  # noqa: E402
 
-import decky  # noqa: E402
+import appenv  # noqa: E402
 import net  # noqa: E402
 
 
@@ -45,9 +45,9 @@ class _Recorder(logging.Handler):
 
 
 _recorder = _Recorder()
-_previous_level = decky.logger.level
-decky.logger.addHandler(_recorder)
-decky.logger.setLevel(logging.INFO)
+_previous_level = appenv.logger.level
+appenv.logger.addHandler(_recorder)
+appenv.logger.setLevel(logging.INFO)
 
 
 class _Response:
@@ -93,7 +93,7 @@ try:
         )
 
     net._urlopen = _fail
-    decky.logger.setLevel(logging.INFO)
+    appenv.logger.setLevel(logging.INFO)
     net.get_bytes("https://api.github.com/repos/x/y/releases")
     _noted = [line for line in _recorder.lines if "GitHub request" in line]
     check("the failed request is logged as spending", len(_noted), 1)
@@ -133,7 +133,7 @@ try:
     check("the answer still comes back", _body, b"payload")
 finally:
     net._urlopen = _real_urlopen
-    decky.logger.removeHandler(_recorder)
-    decky.logger.setLevel(_previous_level)
+    appenv.logger.removeHandler(_recorder)
+    appenv.logger.setLevel(_previous_level)
 
 summary()

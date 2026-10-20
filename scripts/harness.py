@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """The scaffolding every backend test needs, and nothing else.
 
-Everything under py_modules/ is plain Python whose only decky dependency is a
-logger and a few directory paths, so it can run anywhere once those are stubbed.
-This module does the stubbing, owns the scratch directory, and keeps the score.
+Everything under py_modules/ is plain Python whose only tie to the device is
+`appenv` -- a logger and a few directory paths -- so it can run anywhere once those
+point somewhere harmless. This module does that, owns the scratch directory, and
+keeps the score.
 
-Import it before anything from py_modules: installing the fake `decky` into
-sys.modules has to happen first, and importing this module is what does it.
+Import it before anything from py_modules: `appenv` reads its paths once, at
+import, and this module is what points them at the scratch tree first.
 
     from harness import check, section, summary, TMP
 
@@ -44,45 +45,46 @@ def _remove_tmp():
     """
     shutil.rmtree(TMP, ignore_errors=True)
 
-# --- stub the decky module the plugin normally runs inside ------------------
-decky = types.ModuleType("decky")
-decky.DECKY_PLUGIN_RUNTIME_DIR = os.path.join(TMP, "runtime")
-decky.DECKY_PLUGIN_SETTINGS_DIR = os.path.join(TMP, "settings")
-decky.DECKY_PLUGIN_LOG_DIR = os.path.join(TMP, "logs")
-decky.DECKY_PLUGIN_NAME = "RetroArch to Steam"
-# Not asserted anywhere -- CI rewrites the real one on release.
-decky.DECKY_PLUGIN_VERSION = "0.0.0-test"
-decky.DECKY_USER_HOME = os.path.join(TMP, "home")
+# --- point appenv at the scratch tree ----------------------------------------
 # Sandboxed for the whole run, not just where a section sets it: anything that
-# resolves the user's home would otherwise create folders in the developer's real
-# home. `sysenv.user_home()` reads this variable, which is the point of it.
-os.environ["DECKY_USER_HOME"] = decky.DECKY_USER_HOME
-os.makedirs(decky.DECKY_USER_HOME, exist_ok=True)
-# Sandboxed inside the temp dir so key discovery cannot read a real install.
-decky.DECKY_HOME = os.path.join(TMP, "homebrew")
-logging.basicConfig(level=logging.WARNING, format="[decky] %(message)s")
-decky.logger = logging.getLogger("decky")
+# resolves the user's home would otherwise create folders in the developer's
+# real home. `appenv` and `sysenv.user_home()` read this variable, which is the
+# point of it.
+os.environ["DECKYEMU_USER_HOME"] = os.path.join(TMP, "home")
+os.environ["DECKYEMU_ROOT"] = os.path.join(TMP, "deckyemu")
+# Sandboxed in the temp dir so adopting an older install cannot read a real one.
+os.environ["DECKYEMU_PREVIOUS_ROOT"] = os.path.join(TMP, "previous")
+sys.path.insert(0, os.path.join(REPO_ROOT, "py_modules"))
+
+import appenv  # noqa: E402
+
+appenv.DATA_DIR = os.path.join(TMP, "runtime")
+appenv.SETTINGS_DIR = os.path.join(TMP, "settings")
+appenv.LOG_DIR = os.path.join(TMP, "logs")
+appenv.NAME = "RetroArch to Steam"
+# Not asserted anywhere -- CI rewrites the real one on release.
+appenv.VERSION = "0.0.0-test"
+os.makedirs(appenv.USER_HOME, exist_ok=True)
+logging.basicConfig(level=logging.WARNING, format="[deckyemu] %(message)s")
 
 
 async def _emit(event, *args):
     """Swallow progress events, and record them for anyone who wants to look.
 
-    The real `decky.emit` reaches the frontend over decky's socket, which does
-    not exist here. Without this, adding a progress event to any code path the
+    The real `appenv.emit` reaches the frontend over the service's event stream,
+    which does not exist here. Without this, adding a progress event to any code path the
     suite already covers turns it into an AttributeError -- which is how it went
     the first time, on `clear_library`. A test that cares about the events
     replaces this outright; see scripts/tests/test_detach.py.
     """
-    decky.emitted.append((event, args))
+    appenv.emitted.append((event, args))
 
 
-decky.emitted = []
-decky.emit = _emit
-sys.modules["decky"] = decky
+appenv.emitted = []
+appenv.emit = _emit
 
-for directory in (decky.DECKY_PLUGIN_RUNTIME_DIR, decky.DECKY_PLUGIN_SETTINGS_DIR):
+for directory in (appenv.DATA_DIR, appenv.SETTINGS_DIR):
     os.makedirs(directory, exist_ok=True)
-sys.path.insert(0, os.path.join(REPO_ROOT, "py_modules"))
 
 import hardware  # noqa: E402
 

@@ -34,7 +34,7 @@ import json
 import os
 import stat
 
-import decky
+import appenv
 
 
 def read_json(path, fallback):
@@ -81,7 +81,7 @@ def write_json(path, payload, private=False, sort_keys=False):
                 # raised so a filesystem that cannot do modes -- which is every
                 # one of them on the machine the tests run on -- does not lose
                 # the settings it was asked to save.
-                decky.logger.warning("Could not restrict %s: %s", path, error)
+                appenv.logger.warning("Could not restrict %s: %s", path, error)
         os.replace(temporary, path)
     # Broad on purpose and re-raised immediately: this is not handling the
     # failure, it is refusing to leave a `.tmp` behind on the way out. A payload

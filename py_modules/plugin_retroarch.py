@@ -27,7 +27,7 @@ code lives somewhere findable. Nothing here may be instantiated alone.
 
 import asyncio
 
-import decky
+import appenv
 
 import plugin_base
 
@@ -60,16 +60,16 @@ class RetroArchInstall(plugin_base.PluginContext):
         if not self._install:
             return {"ok": False, "error": "RetroArch was not found on this system."}
 
-        await decky.emit("core_install_progress", core_id, "downloading", 0)
+        await appenv.emit("core_install_progress", core_id, "downloading", 0)
         result = await self._run(installer.install_core, self._install, core_id)
 
         if result.get("ok"):
             # Re-scan so the new core is immediately selectable.
             self._cores = await self._run(ra_cores.list_cores, self._install)
             result["core_count"] = len(self._cores)
-            await decky.emit("core_install_progress", core_id, "done", 100)
+            await appenv.emit("core_install_progress", core_id, "done", 100)
         else:
-            await decky.emit("core_install_progress", core_id, "failed", 0)
+            await appenv.emit("core_install_progress", core_id, "failed", 0)
 
         return result
 
@@ -180,7 +180,7 @@ class RetroArchInstall(plugin_base.PluginContext):
     async def _run_retroarch_install(self, steps):
         """RetroArch is a large download, so progress is streamed to the UI."""
         env = self._subprocess_env()
-        decky.logger.info(
+        appenv.logger.info(
             "Install environment: HOME=%s XDG_DATA_HOME=%s",
             env.get("HOME"),
             env.get("XDG_DATA_HOME"),
@@ -188,7 +188,7 @@ class RetroArchInstall(plugin_base.PluginContext):
 
         try:
             for argv in steps:
-                decky.logger.info("Running: %s", " ".join(argv))
+                appenv.logger.info("Running: %s", " ".join(argv))
                 try:
                     process = await asyncio.create_subprocess_exec(
                         *argv,
@@ -199,8 +199,8 @@ class RetroArchInstall(plugin_base.PluginContext):
                 except (OSError, NotImplementedError) as error:
                     # NotImplementedError happens when the event loop cannot
                     # spawn children, which is not obvious from an exit code.
-                    decky.logger.exception("Could not start %s", argv[0])
-                    await decky.emit(
+                    appenv.logger.exception("Could not start %s", argv[0])
+                    await appenv.emit(
                         "retroarch_install_done", False, "Could not run flatpak: %s" % error
                     )
                     return
@@ -210,17 +210,17 @@ class RetroArchInstall(plugin_base.PluginContext):
                 # the actual reason there.
                 output = procout.Output()
                 async for text in output.segments(process.stdout):
-                    decky.logger.info("flatpak: %s", text)
-                    await decky.emit(
+                    appenv.logger.info("flatpak: %s", text)
+                    await appenv.emit(
                         "retroarch_install_progress", text, self._parse_percent(text)
                     )
 
                 code = await process.wait()
-                decky.logger.info("%s exited with %d", argv[1] if len(argv) > 1 else argv[0], code)
+                appenv.logger.info("%s exited with %d", argv[1] if len(argv) > 1 else argv[0], code)
 
                 # remote-add is allowed to fail: the remote usually already exists.
                 if code != 0 and "install" in argv:
-                    await decky.emit(
+                    await appenv.emit(
                         "retroarch_install_done",
                         False,
                         "flatpak exited with code %d: %s" % (code, output.reason),
@@ -228,7 +228,7 @@ class RetroArchInstall(plugin_base.PluginContext):
                     return
 
             status = await self.refresh_retroarch()
-            await decky.emit(
+            await appenv.emit(
                 "retroarch_install_done",
                 bool(status["found"]),
                 "" if status["found"] else "Install finished but RetroArch was still not found.",
@@ -238,5 +238,5 @@ class RetroArchInstall(plugin_base.PluginContext):
         # reports anything else. Catching it here swallowed an unload, then tried
         # to emit over the socket that was closing.
         except OSError as error:
-            decky.logger.exception("RetroArch install failed")
-            await decky.emit("retroarch_install_done", False, str(error))
+            appenv.logger.exception("RetroArch install failed")
+            await appenv.emit("retroarch_install_done", False, str(error))

@@ -31,7 +31,7 @@ from harness import REPO_ROOT, check, section  # noqa: E402  -- installs the dec
 
 sys.path.insert(0, REPO_ROOT)
 
-import decky  # noqa: E402
+import appenv  # noqa: E402
 import emu_install  # noqa: E402
 import emulator_catalog  # noqa: E402
 import main  # noqa: E402
@@ -41,8 +41,8 @@ section("changing an emulator's build -- what is refused, and what holds")
 # The refusals below are logged with tracebacks, which is correct and also reads
 # like a broken run. Restored at the end -- the whole suite shares one logger, so
 # a file that quiets it and walks away silences every file that runs after it.
-_log_level = decky.logger.level
-decky.logger.setLevel(logging.CRITICAL)
+_log_level = appenv.logger.level
+appenv.logger.setLevel(logging.CRITICAL)
 
 emitted = []
 
@@ -51,7 +51,7 @@ async def _record(event, *args):
     emitted.append((event, args))
 
 
-decky.emit = _record
+appenv.emit = _record
 
 plugin = main.Plugin()
 plugin.loop = asyncio.new_event_loop()
@@ -277,4 +277,4 @@ if __name__ == "__main__":
 
     summary()
 
-decky.logger.setLevel(_log_level)
+appenv.logger.setLevel(_log_level)

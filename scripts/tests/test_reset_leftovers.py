@@ -29,12 +29,12 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from harness import check, section, summary  # noqa: E402  -- installs the decky stub
 
-import decky  # noqa: E402
+import appenv  # noqa: E402
 import devreset  # noqa: E402
 import emulators  # noqa: E402
 import launchers  # noqa: E402
 
-RUNTIME = decky.DECKY_PLUGIN_RUNTIME_DIR
+RUNTIME = appenv.DATA_DIR
 
 
 def _make(path, is_dir):

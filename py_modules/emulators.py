@@ -19,14 +19,14 @@ import re
 import shlex
 import stat
 
-import decky
+import appenv
 
 import emu_install
 import emu_patch
 import emulator_catalog
 import jsonstore
 
-EMULATORS_PATH = os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "emulators.json")
+EMULATORS_PATH = os.path.join(appenv.SETTINGS_DIR, "emulators.json")
 
 # `{rom}` is substituted per argument, after splitting, so a ROM path containing
 # spaces cannot break the argument list.
@@ -304,7 +304,7 @@ def save(emulator):
         emulators.append(entry)
 
     _write(emulators)
-    decky.logger.info("Saved emulator %r (%s)", entry["name"], entry["id"])
+    appenv.logger.info("Saved emulator %r (%s)", entry["name"], entry["id"])
     return entry, ""
 
 
@@ -314,7 +314,7 @@ def remove(emulator_id_value):
     if len(remaining) == len(emulators):
         return False
     _write(remaining)
-    decky.logger.info("Removed emulator %s", emulator_id_value)
+    appenv.logger.info("Removed emulator %s", emulator_id_value)
     return True
 
 
@@ -347,7 +347,7 @@ def ensure_executable(path):
             "without exec permission." % path
         )
 
-    decky.logger.info("Added the execute bit to %s", path)
+    appenv.logger.info("Added the execute bit to %s", path)
     return True, True, ""
 
 
@@ -452,7 +452,7 @@ PLUGIN_PLACEHOLDER = "{plugin}"
 
 
 def _plugin_dir():
-    return getattr(decky, "DECKY_PLUGIN_DIR", "") or ""
+    return getattr(appenv, "APP_DIR", "") or ""
 
 
 def resolved_env(emulator):
@@ -611,7 +611,7 @@ def gui_argv(emulator, args=(), allow=()):
 #: Where the space-free links below are kept. decky's runtime directory rather
 #: than the user's own folder: nothing here is theirs to look at or keep, and it
 #: being wiped on uninstall is correct.
-ARG_LINK_DIR = os.path.join(decky.DECKY_PLUGIN_RUNTIME_DIR, "argpaths")
+ARG_LINK_DIR = os.path.join(appenv.DATA_DIR, "argpaths")
 
 
 def space_free(path):
@@ -655,7 +655,7 @@ def space_free(path):
         os.symlink(path, link)
         return link
     except OSError as error:
-        decky.logger.warning("Could not link %s without spaces: %s", path, error)
+        appenv.logger.warning("Could not link %s without spaces: %s", path, error)
         return path
 
 

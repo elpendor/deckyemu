@@ -33,7 +33,7 @@ import re
 
 from typing import Optional
 
-import decky
+import appenv
 
 import plugin_base
 
@@ -242,7 +242,7 @@ class Collections(plugin_base.PluginContext):
                     }
                 )
 
-        decky.logger.info(
+        appenv.logger.info(
             "plan_collection_migration: %d move(s)%s",
             len(moves),
             "" if not previous else " (using previous settings for unrecorded games)",
@@ -289,7 +289,7 @@ class Collections(plugin_base.PluginContext):
         """
         dropped = await self._run(store.forget_collections, names or [])
         if dropped:
-            decky.logger.info("No longer claiming collection(s): %s", ", ".join(dropped))
+            appenv.logger.info("No longer claiming collection(s): %s", ", ".join(dropped))
         return {"ok": True, "forgotten": dropped}
 
     async def collection_targets(self):

@@ -37,7 +37,7 @@ import threading
 import time
 from typing import Any
 
-import decky
+import appenv
 
 #: Enough of the reason phrases to read a log; anything else says "Status".
 REASONS = {
@@ -218,7 +218,7 @@ class _Request:
                          getattr(self, "path", "?"), code)
 
     def log_message(self, fmt, *args):
-        decky.logger.info(fmt, *args)
+        appenv.logger.info(fmt, *args)
 
 
 #: How long a stop waits for the accept loop to notice. It polls twice a second,
@@ -284,7 +284,7 @@ class _Server:
         try:
             self.handler(connection, address, self)
         except Exception:  # noqa: BLE001 -- one bad request must not end the server
-            decky.logger.exception("Unhandled error serving a request")
+            appenv.logger.exception("Unhandled error serving a request")
             try:
                 connection.close()
             except OSError:
@@ -374,11 +374,11 @@ def borrowed():
         if not os.path.isabs(origin):
             continue
         # The plugin's own modules live outside the bundle by definition.
-        if decky.DECKY_PLUGIN_DIR and origin.startswith(decky.DECKY_PLUGIN_DIR):
+        if appenv.APP_DIR and origin.startswith(appenv.APP_DIR):
             continue
         outside.append("%s=%s" % (name, origin))
     if outside:
-        decky.logger.info("Loaded from outside decky's bundle: %s", "; ".join(outside))
+        appenv.logger.info("Loaded from outside decky's bundle: %s", "; ".join(outside))
 
 
 def report():
@@ -406,7 +406,7 @@ def report():
         except Exception:  # noqa: BLE001 -- a parent that will not import counts as missing
             continue
         carried.append(name)
-    decky.logger.info(
+    appenv.logger.info(
         "Python %s in this sandbox carries: %s",
         sys.version.split()[0], ", ".join(carried) or "none of the ones checked",
     )

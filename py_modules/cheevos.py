@@ -25,7 +25,7 @@ only into the plugin's own override file, which is created 0600.
 import os
 import re
 
-import decky
+import appenv
 
 import net
 import ra_detect
@@ -34,7 +34,7 @@ LOGIN_URL = "https://retroachievements.org/dorequest.php"
 
 # The API documentation is explicit that dorequest.php must never be called
 # without a User-Agent, and asks integrations to identify themselves.
-USER_AGENT = "DeckyEmu/%s" % (getattr(decky, "DECKY_PLUGIN_VERSION", "") or "0")
+USER_AGENT = "DeckyEmu/%s" % (getattr(appenv, "VERSION", "") or "0")
 
 # Their rate limit is advertised as 10 requests per window (x-ratelimit-limit),
 # which is generous for a one-off login and unforgiving of a retry storm. One

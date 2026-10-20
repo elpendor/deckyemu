@@ -25,7 +25,7 @@ import json
 import os
 import shutil
 
-import decky
+import appenv
 
 import emu_install
 import emulator_catalog
@@ -134,7 +134,7 @@ def _emulator_data_dirs(entry_ids=None):
 # The plugin's own memory. Listed one by one on purpose -- see the note at the
 # top of this file about the setup record.
 def _state_files():
-    settings = decky.DECKY_PLUGIN_SETTINGS_DIR
+    settings = appenv.SETTINGS_DIR
     return [
         (os.path.join(settings, "library.json"), "Games added to Steam (the plugin's record)"),
         (os.path.join(settings, "emulators.json"), "Registered emulators"),
@@ -169,7 +169,7 @@ def _runtime_leftovers():
     override files has already grown once, and a copy here would have gone stale
     silently.
     """
-    runtime = decky.DECKY_PLUGIN_RUNTIME_DIR
+    runtime = appenv.DATA_DIR
     items = [
         (launchers.LAUNCHER_DIR, "Launcher scripts", True),
         (os.path.join(runtime, "thumb_index"), "Cached artwork", True),
@@ -302,11 +302,11 @@ def _wipe(path):
             else:
                 os.remove(target)
         except OSError as error:
-            decky.logger.warning("Could not delete %s: %s", target, error)
+            appenv.logger.warning("Could not delete %s: %s", target, error)
             continue
         freed += size
     if freed:
-        decky.logger.info("Reset: emptied %s (%d bytes)", path, freed)
+        appenv.logger.info("Reset: emptied %s (%d bytes)", path, freed)
     return freed
 
 
@@ -325,9 +325,9 @@ def _remove(path):
     try:
         shutil.rmtree(path)
     except OSError as error:
-        decky.logger.warning("Could not delete %s: %s", path, error)
+        appenv.logger.warning("Could not delete %s: %s", path, error)
         return 0
-    decky.logger.info("Reset: removed %s (%d bytes)", path, freed)
+    appenv.logger.info("Reset: removed %s (%d bytes)", path, freed)
     return freed
 
 
@@ -339,9 +339,9 @@ def _remove_file(path):
         freed = os.path.getsize(path)
         os.remove(path)
     except OSError as error:
-        decky.logger.warning("Could not delete %s: %s", path, error)
+        appenv.logger.warning("Could not delete %s: %s", path, error)
         return 0
-    decky.logger.info("Reset: removed %s (%d bytes)", path, freed)
+    appenv.logger.info("Reset: removed %s (%d bytes)", path, freed)
     return freed
 
 
@@ -390,7 +390,7 @@ def clear_emulator_data(entry_ids=None):
     for name, path in _emulator_data_dirs(entry_ids):
         gone = _remove(path)
         if gone:
-            decky.logger.info("Cleared %s data (%d bytes)", name, gone)
+            appenv.logger.info("Cleared %s data (%d bytes)", name, gone)
         freed += gone
     return freed
 
@@ -424,7 +424,7 @@ def clear_state():
             continue
         cleared.append(label)
     if cleared:
-        decky.logger.info("Reset: cleared %s", ", ".join(cleared))
+        appenv.logger.info("Reset: cleared %s", ", ".join(cleared))
     for path, _label, is_dir in _runtime_leftovers():
         freed += _remove(path) if is_dir else _remove_file(path)
     # Nothing to invalidate afterwards: every one of these files is read from

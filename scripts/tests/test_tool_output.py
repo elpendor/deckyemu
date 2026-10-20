@@ -22,7 +22,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from harness import check, section, summary  # noqa: E402
 
-import decky  # noqa: E402
+import appenv  # noqa: E402
 import plugin_firmware  # noqa: E402
 
 
@@ -36,9 +36,9 @@ class _Capture(logging.Handler):
 
 
 _capture = _Capture()
-decky.logger.addHandler(_capture)
-_level = decky.logger.level
-decky.logger.setLevel(logging.INFO)
+appenv.logger.addHandler(_capture)
+_level = appenv.logger.level
+appenv.logger.setLevel(logging.INFO)
 
 
 def _feed(lines):
@@ -131,8 +131,8 @@ _collapsed.finish()
 check("and then it is", any("and 47 more like the above" in line
                             for line in _capture.lines), True)
 
-decky.logger.setLevel(_level)
-decky.logger.removeHandler(_capture)
+appenv.logger.setLevel(_level)
+appenv.logger.removeHandler(_capture)
 
 
 if __name__ == "__main__":

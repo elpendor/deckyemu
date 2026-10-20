@@ -37,7 +37,7 @@ import json
 import os
 import re
 
-import decky
+import appenv
 
 import jsonstore
 import sysenv
@@ -104,7 +104,7 @@ WHOLE_FILE = "whole-file"
 # In the settings directory rather than the runtime one: decky wipes runtime on
 # uninstall, and losing this makes the plugin conservative about settings that
 # are genuinely its own.
-STATE_PATH = os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "emulator_setup.json")
+STATE_PATH = os.path.join(appenv.SETTINGS_DIR, "emulator_setup.json")
 
 
 # Which version of a setup block was last applied. Stored beside the written
@@ -252,7 +252,7 @@ def _write_state(state):
     except OSError as error:
         # Not fatal: the settings were still applied, and the only cost is that
         # the next run treats them as the user's and leaves them alone.
-        decky.logger.warning("Could not record what was written: %s", error)
+        appenv.logger.warning("Could not record what was written: %s", error)
 
 
 def _read_lines(path):
@@ -1162,7 +1162,7 @@ def apply_setup(entry):
     state[entry["id"]][AUTHORED_KEY] = authored
     _write_state(state)
 
-    decky.logger.info(
+    appenv.logger.info(
         "Configured %s: %d written, %d left as the user set them",
         entry.get("id"),
         len(applied),

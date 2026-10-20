@@ -20,13 +20,13 @@ import re
 import time
 import urllib.parse
 
-import decky
+import appenv
 
 import net
 import vendored_difflib as difflib
 
 THUMB_HOST = "https://thumbnails.libretro.com"
-INDEX_CACHE_DIR = os.path.join(decky.DECKY_PLUGIN_RUNTIME_DIR, "thumb_index")
+INDEX_CACHE_DIR = os.path.join(appenv.DATA_DIR, "thumb_index")
 INDEX_TTL_SECONDS = 30 * 24 * 60 * 60
 
 # The libretro docs specify these characters are replaced with `_` in
@@ -212,7 +212,7 @@ def _store_cached_index(system, names):
         with open(path, "w", encoding="utf-8") as handle:
             json.dump({"fetched_at": time.time(), "names": names}, handle)
     except OSError as error:
-        decky.logger.warning("Could not cache thumbnail index: %s", error)
+        appenv.logger.warning("Could not cache thumbnail index: %s", error)
 
 
 _HREF_RE = re.compile(r'<a href="([^"?/][^"]*\.png)"', re.IGNORECASE)
@@ -259,7 +259,7 @@ def fetch_boxart_index(system):
         # without a network into "this system has no artwork" for the whole session.
         _store_cached_index(system, names)
         _memory_index[system] = names
-    decky.logger.info("Indexed %d boxarts for %s", len(names), system)
+    appenv.logger.info("Indexed %d boxarts for %s", len(names), system)
     return names
 
 

@@ -47,11 +47,3 @@ export const validateSgdbKey = callable<
   { ok: boolean; error?: string }
 >("validate_sgdb_key");
 
-/** `source` names the plugin the key was found in, for a prompt that can say so. */
-export const findExistingSgdbKey = callable<[], { found: boolean; source: string }>(
-  "find_existing_sgdb_key",
-);
-export const importExistingSgdbKey = callable<
-  [],
-  { ok: boolean; error?: string; how?: string }
->("import_existing_sgdb_key");

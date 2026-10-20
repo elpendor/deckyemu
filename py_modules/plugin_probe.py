@@ -19,7 +19,7 @@ alone.
 import asyncio
 import os
 
-import decky
+import appenv
 
 import plugin_base
 
@@ -164,9 +164,9 @@ class Probe(plugin_base.PluginContext):
 
     async def probe_rom(self, rom_path: str):
         """Suggested cores for a ROM, most relevant first, plus a default name."""
-        decky.logger.info("probe_rom: %s", rom_path)
+        appenv.logger.info("probe_rom: %s", rom_path)
         if not os.path.isfile(rom_path):
-            decky.logger.warning("probe_rom: not a file: %s", rom_path)
+            appenv.logger.warning("probe_rom: not a file: %s", rom_path)
         cores = await self.list_cores()
         extension = os.path.splitext(rom_path)[1].lower().lstrip(".")
 
@@ -360,7 +360,7 @@ class Probe(plugin_base.PluginContext):
 
         await self._probe_kinds(result, rom_path, extension, romset)
         await self._probe_warnings(result, rom_path, extension, wrong_dump)
-        decky.logger.info(
+        appenv.logger.info(
             "probe_rom -> ext=%s match_ext=%s matching=%s suggested=%s backup=%s",
             extension,
             match_extension,
@@ -544,7 +544,7 @@ class Probe(plugin_base.PluginContext):
         package boots `USRDIR/EBOOT.BIN`, so every one of them would search
         SteamGridDB for "EBOOT" -- its PARAM.SFO says "Braid".
         """
-        decky.logger.info("resolve_game: core=%s rom=%s title=%r", core_id, rom_path, title)
+        appenv.logger.info("resolve_game: core=%s rom=%s title=%r", core_id, rom_path, title)
         core = self._core_by_id(core_id)
         databases = core["databases"] if core else []
         # The system the user picked goes to the front of the search.
@@ -709,7 +709,7 @@ class Probe(plugin_base.PluginContext):
 
         meta = dict(meta, title=chosen)
 
-        decky.logger.info(
+        appenv.logger.info(
             "resolve_game -> title=%r match=%s art=%s via=%s name_from=%s",
             meta["title"],
             meta["match_kind"],

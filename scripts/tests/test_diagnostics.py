@@ -22,7 +22,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from harness import TMP, check, section, summary  # noqa: E402
 
-import decky  # noqa: E402
+import appenv  # noqa: E402
 import diagnostics  # noqa: E402
 import releases  # noqa: E402
 import store  # noqa: E402
@@ -45,8 +45,8 @@ store.set_settings({
 
 # A log holding every kind of thing that must not travel: each secret by value,
 # and a shape this plugin does not hold and so cannot strike out by value.
-os.makedirs(decky.DECKY_PLUGIN_LOG_DIR, exist_ok=True)
-_LOG = os.path.join(decky.DECKY_PLUGIN_LOG_DIR, "deckyemu.log")
+os.makedirs(appenv.LOG_DIR, exist_ok=True)
+_LOG = os.path.join(appenv.LOG_DIR, "deckyemu.log")
 with open(_LOG, "w", encoding="utf-8") as _handle:
     _handle.write(
         "\n".join(
@@ -282,7 +282,7 @@ section("a log that has grown is read from the end, not swallowed whole")
 # thousands of lines and the file is not the few hundred kilobytes an earlier
 # version of this assumed. Reading all of it to keep the last two hundred is
 # work that grows with how much somebody has installed.
-_BIG = os.path.join(decky.DECKY_PLUGIN_LOG_DIR, "big.log")
+_BIG = os.path.join(appenv.LOG_DIR, "big.log")
 with open(_BIG, "w", encoding="utf-8") as _handle:
     for _line in range(120000):
         # A plain "\n" in text mode, which Python turns into whatever this

@@ -29,7 +29,7 @@ sys.path.insert(0, os.path.join(
 import cloudsave  # noqa: E402
 import fileserver  # noqa: E402
 import cloudsync  # noqa: E402
-import decky  # noqa: E402
+import appenv  # noqa: E402
 import store  # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -119,7 +119,7 @@ async def _capture(event, *args):
 
 
 plugin._stream_cloud = _stream
-with Swap((decky, "emit", _capture),
+with Swap((appenv, "emit", _capture),
           # Written into the same list, because what this section is about is
           # the order of the two.
           (cloudsync, "record_pushes",

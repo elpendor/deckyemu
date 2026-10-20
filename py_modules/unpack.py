@@ -35,7 +35,7 @@ import os
 import shutil
 import zipfile
 
-import decky
+import appenv
 
 #: Written beside the real name while extracting. Same suffix `emu_config` uses
 #: for its own staged writes, and for the same reason: something scanning this
@@ -173,8 +173,8 @@ def into_folder(path, destination):
                 os.remove(temporary)
             except OSError:
                 pass
-        decky.logger.warning("Could not unpack %s: %s", path, error)
+        appenv.logger.warning("Could not unpack %s: %s", path, error)
         return [], "Could not unpack this zip: %s" % error
 
-    decky.logger.info("Unpacked %s into %d file(s)", os.path.basename(path), len(names))
+    appenv.logger.info("Unpacked %s into %d file(s)", os.path.basename(path), len(names))
     return names, ""

@@ -22,7 +22,7 @@ from harness import check, section, summary  # noqa: E402
 sys.path.insert(0, os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "py_modules"))
 
-import decky  # noqa: E402  -- the stub the harness installed
+import appenv  # noqa: E402  -- the stub the harness installed
 import gameicon  # noqa: E402
 
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -68,19 +68,19 @@ check("eight bits per channel with an alpha channel, so the corners can be "
 section("the shipped one is named only when it is really there")
 
 _plugin_dir = os.path.join(REPO)
-decky.DECKY_PLUGIN_DIR = _plugin_dir
+appenv.APP_DIR = _plugin_dir
 check("the path points at the shipped file", gameicon.generic(), _ASSET)
 
 # The failure this guards. Steam records whatever it is handed and goes on
 # reading it, so a path to a file that never shipped stays wrong afterwards --
 # it is better to leave the shortcut without an icon than to give it a broken
 # one that looks set.
-decky.DECKY_PLUGIN_DIR = os.path.join(REPO, "nowhere")
+appenv.APP_DIR = os.path.join(REPO, "nowhere")
 check("and nothing at all when it did not ship", gameicon.generic(), "")
 
-decky.DECKY_PLUGIN_DIR = ""
+appenv.APP_DIR = ""
 check("nor when the plugin does not know where it is", gameicon.generic(), "")
-decky.DECKY_PLUGIN_DIR = _plugin_dir
+appenv.APP_DIR = _plugin_dir
 
 
 section("artwork wins, and the shipped one is what is left when there is none")

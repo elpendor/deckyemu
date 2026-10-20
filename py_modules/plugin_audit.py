@@ -17,7 +17,7 @@ Mixed into `Plugin` rather than called by it -- see plugin_firmware for why.
 import json
 import os
 
-import decky
+import appenv
 
 import findfiles
 
@@ -61,7 +61,7 @@ class Audit(plugin_base.PluginContext):
 
         previous = await self._run(self._find_previous_installs)
 
-        decky.logger.info(
+        appenv.logger.info(
             "audit: %d broken, %d stray launcher(s), %d previous install(s)",
             len(broken),
             len(strays),
@@ -230,7 +230,7 @@ class Audit(plugin_base.PluginContext):
                 kind = "orphan"
             report.append(dict(item, kind=kind))
 
-        decky.logger.info(
+        appenv.logger.info(
             "audit: %d shortcut(s) the registry does not know (%s)",
             len(report),
             ", ".join(sorted({item["kind"] for item in report})) or "none",
@@ -284,7 +284,7 @@ class Audit(plugin_base.PluginContext):
             )
 
         if found:
-            decky.logger.info(
+            appenv.logger.info(
                 "audit: %d entry(s) point at a shortcut running something else", len(found)
             )
         return found
@@ -391,10 +391,10 @@ class Audit(plugin_base.PluginContext):
         old launcher scripts remain on disk, but nothing manages them any more.
         """
         found = []
-        ours = os.path.normpath(decky.DECKY_PLUGIN_SETTINGS_DIR)
+        ours = os.path.normpath(appenv.SETTINGS_DIR)
 
         for path in findfiles.under_each(
-            os.path.join(decky.DECKY_HOME, "settings"), "library.json"
+            os.path.join(appenv.PREVIOUS_ROOT, "settings"), "library.json"
         ):
             if os.path.normpath(os.path.dirname(path)) == ours:
                 continue
@@ -505,7 +505,7 @@ class Audit(plugin_base.PluginContext):
                     vita_games.title_of(rom or ""),
                 )
             except OSError as error:
-                decky.logger.warning("Could not rebuild launcher for %r: %s", title, error)
+                appenv.logger.warning("Could not rebuild launcher for %r: %s", title, error)
                 skipped.append(title)
                 continue
 
@@ -535,7 +535,7 @@ class Audit(plugin_base.PluginContext):
 
         await self._run(store.remember_games, records)
 
-        decky.logger.info("Adopted %d game(s), skipped %d", len(adopted), len(skipped))
+        appenv.logger.info("Adopted %d game(s), skipped %d", len(adopted), len(skipped))
         return {"ok": True, "adopted": adopted, "skipped": skipped}
 
 
@@ -552,8 +552,8 @@ class Audit(plugin_base.PluginContext):
         deleting them would break games this is supposed to be tidying up after.
         """
         target = os.path.normpath(path or "")
-        settings_root = os.path.normpath(os.path.join(decky.DECKY_HOME, "settings"))
-        ours = os.path.normpath(decky.DECKY_PLUGIN_SETTINGS_DIR)
+        settings_root = os.path.normpath(os.path.join(appenv.PREVIOUS_ROOT, "settings"))
+        ours = os.path.normpath(appenv.SETTINGS_DIR)
 
         # Most specific first, so the message names the real objection: our own
         # registry lives inside the settings folder too, and reporting it as "out
@@ -582,7 +582,7 @@ class Audit(plugin_base.PluginContext):
         except OSError as error:
             return {"ok": False, "error": "Could not delete it: %s" % error}
 
-        decky.logger.info("Discarded a previous install's registry: %s (%d game(s))", target, count)
+        appenv.logger.info("Discarded a previous install's registry: %s (%d game(s))", target, count)
         return {"ok": True, "discarded": count}
 
 

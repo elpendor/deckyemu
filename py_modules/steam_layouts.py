@@ -20,7 +20,7 @@ one line keeps this to a transform of the user's own files.
 import os
 import re
 
-import decky
+import appenv
 
 #: Where Steam keeps the layouts its picker offers, and where a derived one has
 #: to sit to be selectable. Third-party tools put templates here too -- the
@@ -110,5 +110,5 @@ def ensure(templates_dir=None):
     except OSError as error:
         return "", "Could not write the gyro layout: %s" % error
 
-    decky.logger.info("Wrote the gyro layout template to %s", target)
+    appenv.logger.info("Wrote the gyro layout template to %s", target)
     return target, ""

@@ -33,7 +33,7 @@ import html
 import os
 import re
 
-import decky
+import appenv
 
 import emu_install
 
@@ -97,7 +97,7 @@ def _titles():
     except OSError as error:
         # Not worth failing an add over. Without this the game keeps the name
         # its file has, which is what happened before this module existed.
-        decky.logger.warning("Could not read %s: %s", path, error)
+        appenv.logger.warning("Could not read %s: %s", path, error)
         return {}
 
     titles = {}
@@ -110,7 +110,7 @@ def _titles():
         if name and title:
             titles[name] = title
 
-    decky.logger.info("Read %d arcade ROM set names from %s", len(titles), path)
+    appenv.logger.info("Read %d arcade ROM set names from %s", len(titles), path)
     _cache = (stamp, titles)
     return titles
 

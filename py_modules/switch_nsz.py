@@ -37,7 +37,7 @@ import re
 import shutil
 import struct
 
-import decky
+import appenv
 
 #: Written beside the real name while unpacking, as `unpack` does, so nothing
 #: scanning the transfer folder picks up a half-written package.
@@ -318,7 +318,7 @@ class _Writer:
             try:
                 self._progress(self.written, self._total)
             except Exception as error:  # noqa: BLE001 -- a bar is not worth the unpack
-                decky.logger.warning("nsz progress report failed: %s", error)
+                appenv.logger.warning("nsz progress report failed: %s", error)
 
 
 class _Release:
@@ -584,13 +584,13 @@ def into_folder(path, destination, progress=None, name=None, use_up=True):
             os.remove(temporary)
         except OSError:
             pass
-        decky.logger.warning("Could not unpack %s: %s", path, error)
+        appenv.logger.warning("Could not unpack %s: %s", path, error)
         release = state.get("release")
         if release is not None and release.done:
             return [], ("Could not unpack this .nsz: %s. There was only room by "
                         "using it up as it went, so it has to be sent again." % error)
         return [], "Could not unpack this .nsz: %s." % error
 
-    decky.logger.info("Unpacked %s into %s (%d bytes%s)", os.path.basename(path), name, total,
+    appenv.logger.info("Unpacked %s into %s (%d bytes%s)", os.path.basename(path), name, total,
                       ", freeing the source as it went" if release_source else "")
     return [name], ""

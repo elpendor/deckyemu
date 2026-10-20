@@ -23,7 +23,7 @@ the board name only labels the answer.
 
 import os
 
-import decky
+import appenv
 
 DMI_DIR = "/sys/class/dmi/id"
 
@@ -103,9 +103,9 @@ def log_once():
     """Say what this is at startup, so a report explains itself without asking."""
     found = detect()
     if found["supported"]:
-        decky.logger.info("Device: %s", found["model"])
+        appenv.logger.info("Device: %s", found["model"])
     else:
-        decky.logger.warning(
+        appenv.logger.warning(
             "Device is not a Steam Deck: vendor=%r product=%r (%s)",
             found["vendor"], found["product"], found["why"],
         )

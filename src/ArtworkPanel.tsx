@@ -12,9 +12,7 @@ import { toaster } from "@decky/api";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
-  findExistingSgdbKey,
   getSettings,
-  importExistingSgdbKey,
   setSettings,
   validateSgdbKey,
   type PluginSettings,
@@ -100,17 +98,11 @@ export function ArtworkPanel() {
   const [settings, setLocalSettings] = useState<PluginSettings | null>(null);
   const [keyInput, setKeyInput] = useState("");
   const [savingKey, setSavingKey] = useState(false);
-  // A key already stored by another plugin, offered as a one-tap import.
-  const [importable, setImportable] = useState<{ found: boolean; source: string }>({
-    found: false,
-    source: "",
-  });
   // TextField is not ref-forwarding, so reach the <input> through a wrapper.
   const keyBoxRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     callWithRetry(getSettings).then(setLocalSettings).catch(() => undefined);
-    findExistingSgdbKey().then(setImportable).catch(() => undefined);
   }, []);
 
   const patch = useCallback(async (changes: Record<string, unknown>) => {
@@ -215,22 +207,6 @@ export function ArtworkPanel() {
     });
   }, [commitKey]);
 
-  const importKey = useCallback(async () => {
-    setSavingKey(true);
-    try {
-      const result = await importExistingSgdbKey();
-      if (!result.ok) {
-        toaster.toast({ title: "Could not import key", body: result.error ?? "" });
-        return;
-      }
-      setLocalSettings(await getSettings());
-      setImportable({ found: false, source: "" });
-      toaster.toast({ title: "SteamGridDB key imported", body: `Key ${result.how}.` });
-    } finally {
-      setSavingKey(false);
-    }
-  }, []);
-
   const clearKey = useCallback(async () => {
     await patch({ sgdb_api_key: "" });
     setKeyInput("");
@@ -285,19 +261,6 @@ export function ArtworkPanel() {
           </PanelSectionRow>
         ) : (
           <>
-            {importable.found && (
-              <PanelSectionRow>
-                <ButtonItem
-                  layout="below"
-                  onClick={importKey}
-                  disabled={savingKey}
-                  description="Skips the steps below -- this key is already on the Deck."
-                >
-                  {savingKey ? "Checking..." : `Import key from ${importable.source}`}
-                </ButtonItem>
-              </PanelSectionRow>
-            )}
-
             {/* "B twice" is not a slip. Signing in is a redirect chain -- Steam's
                 OpenID page, then SteamGridDB's -- and each leaves its own history
                 entry, so the first B goes back to the sign-in page rather than

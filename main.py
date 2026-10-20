@@ -7,7 +7,7 @@ import re
 import sys
 from typing import Optional
 
-import decky
+import appenv
 
 import cheevos
 import emulator_catalog
@@ -117,7 +117,7 @@ def _check_own_modules():
             continue
         path = os.path.abspath(getattr(module, "__file__", "") or "")
         if not path.startswith(here):
-            decky.logger.error(
+            appenv.logger.error(
                 "Module %r is %s, not ours -- the name collides with something decky "
                 "already imported. Rename it.", name, path or "built in",
             )
@@ -157,7 +157,7 @@ def _log_failures(cls):
             try:
                 return await method(*args, **kwargs)
             except Exception:
-                decky.logger.exception("%s() failed", name)
+                appenv.logger.exception("%s() failed", name)
                 raise
 
         return logged
@@ -276,7 +276,7 @@ class Plugin(
         self._install = None
         self._cores = []
         self._emulators = []
-        decky.logger.info("DeckyEmu starting")
+        appenv.logger.info("DeckyEmu starting")
         _check_own_modules()
         # Said once, at the top of the log, so a report from unsupported
         # hardware explains itself before anyone reads a line of what went
@@ -373,7 +373,7 @@ class Plugin(
                 # Not CancelledError, which is a BaseException and so not caught
                 # here: a cancelled startup is decky shutting the plugin down,
                 # and it must be allowed to.
-                decky.logger.exception("Startup: could not %s -- carrying on", label)
+                appenv.logger.exception("Startup: could not %s -- carrying on", label)
 
     async def _unload(self):
         # Cancelled before stopping, and only here. Stopping deliberately leaves
@@ -409,7 +409,7 @@ class Plugin(
             try:
                 await asyncio.wait({task}, timeout=2)
             except Exception:
-                decky.logger.exception("Unload: could not stop the update watch")
+                appenv.logger.exception("Unload: could not stop the update watch")
             self._update_task = None
 
         launch_task = getattr(self, "_launch_task", None)
@@ -418,7 +418,7 @@ class Plugin(
             try:
                 await asyncio.wait({launch_task}, timeout=2)
             except Exception:
-                decky.logger.exception("Unload: could not stop the launch watch")
+                appenv.logger.exception("Unload: could not stop the launch watch")
             self._launch_task = None
 
         for label, step in (
@@ -429,8 +429,8 @@ class Plugin(
             try:
                 await self._run(step)
             except Exception:
-                decky.logger.exception("Unload: could not %s", label)
-        decky.logger.info("DeckyEmu unloading")
+                appenv.logger.exception("Unload: could not %s", label)
+        appenv.logger.info("DeckyEmu unloading")
 
     async def _uninstall(self):
         # Nothing to clean up, and nothing is cleaned up for us either -- this
@@ -444,7 +444,7 @@ class Plugin(
         # goes on working after an uninstall, and a reinstall finds its whole
         # library still recorded. Deleting either would break a shelf of Steam
         # entries as a side effect of removing a plugin.
-        decky.logger.info("DeckyEmu uninstalled")
+        appenv.logger.info("DeckyEmu uninstalled")
 
     async def _run(self, func, *args, **kwargs):
         return await self.loop.run_in_executor(None, functools.partial(func, *args, **kwargs))
@@ -502,9 +502,9 @@ class Plugin(
                 # there is nothing left to emit to in any case.
                 raise
             except Exception as error:
-                decky.logger.exception("Background work for %s failed", event)
+                appenv.logger.exception("Background work for %s failed", event)
                 try:
-                    await decky.emit(
+                    await appenv.emit(
                         event, *args, False,
                         "%s: %s" % (type(error).__name__, error),
                     )
@@ -512,7 +512,7 @@ class Plugin(
                     # The socket is the only way to report anything, so its
                     # failure ends the matter. Logged rather than raised so the
                     # original exception above stays the one in the log.
-                    decky.logger.exception("Could not report the failure of %s", event)
+                    appenv.logger.exception("Could not report the failure of %s", event)
 
         task = self.loop.create_task(guarded())
         if once:
@@ -568,7 +568,7 @@ class Plugin(
         # Steam's runtime libraries make flatpak fail instantly with an
         # OPENSSL symbol error, so they are cleared first.
         env = sysenv.clean_env()
-        home = env.get("DECKY_USER_HOME") or ra_detect.user_home()
+        home = env.get("DECKYEMU_USER_HOME") or ra_detect.user_home()
         if home:
             env["HOME"] = home
             env.setdefault("XDG_DATA_HOME", os.path.join(home, ".local", "share"))
@@ -623,7 +623,7 @@ class Plugin(
         two lines come back as the error, because that is where flatpak puts the
         reason and the exit code alone has cost a debugging round before.
         """
-        decky.logger.info("Running: %s", " ".join(argv))
+        appenv.logger.info("Running: %s", " ".join(argv))
         try:
             process = await asyncio.create_subprocess_exec(
                 *argv,
@@ -637,12 +637,12 @@ class Plugin(
         except asyncio.TimeoutError:
             return {"ok": False, "error": "flatpak did not finish within three minutes."}
         except (OSError, NotImplementedError) as error:
-            decky.logger.exception("Could not run flatpak")
+            appenv.logger.exception("Could not run flatpak")
             return {"ok": False, "error": "Could not run flatpak: %s" % error}
 
         text = (output or b"").decode("utf-8", errors="replace").strip()
         for line in text.splitlines():
-            decky.logger.info("flatpak: %s", line)
+            appenv.logger.info("flatpak: %s", line)
 
         if process.returncode != 0:
             tail = [line for line in text.splitlines() if line.strip()][-2:]
@@ -932,7 +932,7 @@ class Plugin(
         if error:
             return {"ok": False, "playlist": "", "discs": [], "error": error}
 
-        decky.logger.info("Added %s to %s; playlist now names %d discs",
+        appenv.logger.info("Added %s to %s; playlist now names %d discs",
                           name, entry.get("title"), len(discs))
         return {"ok": True, "playlist": written, "discs": discs, "error": ""}
 
@@ -996,9 +996,9 @@ class Plugin(
         folder = os.path.dirname(rom_path)
         path, error = await self._run(discset.write_playlist, folder, list(discs or []))
         if error:
-            decky.logger.warning("Could not write a playlist in %s: %s", folder, error)
+            appenv.logger.warning("Could not write a playlist in %s: %s", folder, error)
             return {"ok": False, "path": "", "error": error}
-        decky.logger.info("Wrote %s naming %d disc(s)", path, len(discs))
+        appenv.logger.info("Wrote %s naming %d disc(s)", path, len(discs))
         return {"ok": True, "path": path, "error": ""}
 
     def _core_by_id(self, core_id):
@@ -1053,7 +1053,7 @@ class Plugin(
         if api_key:
             sgdb_hits = await self._run(sgdb.search_candidates, api_key, term, databases, "", 10)
 
-        decky.logger.info(
+        appenv.logger.info(
             "list_art_candidates(%r): %d libretro, %d steamgriddb",
             term,
             len(libretro_hits),
@@ -1090,7 +1090,7 @@ class Plugin(
         # report from the outside, and telling them apart afterwards meant
         # inferring the choice from the artwork request it caused -- which is
         # not the same thing and read wrongly twice.
-        decky.logger.info(
+        appenv.logger.info(
             "apply_art_candidate: source=%s ref=%r system=%r row=%r",
             source, ref, system, picked_name,
         )
@@ -1114,7 +1114,7 @@ class Plugin(
             # but it is no longer the only way to know.
             name = await self._run(sgdb.game_name, api_key, game_id)
             name = name or (picked_name or "").strip()[:120]
-            decky.logger.info(
+            appenv.logger.info(
                 "apply_art_candidate -> %d image(s), named %r (database) / %r (row)",
                 len(art), name, picked_name,
             )
@@ -1135,7 +1135,7 @@ class Plugin(
                 return {"ok": False, "error": "That thumbnail could not be downloaded."}
             # The thumbnail's own name is the label the row showed, so there
             # is nothing to fall back to and nothing that can fail.
-            decky.logger.info(
+            appenv.logger.info(
                 "apply_art_candidate -> %d image(s), named %r (thumbnail)", len(art), ref,
             )
             return {
@@ -1241,7 +1241,7 @@ class Plugin(
         is written after it: the discs move, and a path worked out beforehand is
         a path to where they used to be.
         """
-        decky.logger.info("prepare_shortcut: title=%r core=%s rom=%s", title, core_id, rom_path)
+        appenv.logger.info("prepare_shortcut: title=%r core=%s rom=%s", title, core_id, rom_path)
         # The last plugin code that runs before a game exists to be launched, so
         # the last chance to notice that the emulator about to run it has thrown
         # its settings away. This is the sequence that produced the bug: install
@@ -1316,7 +1316,7 @@ class Plugin(
             if await self._run(os.path.isfile, candidate):
                 launch_path = candidate
             else:
-                decky.logger.warning(
+                appenv.logger.warning(
                     "prepare_shortcut: %s is not beside %s; launching the playlist",
                     launch_name, rom_path,
                 )
@@ -1340,7 +1340,7 @@ class Plugin(
                 title_id,
             )
         except OSError as error:
-            decky.logger.exception("Failed writing launcher")
+            appenv.logger.exception("Failed writing launcher")
             return {"ok": False, "error": "Could not write launcher script: %s" % error}
 
         return {
@@ -1493,7 +1493,7 @@ class Plugin(
 
         path = await self._run(gameicon.save, app_id, payload) or             await self._run(gameicon.for_game, app_id, "")
         found = await self._run(gameicon.has_own, app_id)
-        decky.logger.info("fetch_game_icon: app_id=%s found=%s", app_id, found)
+        appenv.logger.info("fetch_game_icon: app_id=%s found=%s", app_id, found)
         return {"ok": True, "found": found, "path": path}
 
     async def game_icon(self, app_id: int, data: str = "") -> dict:
@@ -1519,7 +1519,7 @@ class Plugin(
         collection: Optional[str] = None,
     ):
         core = self._core_by_id(core_id)
-        decky.logger.info("register_game: app_id=%s title=%r", app_id, title)
+        appenv.logger.info("register_game: app_id=%s title=%r", app_id, title)
         settings = await self._run(store.get_settings)
         entry = self._entry_for(
             settings, app_id, title, rom_path, core_id, core, launcher_path, system
@@ -1576,7 +1576,7 @@ class Plugin(
         recording a new one without moving the app is the inconsistency that bit
         us before.
         """
-        decky.logger.info(
+        appenv.logger.info(
             "update_game: app_id=%s title=%r core=%s rom=%s options=%s",
             app_id,
             title,
@@ -1653,7 +1653,7 @@ class Plugin(
                 _title_id_for(rom_path),
             )
         except OSError as error:
-            decky.logger.exception("Could not rewrite launcher")
+            appenv.logger.exception("Could not rewrite launcher")
             return {"ok": False, "error": "Could not write the launcher: %s" % error}
 
         # The launcher filename embeds both the title and a hash of the ROM path,
@@ -1750,7 +1750,7 @@ class Plugin(
             except OSError as remove_error:
                 # The copy is made and the patch works; a file left in the inbox
                 # is untidy rather than broken.
-                decky.logger.warning("Could not clear %s from the inbox: %s",
+                appenv.logger.warning("Could not clear %s from the inbox: %s",
                                      source, remove_error)
         return await self.sync_rom_patches(app_id, name=(row or {}).get("name", ""))
 
@@ -1777,7 +1777,7 @@ class Plugin(
         if not rom_path:
             return {"ok": False, "error": "That game is no longer tracked."}
         written, error = await self._run(rompatch.sync, app_id, rom_path)
-        decky.logger.info("rom patches: app_id=%s applied=%s%s",
+        appenv.logger.info("rom patches: app_id=%s applied=%s%s",
                           app_id, written, " (%s)" % error if error else "")
         if error:
             return {"ok": False, "error": error,
@@ -1852,7 +1852,7 @@ class Plugin(
         def report(done, total):
             percent = int(done * 100 / total) if total else -1
             asyncio.run_coroutine_threadsafe(
-                decky.emit("nsz_unpack_progress", name, percent), loop)
+                appenv.emit("nsz_unpack_progress", name, percent), loop)
 
         row, error = await self._run(
             gamecontent.add, app_id, (path or "").strip(), base_id, inbox, report)
@@ -1877,7 +1877,7 @@ class Plugin(
     async def _sync_game_content(self, app_id, games_root, base_id, name):
         error = await self._run(gamecontent.sync, app_id, base_id, games_root)
         rows = await self._run(gamecontent.rows, app_id)
-        decky.logger.info("game content: app_id=%s base=%s kept=%d%s", app_id, base_id,
+        appenv.logger.info("game content: app_id=%s base=%s kept=%d%s", app_id, base_id,
                           len(rows), " (%s)" % error if error else "")
         if error:
             return {"ok": False, "error": error, "rows": rows}
@@ -1987,7 +1987,7 @@ class Plugin(
             self._write_launchers, self._install, self._menu_combo(settings), settings, jobs
         )
 
-        decky.logger.info("Rebuilt %d launcher(s), skipped %d", rebuilt, len(skipped))
+        appenv.logger.info("Rebuilt %d launcher(s), skipped %d", rebuilt, len(skipped))
         return {"ok": True, "rebuilt": rebuilt, "skipped": skipped}
 
     @staticmethod
@@ -2048,7 +2048,7 @@ class Plugin(
                 )
                 rebuilt += 1
             except OSError as error:
-                decky.logger.warning(
+                appenv.logger.warning(
                     "Could not rebuild launcher for %r: %s", job["label"], error
                 )
                 skipped.append(job["label"])
@@ -2164,7 +2164,7 @@ class Plugin(
         where = (where or "the interface")[:120]
         message = (message or "")[:self._FRONTEND_ERROR_LIMIT]
         detail = (detail or "")[:self._FRONTEND_ERROR_LIMIT]
-        decky.logger.error(
+        appenv.logger.error(
             "frontend: %s: %s%s", where, message, ("\n" + detail) if detail else ""
         )
         return {"ok": True}
@@ -2185,7 +2185,7 @@ class Plugin(
         # write keys of their own choosing knowingly.
         patch, dropped = await self._run(store.known_only, patch)
         if dropped:
-            decky.logger.warning(
+            appenv.logger.warning(
                 "Ignoring unknown setting(s): %s", ", ".join(sorted(dropped))
             )
         await self._run(store.set_settings, patch)

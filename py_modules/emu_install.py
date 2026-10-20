@@ -35,7 +35,7 @@ import tarfile
 import zipfile
 from urllib.parse import unquote
 
-import decky
+import appenv
 
 import savedata
 import sysenv
@@ -152,7 +152,7 @@ def seed_bundled_files(app_id, seed):
             # The package moved its data, which is a thing to say rather than a
             # thing to fail over: everything else about the install is fine, and
             # the emulator may well have been fixed upstream.
-            decky.logger.warning(
+            appenv.logger.warning(
                 "%s ships no %s to seed from", app_id, source)
             continue
         try:
@@ -170,7 +170,7 @@ def seed_bundled_files(app_id, seed):
             return copied, "could not place %s: %s" % (source, error)
 
     if copied:
-        decky.logger.info("Seeded %d file(s) %s ships but does not find",
+        appenv.logger.info("Seeded %d file(s) %s ships but does not find",
                           len(copied), app_id)
     return copied, ""
 
@@ -420,7 +420,7 @@ def flatpak_hold(app_id, held):
 
     text = done.stdout.decode("utf-8", errors="replace").strip()
     for line in text.splitlines():
-        decky.logger.info("flatpak: %s", line)
+        appenv.logger.info("flatpak: %s", line)
     if done.returncode != 0:
         lines = [line for line in text.splitlines() if line.strip()]
         return False, lines[-1] if lines else "flatpak exited with %d" % done.returncode
@@ -585,9 +585,9 @@ def remove_flatpak_husk(app_id):
     try:
         shutil.rmtree(path)
     except OSError as error:
-        decky.logger.warning("Could not remove the leftover %s: %s", path, error)
+        appenv.logger.warning("Could not remove the leftover %s: %s", path, error)
         return 0
-    decky.logger.info("Removed the leftover deploy directory %s (%d bytes)", path, freed)
+    appenv.logger.info("Removed the leftover deploy directory %s (%d bytes)", path, freed)
     return freed
 
 
@@ -1089,7 +1089,7 @@ def _digest_matches(path, digest):
             return False, "Could not read the download: %s" % error
         got = reader.hexdigest()
     if got != wanted:
-        decky.logger.warning("Digest mismatch for %s: wanted %s, got %s",
+        appenv.logger.warning("Digest mismatch for %s: wanted %s, got %s",
                              path, wanted, got)
         return False, ("The download does not match the checksum the release "
                        "published, so it arrived damaged or altered. Nothing "
@@ -1212,7 +1212,7 @@ def install_appimage(entry, asset, on_progress=None):
     # the panel says the fix could not be applied to it.
     emu_patch.refresh(entry, path, asset.get("tag", ""))
 
-    decky.logger.info("Installed %s to %s", entry["id"], path)
+    appenv.logger.info("Installed %s to %s", entry["id"], path)
     return path, ""
 
 
@@ -1239,7 +1239,7 @@ def _remove_others(directory, keep):
             else:
                 os.remove(path)
         except OSError as error:
-            decky.logger.warning("Could not remove old build %s: %s", name, error)
+            appenv.logger.warning("Could not remove old build %s: %s", name, error)
 
 
 def tools_dir(*parts, create=True):
@@ -1301,7 +1301,7 @@ def _replace(target):
     except FileNotFoundError:
         pass
     except OSError as error:
-        decky.logger.warning("Could not replace %s: %s", target, error)
+        appenv.logger.warning("Could not replace %s: %s", target, error)
 
 
 def _safe_target(destination, name):
@@ -1539,7 +1539,7 @@ def install_tool(name, asset, on_progress=None, extract=""):
 
     _remove_others(target_dir, keep=[os.path.basename(one) for one in kept]
                    or os.path.basename(path))
-    decky.logger.info("Installed tool %s to %s", name, path)
+    appenv.logger.info("Installed tool %s to %s", name, path)
     return path, ""
 
 
@@ -1780,7 +1780,7 @@ def write_build_record(entry_id, tag, asset_name, versions=()):
     except OSError as error:
         # Not fatal: the emulator is installed and runs. What is lost is the
         # ability to say which build it is, which degrades to "unknown".
-        decky.logger.warning("Could not record the build of %s: %s", entry_id, error)
+        appenv.logger.warning("Could not record the build of %s: %s", entry_id, error)
 
 
 #: What the newest release of each AppImage emulator was, the last time somebody
@@ -1793,7 +1793,7 @@ def write_build_record(entry_id, tag, asset_name, versions=()):
 #: the thing that may be thrown away: losing it costs one press of the check
 #: button, and losing the build record costs the ability to name the build at
 #: all.
-LATEST_TAGS = os.path.join(decky.DECKY_PLUGIN_RUNTIME_DIR, "latest-tags.json")
+LATEST_TAGS = os.path.join(appenv.DATA_DIR, "latest-tags.json")
 
 
 def read_latest_tags():
@@ -1820,7 +1820,7 @@ def write_latest_tags(tags):
         with open(LATEST_TAGS, "w", encoding="utf-8") as handle:
             json.dump(tags, handle, indent=2)
     except OSError as error:
-        decky.logger.warning("Could not record the latest tags: %s", error)
+        appenv.logger.warning("Could not record the latest tags: %s", error)
 
 
 def github_latest_tag(repo):
@@ -2016,7 +2016,7 @@ def remove_tool(name):
         return False, "Could not remove %s: %s" % (name, error)
     # So a retry is not held off by a backoff from before it was removed.
     _TOOL_RETRY_AFTER.pop(name, None)
-    decky.logger.info("Removed tool %s", name)
+    appenv.logger.info("Removed tool %s", name)
     return True, ""
 
 

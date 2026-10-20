@@ -23,7 +23,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from harness import check, section  # noqa: E402  -- installs the decky stub
 
-import decky  # noqa: E402
+import appenv  # noqa: E402
 import devreset  # noqa: E402
 
 
@@ -45,12 +45,12 @@ class _Recorder:
 
 section("a reset names what it destroyed")
 
-_real = decky.logger
+_real = appenv.logger
 _recorder = _Recorder()
-decky.logger = _recorder
-devreset.decky.logger = _recorder
+appenv.logger = _recorder
+devreset.appenv.logger = _recorder
 try:
-    settings_dir = decky.DECKY_PLUGIN_SETTINGS_DIR
+    settings_dir = appenv.SETTINGS_DIR
     os.makedirs(settings_dir, exist_ok=True)
     # Two of the seven, so the message has to list what was there rather than
     # everything it might have removed.
@@ -87,7 +87,7 @@ try:
 
     # The directory half, which is what removed RetroArch.
     _recorder.lines = []
-    victim = os.path.join(decky.DECKY_PLUGIN_RUNTIME_DIR, "pretend-retroarch")
+    victim = os.path.join(appenv.DATA_DIR, "pretend-retroarch")
     os.makedirs(victim, exist_ok=True)
     with open(os.path.join(victim, "core.so"), "w", encoding="utf-8") as handle:
         handle.write("x" * 32)
@@ -101,8 +101,8 @@ try:
           devreset._remove(victim) or _recorder.lines[1:], [])
 finally:
     # The suite shares one logger; a file that swaps it must put it back.
-    decky.logger = _real
-    devreset.decky.logger = _real
+    appenv.logger = _real
+    devreset.appenv.logger = _real
 
 
 if __name__ == "__main__":

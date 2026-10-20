@@ -29,7 +29,7 @@ import os
 import re
 import shutil
 
-import decky
+import appenv
 
 import platforms
 import sysenv
@@ -393,7 +393,7 @@ def delete_rom(rom_path, library=""):
     except OSError:
         pass
 
-    decky.logger.info("Deleted %s, freeing %d bytes", ", ".join(group), freed)
+    appenv.logger.info("Deleted %s, freeing %d bytes", ", ".join(group), freed)
     return freed, ""
 
 
@@ -444,15 +444,15 @@ def file_rom(rom_path, system, inbox, library=""):
                 try:
                     os.remove(os.path.join(inbox, name))
                 except OSError as error:
-                    decky.logger.warning("Could not remove the duplicate %s: %s", name, error)
+                    appenv.logger.warning("Could not remove the duplicate %s: %s", name, error)
                     return rom_path
-            decky.logger.info(
+            appenv.logger.info(
                 "%s was already filed in %s; removed the duplicate",
                 os.path.basename(rom_path), slug,
             )
             return os.path.join(target, os.path.basename(rom_path))
 
-        decky.logger.info(
+        appenv.logger.info(
             "Not filing %s: a different %s is already in %s",
             os.path.basename(rom_path), clash[0], slug,
         )
@@ -461,7 +461,7 @@ def file_rom(rom_path, system, inbox, library=""):
     try:
         os.makedirs(target, exist_ok=True)
     except OSError as error:
-        decky.logger.warning("Could not create %s: %s", target, error)
+        appenv.logger.warning("Could not create %s: %s", target, error)
         return rom_path
 
     moved = []
@@ -469,15 +469,15 @@ def file_rom(rom_path, system, inbox, library=""):
         try:
             shutil.move(os.path.join(inbox, name), os.path.join(target, name))
         except OSError as error:
-            decky.logger.warning("Could not file %s: %s", name, error)
+            appenv.logger.warning("Could not file %s: %s", name, error)
             # Put back whatever already went, so a half-moved set never exists.
             for done in moved:
                 try:
                     shutil.move(os.path.join(target, done), os.path.join(inbox, done))
                 except OSError:
-                    decky.logger.exception("Could not undo the move of %s", done)
+                    appenv.logger.exception("Could not undo the move of %s", done)
             return rom_path
         moved.append(name)
 
-    decky.logger.info("Filed %s into %s", ", ".join(moved), slug)
+    appenv.logger.info("Filed %s into %s", ", ".join(moved), slug)
     return os.path.join(target, os.path.basename(rom_path))

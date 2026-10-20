@@ -22,7 +22,7 @@ and only the first is worth saying.
 import os
 import struct
 
-import decky
+import appenv
 
 # Xbox discs are XDVDFS, whose header sits one sector into the filesystem. The
 # offset varies by how the image was produced: a plain XISO starts at zero, and
@@ -122,7 +122,7 @@ def _entries(table):
     while stack:
         if len(seen) >= MAX_ENTRIES:
             # Say so rather than return a short list that reads as a full one.
-            decky.logger.warning("XDVDFS root exceeded %d entries", MAX_ENTRIES)
+            appenv.logger.warning("XDVDFS root exceeded %d entries", MAX_ENTRIES)
             complete = False
             break
         offset = stack.pop()
@@ -144,5 +144,5 @@ def _entries(table):
             stack.append(right)
 
     if not found:
-        decky.logger.info("XDVDFS root parsed but held no entries")
+        appenv.logger.info("XDVDFS root parsed but held no entries")
     return found, complete

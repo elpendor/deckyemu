@@ -11,7 +11,7 @@ import posixpath
 import shutil
 import subprocess
 
-import decky
+import appenv
 
 import findfiles
 
@@ -265,7 +265,7 @@ def detect_all():
 def detect():
     installs = detect_all()
     if not installs:
-        decky.logger.warning("No RetroArch install found")
+        appenv.logger.warning("No RetroArch install found")
         return None
     return installs[0]
 

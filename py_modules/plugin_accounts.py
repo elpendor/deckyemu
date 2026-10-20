@@ -14,7 +14,7 @@ feature that silently does nothing.
 Mixed into `Plugin` rather than called by it -- see plugin_firmware for why.
 """
 
-import decky
+import appenv
 
 import plugin_base
 
@@ -103,20 +103,6 @@ class Accounts(plugin_base.PluginContext):
         return {"ok": True}
 
 
-    async def find_existing_sgdb_key(self):
-        """Whether another plugin already has a key we could import."""
-        found = await self._run(sgdb.discover_existing_key)
-        return {"found": bool(found["key"]), "source": found["source"]}
-
-
-    async def import_existing_sgdb_key(self):
-        """Validate and save a key discovered elsewhere on this system."""
-        found = await self._run(sgdb.discover_existing_key)
-        if not found["key"]:
-            return {"ok": False, "error": "No existing SteamGridDB key was found."}
-        return await self._save_validated_key(found["key"], "imported from %s" % found["source"])
-
-
     async def _save_validated_key(self, key: str, how: str):
         check = await self.validate_sgdb_key(key)
         if not check.get("ok"):
@@ -125,7 +111,7 @@ class Accounts(plugin_base.PluginContext):
                 "error": "That key was %s but SteamGridDB rejected it." % how,
             }
         await self._run(store.set_settings, {"sgdb_api_key": key})
-        decky.logger.info("Saved SteamGridDB key (%s)", how)
+        appenv.logger.info("Saved SteamGridDB key (%s)", how)
         return {"ok": True, "how": how}
 
 

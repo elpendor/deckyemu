@@ -21,7 +21,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from harness import check, section, summary  # noqa: E402
 
-import decky  # noqa: E402
+import appenv  # noqa: E402
 import emu_install  # noqa: E402
 import emulator_catalog  # noqa: E402
 import launchers  # noqa: E402
@@ -106,7 +106,7 @@ check("with its own quit chord moved out of the way", "-H guide" in _shell, True
 check("an entry that declares no keys is left alone",
       launchers.hotkey_helper({"id": "plain"}, path="/tmp/game.sh"), "")
 
-_written = os.path.join(decky.DECKY_PLUGIN_RUNTIME_DIR,
+_written = os.path.join(appenv.DATA_DIR,
                         "hotkeys", "keyed-port.ini")
 check("the config is written where the launcher names it", os.path.isfile(_written), True)
 

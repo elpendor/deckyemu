@@ -19,7 +19,7 @@ import shutil
 import time
 import zipfile
 
-import decky
+import appenv
 
 import net
 
@@ -72,7 +72,7 @@ INFO_ZIP_URL = BUILDBOT + "/assets/frontend/info.zip"
 FLATPAK_ID = "org.libretro.RetroArch"
 FLATHUB_REPO = "https://flathub.org/repo/flathub.flatpakrepo"
 
-_CACHE_DIR = os.path.join(decky.DECKY_PLUGIN_RUNTIME_DIR, "installer")
+_CACHE_DIR = os.path.join(appenv.DATA_DIR, "installer")
 _INFO_ZIP_PATH = os.path.join(_CACHE_DIR, "info.zip")
 _AVAILABLE_PATH = os.path.join(_CACHE_DIR, "available.json")
 
@@ -166,7 +166,7 @@ def _available_core_ids(force=False):
                 json.dump(ids, handle)
         except OSError:
             pass
-    decky.logger.info("Buildbot publishes %d cores", len(ids))
+    appenv.logger.info("Buildbot publishes %d cores", len(ids))
     return set(ids)
 
 
@@ -260,11 +260,11 @@ def core_catalog(force=False):
                     }
                 )
     except (OSError, zipfile.BadZipFile) as error:
-        decky.logger.warning("Could not read core catalog: %s", error)
+        appenv.logger.warning("Could not read core catalog: %s", error)
         return []
 
     catalog.sort(key=lambda core: (core["system_name"].lower(), core["display_name"].lower()))
-    decky.logger.info("Core catalog: %d installable cores", len(catalog))
+    appenv.logger.info("Core catalog: %d installable cores", len(catalog))
 
     if key is not None:
         _catalog_cache["key"] = key
@@ -324,14 +324,14 @@ def database_extensions(force=False):
                     if database:
                         mapping.setdefault(database, set()).update(extensions)
     except (OSError, zipfile.BadZipFile) as error:
-        decky.logger.warning("Could not read extension map: %s", error)
+        appenv.logger.warning("Could not read extension map: %s", error)
         return {}
 
     mapping = {name: sorted(values) for name, values in mapping.items()}
     if key is not None:
         _extension_cache["key"] = key
         _extension_cache["map"] = mapping
-    decky.logger.info("Extension map: %d libretro systems", len(mapping))
+    appenv.logger.info("Extension map: %d libretro systems", len(mapping))
     return mapping
 
 
@@ -391,7 +391,7 @@ def install_core(install, core_id, catalog_entry=None):
     # system names and artwork databases.
     info_written = _write_core_info(core_id, cores_dir)
 
-    decky.logger.info("Installed core %s to %s (info=%s)", core_id, cores_dir, info_written)
+    appenv.logger.info("Installed core %s to %s (info=%s)", core_id, cores_dir, info_written)
     return {
         "ok": True,
         "core_id": core_id,
@@ -415,7 +415,7 @@ def _write_core_info(core_id, cores_dir):
             handle.write(data)
         return True
     except (OSError, zipfile.BadZipFile) as error:
-        decky.logger.warning("Could not write info for %s: %s", core_id, error)
+        appenv.logger.warning("Could not write info for %s: %s", core_id, error)
         return False
 
 
