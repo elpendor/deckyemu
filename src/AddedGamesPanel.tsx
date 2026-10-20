@@ -1,4 +1,4 @@
-import { ButtonItem, PanelSectionRow } from "@decky/ui";
+import { ButtonItem, PanelSectionRow } from "./steamui";
 
 import { type AddedGame } from "./backend";
 import { AddedGamesModal } from "./AddedGamesModal";

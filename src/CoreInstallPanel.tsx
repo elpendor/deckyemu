@@ -6,8 +6,8 @@ import {
   PanelSectionRow,
   Spinner,
   type SingleDropdownOption,
-} from "@decky/ui";
-import { toaster } from "@decky/api";
+} from "./steamui";
+import { toaster } from "./host";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {

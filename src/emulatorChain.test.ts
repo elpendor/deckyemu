@@ -32,7 +32,7 @@ const installPs4Package = vi.fn(async (..._args: unknown[]) => ({
 const probeRom = vi.fn();
 const toast = vi.fn();
 
-vi.mock("@decky/api", () => ({
+vi.mock("./host", () => ({
   toaster: { toast: (...args: unknown[]) => toast(...args) },
   addEventListener: (name: string, fn: Handler) => {
     (listeners[name] ||= []).push(fn);

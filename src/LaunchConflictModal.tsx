@@ -6,7 +6,7 @@ import {
   DialogHeader,
   Focusable,
   ModalRoot,
-} from "@decky/ui";
+} from "./steamui";
 import { useState } from "react";
 
 import { steamText, terminateGame, type RunningGame } from "./steam";

@@ -15,9 +15,7 @@ import emulators
 import fileserver
 import findfiles
 import gameicon
-import httpshim
 import installer
-import handoff
 import launchers
 import libretro_meta
 import net
@@ -96,13 +94,12 @@ def _title_id_for(rom_path):
 
 
 def _check_own_modules():
-    """Warn if one of our modules was shadowed by decky's.
+    """Warn if one of our modules was shadowed by another of the same name.
 
-    py_modules is appended to a sys.path that already contains decky_loader's own
-    packages, so a generic name can resolve to decky's module instead of ours --
+    A generic name can resolve to some other package's module instead of ours --
     silently, and only for the parts that use it. `updater.py` did exactly that:
-    everything loaded, and one feature failed with "module 'decky_loader.updater'
-    has no attribute 'check'". Cheap to check, and it names the problem outright.
+    everything loaded, and one feature failed with "module 'updater' has no
+    attribute 'check'". Cheap to check, and it names the problem outright.
 
     Every name py_modules offers is checked, not only the ones main.py imports:
     a module reached through another module can be shadowed just as quietly, and
@@ -118,7 +115,7 @@ def _check_own_modules():
         path = os.path.abspath(getattr(module, "__file__", "") or "")
         if not path.startswith(here):
             appenv.logger.error(
-                "Module %r is %s, not ours -- the name collides with something decky "
+                "Module %r is %s, not ours -- the name collides with something "
                 "already imported. Rename it.", name, path or "built in",
             )
 
@@ -348,9 +345,6 @@ class Plugin(
             ("upgrade emulator setups", self._upgrade_emulator_setups),
             ("re-file split firmware records", self._resplit_firmware_records),
             # Before sharing, which matches by content once this is loaded.
-            # First, and cheap: when a decky build changes its Python again,
-            # the log should already say what went missing.
-            ("note what this Python carries", lambda: self._run(httpshim.report)),
             ("load the BIOS checksum list", self._refresh_bios_dat),
             # Every start, so a library that predates sharing gets it too. Safe
             # to repeat: a share somebody removed is recorded and left alone.
@@ -424,7 +418,6 @@ class Plugin(
         for label, step in (
             ("cancel transfers in flight", fileserver.cancel),
             ("stop the transfer server", fileserver.stop),
-            ("stop the update handoff server", handoff.stop),
         ):
             try:
                 await self._run(step)

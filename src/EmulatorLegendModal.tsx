@@ -1,4 +1,4 @@
-import { ModalRoot } from "@decky/ui";
+import { ModalRoot } from "./steamui";
 import {
   FaCodeBranch,
   FaDownload,

@@ -1,4 +1,4 @@
-import { ButtonItem, Field, PanelSection, PanelSectionRow } from "@decky/ui";
+import { ButtonItem, Field, PanelSection, PanelSectionRow } from "./steamui";
 
 import { describe, FRONTEND_BUILD, FRONTEND_VERSION, isStale } from "./version";
 import { useBackendVersion } from "./useBackendVersion";

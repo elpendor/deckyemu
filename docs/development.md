@@ -1,6 +1,6 @@
 # Developing DeckyEmu
 
-How the plugin is put together, how to build it, and how to run it against a
+How DeckyEmu is put together, how to build it, and how to run it against a
 real Deck. You need none of this to *use* it —
 [getting started](getting-started.md) is the walkthrough, and the rest of these
 pages are the reference.
@@ -8,6 +8,27 @@ pages are the reference.
 Back to [the README](https://github.com/elpendor/deckyemu#readme).
 
 ## How the pieces fit
+
+**DeckyEmu is a service, not a plugin.** A systemd user unit runs `launcher.py`,
+which starts the installed version's `service.py` on SteamOS's own Python. The
+service runs the backend (`main.py` and `py_modules/`), and keeps the panel
+inside Steam's UI over Steam's remote-debugging port:
+
+- `dist/preload.js` is registered to run before Steam's own UI code. It rewrites
+  three of Steam's webpack module factories as they load -- the Quick Access tab
+  list, the Game Mode route list and the game context menu -- each anchored on
+  string literals and localization keys, never on minified names. Any doubt
+  leaves Steam's code as it was.
+- `dist/deckyemu.js` is the panel. It is evaluated once our Quick Access tab has
+  rendered, and builds every control from Steam's own components, found in
+  Steam's build by anchors (`src/steamui/`).
+- The panel calls the backend through a `Runtime.addBinding` function on that
+  same debugger session, so there is no port or token for anything else to find.
+
+Updates install beside the running version and switch over only once whole;
+`launcher.py` goes back to the previous version if a new one never reports
+healthy. The library tile runs `rescue.sh`, which opens the rescue page in
+Steam's browser even when nothing else of DeckyEmu works.
 
 **Core selection drives artwork lookup.** Every core installed through
 RetroArch's Core Updater ships an `.info` file whose `database` field is the
@@ -45,16 +66,13 @@ pnpm run build
 
 ## Developing against a Deck
 
-This plugin has no compiled backend, so you don't need the Docker + Decky CLI
-path from the template. Only the runtime files have to reach the Deck.
+Only the runtime files have to reach the Deck, and nothing needs root.
 
-Set the Deck up once:
-
-1. **Enable SSH.** *Settings → System → Developer Mode*, then enable SSH in the
-   Developer menu. In desktop mode run `passwd` to set the `deck` password.
-2. **Enable frontend debugging.** Turn on **Allow Remote CEF Debugging** in
-   Decky's settings, or `touch ~/.steam/steam/.cef-enable-remote-debugging` and
-   restart Steam.
+Enable SSH once: *Settings → System → Developer Mode*, then enable SSH in the
+Developer menu, and in desktop mode run `passwd` to set the `deck` password. The
+service turns on Steam's debugging port itself (it creates
+`~/.steam/steam/.cef-enable-remote-debugging`); that takes effect the next time
+Steam starts.
 
 > **Two ports answer and only one is usable from another machine.** `8080` is
 > bound to `127.0.0.1`, while **`8081` listens on all interfaces**. Both serve
@@ -63,21 +81,24 @@ Set the Deck up once:
 Then, from this repo:
 
 ```sh
-DECK_HOST=steamdeck.local pnpm run dev     # build + push
+DECK_HOST=steamdeck.local pnpm run dev     # build + install + restart
 ```
 
-`pnpm run dev` builds and pushes; `pnpm run deploy` pushes without rebuilding.
-Both accept `DECK_HOST`, `DECK_USER`, `DECK_PORT` and `PLUGIN_DIR`.
-
-Decky's file watcher (`LIVE_RELOAD`, on by default) reloads the plugin, so you
-don't normally need a service restart. When something gets stuck:
+`pnpm run dev` builds and deploys; `pnpm run deploy` deploys without
+rebuilding. Both accept `DECK_HOST`, `DECK_USER` and `DECK_PORT`. Each deploy is
+a new version under `~/.local/share/deckyemu/app/`, installed with
+`service.py --install`; the service restarts into it and the panel in Steam is
+replaced where it stands, without restarting Steam.
 
 ```sh
-# Backend log. Decky starts a new one on every reload, so follow the newest.
-ssh deck@steamdeck.local 'tail -f "$(ls -t ~/homebrew/logs/deckyemu/*.log | head -1)"'
+# The service's log, as systemd sees it
+ssh deck@steamdeck.local 'journalctl --user -u deckyemu -f'
 
-# Force a full reload of decky and every plugin
-ssh deck@steamdeck.local 'sudo systemctl restart plugin_loader'
+# The backend log the diagnostic report reads: one file per start
+ssh deck@steamdeck.local 'tail -f "$(ls -t ~/.local/share/deckyemu/logs/*.log | head -1)"'
+
+# Restart the service
+ssh deck@steamdeck.local 'systemctl --user restart deckyemu'
 ```
 
 For frontend logs and React state, open `chrome://inspect` in a desktop Chrome,
@@ -88,13 +109,13 @@ The deployed sourcemap points stack traces at the original `.tsx` — deployed
 only. A published release ships without one, so traces there are minified.
 Deploy from this repo when you need to read them.
 
-The backend log carries no prefix of its own; decky writes the timestamp and
-level, and the message follows. Every public method on `Plugin` is wrapped, so a
+Each backend log line starts with the timestamp and level, and the message
+follows. Every public method on `Plugin` is wrapped, so a
 failing one appears as `<method>() failed` with its traceback. That's the first
 thing to grep for:
 
 ```sh
-ssh deck@steamdeck.local 'grep -A 20 "() failed" "$(ls -t ~/homebrew/logs/deckyemu/*.log | head -1)"'
+ssh deck@steamdeck.local 'grep -A 20 "() failed" "$(ls -t ~/.local/share/deckyemu/logs/*.log | head -1)"'
 ```
 
 Frontend `console` calls are prefixed `[deckyemu]`, but nothing in Game Mode can
@@ -193,7 +214,7 @@ A scope or a `!` is accepted and ignored (`fix(store):`, `perf!:`).
 There's no changelog file to update and no release notes to write — they come
 from the log. CI is dispatched by hand (`gh workflow run ci.yml -f publish=true
 -f bump=patch`), which is what bumps the version, tags it and publishes the zip
-the plugin's own updater reads.
+DeckyEmu's own updater reads.
 
 ## Layout
 
@@ -214,8 +235,8 @@ py_modules/                 Backend logic. Plain Python, no third-party
   unpack.py                 Extract a zip that arrived in the transfer folder
   libretro_meta.py          Name cleanup and libretro thumbnail resolution
   sgdb.py                   SteamGridDB search, scoring, era filtering
-  vendored_difflib.py       CPython 3.11's difflib, which decky stopped bundling;
-                            the two above score names with it
+  vendored_difflib.py       CPython 3.11's difflib, pinned so name scores do not
+                            move with the Python; the two above use it
   platforms.py              libretro database -> short name and folder name;
                             and which system a file extension names, for the
                             cores that cover several
@@ -260,7 +281,14 @@ py_modules/                 Backend logic. Plain Python, no third-party
   fileserver_page.py        The pages that server serves. Pure functions of what
                             they are handed; the server keeps state and sockets
   releases.py               Find newer releases on GitHub. Looks only.
-  handoff.py                Serve one staged update to decky over loopback
+  selfupdate.py             Install a release beside the running one; switch,
+                            commit once healthy, roll back
+  migrate.py                Carry an older install's state over, once
+  cdp.py                    Steam's remote-debugging port: list pages, talk to one
+  injector.py               Keep the preload, the panel and the call channel in
+                            Steam's UI across its restarts
+  hostcalls.py              The service's own methods, called as `host.*`
+  rescue.py                 The page the library tile opens: status and repairs
   diagnostics.py            The redacted report behind Report a problem
   devreset.py               Development-only resets. Gated twice; absent from a
                             release build and refused by the backend in one.
@@ -278,10 +306,9 @@ py_modules/                 Backend logic. Plain Python, no third-party
                             emulator reads it
   ra_firmware.py            RetroArch's BIOS rows, read off each core's .info
   bios_dat.py               Recognise a BIOS by checksum, from libretro's list
-  httpshim.py               http.server if this decky build carries it, or a
-                            stand-in built on socket and threading if not
-  findfiles.py              Listing files without glob, which decky does not
-                            bundle
+  httpshim.py               http.server, or a stand-in built on socket and
+                            threading where a Python lacks it
+  findfiles.py              Listing files without glob
   emu_patch.py              Correct a bug inside an emulator's own binary, when
                             nothing else reaches it
   steam_layouts.py          The Steam Input layout an emulator needs, derived
@@ -318,14 +345,25 @@ py_modules/                 Backend logic. Plain Python, no third-party
   plugin_startup.py         One-time migrations of data already on the device.
                             The sequence they run in stays in main.py's _main
   plugin_transfers.py       Sending files to the Deck, and reading a report back
-  plugin_updates.py         What build this is, and finding + staging newer ones
-                            These twelve are mixins: decky exposes the methods it
-                            finds on the plugin object, so the names must stay
-                            on Plugin while the code lives somewhere findable.
+  plugin_updates.py         What build this is, and finding + installing newer
+                            ones. These twelve are mixins: the service exposes
+                            the methods it finds on the Plugin object, so the
+                            names must stay on Plugin while the code lives
+                            somewhere findable.
                             None of them may be instantiated alone.
 
 src/                        Frontend (React + TypeScript, bundled by rollup).
-  index.tsx                 Quick Access panel root, and route registration
+  main.tsx                  The bundle's entry: connects to the service and
+                            fills the preload's tab, page and menu placeholders
+  index.tsx                 Quick Access panel root; start() returns what
+                            main.tsx registers
+  preload/                  The script Steam runs before its own UI code, and
+                            bridge.ts, the contract it shares with the bundle
+  steamui/                  Steam's own controls, navigation and modals, found in
+                            its build at runtime, each with a plain stand-in
+  host/                     The channel to the service, toasts and the file
+                            picker
+  rescueTile.ts             The library tile that opens the rescue page
   ManagePage.tsx            The settings page. One route per tab -- Steam's
                             SidebarNavigation picks its tab from the URL.
   ErrorBoundary.tsx         One per surface. A throw during render is not
@@ -362,14 +400,18 @@ src/                        Frontend (React + TypeScript, bundled by rollup).
   timeout.ts                withTimeout + callWithRetry, for calls lost when the
                             plugin reloads mid-flight
   version.ts                Build stamps compiled in by rollup; isStale()
-  updater.ts                Hand an update to decky's own installer
 
-assets/                     Files that ship with the plugin as they are. Only
+service.py                  The service: backend, injector and rescue page.
+                            `--install` makes its folder the running version.
+launcher.py                 What the unit runs. Starts `current`, and goes back
+                            to `previous` when a new version keeps failing.
+rescue.sh                   What the library tile runs
+assets/                     Files that ship with DeckyEmu as they are. Only
                             the game icon so far -- Steam records the path to a
                             shortcut's icon, so it has to be a real file.
 
 scripts/
-  harness.py                The stub decky and the scratch dir. Import it before
+  harness.py                Points appenv at a scratch dir. Import it before
                             anything from py_modules.
   test_backend.py           The backend suite, and it runs scripts/tests/ too
   tests/                    One file per subject, each runnable on its own.
@@ -377,7 +419,7 @@ scripts/
   check_release_build.py    Assert a release bundle carries no development-only
                             code, and that a development one still does
   changelog.py              Release notes from commit subjects, grouped by prefix
-  deploy.sh                 Push to a Deck over ssh (no Docker, no rsync)
+  deploy.sh                 Install on a Deck over ssh as a new version
   loaded_frontend.py        Ask Steam how old the bundle it is running is
   diagnose.py               Read a diagnostic report off a device over the network
 ```
@@ -389,9 +431,9 @@ something to look up, a wrong path is something to go looking for.
 
 ## Steam's runtime breaks system binaries
 
-Decky loads plugins inside Steam's environment, where `LD_LIBRARY_PATH` points
-at the Steam Runtime. So any system executable resolves its libraries from there
-instead of from the OS:
+Steam runs the game launchers inside its own environment, where
+`LD_LIBRARY_PATH` points at the Steam Runtime. So any system executable they
+start resolves its libraries from there instead of from the OS:
 
     flatpak: libcrypto.so.3: version `OPENSSL_3.4.0' not found
 
@@ -399,8 +441,9 @@ The binary dies in milliseconds with nothing resembling a normal error, which
 makes it look like the command itself is wrong. It isn't — the same command
 works from a shell.
 
-`py_modules/sysenv.py` clears those variables for every subprocess, and the
-generated launcher scripts `unset` them too, since Steam runs those as well.
+The generated launcher scripts `unset` those variables, and
+`py_modules/sysenv.py` clears them for every subprocess the backend starts, in
+case the service is ever started from inside that environment.
 
 ## Notes on the Steam APIs used
 

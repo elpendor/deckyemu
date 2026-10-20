@@ -1,4 +1,4 @@
-import { ConfirmModal, ToggleField } from "@decky/ui";
+import { ConfirmModal, ToggleField } from "./steamui";
 import { useState } from "react";
 
 import { type CatalogEmulator } from "./backend";

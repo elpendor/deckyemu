@@ -5,14 +5,14 @@ import {
   Field,
   PanelSection,
   PanelSectionRow,
-} from "@decky/ui";
+} from "./steamui";
 import {
   addEventListener,
   FileSelectionType,
   openFilePicker,
   removeEventListener,
   toaster,
-} from "@decky/api";
+} from "./host";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useState } from "react";
 import {

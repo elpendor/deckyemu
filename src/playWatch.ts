@@ -1,5 +1,5 @@
 import { addedGame } from "./addedGames";
-import { addEventListener, removeEventListener } from "@decky/api";
+import { addEventListener, removeEventListener } from "./host";
 
 import { cloudBackupAfterPlay, cloudReleaseLaunch } from "./backend";
 import { showCloudDiffer } from "./CloudDifferModal";

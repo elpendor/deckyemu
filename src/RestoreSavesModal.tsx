@@ -5,8 +5,8 @@ import {
   Focusable,
   ModalRoot,
   Spinner,
-} from "@decky/ui";
-import { addEventListener, removeEventListener, toaster } from "@decky/api";
+} from "./steamui";
+import { addEventListener, removeEventListener, toaster } from "./host";
 import { FaHistory, FaTrash } from "react-icons/fa";
 import { useCallback, useEffect, useRef, useState } from "react";
 

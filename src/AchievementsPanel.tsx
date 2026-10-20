@@ -5,8 +5,8 @@ import {
   PanelSectionRow,
   TextField,
   ToggleField,
-} from "@decky/ui";
-import { toaster } from "@decky/api";
+} from "./steamui";
+import { toaster } from "./host";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {

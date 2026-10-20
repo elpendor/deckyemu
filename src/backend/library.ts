@@ -1,4 +1,4 @@
-import { callable } from "@decky/api";
+import { callable } from "../host";
 import { type PluginSettings } from "./games";
 
 /**
@@ -60,19 +60,19 @@ export interface UpdateCheck {
   latest?: ReleaseInfo;
 }
 
-/** Only looks; decky's loader does the installing. See src/updater.ts. */
+/** Only looks; `stageUpdate` installs. */
 export const checkForUpdate = callable<[force: boolean], UpdateCheck>("check_for_update");
 
 /**
- * Download the release here and offer it to decky on loopback.
+ * Download the newest release, install it beside this one, and restart into it.
  *
- * Decky fetches the URL itself and has no credentials. The returned URL is local
- * and needs none, which also keeps a private repository's asset -- which decky
- * would 404 on -- installable.
+ * The service checks the digest, unpacks and checks the release in a staging
+ * folder, and switches only once it is whole. The reply comes back before the
+ * restart; the panel is then replaced by the new version's, in place.
  */
 export const stageUpdate = callable<
   [],
-  { ok: boolean; error?: string; url?: string; version?: string; sha256?: string }
+  { ok: boolean; error?: string; version?: string; sha256?: string; restarting?: boolean }
 >("stage_update");
 
 export const getSettings = callable<[], PluginSettings>("get_settings");

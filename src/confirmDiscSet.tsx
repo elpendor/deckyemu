@@ -1,4 +1,4 @@
-import { DialogButton, Focusable, ModalRoot } from "@decky/ui";
+import { DialogButton, Focusable, ModalRoot } from "./steamui";
 
 import type { DiscChoice } from "./addFlow";
 import { discSetFor } from "./backend";

@@ -1,4 +1,4 @@
-import { showModal, type ShowModalResult } from "@decky/ui";
+import { showModal, type ShowModalResult } from "./steamui";
 import { type ReactNode } from "react";
 
 /**

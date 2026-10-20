@@ -1,4 +1,4 @@
-import { Navigation } from "@decky/ui";
+import { Navigation } from "./steamui";
 
 /**
  * Where the setup page lives, and how to get to one of its tabs.

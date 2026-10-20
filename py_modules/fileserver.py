@@ -342,10 +342,9 @@ def _partial_size(path):
 def same_secret(given, expected):
     """Constant-time comparison that tolerates anything off the network.
 
-    Public because `handoff` compares a token off the network too, and this is
-    the only thing the two servers have any business sharing. Duplicating six
-    lines is how the two would come to disagree about a fix neither remembers
-    needing.
+    Public so that anything else comparing a token off the network uses this
+    rather than six lines of its own, which is how two copies would come to
+    disagree about a fix neither remembers needing.
 
     secrets.compare_digest refuses a str holding any non-ASCII character --
     "comparing strings with non-ASCII characters is not supported" -- and both

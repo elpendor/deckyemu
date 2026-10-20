@@ -1,5 +1,5 @@
-import { ButtonItem, Field, PanelSection, PanelSectionRow } from "@decky/ui";
-import { addEventListener, removeEventListener, toaster } from "@decky/api";
+import { ButtonItem, Field, PanelSection, PanelSectionRow } from "./steamui";
+import { addEventListener, removeEventListener, toaster } from "./host";
 import { useCallback, useEffect, useState } from "react";
 
 import { canInstallRetroArch, installRetroArch, runningWork } from "./backend";

@@ -1,5 +1,5 @@
-import { DialogButton, Field, ModalRoot, Spinner } from "@decky/ui";
-import { toaster } from "@decky/api";
+import { DialogButton, Field, ModalRoot, Spinner } from "./steamui";
+import { toaster } from "./host";
 import { useEffect, useState } from "react";
 
 import {

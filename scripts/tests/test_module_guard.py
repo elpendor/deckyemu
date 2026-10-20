@@ -3,10 +3,10 @@
 
     python scripts/tests/test_module_guard.py
 
-py_modules is *appended* to a sys.path that already holds decky_loader's own
-packages, so a module of ours with a generic name resolves to decky's instead --
-silently, and only in the parts that use it. `updater.py` cost six rounds of
-debugging that way, because the exception never reached the plugin log.
+A module of ours with a generic name can resolve to some other package of the
+same name instead -- silently, and only in the parts that use it. `updater.py`
+cost six rounds of debugging that way, because the exception never reached the
+log.
 
 `_check_own_modules` is what turns that into one line at startup, and it used to
 work from a hand-written list of every module main.py imports. That list drifted
@@ -25,11 +25,11 @@ import types
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from harness import REPO_ROOT, check, section  # noqa: E402  -- installs the decky stub
+from harness import REPO_ROOT, check, section  # noqa: E402  -- points appenv at scratch
 
 sys.path.insert(0, REPO_ROOT)
 
-import appenv  # noqa: E402  -- the stub, whose logger these checks read
+import appenv  # noqa: E402  -- whose logger these checks read
 import main  # noqa: E402
 
 section("module shadowing -- the guard covers every name py_modules offers")
@@ -57,7 +57,7 @@ section("module shadowing -- and reports a name that resolved elsewhere")
 
 
 class _Recorder:
-    """Stands in for decky's logger just long enough to read what was logged."""
+    """Stands in for the logger just long enough to read what was logged."""
 
     def __init__(self):
         self.errors = []
@@ -78,10 +78,10 @@ try:
           _recorder.errors, [])
 
     # Now one that did not. A module object whose __file__ points outside the
-    # plugin is exactly what a decky package of the same name looks like.
+    # tree is exactly what another package of the same name looks like.
     _victim = sorted(_on_disk)[0]
     _shadow = types.ModuleType(_victim)
-    _shadow.__file__ = os.path.join(os.sep, "usr", "lib", "decky_loader", _victim + ".py")
+    _shadow.__file__ = os.path.join(os.sep, "usr", "lib", "elsewhere", _victim + ".py")
     _was = sys.modules.get(_victim)
     sys.modules[_victim] = _shadow
     try:
@@ -98,163 +98,11 @@ try:
     # reads afterwards.
     check("and the message names it", _victim in _recorder.errors[0], True)
     check("and says where it resolved to instead",
-          "decky_loader" in _recorder.errors[0], True)
+          "elsewhere" in _recorder.errors[0], True)
 finally:
     # The suite shares one logger; a file that swaps it must put it back.
     appenv.logger = _real_logger
     main.appenv.logger = _real_logger
-
-
-section("the standard library the sandbox actually has")
-
-# The other way an import fails, and it is not shadowing: decky's plugin sandbox
-# is a frozen build carrying only the stdlib its analysis packed, and a module
-# missing from it is not a degraded feature -- it is ModuleNotFoundError at
-# import time and the backend never starts. `import xml.etree.ElementTree` did
-# exactly that. Nothing on a development machine can notice: the host has the
-# whole standard library, every
-# test passes, and the first sign is a plugin that will not load.
-#
-# So the set is recorded rather than reasoned about. Every name in it has been
-# seen working on a Deck; a new one has not, and the point of failing here is to
-# make somebody check before it ships rather than after. Adding to this list is
-# a deliberate act, which is the whole idea.
-#
-# Only top-level names, because that is the granularity the failure has: `xml`
-# is present in the sandbox and `xml.etree` is not, so listing `xml` would have
-# allowed the exact import that broke.
-# `ctypes`: an .nsz unpacked through switch_nsz from the panel on 2026-09-14.
-# `heapq` and `types`: what `vendored_difflib` imports, both read out of the
-# v3.2.9 archive on 2026-09-19 and in use by the borrowed difflib before it.
-# `tarfile`: read out of the same archive on 2026-09-20, for the emulator build
-# that arrives as a .tar.gz rather than a zip.
-# `email`: logged as present on a Deck on 2026-09-17, by the startup line
-# `httpshim.report` writes -- which exists because `http.server` was *dropped*
-# from decky's Python in v3.2.9 and took the whole plugin down. `http` stays
-# proven and `http.server` is not: the submodule is exactly the granularity
-# this list cannot see, which is why nothing imports it any more.
-PROVEN_STDLIB = frozenset((
-    "asyncio", "base64", "collections", "concurrent", "ctypes", "email",
-    # Proven by `shutil`, which is proven and imports it at module scope: a
-    # PyInstaller bundle packs what its analysis saw imported, so one cannot be
-    # there without the other. `glob` has no such guarantor, which is why
-    # `savedata` matches its save patterns with this instead.
-    "fnmatch",
-    "functools",
-    "hashlib", "heapq", "html", "http", "importlib", "inspect", "io", "json", "logging", "os",
-    "posixpath", "re", "secrets", "shlex", "shutil", "socket", "ssl", "stat",
-    "struct", "subprocess", "sys", "tarfile", "threading", "time", "types",
-    "typing", "urllib",
-    "zipfile",
-))
-
-import ast  # noqa: E402  -- host-side only, this file never runs on a Deck
-
-_local = {os.path.splitext(name)[0]
-          for name in os.listdir(os.path.join(REPO_ROOT, "py_modules"))
-          if name.endswith(".py")}
-_local |= {name for name in os.listdir(os.path.join(REPO_ROOT, "py_modules"))
-           if os.path.isdir(os.path.join(REPO_ROOT, "py_modules", name))}
-
-_sources = [os.path.join(REPO_ROOT, "main.py")]
-for _root, _dirs, _names in os.walk(os.path.join(REPO_ROOT, "py_modules")):
-    _dirs[:] = [d for d in _dirs if d != "__pycache__"]
-    _sources += [os.path.join(_root, n) for n in _names if n.endswith(".py")]
-
-#: And the submodules, which the top-level list cannot speak for.
-#:
-#: **This is the hole that cost a release.** `http` was proven, `http.server`
-#: was never checked separately, and decky v3.2.9's frozen bundle packed the
-#: first and not the second -- both are stdlib, and a PyInstaller build carries
-#: only what its analysis saw imported. So `fileserver`'s top-level import
-#: raised `ModuleNotFoundError` and the whole plugin failed to load: no
-#: library, no
-#: launchers, no settings. The comment above said `xml` against `xml.etree` in
-#: so many words, and the list still only held top-level names.
-#:
-#: Every name here has been seen working on a Deck. `http.server` is absent on
-#: purpose and must stay absent -- `httpshim` is its replacement.
-PROVEN_SUBMODULES = frozenset((
-    "concurrent.futures", "email.parser", "email.utils", "http.client",
-    "urllib.error", "urllib.parse", "urllib.request",
-))
-
-#: And one measurement worth keeping: a module can also resolve from SteamOS's
-#: own stdlib, which sits on `sys.path` behind decky's bundle -- `glob` came
-#: from `/usr/lib/python3.13/glob.py` on a Deck running decky v3.2.9, whose
-#: bundle has no `glob`. That is luck, not a guarantee, so a module missing from
-#: the bundle still does not belong in either list above. `glob` is therefore
-#: *not* listed: `findfiles` replaced every use of it with `os.scandir`, which
-#: is built into the interpreter. Read off the device rather than off the
-#: archive: `struct` is bundled (the bundle reports its own as a bare
-#: `struct.py`, a path-less `__file__`). `difflib` and `socketserver` came from
-#: SteamOS the same way; the first is carried as `vendored_difflib` now, and
-#: nothing imports the second. `httpshim.borrowed` names any such module at
-#: every start.
-
-
-def _guarded(tree):
-    """Imports inside a `try` that catches ImportError, which may be anything.
-
-    An import whose failure is handled is not a hazard -- it is the shape this
-    list wants: a module that may be missing belongs in a `try` with a way
-    round it, and failing here over that would argue against the fix.
-    """
-    safe = set()
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Try):
-            continue
-        catches = any(
-            handler.type is None
-            or (isinstance(handler.type, ast.Name)
-                and handler.type.id in ("ImportError", "ModuleNotFoundError", "Exception"))
-            for handler in node.handlers
-        )
-        if not catches:
-            continue
-        for inner in node.body:
-            for found in ast.walk(inner):
-                if isinstance(found, (ast.Import, ast.ImportFrom)):
-                    safe.add(found)
-    return safe
-
-
-_unproven = {}
-for _path in sorted(_sources):
-    with open(_path, encoding="utf-8") as _handle:
-        _tree = ast.parse(_handle.read(), _path)
-    _safe = _guarded(_tree)
-    for _node in ast.walk(_tree):
-        if isinstance(_node, ast.Import):
-            _names = [alias.name for alias in _node.names]
-        elif isinstance(_node, ast.ImportFrom):
-            # A relative import is one of ours by definition.
-            _names = [] if _node.level else [_node.module or ""]
-        else:
-            continue
-        if _node in _safe:
-            continue
-        for _name in _names:
-            _top = _name.split(".")[0]
-            if not _top or _top in _local:
-                continue
-            if _top not in PROVEN_STDLIB:
-                _unproven.setdefault(_name, os.path.relpath(_path, REPO_ROOT))
-            elif "." in _name and _name not in PROVEN_SUBMODULES:
-                _unproven.setdefault(_name, os.path.relpath(_path, REPO_ROOT))
-
-check("nothing imports a module the sandbox has not been shown to have",
-      _unproven, {})
-
-# The submodule half, named on its own because the top-level list reads as if it
-# covered it. `http` is proven and `http.server` is exactly what was missing.
-check("and a submodule of a proven module is not proven by it",
-      "http.server" in PROVEN_SUBMODULES, False)
-
-# And the guard has to be able to fail, or it is a list nobody maintains that
-# reports success for every possible tree.
-check("an import outside the list is caught",
-      "xml.etree.ElementTree".split(".")[0] in PROVEN_STDLIB, False)
 
 
 if __name__ == "__main__":

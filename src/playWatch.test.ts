@@ -26,7 +26,7 @@ vi.mock("./backend", () => ({
 }));
 vi.mock("./CloudDifferModal", () => ({ showCloudDiffer: () => undefined }));
 // @decky/api reaches for a manifest that only exists in a built plugin.
-vi.mock("@decky/api", () => ({
+vi.mock("./host", () => ({
   addEventListener: () => () => undefined,
   removeEventListener: () => undefined,
 }));

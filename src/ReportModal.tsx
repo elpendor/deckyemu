@@ -1,4 +1,4 @@
-import { DialogButton, Focusable, ModalRoot, Spinner } from "@decky/ui";
+import { DialogButton, Focusable, ModalRoot, Spinner } from "./steamui";
 import { useEffect, useRef, useState } from "react";
 
 import { endReport, startReport, type FileServerStatus } from "./backend";

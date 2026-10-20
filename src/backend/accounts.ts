@@ -1,4 +1,4 @@
-import { callable } from "@decky/api";
+import { callable } from "../host";
 
 /**
  * Signing in to somebody else's service: RetroAchievements and SteamGridDB.

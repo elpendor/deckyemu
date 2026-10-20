@@ -1,4 +1,4 @@
-import { ConfirmModal } from "@decky/ui";
+import { ConfirmModal } from "./steamui";
 
 import { openModal } from "./modalStack";
 

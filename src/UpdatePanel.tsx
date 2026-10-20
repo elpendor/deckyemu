@@ -4,11 +4,11 @@ import {
   PanelSection,
   PanelSectionRow,
   ToggleField,
-} from "@decky/ui";
+} from "./steamui";
 
 import { AboutModal } from "./AboutModal";
 import { clampNotes, countItems, parseNotes, type NoteItem } from "./releaseNotes";
-import { toaster } from "@decky/api";
+import { toaster } from "./host";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
@@ -21,7 +21,6 @@ import {
 import { openModal } from "./modalStack";
 import { OVER_THE_NETWORK, callWithRetry } from "./timeout";
 import { FRONTEND_VERSION } from "./version";
-import { canInstallUpdates, installUpdate } from "./updater";
 import { useBackendVersion } from "./useBackendVersion";
 import { noteCheck, setUpdateDotEnabled } from "./updateSignal";
 import { logError } from "./logError";
@@ -260,12 +259,8 @@ export function UpdatePanel({
   }, [backend, check]);
 
   /**
-   * Hand the release to decky and let it take over.
-   *
-   * Staged locally first: decky downloads the URL itself and holds no
-   * credentials, so what it installs is a digest-checked file served from
-   * loopback -- which also keeps a build aimed at a private repository working,
-   * since decky would 404 on that asset.
+   * Install the release. The service does all of it and restarts into the new
+   * version, which replaces this panel where it stands.
    */
   const install = useCallback(async () => {
     const release = update?.latest;
@@ -275,28 +270,26 @@ export function UpdatePanel({
       // Fewer attempts than a plain read: this downloads the release, so a retry
       // costs a repeated transfer rather than a repeated question.
       const staged = await callWithRetry(() => stageUpdate(), { attempts: 3 });
-      if (!staged.ok || !staged.url) {
+      if (!staged.ok) {
         toaster.toast({
           title: "Could not prepare the update",
           body: staged.error ?? "The release could not be downloaded.",
         });
         return;
       }
-      await installUpdate(staged.url, staged.version ?? release.version, staged.sha256 ?? "");
       toaster.toast({
-        title: `Installing ${release.version}`,
-        body: "Decky will confirm and show progress.",
+        title: `Installed ${staged.version ?? release.version}`,
+        body: "DeckyEmu is restarting into it.",
       });
-      // Shown in a dialog, this closes it: decky's confirmation opens on top, and
-      // ours left underneath would come back over the screen afterwards, running
-      // the build the install is about to replace.
+      // Shown in a dialog, this closes it: the dialog belongs to the version
+      // being replaced, and would otherwise stay over the screen after it.
       onHandedOff?.();
 
     } catch (error) {
       logError("could not start the update", error);
       toaster.toast({
         title: "Could not start the update",
-        body: error instanceof Error ? error.message : "Decky did not accept the request.",
+        body: error instanceof Error ? error.message : "The service did not answer.",
       });
     } finally {
       if (live.current) setInstalling(false);
@@ -362,12 +355,8 @@ export function UpdatePanel({
             <ButtonItem
               layout="below"
               onClick={() => void install()}
-              disabled={installing || !canInstallUpdates()}
-              description={
-                !canInstallUpdates()
-                  ? "Decky's installer is not reachable from this window."
-                  : `${running ? `You are running ${running}. ` : ""}Decky downloads and installs it, then reloads the plugin.`
-              }
+              disabled={installing}
+              description={`${running ? `You are running ${running}. ` : ""}Installed beside this version, which stays as the one to go back to.`}
             >
               {installing ? "Preparing..." : `Update to ${update.latest.version}`}
             </ButtonItem>

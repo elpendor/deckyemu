@@ -1,4 +1,4 @@
-import { callable } from "@decky/api";
+import { callable } from "../host";
 
 /**
  * Emulators: what is installed, the one-click catalog, and hand-registered ones.

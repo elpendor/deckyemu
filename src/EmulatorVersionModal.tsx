@@ -5,8 +5,8 @@ import {
   ModalRoot,
   PanelSectionRow,
   ToggleField,
-} from "@decky/ui";
-import { addEventListener, removeEventListener, toaster } from "@decky/api";
+} from "./steamui";
+import { addEventListener, removeEventListener, toaster } from "./host";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { FaChevronDown, FaChevronUp } from "react-icons/fa";
 

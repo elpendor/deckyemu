@@ -9,8 +9,8 @@ import {
   TextField,
   type DropdownOption,
   type SingleDropdownOption,
-} from "@decky/ui";
-import { FileSelectionType, openFilePicker, toaster } from "@decky/api";
+} from "./steamui";
+import { FileSelectionType, openFilePicker, toaster } from "./host";
 import { FaLink, FaTrash, FaUnlink } from "react-icons/fa";
 import { useCallback, useEffect, useMemo, useState } from "react";
 

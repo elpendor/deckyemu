@@ -1,4 +1,4 @@
-import { DialogButton, Field, Focusable, ModalRoot, Spinner } from "@decky/ui";
+import { DialogButton, Field, Focusable, ModalRoot, Spinner } from "./steamui";
 import { useCallback, useEffect, useState } from "react";
 import { FaTrash } from "react-icons/fa";
 

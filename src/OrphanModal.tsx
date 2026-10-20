@@ -1,5 +1,5 @@
-import { ConfirmModal, DialogButton, Focusable, ModalRoot, Spinner } from "@decky/ui";
-import { toaster } from "@decky/api";
+import { ConfirmModal, DialogButton, Focusable, ModalRoot, Spinner } from "./steamui";
+import { toaster } from "./host";
 import { useCallback, useEffect, useState } from "react";
 
 import {

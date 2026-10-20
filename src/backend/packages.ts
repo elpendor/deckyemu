@@ -1,4 +1,4 @@
-import { callable } from "@decky/api";
+import { callable } from "../host";
 import { type PreparedShortcut } from "./games";
 
 /**

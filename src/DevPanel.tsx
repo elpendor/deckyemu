@@ -4,11 +4,11 @@ import {
   Field,
   PanelSection,
   PanelSectionRow,
-} from "@decky/ui";
-import { toaster } from "@decky/api";
+} from "./steamui";
+import { toaster } from "./host";
 import { useCallback, useEffect, useState } from "react";
 
-import { callable } from "@decky/api";
+import { callable } from "./host";
 
 import { getSettings, listAdded, type AddedGame } from "./backend";
 import { removeShortcut } from "./steam";

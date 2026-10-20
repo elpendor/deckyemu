@@ -3,7 +3,7 @@ import {
   DropdownItem,
   Field,
   PanelSectionRow,
-} from "@decky/ui";
+} from "./steamui";
 
 import { type RomProbe } from "./backend";
 import { InstallProgress } from "./InstallProgress";

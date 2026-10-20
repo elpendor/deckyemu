@@ -34,7 +34,7 @@ const showModal = vi.fn((_modal: unknown, _parent: unknown, props: any) => {
   };
 });
 
-vi.mock("@decky/ui", () => ({ showModal: (...args: unknown[]) => (showModal as any)(...args) }));
+vi.mock("./steamui", () => ({ showModal: (...args: unknown[]) => (showModal as any)(...args) }));
 
 const {
   openModal,

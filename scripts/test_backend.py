@@ -6120,38 +6120,6 @@ check("and a second start has nothing to do", store.forget_removed(), [])
 check("nothing here sends an Authorization header",
       "Authorization" in releases.API_HEADERS, False)
 
-# Decky downloads the URL it is given, so the release is fetched here and
-# re-offered on loopback -- which is what makes the digest it checks one
-# computed from the bytes actually received.
-import handoff  # noqa: E402
-import urllib.request as _urlreq  # noqa: E402
-
-relay_file = os.path.join(TMP, "deckyemu.zip")
-with open(relay_file, "wb") as handle:
-    handle.write(b"PK pretend zip")
-
-relay_url = handoff.serve(relay_file)
-check("the relay offers a loopback url", relay_url.startswith("http://127.0.0.1:"), True)
-check("with the file's name in it", relay_url.endswith("/deckyemu.zip"), True)
-if relay_url:
-    with _urlreq.urlopen(relay_url, timeout=5) as response:
-        body = response.read()
-    check("and serves the bytes", body, b"PK pretend zip")
-
-    # Guessing the path must not work: it is a token, not a filename.
-    base = relay_url.rsplit("/", 2)[0]
-    try:
-        _urlreq.urlopen(base + "/wrongtoken/deckyemu.zip", timeout=5)
-        guessed = 200
-    except urllib.error.HTTPError as error:
-        guessed = error.code
-    check("a wrong token is refused", guessed, 404)
-
-handoff.stop()
-check("stopping leaves nothing listening", handoff.running(), False)
-check("serving a file that is not there fails cleanly", handoff.serve(os.path.join(TMP, "nope.zip")), "")
-os.remove(relay_file)
-
 section("clearing the whole library")
 for _app_id in list(store.get_library().keys()):
     store.forget_game(_app_id)

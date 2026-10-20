@@ -1,4 +1,4 @@
-import { Focusable, GamepadButton, ModalRoot, type GamepadEvent } from "@decky/ui";
+import { Focusable, GamepadButton, ModalRoot, type GamepadEvent } from "./steamui";
 import type { CSSProperties } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 

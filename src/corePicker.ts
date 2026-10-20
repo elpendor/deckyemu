@@ -1,4 +1,4 @@
-import { type DropdownOption } from "@decky/ui";
+import { type DropdownOption } from "./steamui";
 
 import { type Core, type InstallableCore, type RomProbe } from "./backend";
 

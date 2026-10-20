@@ -5,8 +5,8 @@ import {
   Field,
   PanelSection,
   PanelSectionRow,
-} from "@decky/ui";
-import { toaster } from "@decky/api";
+} from "./steamui";
+import { toaster } from "./host";
 import { useCallback, useEffect, useState } from "react";
 import { FaPen, FaTrash } from "react-icons/fa";
 

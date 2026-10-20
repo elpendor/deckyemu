@@ -76,9 +76,7 @@ describe("coreOptions", () => {
       core("emu:rpcs3", "RPCS3"),
       core("genesis_plus_gx", "Genesis Plus GX"),
     ];
-    const flat = coreOptions(cores).flatMap((o) =>
-      "options" in o ? (o as { options: { data: unknown }[] }).options : [o],
-    );
+    const flat = coreOptions(cores).flatMap((o) => o.options ?? [o]);
     expect(flat.map((o) => o.data).sort()).toEqual(
       ["emu:rpcs3", "genesis_plus_gx", "snes9x"],
     );

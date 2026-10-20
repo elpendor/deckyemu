@@ -1,4 +1,4 @@
-import { toaster } from "@decky/api";
+import { toaster } from "./host";
 
 import { prepareFirmwareGui } from "./backend";
 import { openSetupShortcut } from "./setupShortcut";

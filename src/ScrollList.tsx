@@ -1,4 +1,4 @@
-import { Focusable } from "@decky/ui";
+import { Focusable } from "./steamui";
 import type { CSSProperties, ReactNode } from "react";
 
 import {

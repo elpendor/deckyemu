@@ -6,8 +6,8 @@ import {
   Spinner,
   TextField,
   type SingleDropdownOption,
-} from "@decky/ui";
-import { FileSelectionType, openFilePicker, toaster } from "@decky/api";
+} from "./steamui";
+import { FileSelectionType, openFilePicker, toaster } from "./host";
 
 import { SwitchLabel } from "./SwitchLabel";
 import { ScrollList } from "./ScrollList";

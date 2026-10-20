@@ -1,4 +1,4 @@
-import { DialogButton, ModalRoot } from "@decky/ui";
+import { DialogButton, ModalRoot } from "./steamui";
 import { FaQuestion } from "react-icons/fa";
 
 import { ICON_BUTTON } from "./iconButton";

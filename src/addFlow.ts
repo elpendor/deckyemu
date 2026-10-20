@@ -6,7 +6,7 @@
  * draft, so the work lives here rather than being duplicated per caller.
  */
 
-import { addEventListener, removeEventListener, toaster } from "@decky/api";
+import { addEventListener, removeEventListener, toaster } from "./host";
 
 import {
   installEmulator,

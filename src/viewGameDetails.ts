@@ -1,4 +1,4 @@
-import { Navigation } from "@decky/ui";
+import { Navigation } from "./steamui";
 
 /**
  * Steam's own page for one app. Non-Steam shortcuts use the same route.

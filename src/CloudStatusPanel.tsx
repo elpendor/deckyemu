@@ -1,5 +1,5 @@
-import { ButtonItem, Field, PanelSection, PanelSectionRow } from "@decky/ui";
-import { addEventListener, removeEventListener, useQuickAccessVisible } from "@decky/api";
+import { ButtonItem, Field, PanelSection, PanelSectionRow } from "./steamui";
+import { addEventListener, removeEventListener, useQuickAccessVisible } from "./host";
 import { useCallback, useEffect, useState } from "react";
 
 import { cloudBackupNow, cloudStatus, cloudWaiting } from "./backend";

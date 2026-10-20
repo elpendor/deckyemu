@@ -3,8 +3,8 @@ import {
   Field,
   PanelSection,
   PanelSectionRow,
-} from "@decky/ui";
-import { useQuickAccessVisible } from "@decky/api";
+} from "./steamui";
+import { useQuickAccessVisible } from "./host";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 
 import { fileServerStatus, type FileServerStatus } from "./backend";

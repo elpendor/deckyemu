@@ -1,5 +1,5 @@
-import { ConfirmModal } from "@decky/ui";
-import { toaster } from "@decky/api";
+import { ConfirmModal } from "./steamui";
+import { toaster } from "./host";
 
 import { discardStoppedTransfer, discardTransferredFile } from "./backend";
 import { FileName } from "./FileName";

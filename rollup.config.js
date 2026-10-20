@@ -1,6 +1,8 @@
 import { readFileSync } from "fs";
 
-import deckyPlugin from "@decky/rollup";
+import commonjs from "@rollup/plugin-commonjs";
+import { nodeResolve } from "@rollup/plugin-node-resolve";
+import typescript from "@rollup/plugin-typescript";
 
 const pkg = JSON.parse(readFileSync("./package.json", "utf-8"));
 
@@ -9,8 +11,8 @@ const pkg = JSON.parse(readFileSync("./package.json", "utf-8"));
  *
  * package.json is the single source of truth. CI passes the commit through
  * DECKYEMU_BUILD and writes a matching build.json for the backend to read, so the
- * two halves of the plugin can each be asked what they are and compared -- a
- * frontend Steam cached before an update is otherwise indistinguishable from a bug.
+ * two halves can each be asked what they are and compared -- a frontend left
+ * behind by an update is otherwise indistinguishable from a bug.
  */
 const build = process.env.DECKYEMU_BUILD || "dev";
 
@@ -26,14 +28,8 @@ const build = process.env.DECKYEMU_BUILD || "dev";
  *
  * Replacing the identifier before rollup parses makes `"a1b2c3d" === "dev"` a
  * constant expression, the branch dead, and the panel genuinely absent rather
- * than merely unreachable. scripts/check_release_build.sh asserts exactly that,
+ * than merely unreachable. scripts/check_release_build.py asserts exactly that,
  * because this is the kind of guarantee that quietly stops being true.
- *
- * A hand-rolled transform rather than @rollup/plugin-replace: the two
- * identifiers are ours and unambiguous, and this needs no dependency the decky
- * preset has not already pinned. The declarations live in types.d.ts, which
- * never reaches this hook -- ambient declarations are not modules -- so there
- * is no `declare const "0.5.0"` to worry about.
  */
 const stamp = {
   name: "deckyemu-stamp",
@@ -48,4 +44,41 @@ const stamp = {
   },
 };
 
-export default deckyPlugin({ plugins: [stamp] });
+const plugins = () => [
+  stamp,
+  typescript({ tsconfig: "./tsconfig.json", noEmitOnError: true }),
+  nodeResolve({ browser: true }),
+  commonjs(),
+];
+
+export default [
+  /*
+   * The preload: the script Steam's UI runs before its own code. Nothing
+   * outside it is loaded yet when it runs, so it imports nothing at runtime.
+   */
+  {
+    input: "src/preload/index.ts",
+    plugins: plugins(),
+    treeshake: { moduleSideEffects: true },
+    output: { file: "dist/preload.js", format: "iife", sourcemap: false },
+  },
+  /*
+   * The panel. React comes from Steam -- one React per page, or its hooks
+   * throw -- through the globals the preload sets from Steam's own modules.
+   */
+  {
+    input: "src/main.tsx",
+    plugins: plugins(),
+    external: ["react", "react-dom", "react/jsx-runtime"],
+    output: {
+      file: "dist/deckyemu.js",
+      format: "iife",
+      sourcemap: false,
+      globals: {
+        react: "DECKYEMU_REACT",
+        "react-dom": "DECKYEMU_REACTDOM",
+        "react/jsx-runtime": "DECKYEMU_JSX",
+      },
+    },
+  },
+];

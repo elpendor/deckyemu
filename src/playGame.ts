@@ -1,4 +1,4 @@
-import { toaster } from "@decky/api";
+import { toaster } from "./host";
 
 import { approveLaunch } from "./backend";
 import { showLaunchConflict } from "./LaunchConflictModal";

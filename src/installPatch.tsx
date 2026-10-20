@@ -4,8 +4,8 @@ import {
   Field,
   ModalRoot,
   Spinner,
-} from "@decky/ui";
-import { toaster } from "@decky/api";
+} from "./steamui";
+import { toaster } from "./host";
 import { useEffect, useState } from "react";
 
 import { addRomPatch, patchTargets, type PatchTarget } from "./backend";

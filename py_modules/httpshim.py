@@ -1,27 +1,12 @@
-"""A small stand-in for `http.server`, built from what the sandbox does carry.
+"""The small HTTP server the transfer page runs on.
 
-**The standard library a plugin gets is decky's bundle, not Python's.** decky
-ships as a PyInstaller executable and a frozen build carries only the modules
-its analysis saw imported. SteamOS's own stdlib does sit on `sys.path` behind
-it, so a *top-level* module missing from the bundle can still resolve there --
-`glob` does -- but a submodule cannot: `http` comes from the bundle, so
-`http.server` is looked for only in the bundle's `http/`, and the system's copy
-is unreachable. `http.server` is in every Python 3.11 -- the Deck's own `python3` has it --
-and it was in decky's bundle by way of a dependency, until v3.2.9 bumped those
-and the path that pulled it in went. `fileserver` imported it at the top, so
-`ModuleNotFoundError` took the whole plugin down before a single endpoint
-existed: the library, the launchers and every settings page, over a module only
-the transfer server needs.
-
-**So what it provided is rebuilt, and used even where it imports.** Read out
-of both released binaries: v3.2.8 packs 642 modules including `http.server`,
-v3.2.9 packs 398 and does not -- the 258 that went are mostly `distutils` and
-setuptools' own, which is what had been dragging `http.server` in. `socket`,
-`threading`, `email` and `ssl` are all still packed, and this is built on
-those. `_Request` below is the part of `BaseHTTPRequestHandler` this
-plugin uses, which is seven names: `command`, `path`, `headers`, `rfile`,
-`wfile`, `send_response`, `send_header`, `end_headers`, plus `log_message` for
-the subclass to override.
+Built on `socket` and `threading` rather than `http.server`. It began as a
+stand-in for an interpreter that lacked `http.server`, and it stays because it
+carries a fix the standard one does not: see `_Server.shutdown` for the port
+that a blocked `accept()` holds on Linux. `_Request` below is the part of
+`BaseHTTPRequestHandler` the transfer server uses, which is seven names:
+`command`, `path`, `headers`, `rfile`, `wfile`, `send_response`, `send_header`,
+`end_headers`, plus `log_message` for the subclass to override.
 
 One request per connection, answered as HTTP/1.0. That is the one real
 difference from the real thing, and it costs a browser page a few extra
@@ -31,7 +16,6 @@ either way.
 
 import email.parser
 import email.utils
-import os
 import socket
 import threading
 import time
@@ -323,91 +307,13 @@ class _Server:
             pass
 
 
-#: The stand-ins, always, even where `http.server` imports. decky has said it
-#: will pack it again, and preferring it then would switch every Deck back to a
-#: server nothing has been tested against since v3.2.9, on decky's schedule.
 BASE: Any = _Request
 SERVER: Any = _Server
 
 
 def available():
-    """Whether a server can be started at all. Always true now, and asked
-    anyway: the next runtime to lose a module should cost one feature, not the
-    plugin."""
+    """Whether a server can be started at all."""
     return SERVER is not None
 
 
-#: What to tell the user when it cannot. Names decky rather than the plugin: it
-#: is decky's runtime that decides, and no plugin update can add a module to it.
-UNAVAILABLE = (
-    "This version of Decky Loader bundles no way for this plugin to serve "
-    "files, so the transfer server cannot start."
-)
-
-
-def borrowed():
-    """Log every module loaded from outside decky's bundle.
-
-    decky's executable carries only the standard library its build saw
-    imported, and SteamOS's own Python sits on `sys.path` behind it -- so an
-    import can quietly resolve to `/usr/lib/python3.13/...`, work for a year,
-    and fail the day either side changes. `http.server` was that failure, and it
-    stopped the whole plugin loading.
-
-    Nothing here acts on it. It is one line in the log, so a later breakage can
-    be read rather than investigated.
-    """
-    import sys
-
-    inside = getattr(sys, "_MEIPASS", "")
-    outside = []
-    for name, module in sorted(sys.modules.items()):
-        if name.startswith("_") or "." in name:
-            continue
-        origin = getattr(module, "__file__", None)
-        if not origin or (inside and origin.startswith(inside)):
-            continue
-        # A bare name is how the bundle reports its own: `struct.py` rather than
-        # a path. Measured on a Deck -- `struct` reads as bundled this way, and
-        # `difflib` as `/usr/lib/python3.13/difflib.py`, which is the case this
-        # line exists to name.
-        if not os.path.isabs(origin):
-            continue
-        # The plugin's own modules live outside the bundle by definition.
-        if appenv.APP_DIR and origin.startswith(appenv.APP_DIR):
-            continue
-        outside.append("%s=%s" % (name, origin))
-    if outside:
-        appenv.logger.info("Loaded from outside decky's bundle: %s", "; ".join(outside))
-
-
-def report():
-    """One log line saying what this Python is and what it carries.
-
-    Written at every start. When a decky build changes its runtime again, the
-    first question is which modules went, and the answer should already be in
-    the log rather than needing a build to find out.
-    """
-    import sys
-
-    carried = []
-    for name in ("http.server", "socketserver", "email", "urllib.request",
-                 "aiohttp", "ssl", "ctypes", "sqlite3", "xml.etree.ElementTree"):
-        try:
-            # `find_spec`, not an import: asking must not answer the question.
-            # Importing each name put `socketserver` into `sys.modules` from
-            # SteamOS's Python, and `borrowed` below then reported a module
-            # nothing in the plugin uses. `importlib` is frozen into every
-            # CPython, so it is here whatever decky bundled.
-            import importlib.util
-
-            if importlib.util.find_spec(name) is None:
-                continue
-        except Exception:  # noqa: BLE001 -- a parent that will not import counts as missing
-            continue
-        carried.append(name)
-    appenv.logger.info(
-        "Python %s in this sandbox carries: %s",
-        sys.version.split()[0], ", ".join(carried) or "none of the ones checked",
-    )
-    borrowed()
+UNAVAILABLE = "The transfer server could not start."

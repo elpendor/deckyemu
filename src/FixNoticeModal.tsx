@@ -4,7 +4,7 @@ import {
   DialogFooter,
   DialogHeader,
   ModalRoot,
-} from "@decky/ui";
+} from "./steamui";
 
 import { openModal } from "./modalStack";
 import type { LaunchNotice } from "./backend";

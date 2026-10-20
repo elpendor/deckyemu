@@ -4,9 +4,9 @@ import {
   Focusable,
   ModalRoot,
   Navigation,
-  QuickAccessTab,
-} from "@decky/ui";
-import { FileSelectionType, openFilePicker, toaster } from "@decky/api";
+} from "./steamui";
+import { TAB_KEY } from "./preload/bridge";
+import { FileSelectionType, openFilePicker, toaster } from "./host";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { FaListUl, FaTrash } from "react-icons/fa";
 
@@ -673,7 +673,7 @@ export function TransferModal({
       // is adding the file they just pressed a button about; a list of games
       // they opened beforehand is answering a question they have moved on from.
       closeOpenModals();
-      Navigation.OpenQuickAccessMenu(QuickAccessTab.Decky);
+      Navigation.OpenQuickAccessMenu(TAB_KEY);
     },
     [close],
   );

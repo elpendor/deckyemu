@@ -1,4 +1,4 @@
-import { callable } from "@decky/api";
+import { callable } from "../host";
 import { type Core } from "./games";
 import { type RetroArchStatus } from "./emulators";
 

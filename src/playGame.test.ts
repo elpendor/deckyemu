@@ -25,7 +25,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const toast = vi.fn();
 const showLaunchConflict = vi.fn();
 const approveLaunch = vi.fn();
-vi.mock("@decky/api", () => ({ toaster: { toast: (...args: unknown[]) => toast(...args) } }));
+vi.mock("./host", () => ({ toaster: { toast: (...args: unknown[]) => toast(...args) } }));
 vi.mock("./LaunchConflictModal", () => ({
   showLaunchConflict: (...args: unknown[]) => showLaunchConflict(...args),
 }));

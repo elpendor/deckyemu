@@ -1,4 +1,4 @@
-import { callable } from "@decky/api";
+import { callable } from "../host";
 
 /**
  * Firmware: what an emulator still needs, and putting it where it reads it.

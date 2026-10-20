@@ -20,8 +20,6 @@
     "url": "git+https://github.com/elpendor/deckyemu.git"
   },
   "keywords": [
-    "decky",
-    "plugin",
     "steam-deck",
     "deck",
     "emulation",
@@ -35,9 +33,10 @@
   },
   "homepage": "https://github.com/elpendor/deckyemu#readme",
   "devDependencies": {
-    "@decky/rollup": "^1.0.2",
-    "@decky/ui": "^4.11.0",
     "@eslint/js": "^10.0.1",
+    "@rollup/plugin-commonjs": "^26.0.3",
+    "@rollup/plugin-node-resolve": "^15.3.1",
+    "@rollup/plugin-typescript": "^11.1.6",
     "@rollup/rollup-linux-x64-musl": "^4.53.3",
     "@types/react": "19.1.1",
     "@types/react-dom": "19.1.1",
@@ -50,7 +49,6 @@
     "vitest": "^4.1.10"
   },
   "dependencies": {
-    "@decky/api": "^1.1.3",
     "qrcode-generator": "^2.0.4",
     "react-icons": "^5.3.0",
     "tslib": "^2.7.0"

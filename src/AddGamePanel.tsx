@@ -10,7 +10,7 @@ import {
   ToggleField,
   type DropdownOption,
   type SingleDropdownOption,
-} from "@decky/ui";
+} from "./steamui";
 import {
   addEventListener,
   removeEventListener,
@@ -18,7 +18,7 @@ import {
   openFilePicker,
   toaster,
   useQuickAccessVisible,
-} from "@decky/api";
+} from "./host";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {

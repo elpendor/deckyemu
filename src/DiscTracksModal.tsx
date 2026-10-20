@@ -1,4 +1,4 @@
-import { Field, ModalRoot } from "@decky/ui";
+import { Field, ModalRoot } from "./steamui";
 
 import type { ReceivedFile } from "./backend";
 import { FileName } from "./FileName";

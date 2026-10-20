@@ -1,4 +1,4 @@
-import { DialogButton, ModalRoot } from "@decky/ui";
+import { DialogButton, ModalRoot } from "./steamui";
 
 import { COLUMN } from "./dialogStyle";
 import { HandoffCode } from "./HandoffCode";

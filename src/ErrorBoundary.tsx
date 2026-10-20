@@ -1,4 +1,4 @@
-import { DialogButton } from "@decky/ui";
+import { DialogButton } from "./steamui";
 import { Component, type ErrorInfo, type ReactNode } from "react";
 
 import { crashMessage } from "./crashMessage";

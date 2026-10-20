@@ -1,4 +1,4 @@
-import { ConfirmModal, DialogButton } from "@decky/ui";
+import { ConfirmModal, DialogButton } from "./steamui";
 
 import { MUTED } from "./dialogStyle";
 import { ICON_BUTTON_WIDE } from "./iconButton";

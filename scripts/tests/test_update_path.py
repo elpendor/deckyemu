@@ -24,7 +24,6 @@ sys.path.insert(0, REPO_ROOT)
 
 import appenv  # noqa: E402
 import fileserver  # noqa: E402
-import handoff  # noqa: E402
 import net  # noqa: E402
 import releases  # noqa: E402
 
@@ -33,7 +32,7 @@ section("only HTTP addresses are fetched")
 # urllib understands file: and ftp: too, so an asset whose download URL is not
 # ours would otherwise choose which handler runs.
 check("a plain https url is fetchable", net.is_web_url("https://example.com/a.zip"), True)
-check("and http, since the loopback handoff is one",
+check("and plain http",
       net.is_web_url("http://127.0.0.1:8000/x/deckyemu.zip"), True)
 for _bad in ("file:///etc/passwd", "ftp://example.com/a.zip", "javascript:0",
              "https://", "", None):
@@ -50,16 +49,14 @@ section("a token off the network cannot raise inside the handler")
 
 # compare_digest refuses a str holding a non-ASCII character, and
 # BaseHTTPRequestHandler decodes the request line as latin-1 -- so a raw high
-# byte in the path becomes one. handoff compared with compare_digest directly
-# and would have raised where fileserver answers 404; both now share this.
+# byte in the path becomes one, and a raise there would be an answer of nothing
+# where fileserver answers 404.
 check("a matching secret still matches", fileserver.same_secret("abc", "abc"), True)
 check("a wrong one does not", fileserver.same_secret("abd", "abc"), False)
 check("and an accented path is a mismatch, not an exception",
       fileserver.same_secret("töken", "token"), False)
 check("nothing matches when there is no secret to match",
       fileserver.same_secret("anything", ""), False)
-check("handoff uses that comparison rather than its own",
-      handoff.same_secret is fileserver.same_secret, True)
 
 section("the update is written under a name that cannot leave the runtime dir")
 

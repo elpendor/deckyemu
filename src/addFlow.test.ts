@@ -16,7 +16,7 @@ import { describe, expect, it, vi } from "vitest";
  * the draft is the thing under test.
  */
 
-vi.mock("@decky/api", () => ({
+vi.mock("./host", () => ({
   toaster: { toast: vi.fn() },
   addEventListener: vi.fn(),
   removeEventListener: vi.fn(),

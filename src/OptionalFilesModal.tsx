@@ -1,4 +1,4 @@
-import { Field, ModalRoot } from "@decky/ui";
+import { Field, ModalRoot } from "./steamui";
 
 import type { OptionalFile } from "./backend";
 import { ScrollList, ScrollRow } from "./ScrollList";

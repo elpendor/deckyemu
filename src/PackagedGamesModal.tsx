@@ -1,4 +1,4 @@
-import { DialogButton, Field, ModalRoot, Spinner } from "@decky/ui";
+import { DialogButton, Field, ModalRoot, Spinner } from "./steamui";
 import { useEffect, useState } from "react";
 
 import {

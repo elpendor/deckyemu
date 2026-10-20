@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const Navigate = vi.fn();
 const CloseSideMenus = vi.fn();
 
-vi.mock("@decky/ui", () => ({
+vi.mock("./steamui", () => ({
   Navigation: {
     Navigate: (...args: unknown[]) => Navigate(...args),
     CloseSideMenus: (...args: unknown[]) => CloseSideMenus(...args),

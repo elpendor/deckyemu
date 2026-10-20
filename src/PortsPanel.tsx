@@ -1,4 +1,4 @@
-import { ButtonItem, PanelSection, PanelSectionRow } from "@decky/ui";
+import { ButtonItem, PanelSection, PanelSectionRow } from "./steamui";
 import { useCallback, useState } from "react";
 
 import { EmulatorCatalogPanel } from "./EmulatorCatalogPanel";

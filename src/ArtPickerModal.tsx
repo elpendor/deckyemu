@@ -4,7 +4,7 @@ import {
   ModalRoot,
   Spinner,
   TextField,
-} from "@decky/ui";
+} from "./steamui";
 import { useCallback, useEffect, useState } from "react";
 
 import {

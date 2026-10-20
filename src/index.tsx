@@ -4,17 +4,10 @@ import {
   Field,
   PanelSection,
   PanelSectionRow,
-  findModuleByExport,
-  getReactRoot,
   quickAccessMenuClasses,
-} from "@decky/ui";
-import {
-  addEventListener,
-  definePlugin,
-  removeEventListener,
-  routerHook,
-  useQuickAccessVisible,
-} from "@decky/api";
+} from "./steamui";
+import { addEventListener, removeEventListener, useQuickAccessVisible } from "./host";
+import type { ReactNode } from "react";
 import { useCallback, useEffect, useState } from "react";
 import { FaCog, FaGamepad } from "react-icons/fa";
 
@@ -39,7 +32,6 @@ import { editGameMenuItem } from "./EditGameMenuItem";
 import { refreshAddedGames, rememberAddedGames } from "./addedGames";
 import { repairGameIcons } from "./repairIcons";
 import { repairGameLayouts } from "./repairLayouts";
-import { keepDeckyRoutesWorking, type DeckyRouterHook } from "./repairRoutes";
 import { AddedGamesPanel } from "./AddedGamesPanel";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { closeModalsWhenPanelSettles } from "./modalStack";
@@ -47,12 +39,13 @@ import { OrphanModal } from "./OrphanModal";
 import { shortcutNudge, type ShortcutCounts } from "./shortcutNudge";
 import { CloudStatusPanel } from "./CloudStatusPanel";
 import { TransferStatusPanel } from "./TransferStatusPanel";
-import { ManagePage, MANAGE_ROUTE, openManagePage } from "./ManagePage";
+import { ManagePage, openManagePage } from "./ManagePage";
 import { patchGameContextMenu } from "./steam/contextMenu";
 import { watchLaunches } from "./launchGate";
 import { watchPlaying } from "./playWatch";
 import { OVER_THE_NETWORK, callWithRetry } from "./timeout";
 import { openModal } from "./modalStack";
+import { ensureRescueTile } from "./rescueTile";
 
 const EMPTY_STATUS: RetroArchStatus = {
   found: false,
@@ -442,21 +435,19 @@ const GuardedManagePage = () => (
 );
 
 /**
- * The plugin's row in the Quick Access header: its name, and a way to the
+ * Our tab's title in the Quick Access header: its name, and a way to the
  * settings page.
  *
- * quickAccessMenuClasses.Title, not staticClasses.Title. The generic title class
- * carries its own padding and line height, which is why the name sat off-centre
- * against decky's back arrow no matter what was done to it from the outside. The
- * Quick Access header has a class of its own that matches the row.
+ * quickAccessMenuClasses.Title, the Quick Access header's own class, so the
+ * name sits on the same line as Steam's own tab titles.
  *
  * The button's numbers are all doing something. `minWidth: 0` because
  * DialogButton is sized for a dialog footer and defaults far wider than a header
- * row has to spare; 28x40 is what a Quick Access header button measures across
- * the plugins that put one there, and the narrower 30px this used before was
- * small enough to be awkward with a thumbstick. `marginRight: auto` on the name
- * is what pushes the button to the right edge rather than leaving it next to
- * the title.
+ * row has to spare; 28x40 is what a Quick Access header button measures, and
+ * the narrower 30px this used before was small enough to be awkward with a
+ * thumbstick. Beside the name rather than pushed to the right edge: Steam's
+ * title slot is wider than the panel shows -- 822px against a panel a third of
+ * that, measured on a Deck -- so the right edge is off screen.
  *
  * The glyph is centred by making the button a flex container rather than by
  * nudging the icon up with a negative margin. The nudge was tuned against one
@@ -470,15 +461,13 @@ function TitleView() {
       style={{
         display: "flex",
         alignItems: "center",
-        padding: 0,
-        flex: "auto",
         boxShadow: "none",
       }}
     >
-      <div style={{ marginRight: "auto" }}>DeckyEmu</div>
+      <div>DeckyEmu</div>
       <DialogButton
         style={{
-          marginLeft: "5px",
+          marginLeft: "12px",
           height: "28px",
           width: "40px",
           minWidth: 0,
@@ -495,23 +484,18 @@ function TitleView() {
   );
 }
 
-export default definePlugin(() => {
-  // Not exact: each tab has its own URL under this one (see `tabRoute`), and an
-  // exact route leaves those unresolved, so tapping a tab navigates to nothing.
-  routerHook.addRoute(MANAGE_ROUTE, GuardedManagePage);
+/** What `start` hands the bundle's entry to put in the Quick Access tab. */
+export interface Started {
+  title: ReactNode;
+  content: ReactNode;
+  icon: ReactNode;
+  /** The full-screen page, served under `/deckyemu`. */
+  page: () => ReactNode;
+  stop(): void;
+}
 
-  // After the route is added, so the router it remounts lists it. A no-op on
-  // any Steam client decky hooks by itself -- see repairRoutes.ts.
-  void keepDeckyRoutesWorking({
-    routerHook: () =>
-      (window as unknown as { DeckyPluginLoader?: { routerHook?: DeckyRouterHook } })
-        .DeckyPluginLoader?.routerHook,
-    findModuleByExport,
-    reactRoot: () => {
-      const element = document.getElementById("root");
-      return element ? getReactRoot(element) : null;
-    },
-  });
+/** Start the panel: everything that runs whether or not it is open. */
+export function start(): Started {
 
   // The "DeckyEmu" submenu behind the cog on a game's page -- Edit and Remove.
   // The cache is filled first because the item decides whether to appear by
@@ -519,6 +503,9 @@ export default definePlugin(() => {
   // a game that is ours.
   void refreshAddedGames();
   const unpatchContextMenu = patchGameContextMenu(editGameMenuItem);
+
+  // The way in that works when nothing else of ours does. See rescueTile.ts.
+  void ensureRescueTile();
 
   // Steam will not warn before launching one of our games over a running one
   // -- its check is gated on an app_type our shortcuts do not carry. The
@@ -599,12 +586,13 @@ export default definePlugin(() => {
     );
 
   return {
-    name: "DeckyEmu",
-    titleView: <TitleView />,
+    title: <TitleView />,
+    page: GuardedManagePage,
     /*
-     * Wrapped, because this renders inside decky's panel and a throw here
-     * unmounts everything up to whatever boundary decky has -- taking the panel
-     * with it, not just this plugin's section of it.
+     * Wrapped, because this renders inside Steam's Quick Access menu and a
+     * throw
+     * here unmounts everything up to whatever boundary Steam has -- taking the
+     * whole menu with it, not just our tab.
      */
     content: (
       <ErrorBoundary where="The DeckyEmu panel">
@@ -612,9 +600,9 @@ export default definePlugin(() => {
       </ErrorBoundary>
     ),
     /*
-     * Two children rather than one, which is how decky puts its own update dot
-     * on its own plug icon. `UpdateDot` renders nothing at all until there is
-     * something to say, so the ordinary case is the glyph exactly as before.
+     * Two children rather than one, so the update dot sits on the tab's own
+     * glyph. `UpdateDot` renders nothing at all until there is something to
+     * say, so the ordinary case is the glyph alone.
      */
     icon: (
       <>
@@ -622,16 +610,15 @@ export default definePlugin(() => {
         <UpdateDot />
       </>
     ),
-    onDismount() {
-      routerHook.removeRoute(MANAGE_ROUTE);
+    stop() {
       removeEventListener("update_available", onUpdateAvailable);
       // Steam keeps the patched component, so leaving this would put a dead
       // item in every game menu until the client restarts.
       unpatchContextMenu();
-      // Same reason: Steam keeps the registration, and a plugin update would
+      // Same reason: Steam keeps the registration, and an update would
       // otherwise leave the old copy toasting alongside the new one.
       stopWatchingLaunches();
       stopWatchingPlaying();
     },
   };
-});
+}

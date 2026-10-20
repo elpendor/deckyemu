@@ -1,13 +1,11 @@
 """The part of the Plugin class that knows what build this is and finds newer ones.
 
 Four things, and they are one subject: what is installed, whether anything newer
-exists, watching for that in the background, and handing a chosen release to
-decky's own installer.
+exists, watching for that in the background, and installing a chosen release.
 
-**A self-distributed plugin has to do this itself.** decky notifies for the
-plugins in its store and will never notify for this one, so without a check here
-an install stays on whatever version it was first given, indefinitely, with
-nothing anywhere saying otherwise.
+**Nothing else will do this.** DeckyEmu is distributed from its own GitHub
+releases, so without a check here an install stays on whatever version it was
+first given, indefinitely, with nothing anywhere saying otherwise.
 
 **The stamp is why `plugin_version` is not just a version string.** CI writes
 `build.json` beside `package.json` naming the commit, and the frontend carries
@@ -16,33 +14,46 @@ otherwise indistinguishable from a bug -- the backend behaves like the new
 version and the interface is the old one -- and the two halves being able to
 disagree out loud is what makes that diagnosable at all.
 
-`releases.py` does the looking and `handoff.py` serves the file over loopback;
-neither reaches back here. What is left is the policy: how often to look, how
-long to back off when the network is not there, and refusing to hand decky
-anything whose hash does not match what the release said.
+`releases.py` does the looking and `selfupdate.py` the installing; neither
+reaches back here. What is left is the policy: how often to look, how long to
+back off when the network is not there, and refusing to install anything whose
+hash does not match what the release said.
 
 Split out of main.py because it answers a different question from the file it
-sat in -- that one is about putting games in a library, and this is about the
-plugin itself.
+sat in -- that one is about putting games in a library, and this is about
+DeckyEmu itself.
 
-Mixed into `Plugin` rather than called by it, like the others: decky exposes the
-methods it finds on the plugin object, so the names have to stay there while the
-code lives somewhere findable. Nothing here may be instantiated alone.
+Mixed into `Plugin` rather than called by it, like the others: the service
+exposes the methods it finds on the Plugin object, so the names have to stay
+there while the code lives somewhere findable. Nothing here may be instantiated alone.
 """
 
 import asyncio
 import hashlib
 import json
 import os
+import signal
+import threading
+import time
 
 import appenv
 
 import plugin_base
 
-import handoff
 import releases
+import selfupdate
 import sysenv
 
+
+
+def _restart_soon(delay=2.0):
+    """Ask the service to stop, after the reply has had time to reach the panel.
+    The unit starts it again, from the version just switched to."""
+    def later():
+        time.sleep(delay)
+        os.kill(os.getpid(), signal.SIGTERM)
+
+    threading.Thread(target=later, daemon=True).start()
 
 class Updates(plugin_base.PluginContext):
     """Version, update checks and staging. See the module docstring."""
@@ -226,12 +237,13 @@ class Updates(plugin_base.PluginContext):
             await asyncio.sleep(delay)
 
     async def stage_update(self):
-        """Download the newest release and offer it to decky over loopback.
+        """Download the newest release, install it beside this one, and
+        restart into it.
 
-        Decky installs from a URL it fetches itself. Downloading here first and
-        re-offering the bytes on 127.0.0.1 means the digest decky verifies is
-        computed from the file actually obtained, rather than from a second trip
-        to the network that could answer differently.
+        The digest is checked against the file actually obtained. selfupdate
+        unpacks and checks it in a staging folder and switches only once it is
+        whole; the version running now stays installed, and the launcher goes
+        back to it if the new one never reports healthy.
         """
         current = (await self.plugin_version())["version"]
         found = await self._run(releases.check, current, True, False)
@@ -254,7 +266,7 @@ class Updates(plugin_base.PluginContext):
             # The asset name is whatever the releases API said, so it decides a
             # path here. A basename cannot climb out of the runtime directory,
             # and an empty one falls back rather than naming the directory
-            # itself. `handoff` serves this file back under the same name.
+            # itself.
             name = os.path.basename(release.get("asset_name") or "") or "deckyemu.zip"
             path = os.path.join(appenv.DATA_DIR, name)
             with open(path, "wb") as handle:
@@ -268,9 +280,13 @@ class Updates(plugin_base.PluginContext):
             await self._run(os.remove, path)
             return {"ok": False, "error": "The download did not match its published digest."}
 
-        url = await self._run(handoff.serve, path)
-        if not url:
-            return {"ok": False, "error": "Could not offer the download to decky."}
+        try:
+            installed = await self._run(selfupdate.install, path, release["version"])
+        except selfupdate.Refused as refusal:
+            return {"ok": False, "error": "Not installed: %s" % refusal}
+        finally:
+            await self._run(os.remove, path)
 
-        appenv.logger.info("Staged %s for decky at %s", release["version"], url)
-        return {"ok": True, "url": url, "version": release["version"], "sha256": digest}
+        appenv.logger.info("Installed %s at %s; restarting into it", release["version"], installed)
+        _restart_soon()
+        return {"ok": True, "version": release["version"], "sha256": digest, "restarting": True}

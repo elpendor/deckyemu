@@ -4,8 +4,8 @@ import {
   ConfirmModal,
   PanelSection,
   PanelSectionRow,
-} from "@decky/ui";
-import { addEventListener, removeEventListener, toaster } from "@decky/api";
+} from "./steamui";
+import { addEventListener, removeEventListener, toaster } from "./host";
 import { useCallback, useEffect, useState } from "react";
 
 import {

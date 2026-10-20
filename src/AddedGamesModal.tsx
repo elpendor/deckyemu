@@ -4,7 +4,7 @@ import {
   ModalRoot,
   Spinner,
   Tabs,
-} from "@decky/ui";
+} from "./steamui";
 import { useCallback, useEffect, useState } from "react";
 import { FaGamepad, FaInfoCircle, FaPen, FaPlay, FaTrash } from "react-icons/fa";
 

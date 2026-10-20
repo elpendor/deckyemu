@@ -1,4 +1,4 @@
-import { ConfirmModal, DialogButton, Focusable, ModalRoot, Spinner } from "@decky/ui";
+import { ConfirmModal, DialogButton, Focusable, ModalRoot, Spinner } from "./steamui";
 import { useEffect, useRef, useState } from "react";
 import { FaTrash } from "react-icons/fa";
 

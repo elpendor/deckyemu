@@ -1,4 +1,4 @@
-import { DialogButton, Focusable, ModalRoot } from "@decky/ui";
+import { DialogButton, Focusable, ModalRoot } from "./steamui";
 
 import { UpdatePanel } from "./UpdatePanel";
 import { ScrollList } from "./ScrollList";

@@ -4,7 +4,7 @@ import {
   PanelSection,
   PanelSectionRow,
   SidebarNavigation,
-} from "@decky/ui";
+} from "./steamui";
 import { useCallback, useEffect, useState } from "react";
 import {
   FaBoxOpen,

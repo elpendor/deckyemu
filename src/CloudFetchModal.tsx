@@ -1,6 +1,6 @@
-import { DialogButton, Focusable, ModalRoot } from "@decky/ui";
+import { DialogButton, Focusable, ModalRoot } from "./steamui";
 import { openModal } from "./modalStack";
-import { addEventListener, removeEventListener } from "@decky/api";
+import { addEventListener, removeEventListener } from "./host";
 import { useEffect, useState } from "react";
 
 import { MUTED } from "./dialogStyle";

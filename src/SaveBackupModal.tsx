@@ -5,8 +5,8 @@ import {
   ModalRoot,
   Spinner,
   ToggleField,
-} from "@decky/ui";
-import { addEventListener, removeEventListener } from "@decky/api";
+} from "./steamui";
+import { addEventListener, removeEventListener } from "./host";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
