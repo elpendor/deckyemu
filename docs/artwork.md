@@ -40,19 +40,15 @@ rather than silent.
 Typing a long API key on a touchscreen is miserable, so this is three steps and
 none of them need the keyboard:
 
-1. **Sign in to SteamGridDB.** Use the plugin's own sign-in button, not
+1. **Sign in to SteamGridDB.** Use DeckyEmu's own sign-in button, not
    SteamGridDB's *Login via Steam* — Steam's in-app browser ignores that one.
    You'll end up on a blank page. That's the sign-in finishing, not an error.
 2. **Open the API key page.** Hold on the key until Steam's context menu appears
    and choose Copy.
 3. **Paste key and save.** Nothing else to press.
 
-Two shortcuts sit next to those steps:
-
-- **Import key from another plugin** appears when a key is already stored under
-  `~/homebrew/settings`. Field names have to match exactly, so the wrong value
-  is never imported behind your back.
-- **Or type the key** is a plain field, saved when you tab away.
+If you'd rather type it, **Or type the key** is a plain field, saved when you
+tab away.
 
 > **Note:** your key gets validated against SteamGridDB before it's saved, so a
 > truncated paste is caught immediately. It's never sent back to the UI

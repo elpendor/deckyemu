@@ -82,7 +82,7 @@ with open(_LOG, "w", encoding="utf-8") as _handle:
                 "[INFO]: vita3k: [copy_license]: Success copy license file to: "
                 "\"/home/deck/.local/share/Vita3K/Vita3K/ux0/license/app/"
                 "PCSA00011/UP9000-PCSA00011_00-GRAVITYRUSH000000.rif\"",
-                "[INFO]: Wrote launcher /home/deck/homebrew/data/deckyemu/"
+                "[INFO]: Wrote launcher /home/deck/.local/share/deckyemu/data/"
                 "launchers/a-private-game-6ac73bd4.sh",
                 "[INFO]: sgdb request with key %s" % _SGDB,
                 "[INFO]: cheevos token=%s" % _CHEEVOS,
@@ -100,7 +100,7 @@ _LIBRARY = {
         "rom_path": "/home/deck/deckyemu/roms/snes/A Private Game (USA).sfc",
         # A real entry carries this, and the name is a slug of the title.
         "launcher_path":
-            "/home/deck/homebrew/data/deckyemu/launchers/a-private-game-6ac73bd4.sh",
+            "/home/deck/.local/share/deckyemu/data/launchers/a-private-game-6ac73bd4.sh",
     },
     "2": {"app_id": 2, "title": "Another One", "platform": "SNES", "collection": "x"},
     "3": {"app_id": 3, "title": "A Third", "platform": "N64", "collection": "y"},

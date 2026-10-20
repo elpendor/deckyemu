@@ -271,7 +271,7 @@ py_modules/                 Backend logic. Plain Python, no third-party
                             halving, never rotated away, because the line you
                             want is the oldest one
   net.py                    stdlib-only HTTP, with a system-CA fallback
-  jsonstore.py              Read and write the plugin's own JSON, atomically
+  jsonstore.py              Read and write DeckyEmu's own JSON, atomically
   procout.py                Read what a subprocess says while it is still saying it
   hardware.py               Which machine this is, and whether we claim to work on it
   sysenv.py                 Strip Steam's runtime; user_home(); user_dir();
@@ -398,7 +398,7 @@ src/                        Frontend (React + TypeScript, bundled by rollup).
                             when a modal opens, so anything that must survive
                             that cannot live in component state.
   timeout.ts                withTimeout + callWithRetry, for calls lost when the
-                            plugin reloads mid-flight
+                            service restarts mid-flight
   version.ts                Build stamps compiled in by rollup; isStale()
 
 service.py                  The service: backend, injector and rescue page.
@@ -455,6 +455,6 @@ recording:
   overview poll in `src/steam/shortcuts.ts`.
 - `SetCustomArtworkForApp` wants bare base64, not a data URI; the image type is
   a separate argument. Asset types are `Capsule=0, Hero=1, Logo=2, Header=3,
-  Icon=4, HeroBlur=5`; this plugin writes the first four.
+  Icon=4, HeroBlur=5`; DeckyEmu writes the first four.
 - Collections are managed through the `collectionStore` global. Every call there
   is guarded, and failing to file a game into a collection never fails the add.

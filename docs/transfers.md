@@ -30,7 +30,7 @@ as you use it. See [where a ROM ends up](#where-a-rom-ends-up).
 > **One kind of file isn't a ROM.** A `.deckyemu.json` **emulator definition**
 > gets an **Import** button instead. That's how you set up an emulator this
 > plugin doesn't ship — see
-> [emulators this plugin does not ship](emulators.md#emulators-this-plugin-does-not-ship).
+> [emulators DeckyEmu does not ship](emulators.md#emulators-deckyemu-does-not-ship).
 
 ### Reading the dialog
 
@@ -115,7 +115,7 @@ beginning.
 
 ### The same server runs backwards
 
-Two things travel the other way over it, and you reach both from the plugin
+Two things travel the other way over it, and you reach both from DeckyEmu
 rather than from the upload page:
 
 - The [diagnostic report](updates.md#reporting-a-problem).
@@ -180,7 +180,7 @@ Two things it won't do:
   installs and where it may write, and you still confirm it on your Deck.
 - **It takes definitions only.** What arrives is capped at a definition's size
   and then has to be one, or it's deleted. A box that fetched anything would be
-  a downloader for games, which this plugin is not.
+  a downloader for games, which DeckyEmu is not.
 
 ## Unpacking a zip
 
@@ -196,7 +196,7 @@ holding a `.cue` and its `.bin` files has to come apart before any of it works.
 Pressing it extracts the contents **flat into your transfer folder**, next to
 the zip, ignoring whatever folders the archive named them in. Xbox Live Arcade
 titles are the reason — they arrive as a single file buried under
-`58410954/000D0000/`, and the rest of the plugin only acts on files sitting
+`58410954/000D0000/`, and the rest of DeckyEmu only acts on files sitting
 directly in the transfer folder.
 
 If exactly one file comes out, the panel switches straight to it so you carry on
@@ -283,7 +283,7 @@ That decides what removing a game can delete:
 | `roms/` itself | No | No |
 | SD card, home, anywhere else | No | No |
 
-Only ROMs sitting one level under `~/deckyemu/roms` count as the plugin's, which
+Only ROMs sitting one level under `~/deckyemu/roms` count as DeckyEmu's, which
 is exactly the set it put there. Anything else is reported as not its to delete
 rather than quietly skipped. See also
 [removing everything](library.md#removing-everything).

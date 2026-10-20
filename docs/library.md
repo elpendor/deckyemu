@@ -46,7 +46,7 @@ performance settings. The panel closes on the way so nothing sits on top of it.
 ### Starting a game while another one is running
 
 Steam normally warns you before launching a second game. It won't for games
-added here, because those are non-Steam shortcuts. So the plugin does the
+added here, because those are non-Steam shortcuts. So DeckyEmu does the
 warning itself.
 
 Start one of these while another game is running and you'll see a quick flicker
@@ -109,7 +109,7 @@ Page between them with L1 and R1.
 Which one you want depends on your library. A few games across lots of systems
 read better grouped. Lots of games on a few systems read better in tabs, where a
 system is one bumper press away. The tab you were last on is remembered until
-the plugin restarts.
+DeckyEmu restarts.
 
 ## Editing a game
 
@@ -172,7 +172,7 @@ Already added the game? Open it in the editor and press **Install a patch**.
 Either way the file comes out of your transfer folder.
 
 > **Note:** your ROM file is never changed. RetroArch applies patches while the
-> game loads, from files sitting next to the ROM. The plugin keeps its own copy
+> game loads, from files sitting next to the ROM. DeckyEmu keeps its own copy
 > of every patch, which is what lets you switch one off without losing it.
 
 Each patch on the list has a switch and a bin. The switch turns it on and off,
@@ -198,7 +198,7 @@ Two things this can't do:
 Put a patch next to a ROM yourself? It gets picked up the first time you open
 the editor.
 
-Removing the game deletes its patches too — both the plugin's copies and the
+Removing the game deletes its patches too — both DeckyEmu's copies and the
 files next to your ROM.
 
 ### Switch updates and DLC
@@ -219,7 +219,7 @@ From the editor, press **Install an update or DLC**. Installing takes the file
 out of your transfer folder. Pick a file from anywhere else and it gets copied
 instead, so yours stays put.
 
-The plugin reads the package to see what it is. An update for a different game,
+DeckyEmu reads the package to see what it is. An update for a different game,
 a DLC for a different game, or a whole game picked by mistake all get refused
 before anything moves. No keys needed for that.
 
@@ -237,7 +237,7 @@ A few things to know:
 Drop a script in `~/deckyemu/env.d/*.sh` and it gets read just before an
 emulator starts, in name order.
 
-It's there so another plugin — or a file you write yourself — can set an
+It's there so another tool — or a file you write yourself — can set an
 environment variable without touching a shortcut's launch options, which is the
 one field two plugins can't share.
 
@@ -298,15 +298,15 @@ out of sync:
 - Games left over from a previous install under a different plugin name.
 
 It checks the other direction too, reading Steam's own `shortcuts.vdf` for
-shortcuts the plugin doesn't have records for:
+shortcuts DeckyEmu doesn't have records for:
 
 | | |
 | --- | --- |
 | **Cannot start** | The launcher script is gone, so the entry does nothing. Removing it is all you can do |
 | **Duplicate** | A tracked game already runs this launcher, so it shows up twice in Steam. Remove it and you keep the tracked copy |
-| **Untracked** | It still plays, but the plugin has no record of it, so you can't edit or remove it from here |
+| **Untracked** | It still plays, but DeckyEmu has no record of it, so you can't edit or remove it from here |
 
-> **Note:** ownership is decided by the executable being one of the plugin's
+> **Note:** ownership is decided by the executable being one of DeckyEmu's
 > launcher scripts, never by the name. Two shortcuts can share a title where one
 > of them is a real Steam game.
 
@@ -333,10 +333,10 @@ collection once it's empty.
 ## Removing everything
 
 **Remove all DeckyEmu games from Steam** sits at the bottom of the Library tab.
-It undoes everything the plugin added: every shortcut, every launcher script,
+It undoes everything DeckyEmu added: every shortcut, every launcher script,
 and any collection it made that ends up empty.
 
-> **Warning:** this also deletes the games the plugin put on your Deck — ROMs
+> **Warning:** this also deletes the games DeckyEmu put on your Deck — ROMs
 > filed under a system, and games unpacked into an emulator. [Back up your
 > saves](saves.md#backing-up-save-data) first. ROMs you keep somewhere of your
 > own are left alone.

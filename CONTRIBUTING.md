@@ -95,11 +95,11 @@ Two constraints that are not style preferences, and that shape most of what
 gets accepted:
 
 - **Everything works in Game Mode.** No Desktop Mode, no keyboard, no second
-  device, no SSH — including the first install. It is why this plugin exists
+  device, no SSH — including the first install. It is why DeckyEmu exists
   next to tools that already do more. A change that ends at a shell command
   needs an in-panel alternative instead.
-- **The backend is stdlib only.** It runs on decky's frozen Python, so there is
-  nothing to install and no dependency to add. The frontend takes new runtime
+- **The backend is stdlib only.** It runs on SteamOS's own Python, where nothing
+  is promised beyond the standard library, so there is no dependency to add. The frontend takes new runtime
   dependencies only with a reason.
 
 ## Security
@@ -111,6 +111,6 @@ to. [SECURITY.md](SECURITY.md) says what is most worth looking at.
 
 ## Distribution
 
-This plugin is not in decky's store and is not going to be; it is self-hosted
-permanently, and the in-plugin **Updates** tab is the only channel there is.
-Please do not spend effort on store-submission requirements.
+DeckyEmu is self-hosted permanently: its own **Updates** tab, and the library
+tile, are the only channels there are. Please do not spend effort on
+store-submission requirements.

@@ -61,9 +61,9 @@ body:
 
         These are not style preferences. They decide most of what is possible, so an idea that already answers them is a much shorter conversation.
 
-        **Everything works in Game Mode.** No Desktop Mode, no keyboard, no second device, no SSH — including the first install. It is why this plugin exists next to tools that already do more. Anything that ends at a shell command needs an in-panel alternative instead.
+        **Everything works in Game Mode.** No Desktop Mode, no keyboard, no second device, no SSH — including the first install. It is why DeckyEmu exists next to tools that already do more. Anything that ends at a shell command needs an in-panel alternative instead.
 
-        **The backend is stdlib only.** It runs on decky's frozen Python, so there is nothing to install and no dependency to add.
+        **The backend is stdlib only.** It runs on SteamOS's own Python, where nothing is promised beyond the standard library, so there is no dependency to add.
 
   - type: textarea
     id: gamemode

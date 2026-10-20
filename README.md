@@ -39,11 +39,10 @@ of your own, where closing a game copies that emulator's saves up on their own.
 with its own wide artwork, beside games bought from
 Steam.](docs/images/a-game-in-steam.jpg)
 
-Everything happens with a controller, from the Quick Access panel. The one
-exception is [Decky Loader](https://github.com/SteamDeckHomebrew/decky-loader)
-itself, which you install from Desktop Mode — that's the only trip you make.
-DeckyEmu's own install happens in Game Mode, and nothing after it needs a
-keyboard, a desktop or a second device.
+Everything happens with a controller, from DeckyEmu's own tab in the Quick
+Access menu. The one exception is installing it, which is a single command in
+Desktop Mode — that's the only trip you make. Nothing after it needs a keyboard,
+a desktop or a second device, updates included.
 
 DeckyEmu ships no games, no BIOS files and no encryption keys, and downloads
 none of them. It installs emulators from their own publishers and points them at
@@ -56,18 +55,18 @@ you switch on cloud saves.
 
 ## Install it
 
-In Decky's settings, give **Install from URL** this address:
+In Desktop Mode, open Konsole and run:
 
 ```
-https://get.deckyemu.xyz
+curl -fsSL https://github.com/elpendor/deckyemu/releases/latest/download/install.sh | sh
 ```
 
-Decky Loader is the only prerequisite. RetroArch and its cores install from the
-plugin, and an existing RetroArch is found on its own.
+Then go back to Game Mode. Nothing else is needed first: RetroArch and its cores
+install from DeckyEmu, and an existing RetroArch is found on its own.
 
-[Installing](docs/installing.md) has the rest — an address you can verify before
-pasting, the manual install for a Deck that can't reach GitHub, and what lands
-where on your device.
+[Installing](docs/installing.md) has the rest — what the script does before you
+run it, the install for a Deck that can't reach GitHub, and what lands where on
+your device.
 
 Then [Getting started](docs/getting-started.md) walks from there to a game
 running: send a ROM, pick what runs it, add it to Steam.
@@ -77,7 +76,7 @@ running: send a ROM, pick what runs it, add it to Steam.
 | | |
 | --- | --- |
 | [Getting started](docs/getting-started.md) | The walkthrough: install to first game, then everyday tasks and what to do when one misbehaves |
-| [Installing](docs/installing.md) | Installing and uninstalling, the Desktop Mode fallback, and what the plugin puts on your Deck |
+| [Installing](docs/installing.md) | Installing and uninstalling, the install without GitHub, and what DeckyEmu puts on your Deck |
 | [Getting files onto the Deck](docs/transfers.md) | Sending ROMs, BIOS files and keys from another device, and where each one ends up |
 | [RetroArch](docs/retroarch.md) | Installing it and its cores, fullscreen, on-screen chatter, the menu combo, achievements |
 | [Standalone emulators](docs/emulators.md) | The one-press catalog, moving between builds, registering your own |
@@ -85,7 +84,7 @@ running: send a ROM, pick what runs it, add it to Steam.
 | [Your library](docs/library.md) | Editing a game, ROM hacks and add-ons, collections, and putting things back in order |
 | [Save data](docs/saves.md) | Backing saves up, copying them to cloud storage of your own, and putting them back |
 | [Updates and problems](docs/updates.md) | Keeping it current, and what to send when something breaks |
-| [Emulator definitions](docs/emulator-definitions.md) | The JSON format for setting up an emulator this plugin does not ship |
+| [Emulator definitions](docs/emulator-definitions.md) | The JSON format for setting up an emulator DeckyEmu does not ship |
 | [Development](docs/development.md) | Building it, running it against a real Deck, and the layout of the tree |
 | [Contributing](CONTRIBUTING.md) | What is worth sending, and what to know before opening a pull request |
 
@@ -103,9 +102,6 @@ running: send a ROM, pick what runs it, add it to Steam.
   on install came from rather than a reading of a button table — which would
   have got several wrong, because face buttons match by position and not by
   letter. Both projects also cover far more systems than this one does.
-- **[TabMaster](https://github.com/Tormak9970/TabMaster)** for the Quick Access
-  header, which has a title class of its own and is what stopped this plugin's
-  name sitting off-centre against Decky's back arrow.
 - **[shadPS4Plus](https://github.com/AzaharPlus/shadPS4Plus)** for the PS4
   package extractor. shadPS4 cannot unpack a `.pkg` and no fork of it can
   either — the code that did was taken out and published as a command-line
@@ -121,7 +117,7 @@ running: send a ROM, pick what runs it, add it to Steam.
   own release page when you install an emulator that wants it.
 - **[rclone](https://github.com/rclone/rclone)** is the transfer tool behind
   cloud saves. The storage is yours and so is the account — rclone talks to some
-  seventy services and this plugin has an account with none of them, so nothing
+  seventy services and DeckyEmu has an account with none of them, so nothing
   here ever holds your credentials. MIT, fetched from its own release
   page when you switch cloud saves on.
 - **[gptokeyb2](https://github.com/PortsMaster/gptokeyb2)** for reaching a
@@ -129,14 +125,6 @@ running: send a ROM, pick what runs it, add it to Steam.
   Mode has no keyboard; this turns Select+Start into that key, which is how
   PortMaster does it. GPL-2.0, fetched from its own release page when you add a
   port.
-- **[unifideck](https://github.com/mubaraknumann/unifideck)** for the reason the
-  update button works in Game Mode: the Quick Access panel is a popup window
-  there, so Decky's global websocket sits on its opener rather than on `window`.
-  A missing fallback shows up only in Game Mode, at the one moment a user is
-  trying to update.
-
-Built from the
-[Decky plugin template](https://github.com/SteamDeckHomebrew/decky-plugin-template).
 
 ## Licence
 

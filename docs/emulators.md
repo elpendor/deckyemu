@@ -33,7 +33,7 @@ file types it accepts and its launch arguments all filled in.
 
 > **Nothing here is a mirror or a repack.** The application id or repository
 > above is where the build comes from, and following one takes you to the
-> publisher's own page. That's the whole of what this plugin adds: it downloads
+> publisher's own page. That's the whole of what DeckyEmu adds: it downloads
 > what those projects publish and fills in the system, file types and launch
 > arguments.
 
@@ -48,12 +48,12 @@ when something goes wrong and only one of them has builds you can move between.
 **BigPEmu** plays the Atari Jaguar, and it's the only way to play the system
 well — RetroArch's Virtual Jaguar core leaves games that don't run at all.
 
-Its author publishes no flatpak and uses no release page, so the plugin reads
+Its author publishes no flatpak and uses no release page, so DeckyEmu reads
 the same update feed BigPEmu's own **Check for Updates** reads, and downloads
 the build that feed names.
 
 That feed states a checksum for the file, which no other entry here does. So
-this is the one download the plugin can check against a number the publisher
+this is the one download DeckyEmu can check against a number the publisher
 published.
 
 It moves between builds like the others, with the list coming from an unusual
@@ -82,7 +82,7 @@ notifications and its cursor all get switched off on install.
 ### BIOS, keys and firmware
 
 **Installing the emulator isn't always enough to play.** Some systems need BIOS
-files, keys or firmware that are yours to dump and that this plugin will never
+files, keys or firmware that are yours to dump and that DeckyEmu will never
 download. PCSX2 and xemu won't boot without them. The install prompt tells you
 which ones before it starts.
 
@@ -114,7 +114,7 @@ update is a couple of hundred megabytes.
 
 **A file one emulator has gets shared with the others.** Adding a game to an
 emulator, switching a game to it, installing a BIOS another emulator in use
-wants, or just starting the plugin all share the file straight away — the same
+wants, or just starting DeckyEmu all share the file straight away — the same
 file between the two rather than a copy — so the row reads *In place*.
 
 Removing it from one leaves the other's copy, and the remove dialog says so. It
@@ -134,7 +134,7 @@ Files go into RetroArch's own system folder, wherever `retroarch.cfg` points it
 `SCPH5501.BIN` sent from a phone lands as `scph5501.bin`.
 
 A dump under any other name is recognised by its contents too, from the checksum
-list libretro publishes, which the plugin downloads and keeps for a month.
+list libretro publishes, which DeckyEmu downloads and keeps for a month.
 Offline, only the name counts. A file with the right name but contents the list
 doesn't know is flagged on its row, and installing it asks you first; it's never
 shared to another emulator on its own. It isn't refused outright, because the
@@ -152,7 +152,7 @@ it warns you the same way PCSX2 does.
 A PlayStation 4 game arrives as a `.pkg`, and shadPS4 can't unpack one — the
 code that used to do it was taken out of the emulator and published separately.
 
-So the first time you add a `.pkg`, the plugin downloads a small command-line
+So the first time you add a `.pkg`, DeckyEmu downloads a small command-line
 tool to do it: the **PS4 package extractor** from
 [shadPS4Plus](https://github.com/AzaharPlus/shadPS4Plus), GPL-2.0, taken from
 that project's own release page.
@@ -161,7 +161,7 @@ It's fetched then rather than with the emulator, because most people never add a
 `.pkg` at all. It lands in `~/deckyemu/tools/`, kept apart from
 `~/deckyemu/emulators/` on purpose — it plays nothing, it turns a `.pkg` into a
 folder shadPS4 can run — and it isn't listed as an emulator anywhere.
-Reinstalling the plugin doesn't delete it.
+Reinstalling DeckyEmu doesn't delete it.
 
 It's descended from shadPS4's own extractor, which is why it was chosen over
 anything else that reads the format: what comes out is what shadPS4 expects,
@@ -211,7 +211,7 @@ playlist's discs, so it's set to change disc by itself instead.
 
 ## Fixes
 
-Some emulators have bugs this plugin can correct. Those corrections appear as
+Some emulators have bugs DeckyEmu can correct. Those corrections appear as
 **Fixes** when you edit an emulator on the **Emulators** tab. Motion controls,
 below, is the only one today.
 
@@ -236,8 +236,8 @@ alone. Join it again to hand the fix back to the emulator.
 You get told, and only then:
 
 - *"The emulator does this itself now. You can switch this off."* — said only
-  once the build you have actually contains the fix, never merely because the
-  plugin was updated. If yours is older, nothing is said and the fix goes on
+  once the build you have actually contains the fix, never merely because
+  DeckyEmu was updated. If yours is older, nothing is said and the fix goes on
   working.
 - *"This build of the emulator would not take it, so it is not running."* — for
   a fix applied to the emulator's own files, when a build has changed too much
@@ -380,7 +380,7 @@ sensor axes in the wrong order — SDL describes a gamepad's axes differently fr
 a handheld's, and shadPS4 passes them straight through — so tilting your Deck
 worked while turning it did nothing.
 
-The plugin loads a tiny library alongside the emulator that rotates the axes
+DeckyEmu loads a tiny library alongside the emulator that rotates the axes
 back. shadPS4 itself is the ordinary Flathub build, untouched and still updating
 normally. Asked for upstream as
 [shadPS4#3871](https://github.com/shadps4-emu/shadPS4/issues/3871), and this
@@ -398,7 +398,7 @@ matters less here than it does elsewhere. It runs:
   with no extension at all** — the filename is a long string of hex
 
 That last one used to have nowhere to go, since everything here matches a game
-to an emulator by its extension. The plugin now reads the first few bytes
+to an emulator by its extension. DeckyEmu now reads the first few bytes
 instead, so an XBLA container can be added like any other game even though its
 name says nothing.
 
@@ -425,7 +425,7 @@ starts without one it says so and offers to create it:
 1. Choose **Create Profile** with the controller.
 2. Type a gamertag with the on-screen keyboard (Steam + X).
 
-From then on the plugin signs that profile in whenever a game starts, so no game
+From then on DeckyEmu signs that profile in whenever a game starts, so no game
 asks you to sign in. Xenia itself wouldn't — it remembers who was signed in only
 when it's quit from its own menu, and a game closed from Steam never is.
 
@@ -497,7 +497,7 @@ the arguments under **All registered emulators** below.
 Removing an emulator here leaves your saves and configuration alone, and games
 you've already added start working again the moment you reinstall it.
 
-### Emulators this plugin does not ship
+### Emulators DeckyEmu does not ship
 
 The list above is fixed, and nothing outside it is linked to or named as a
 download here.
@@ -532,7 +532,7 @@ Some games have been rebuilt to run on your Deck directly, with no emulator. A
 port plays one game and needs the disc or cartridge dump you already own. It
 builds its own copy of the assets from that file the first time it runs.
 
-They live under **Ports**, and these ship with the plugin. Unlike every other
+They live under **Ports**, and these ship with DeckyEmu. Unlike every other
 table on this page, the middle column is a game rather than a system — a port
 plays one game, and which one is the only thing that tells you what to supply.
 The Ports tab says it too, under each name.
@@ -628,7 +628,7 @@ Nothing updates on its own. An emulator moves when you ask it to.
 
 ### The ones marked (GitHub)
 
-RPCS3, Azahar, Vita3K and Xenia Canary publish no Flatpak, so the plugin
+RPCS3, Azahar, Vita3K and Xenia Canary publish no Flatpak, so DeckyEmu
 downloads them from the projects' own release pages. That's what the
 **(GitHub)** next to their names means. They move between builds like the rest,
 with two differences.
@@ -644,15 +644,15 @@ about the list it sits under and counts only that list. Press it and the rows
 say *update available* where there is one, and the button tells you what it
 found.
 
-> **Until you press it, the plugin doesn't claim either way.** A row saying
+> **Until you press it, DeckyEmu doesn't claim either way.** A row saying
 > nothing means nobody has looked — not that the emulator is current.
 
 **They can't be held.** A hold exists to stop something else moving an emulator,
-and nothing else on your Deck updates an AppImage this plugin downloaded.
+and nothing else on your Deck updates an AppImage DeckyEmu downloaded.
 Staying on a build is simply not pressing update.
 
 **Choosing a build also holds it there**, and that's the part worth
-understanding. Holding stops *anything* moving it, not only this plugin — any
+understanding. Holding stops *anything* moving it, not only DeckyEmu — any
 `flatpak update` on your device does, including whatever you press when you
 update your Deck from Desktop Mode.
 
@@ -670,9 +670,9 @@ You aren't offered this for:
 
 | | Why |
 | --- | --- |
-| A system-wide Flatpak | Root-owned, and the plugin has no way to answer a password prompt |
+| A system-wide Flatpak | Root-owned, and DeckyEmu has no way to answer a password prompt |
 | RetroArch from a package or an AppImage | Neither was installed from here and neither has builds to move between |
-| An emulator you registered yourself | The plugin didn't install it and doesn't know where it publishes |
+| An emulator you registered yourself | DeckyEmu didn't install it and doesn't know where it publishes |
 
 For a Flathub build, the note on each row describes its *packaging* — "Restrict
 nvidia-cg-toolkit to x86_64" — not the emulator's own release notes, which live
@@ -685,7 +685,7 @@ The Emulators tab has two lists:
 
 | List | What it is |
 | --- | --- |
-| **Ready-made emulators** | The catalog — what the plugin knows how to install and set up |
+| **Ready-made emulators** | The catalog — what DeckyEmu knows how to install and set up |
 | **All registered emulators** | Everything wired up for adding games, whichever list it came from, and where each one's system, file types and launch arguments are edited |
 
 For anything the catalog doesn't cover, register a standalone emulator by hand
@@ -701,5 +701,5 @@ boxart, same collection grouping.
 Leave the system unset and games still launch, but artwork then depends entirely
 on SteamGridDB matching by title, with no era sanity check.
 
-> **With at least one emulator registered, the plugin is fully usable without
+> **With at least one emulator registered, DeckyEmu is fully usable without
 > RetroArch installed at all.**

@@ -23,10 +23,16 @@ listens on the network. The parts where that matters most:
   strictly: it may install the emulator it describes, and it may not delete
   anything, fetch firmware or a second binary, or write outside the directory it
   declares. Anything that gets past those bounds is a bug.
-- **The updater** (`py_modules/releases.py`, `handoff.py`). Self-hosted
-  distribution makes this the only way a fix reaches anyone, so it is worth more
-  scrutiny than its size suggests. The download is checked against the digest
-  published in the release, and offered to Decky over loopback.
+- **The updater** (`py_modules/releases.py`, `selfupdate.py`, `launcher.py`).
+  Self-hosted distribution makes this the only way a fix reaches anyone, so it
+  is worth more scrutiny than its size suggests. The download is checked against
+  the digest published in the release, unpacked without letting any member land
+  outside its folder, and switched to only once it compiles whole.
+- **The debugger session on Steam's UI** (`py_modules/cdp.py`, `injector.py`).
+  The service runs code inside Steam's interface over the loopback debugging
+  port, and the panel calls the backend through a binding only that session
+  receives. The rescue page (`rescue.py`) is loopback only, under a path that
+  changes every start.
 - **Generated launchers** (`py_modules/launchers.py`). Every argument is quoted
   and nothing a filename or a game title carries may become a command.
 

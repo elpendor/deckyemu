@@ -16,7 +16,7 @@ import urllib.request
 
 import appenv
 
-USER_AGENT = "DeckyEmu/1.0 (+https://github.com/SteamDeckHomebrew)"
+USER_AGENT = "DeckyEmu/1.0 (+https://github.com/elpendor/deckyemu)"
 DEFAULT_TIMEOUT = 20
 
 # A JSON reply that is not small is a reply from something that is not the API

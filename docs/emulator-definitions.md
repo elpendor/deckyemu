@@ -24,7 +24,7 @@ lists every `.deckyemu.json` waiting in your transfer folder, including one you
 sent in an earlier session. That dialog has its own **Transfer to Deck** button,
 so you can send and import a definition without leaving it.
 
-Importing takes the file out of your transfer folder — the plugin keeps its own
+Importing takes the file out of your transfer folder — DeckyEmu keeps its own
 copy, and a second one in the inbox would only be there for you to delete later.
 
 > **A definition that's *refused* stays where it is.** It's still the only copy
@@ -56,7 +56,7 @@ particular, since the id, paths and arguments all depend on which emulator you
 have.
 
 `format` is the one field about the file rather than the emulator. It says which
-version of this shape you wrote the definition in, so a plugin too old to read it
+version of this shape you wrote the definition in, so a DeckyEmu too old to read it
 says so plainly instead of reporting the first field it doesn't recognise.
 
 > **Put `2` unless you know you need `1`.** Format 2 adds omitting `args`,
@@ -190,7 +190,7 @@ one that imported cleanly is taken out of it.
 
 ## Firmware and keys
 
-`firmware` is a list of files the emulator needs and this plugin will never
+`firmware` is a list of files the emulator needs and DeckyEmu will never
 supply. Each entry becomes a row under **BIOS & firmware** saying whether it's
 present, and files sent over **Transfer** are matched to it by name.
 
@@ -285,7 +285,7 @@ nothing able to reach it.
 Games already added to Steam keep their launcher scripts, and re-importing
 brings everything back.
 
-Definitions live in the plugin's settings directory, one file per emulator, and
+Definitions live in DeckyEmu's settings directory, one file per emulator, and
 survive a reset that clears emulators.
 
 ## When it does not work

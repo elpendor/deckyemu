@@ -1,6 +1,6 @@
 # Getting started with DeckyEmu
 
-From a freshly installed plugin to a game running, in order, with nothing that
+From a fresh install to a game running, in order, with nothing that
 needs Desktop Mode or a keyboard.
 
 The rest of these pages are reference — every setting, every option, a page per
@@ -11,8 +11,8 @@ Back to [the README](https://github.com/elpendor/deckyemu#readme).
 
 ## Before you start
 
-Open the Quick Access panel (the **…** button) and find **DeckyEmu**. The top
-row tells you where you stand:
+Open the Quick Access panel (the **…** button) and pick **DeckyEmu**'s tab, the
+gamepad icon. The top row tells you where you stand:
 
 | It says | What it means |
 | --- | --- |
@@ -48,14 +48,14 @@ Worth knowing:
 - **You can close the dialog.** Transfers keep going, and a **Receiving files**
   row appears in the Quick Access panel with a **Show transfer** button.
 - **The server stops itself** when you close the dialog, after 30 minutes idle,
-  and when the plugin unloads.
+  and when DeckyEmu unloads.
 - **BIOS files and keys go the same way.** They're recognised by name and
   offered to the emulator that needs them — see
   [step 2](#2-get-something-to-run-it). xemu's two files are the exception:
   they're told apart by size rather than name, so send those from their own row
   under **BIOS and firmware**.
 - **Send whole games.** For a multi-disc or `.cue`/`.bin` game, send every file.
-  The plugin won't file a game it can't account for in full.
+  DeckyEmu won't file a game it can't account for in full.
 
 Everything lands in `~/deckyemu/transfer`. Each file you receive gets an **Add**
 button that drops straight into step 3 with the name and artwork already worked
@@ -114,7 +114,7 @@ plays, the file types it accepts and its launch arguments all filled in.
 Two things to expect:
 
 - **Installing isn't always enough to play.** Some systems need BIOS files, keys
-  or firmware that are yours to dump and that this plugin will never download.
+  or firmware that are yours to dump and that DeckyEmu will never download.
   You're told which before the download starts, and a **BIOS and firmware**
   section appears under the emulator list showing what's still missing. Send
   those files the same way as a ROM and press **Install** on the row.
@@ -127,7 +127,7 @@ Emulator not in the list? See
 ### Native ports — for a handful of specific games
 
 Open **Settings → Ports**. A few games have been rebuilt to run on the Deck
-directly, with no emulator between them and the hardware, and the plugin ships
+directly, with no emulator between them and the hardware, and DeckyEmu ships
 nine of them.
 
 Each row names the game it plays, because that's the only thing that tells you
@@ -190,7 +190,7 @@ add downloads a small tool to do it — see
 | See what you've added | **Added games (n)** in the Quick Access panel |
 | Start a game without leaving the panel | The play button on its row in **Added games** |
 | Rename a game, or change its core, system or artwork | The pencil on its row, or the cog on the game's own page → **DeckyEmu → Edit** |
-| Remove a game | The bin on its row, or **DeckyEmu → Remove** on its page — **this deletes the ROM** if the plugin filed it |
+| Remove a game | The bin on its row, or **DeckyEmu → Remove** on its page — **this deletes the ROM** if DeckyEmu filed it |
 | Move a game to the right system | Edit it and change **System**. Saving moves it to that system's collection |
 | Update an emulator, or go back to an earlier build | **Settings → Emulators**, the branch button on its row |
 | Update RetroArch, or go back | **Settings → RetroArch → RetroArch version** |
@@ -199,7 +199,7 @@ add downloads a small tool to do it — see
 | Turn on achievements | **Settings → RetroArch → Achievements** |
 | Stop RetroArch's on-screen chatter | **Settings → RetroArch → Launching** |
 | Reach RetroArch's menu with a controller | **Settings → RetroArch → Launching** |
-| Update the plugin | **Settings → Updates** |
+| Update DeckyEmu | **Settings → Updates** |
 | Find entries that drifted out of sync | **Settings → Library** |
 | Change disc in a multi-disc game | **Select + Start** in game, if it hasn't switched by itself |
 
@@ -284,10 +284,10 @@ and a set missing a disc isn't offered at all.
 
 | Symptom | Likely cause |
 | --- | --- |
-| The panel says the backend is not responding | The plugin restarts when its files change, and calls in flight get dropped. Press **Try again** — it's expected right after an update |
+| The panel says the backend is not responding | DeckyEmu restarts when its files change, and calls in flight get dropped. Press **Try again** — it's expected right after an update |
 | No cores are offered for a ROM | Nothing installed handles that file type. The panel offers the cores that do, and can install one for you |
 | A core is installed but a ROM still matches nothing | The core may be missing its `.info` file, so nothing knows what it plays. Reinstall it from **Install cores** |
-| An emulator says "installed, but not set up for adding games yet" | Something other than this plugin installed it, so nothing knows what it plays. Press the chain-link button on its row to register it |
+| An emulator says "installed, but not set up for adding games yet" | Something other than DeckyEmu installed it, so nothing knows what it plays. Press the chain-link button on its row to register it |
 | A game launches the emulator but no game | Its launch arguments are wrong. Edit them under **All registered emulators** |
 | A game starts in a window | The emulator's fullscreen switch is wrong, or it uses a setting rather than a flag |
 | An emulator closes immediately | For a hand-supplied AppImage, the execute bit is usually missing. Re-saving it in the editor repairs that |
@@ -302,16 +302,16 @@ and a set missing a disc isn't offered at all.
 | A collection is left holding nothing | **Settings → Collections** tidies stale ones |
 | A game you removed is still in Steam | **Settings → Library** finds entries that drifted apart and offers a fix for each |
 
-Something wrong that isn't here? The plugin's log is the place to look:
+Something wrong that isn't here? DeckyEmu's log is the place to look:
 
 ```
-~/homebrew/logs/deckyemu/
+~/.local/share/deckyemu/logs/
 ```
 
 ## Where your files are
 
-Everything the plugin puts on your device that's yours to keep lives under
-`~/deckyemu`, and uninstalling the plugin doesn't touch any of it.
+Everything DeckyEmu puts on your device that's yours to keep lives under
+`~/deckyemu`, and uninstalling DeckyEmu doesn't touch any of it.
 
 | Folder | What's in it |
 | --- | --- |
@@ -323,5 +323,5 @@ Everything the plugin puts on your device that's yours to keep lives under
 > **The one rule worth knowing:** a ROM sent through Transfer is *moved* into
 > your library when you add its game. A ROM you picked from anywhere else — an SD
 > card, your home folder, an existing library — is left exactly where it is. That
-> also decides what removing a game can delete: only ROMs the plugin filed
+> also decides what removing a game can delete: only ROMs DeckyEmu filed
 > itself. Full detail under [where a ROM ends up](transfers.md#where-a-rom-ends-up).

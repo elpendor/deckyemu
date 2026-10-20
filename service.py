@@ -269,9 +269,41 @@ def install():
     return 0
 
 
+def uninstall():
+    """Stop and remove the service and every installed version.
+
+    Settings, records, logs and launcher scripts stay: the games already in
+    Steam launch through those scripts, and a reinstall picks up where this
+    left off. `rm -rf ~/.local/share/deckyemu` afterwards removes the rest.
+    """
+    import shutil
+    import subprocess
+
+    import selfupdate
+
+    subprocess.run(["systemctl", "--user", "disable", "--now", "deckyemu.service"], check=False)
+    unit = os.path.join(appenv.USER_HOME, ".config", "systemd", "user", "deckyemu.service")
+    if os.path.exists(unit):
+        os.remove(unit)
+    subprocess.run(["systemctl", "--user", "daemon-reload"], check=False)
+    for link in (selfupdate.CURRENT, selfupdate.PREVIOUS, selfupdate.PENDING):
+        if os.path.lexists(link):
+            os.remove(link)
+    shutil.rmtree(selfupdate.APP, ignore_errors=True)
+    shutil.rmtree(os.path.join(appenv.ROOT, "run"), ignore_errors=True)
+    for name in selfupdate.STABLE + ("rolled-back.json",):
+        path = os.path.join(appenv.ROOT, name)
+        if os.path.exists(path):
+            os.remove(path)
+    print("DeckyEmu is uninstalled. Its tab leaves the Quick Access menu when Steam next starts.")
+    return 0
+
+
 def main():
     if "--install" in sys.argv:
         return install()
+    if "--uninstall" in sys.argv:
+        return uninstall()
     os.makedirs(appenv.ROOT, exist_ok=True)
     # Before the log is opened: opening it creates the folder the old logs move
     # into.

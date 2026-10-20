@@ -1,6 +1,6 @@
 # RetroArch
 
-Installing RetroArch and its cores, the launch behaviour this plugin sets, the
+Installing RetroArch and its cores, the launch behaviour DeckyEmu sets, the
 menu combo, and achievements.
 
 Back to [the README](https://github.com/elpendor/deckyemu#readme).
@@ -23,7 +23,7 @@ Downloader uses.
 
 The catalog knows about every core that exists, not just the ones you have
 installed. That's what makes this work: pick a ROM nothing installed can run and
-the plugin offers you the cores that could, then carries straight on into adding
+DeckyEmu offers you the cores that could, then carries straight on into adding
 the game.
 
 > **Note:** about a third of what the buildbot publishes isn't a game system —
@@ -33,7 +33,7 @@ the game.
 
 ### Uninstalling RetroArch
 
-You're only offered this when the plugin can honestly do it — a user-scope
+You're only offered this when DeckyEmu can honestly do it — a user-scope
 flatpak, removed with `flatpak uninstall --user`.
 
 You won't get the option for:
@@ -42,7 +42,7 @@ You won't get the option for:
   installed it from Discover or from another setup tool.
 - **A native package**, which would mean unlocking SteamOS's read-only
   filesystem.
-- **An AppImage**, which is a file the plugin never installed.
+- **An AppImage**, which is a file DeckyEmu never installed.
 
 Each of those tells you the reason rather than showing you a dead button.
 
@@ -61,7 +61,7 @@ know without saying anything, which would make a wrong guess invisible to you.
 
 RetroArch announces itself when content loads: a load animation, then notices
 about controller autoconfig, refresh rate and config overrides. **RetroArch
-notifications** shuts that up for games launched from this plugin.
+notifications** shuts that up for games launched from DeckyEmu.
 
 | Mode | What you get |
 | --- | --- |

@@ -1,7 +1,7 @@
 """A report somebody can paste into a bug report, gathered without a terminal.
 
-The plugin logs plenty. None of it is reachable from Game Mode: the log is a
-file under `~/homebrew/logs/deckyemu`, the frontend's own errors go to a CEF
+DeckyEmu logs plenty. None of it is reachable from Game Mode: the log is a
+file under `~/.local/share/deckyemu/logs`, the frontend's own errors go to a CEF
 console nobody opens, and the device has no keyboard worth the name. So the best
 report a user can give today is "it didn't work", which is also the least useful
 one -- and that gets worse the moment this is installed by people who cannot be

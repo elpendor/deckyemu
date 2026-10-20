@@ -132,7 +132,7 @@ You can open your own storage in its website or app and look around. It's laid
 out as `DeckyEmu/saves/<emulator>/`, and you can delete an emulator's saves from
 there without any tool.
 
-> **Nothing is ever deleted from your storage by this plugin.** A save you remove
+> **Nothing is ever deleted from your storage by DeckyEmu.** A save you remove
 > from your Deck stays in the cloud, and uninstalling an emulator doesn't empty
 > its folder up there.
 
@@ -188,7 +188,7 @@ Worth using, because the copy after a game only covers the emulator you were
 playing. One that failed while you were offline would otherwise sit there until
 you next play *that* emulator, which might be never.
 
-If something's still waiting after a later copy has come and gone, the plugin's
+If something's still waiting after a later copy has come and gone, DeckyEmu's
 front panel tells you too, with the same button.
 
 > **Note:** only one copy runs at a time. Press **Copy now** or start a restore
@@ -210,8 +210,8 @@ If it takes more than a moment you'll see *Getting your saves*, with a bar and a
 **Start now** button. Nothing to fetch means you see nothing at all.
 
 It's one request and it has a deadline. Your game starts within about six
-seconds whatever your storage is doing. If the plugin can't answer at all — your
-network's gone, decky is reloading — the launcher gives up and starts the game on
+seconds whatever your storage is doing. If DeckyEmu can't answer at all — your
+network's gone, it's restarting — the launcher gives up and starts the game on
 the saves already there.
 
 **Its own switch** sits above the other one: *Check for newer saves when a game

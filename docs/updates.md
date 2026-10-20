@@ -1,6 +1,6 @@
 # Updates and problems
 
-Keeping the plugin current, and what to send when something goes wrong.
+Keeping DeckyEmu current, and what to send when something goes wrong.
 
 Back to [the README](https://github.com/elpendor/deckyemu#readme).
 
@@ -16,32 +16,36 @@ Those notes are generated from commit subjects and grouped under New, Fixed,
 Faster and Under the hood. They ship inside the build as well as on the release,
 so you can read your running version's changelog with no network at all.
 
-Installing goes through decky's own loader, which has permissions this plugin
-doesn't. The download gets checked against the digest published with the
-release.
+The download gets checked against the digest published with the release, then
+installed beside the version you're running, which stays as the one to go back
+to. DeckyEmu restarts into the new one, and its tab is replaced where it stands.
+If the new version fails to start three times, the one before comes back on its
+own; the library tile can also go back by hand.
 
 ### When it checks
 
-A dot appears on the plugin's Quick Access icon when a newer release exists.
-This plugin isn't in decky's store, so nothing else is ever going to tell you.
+A dot appears on DeckyEmu's Quick Access tab when a newer release exists.
+DeckyEmu is distributed from its own GitHub releases, so nothing else is ever
+going to tell you.
 
 The panel then shows the new version at the top. Press **See what's new** and
 you get its notes and an **Update** button in a dialog over the panel, so you
 can install without going to the settings page. That works even when a Steam
-update has left decky unable to open plugin pages.
+update has left the settings page unable to open — and if the tab itself is
+gone, the **DeckyEmu** tile in your library updates too.
 
 **Opening the Quick Access panel is what checks**, and that's the one that
 decides what you see. The answer is cached for an hour, so opening the panel
-twenty times in an evening asks GitHub once. The cache survives a plugin reload,
-so it doesn't start over every time decky restarts.
+twenty times in an evening asks GitHub once. The cache survives a restart, so it
+doesn't start over every time DeckyEmu does.
 
 There's also a background check every six hours, for a Deck left on the library
 screen with the panel never opened.
 
 > **Don't rely on that one.** It counts time your Deck is *awake*, and a Deck
 > suspends rather than shutting down. An hour of play a night reaches the second
-> check nearly a week later. It does run once immediately whenever the plugin
-> loads, which is why a reboot shows you a current answer straight away.
+> check nearly a week later. It does run once immediately whenever DeckyEmu
+> starts, which is why a reboot shows you a current answer straight away.
 
 Nothing is downloaded by any of this — the check reads the releases page and
 stops there. Press **Check for updates** on that tab to force one past the cache
