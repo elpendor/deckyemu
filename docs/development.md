@@ -420,7 +420,6 @@ scripts/
                             code, and that a development one still does
   changelog.py              Release notes from commit subjects, grouped by prefix
   deploy.sh                 Install on a Deck over ssh as a new version
-  loaded_frontend.py        Ask Steam how old the bundle it is running is
   diagnose.py               Read a diagnostic report off a device over the network
 ```
 

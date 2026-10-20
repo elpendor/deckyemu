@@ -25,7 +25,8 @@ export const FRONTEND_BUILD = __DECKYEMU_BUILD__;
  * The gate on anything that must never reach a user. It is a constant folded in
  * at build time, so `IS_DEV_BUILD && <Thing/>` leaves no Thing in a release
  * bundle at all -- not hidden, absent. CI sets DECKYEMU_BUILD to the commit and
- * then greps dist/index.js to prove it took, so this cannot silently stay true.
+ * then greps dist/deckyemu.js to prove it took, so this cannot silently stay
+ * true.
  *
  * The backend gates the same features separately, on CI's build.json. Two gates
  * because this one only protects one artifact, and the Python half is reachable

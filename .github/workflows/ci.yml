@@ -146,10 +146,11 @@ jobs:
             }
           done
 
-      # The backend runs on decky's bundled Python, so a syntax error in a module
-      # that the suite happens not to import would only surface on the device.
+      # A syntax error in a module the suite happens not to import would
+      # otherwise only surface on the device -- and selfupdate would refuse the
+      # release there, which is the right answer but a late one.
       - name: Compile every backend module
-        run: python -m compileall -q main.py py_modules
+        run: python -m compileall -q main.py service.py launcher.py py_modules
 
       # Both directions of the development-only guarantee: absent from a release
       # build, and *still present* in a development one. The second half is what
@@ -255,7 +256,7 @@ jobs:
       # The bundle is what actually ships, so a silently empty one is worth
       # catching here rather than after a deploy.
       - name: Check the bundle is not empty
-        run: test -s dist/index.js
+        run: test -s dist/deckyemu.js && test -s dist/preload.js
 
       # The same guarantee again, against the bytes that actually ship. The step
       # above proves the mechanism works; it cannot prove anything about this
@@ -278,7 +279,7 @@ jobs:
           import pathlib, sys
           sys.path.insert(0, "scripts")
           from check_release_build import FORBIDDEN
-          bundle = pathlib.Path("dist/index.js").read_text(encoding="utf-8", errors="replace")
+          bundle = pathlib.Path("dist/deckyemu.js").read_text(encoding="utf-8", errors="replace")
           found = [needle for needle in FORBIDDEN if needle in bundle]
           for needle in found:
               print("::error::Release bundle contains development-only code: %s" % needle)
@@ -287,10 +288,6 @@ jobs:
           print("No development-only code in the bundle (%d checked)." % len(FORBIDDEN))
           PY
 
-      # Only what the plugin needs at runtime, nested under the directory name
-      # decky expects -- DECKY_PLUGIN_SETTINGS_DIR and friends derive from the
-      # folder name, not from plugin.json, so unpacking under any other name
-      # orphans existing settings.
       # Built here rather than committed, for the reason `dist/` is not
       # committed: it is output. Ubuntu 22.04 on purpose -- the shim has to load
       # inside a flatpak runtime, and a binary built against a newer glibc than
@@ -315,10 +312,13 @@ jobs:
             }
           done
 
-      - name: Assemble the plugin
+      # Only what runs on the Deck, under one top-level folder, which is the
+      # shape selfupdate.install unpacks. REQUIRED there is the list it checks.
+      - name: Assemble the release
         run: |
           mkdir -p artifact/deckyemu
-          cp -r main.py plugin.json package.json py_modules dist bin assets artifact/deckyemu/
+          cp -r service.py launcher.py rescue.sh install.sh main.py package.json py_modules dist bin assets artifact/deckyemu/
+          chmod +x artifact/deckyemu/rescue.sh artifact/deckyemu/install.sh
           # The compile is asserted above; this asserts it was *packaged*. A
           # shim that does not ship is not a failure anybody sees: `resolved_env`
           # drops an LD_PRELOAD whose file is missing, so shadPS4 starts with
@@ -358,66 +358,8 @@ jobs:
           )
           PY
 
-      # The sourcemap is around 60% of the download and nothing a user can reach
-      # will ever read it. Reading one means enabling remote CEF debugging,
-      # restarting Steam, and attaching a browser from a second machine on the
-      # network -- Desktop Mode, a keyboard and another device, which is the
-      # exact combination this plugin exists to do without. Anybody in a
-      # position to do it built the bundle and already has the map beside it.
-      #
-      # What a user actually has instead is Updates -> Report a problem, which
-      # is why that feature exists: frontend errors reach the backend log
-      # through `log_frontend_error` and travel in a redacted report.
-      #
-      # Dropped from the *release* only. `scripts/deploy.sh` still sends the
-      # whole of dist/ to the Deck, where the map does help while debugging on
-      # the device -- these are deliberately two paths, and the map is worth
-      # its size on exactly one of them.
-      - name: Drop the sourcemap from the release
-        run: |
-          python - <<'PY'
-          import pathlib, sys
-
-          dist = pathlib.Path("artifact/deckyemu/dist")
-          bundle, sourcemap = dist / "index.js", dist / "index.js.map"
-
-          # Asserted before removing, so this step fails loudly if rollup ever
-          # stops emitting a map rather than quietly becoming a no-op that
-          # everyone goes on believing in.
-          if not sourcemap.is_file() or not sourcemap.stat().st_size:
-              sys.exit("::error::No sourcemap to drop -- has the build changed?")
-          dropped = sourcemap.stat().st_size
-          sourcemap.unlink()
-
-          # The comment has to go with it, or devtools asks for a file that is
-          # no longer there. Matched on the whole trailing line rather than the
-          # bare filename: the point is to leave no reference at all.
-          text = bundle.read_text(encoding="utf-8")
-          if "sourceMappingURL" not in text:
-              sys.exit("::error::Bundle carries no sourcemap reference to strip.")
-          stripped = "\n".join(
-              line for line in text.splitlines() if "sourceMappingURL" not in line
-          ) + "\n"
-          if "sourceMappingURL" in stripped:
-              sys.exit("::error::A sourcemap reference survived stripping.")
-          bundle.write_text(stripped, encoding="utf-8", newline="\n")
-
-          # The bundle still has to be the bundle. Stripping a trailing comment
-          # should cost a line and nothing else, and a check that only proves
-          # the reference is gone would pass just as well on an empty file.
-          if not bundle.stat().st_size:
-              sys.exit("::error::Stripping emptied the bundle.")
-          if len(stripped.splitlines()) != len(text.splitlines()) - 1:
-              sys.exit("::error::Stripping removed more than the one line.")
-          print("Dropped %d KB of sourcemap from the release." % (dropped // 1024))
-          PY
-
       # Fails the build rather than shipping halves that disagree, which is the
       # confusing state this stamping exists to make visible.
-      #
-      # Reads `artifact/` for the frontend half rather than `dist/`, because the
-      # step above rewrites the bundle on its way into the artifact and the only
-      # copy worth asserting on is the one that ships.
       #
       # Asserted on `FRONTEND_BUILD`, the constant the bundle actually exports,
       # rather than on the `__DECKYEMU_BUILD__` placeholder it is built from.
@@ -428,7 +370,7 @@ jobs:
       # for a day.
       - name: Check both halves carry the same stamp
         run: |
-          grep -q "FRONTEND_BUILD = \"${{ steps.commit.outputs.sha }}\"" artifact/deckyemu/dist/index.js
+          grep -q "FRONTEND_BUILD = \"${{ steps.commit.outputs.sha }}\"" artifact/deckyemu/dist/deckyemu.js
           grep -q "${{ steps.commit.outputs.sha }}" artifact/deckyemu/build.json
 
       - uses: actions/upload-artifact@v7
@@ -439,9 +381,10 @@ jobs:
 
       # --- publish ------------------------------------------------------------
       #
-      # The plugin's updater reads GitHub releases, so a release is what makes an
-      # update reachable. The zip keeps deckyemu/ at its root for the same reason
-      # the artifact does.
+      # DeckyEmu's updater reads GitHub releases, so a release is what makes an
+      # update reachable. The zip keeps deckyemu/ at its root, which is what
+      # selfupdate.install expects. install.sh also goes up on its own, for a
+      # first install to fetch by a fixed URL.
 
       - name: Package
         if: inputs.publish
@@ -450,7 +393,7 @@ jobs:
           # The changelog first, then the machine trailer. `sha256:` is not
           # decoration -- releases.py scans the body for it and stage_update
           # verifies the download against it, so it has to survive whatever the
-          # notes above happen to say. The plugin strips this trailer back off
+          # notes above happen to say. DeckyEmu strips this trailer back off
           # before showing the notes to anyone.
           {
             cat release-notes.md
@@ -466,7 +409,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "v${{ steps.meta.outputs.version }}" deckyemu.zip \
+          gh release create "v${{ steps.meta.outputs.version }}" deckyemu.zip install.sh \
             --repo "$GITHUB_REPOSITORY" \
             --target "${{ steps.commit.outputs.sha }}" \
             --title "v${{ steps.meta.outputs.version }}" \
