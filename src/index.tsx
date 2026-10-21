@@ -457,7 +457,7 @@ const GuardedManagePage = () => (
  */
 function TitleView() {
   const row = useRef<HTMLDivElement>(null);
-  const [width, setWidth] = useState<number>();
+  const [cap, setCap] = useState<string>();
   const [inset, setInset] = useState<string>();
   useLayoutEffect(() => {
     const panel = row.current?.nextElementSibling;
@@ -465,11 +465,10 @@ function TitleView() {
     // Steam's Title pads only the left; the right mirrors it to line up with
     // the rows below.
     setInset(getComputedStyle(row.current).paddingLeft);
-    const measure = () => setWidth(panel.getBoundingClientRect().width || undefined);
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(panel);
-    return () => observer.disconnect();
+    // The panel's CSS cap, not its measured width: this often mounts while
+    // the menu is closed, when the panel measures zero.
+    const max = getComputedStyle(panel).maxWidth;
+    if (max && max !== "none") setCap(max);
   }, []);
   // Its own focus group: Steam renders the title beside the tab's panel, not
   // inside it, and a bare button there is a leaf no direction leads to.
@@ -485,7 +484,7 @@ function TitleView() {
         alignItems: "center",
         justifyContent: "space-between",
         boxSizing: "border-box",
-        width,
+        maxWidth: cap,
         paddingRight: inset,
         boxShadow: "none",
       }}
