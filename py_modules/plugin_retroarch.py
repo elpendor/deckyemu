@@ -31,6 +31,7 @@ import appenv
 
 import plugin_base
 
+import flatpak_progress
 import installer
 import procout
 import ra_cores
@@ -192,6 +193,7 @@ class RetroArchInstall(plugin_base.PluginContext):
                 try:
                     process = await asyncio.create_subprocess_exec(
                         *argv,
+                        stdin=asyncio.subprocess.DEVNULL,
                         stdout=asyncio.subprocess.PIPE,
                         stderr=asyncio.subprocess.STDOUT,
                         env=env,
@@ -209,11 +211,12 @@ class RetroArchInstall(plugin_base.PluginContext):
                 # explained rather than reduced to a number -- flatpak writes
                 # the actual reason there.
                 output = procout.Output()
+                progress = flatpak_progress.Progress(installer.FLATPAK_ID, "RetroArch")
                 async for text in output.segments(process.stdout):
                     appenv.logger.info("flatpak: %s", text)
-                    await appenv.emit(
-                        "retroarch_install_progress", text, self._parse_percent(text)
-                    )
+                    shown = progress.feed(text)
+                    if shown:
+                        await appenv.emit("retroarch_install_progress", *shown)
 
                 code = await process.wait()
                 appenv.logger.info("%s exited with %d", argv[1] if len(argv) > 1 else argv[0], code)

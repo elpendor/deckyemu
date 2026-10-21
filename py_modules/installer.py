@@ -455,7 +455,7 @@ def retroarch_install_argv():
         return []
     return [
         [flatpak, "remote-add", "--if-not-exists", "--user", "flathub", FLATHUB_REPO],
-        [flatpak, "install", "--user", "-y", "--noninteractive", "flathub", FLATPAK_ID],
+        [flatpak, "install", "--user", "-y", "flathub", FLATPAK_ID],
     ]
 
 

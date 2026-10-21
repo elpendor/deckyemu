@@ -273,6 +273,8 @@ py_modules/                 Backend logic. Plain Python, no third-party
   net.py                    stdlib-only HTTP, with a system-CA fallback
   jsonstore.py              Read and write DeckyEmu's own JSON, atomically
   procout.py                Read what a subprocess says while it is still saying it
+  flatpak_progress.py       flatpak's install plan and percentages, read into
+                            one named, size-weighted progress bar
   hardware.py               Which machine this is, and whether we claim to work on it
   sysenv.py                 Strip Steam's runtime; user_home(); user_dir();
                             where flatpak keeps applications and whether one is

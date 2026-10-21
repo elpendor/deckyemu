@@ -24,6 +24,7 @@ import emu_config
 import emu_install
 import emu_patch
 import emulator_catalog
+import flatpak_progress
 import emulators
 import fileserver
 import installer
@@ -1125,11 +1126,14 @@ class Emulators(plugin_base.PluginContext):
         the panel draws one bar and does not care which verb is filling it.
         """
         env = self._subprocess_env()
+        entry = emulator_catalog.find(entry_id) or {}
         for argv in steps:
             appenv.logger.info("Running: %s", " ".join(argv))
             try:
                 process = await asyncio.create_subprocess_exec(
                     *argv,
+                    # A question -y does not answer fails at once, not forever.
+                    stdin=asyncio.subprocess.DEVNULL,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.STDOUT,
                     env=env,
@@ -1139,14 +1143,13 @@ class Emulators(plugin_base.PluginContext):
                 return False, "Could not run flatpak: %s" % error
 
             output = procout.Output()
+            progress = flatpak_progress.Progress(
+                (entry.get("source") or {}).get("id", ""), entry.get("name", ""))
             async for text in output.segments(process.stdout):
                 appenv.logger.info("flatpak: %s", text)
-                await appenv.emit(
-                    "emulator_install_progress",
-                    entry_id,
-                    text,
-                    self._parse_percent(text),
-                )
+                shown = progress.feed(text)
+                if shown:
+                    await appenv.emit("emulator_install_progress", entry_id, *shown)
 
             code = await process.wait()
             if code != 0 and any(verb in argv for verb in must_succeed):
@@ -1170,6 +1173,10 @@ class Emulators(plugin_base.PluginContext):
                 )
                 return
 
+            # A first run and firmware come next: a minute on their own.
+            await appenv.emit(
+                "emulator_install_progress", entry["id"], "Setting up %s" % entry["name"], -1
+            )
             notice = await self._register_installed_emulator(entry, entry["source"]["id"])
             await appenv.emit("emulator_install_done", entry["id"], True, notice)
         # Not CancelledError: this runs detached, and `_detach` re-raises a

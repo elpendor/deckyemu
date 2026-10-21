@@ -89,13 +89,16 @@ def flatpak_install_steps(app_id):
     Same shape and same reasoning as `installer.retroarch_install_argv`: the
     remote is added first because a Deck that has never used flatpak has no
     flathub remote, and `--if-not-exists` makes that a no-op when it does.
+
+    `-y` without `--noninteractive`: the plan and percentages it then prints
+    are what `flatpak_progress` reads.
     """
     flatpak = flatpak_binary()
     if not flatpak or not _valid_app_id(app_id):
         return []
     return [
         [flatpak, "remote-add", "--if-not-exists", "--user", "flathub", FLATHUB_REPO],
-        [flatpak, "install", "--user", "-y", "--noninteractive", "flathub", app_id],
+        [flatpak, "install", "--user", "-y", "flathub", app_id],
     ]
 
 
@@ -468,7 +471,7 @@ def flatpak_updates():
 # tab retrying meanwhile ran twelve at once and filled every executor thread.
 UPDATES_TTL = 600
 _UPDATES_LOCK = threading.Lock()
-_UPDATES_CACHE = {}
+_UPDATES_CACHE: dict = {}
 
 
 def _flatpak_changed():
