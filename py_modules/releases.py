@@ -283,7 +283,7 @@ def fetch_releases(force=False):
         )
         return _cache["releases"]
 
-    if not force and _cache["releases"] and now - _cache["at"] < CACHE_SECONDS:
+    if not force and _cache["at"] and now - _cache["at"] < CACHE_SECONDS:
         return _cache["releases"]
 
     # Nothing usable cached, and the last attempt failed recently. Whatever it
@@ -307,7 +307,7 @@ def _fetch_locked(force):
     now = time.time()
     # Re-read the cache now the lock is held: a request that finished while this
     # caller was queued behind it has already answered the question.
-    if not force and _cache["releases"] and now - _cache["at"] < CACHE_SECONDS:
+    if not force and _cache["at"] and now - _cache["at"] < CACHE_SECONDS:
         return _cache["releases"]
 
     failure = {}

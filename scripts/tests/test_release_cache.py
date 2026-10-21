@@ -239,6 +239,20 @@ try:
     releases.fetch_releases()
     check("and the next check goes to the network", _asked[0], 1)
 
+    section("an answer with nothing in it is kept too")
+
+    # Nothing published yet is an answer. Not keeping it sent every panel open
+    # to GitHub: 25 of the hourly 60 gone in minutes on a Deck.
+    net.get_json = lambda url, headers=None, failure=None: (_asked.__setitem__(0, _asked[0] + 1), [])[1]
+    releases.clear_cache()
+    _asked[0] = 0
+    releases.fetch_releases()
+    releases.fetch_releases()
+    check("one request for two checks", _asked[0], 1)
+    _restart()
+    releases.fetch_releases()
+    check("and none after a restart", _asked[0], 0)
+
 finally:
     # The suite shares one of everything. A stub left on `net`, or an hour of
     # cached releases left behind, is a failure in whichever file runs next.
