@@ -2,6 +2,7 @@ import {
   ButtonItem,
   DialogButton,
   Field,
+  Focusable,
   PanelSection,
   PanelSectionRow,
   quickAccessMenuClasses,
@@ -470,8 +471,13 @@ function TitleView() {
     observer.observe(panel);
     return () => observer.disconnect();
   }, []);
+  // Its own focus group: Steam renders the title beside the tab's panel, not
+  // inside it, and a bare button there is a leaf no direction leads to.
   return (
-    <div
+    <Focusable
+      flow-children="horizontal"
+      // Only from inside the tab, so entering it still lands on the panel.
+      fnCanTakeFocus={() => !!row.current?.parentElement?.contains(row.current.ownerDocument.activeElement)}
       ref={row}
       className={quickAccessMenuClasses.Title}
       style={{
@@ -499,7 +505,7 @@ function TitleView() {
       >
         <FaCog style={{ display: "block" }} />
       </DialogButton>
-    </div>
+    </Focusable>
   );
 }
 

@@ -462,3 +462,8 @@ recording:
   `layout: "below"`. In the 300px Quick Access panel that input ran 120px past
   the edge, and focusing it scrolled the whole tab sideways, so the wrapper in
   `src/steamui/components.tsx` defaults to `below`.
+- A Quick Access tab's title is rendered beside its focusable panel, not inside
+  it, and the panel's Up handler always consumes the move. The `title focus`
+  patch in `src/preload/index.ts` lets Up through for our tab, so the cog is
+  reachable by pad; the title only accepts focus from inside the tab, so
+  entering the tab still lands on the panel.

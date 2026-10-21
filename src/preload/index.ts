@@ -92,6 +92,23 @@ const PATCHES: Patch[] = [
     },
   },
   {
+    // Steam's tab panel swallows Up at its top edge, so the title above it is
+    // unreachable by pad. Let Up through for our tab only, to reach the cog.
+    name: "title focus",
+    anchors: ['"quickaccess_content_"', ".TabGroupPanel"],
+    apply(src) {
+      const tab = /id:"quickaccess_content_"\+([\w$]+)\.key/.exec(src);
+      const up = /onMoveUp:([\w$]+)\?void 0:([\w$]+\.[\w$]+),/.exec(src);
+      if (!tab || !up) return { refused: "no panel move handler" };
+      if (src.indexOf(up[0], up.index + 1) >= 0) return { refused: "the move handler is not unique" };
+      return (
+        src.slice(0, up.index) +
+        `onMoveUp:${up[1]}||${tab[1]}.key===${TAB_KEY}?void 0:${up[2]},` +
+        src.slice(up.index + up[0].length)
+      );
+    },
+  },
+  {
     name: "route",
     anchors: ["GamepadUI.Oobe.Root()", "GamepadUI.Login()"],
     apply(src) {

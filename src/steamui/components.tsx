@@ -98,6 +98,7 @@ export interface FocusableProps extends Any {
   onCancel?: (event: unknown) => void;
   onButtonDown?: (event: GamepadEvent) => void;
   onGamepadDirection?: (event: GamepadEvent) => void;
+  fnCanTakeFocus?: () => boolean;
 }
 
 export const Focusable = steam<FocusableProps>(
