@@ -41,12 +41,13 @@ Mode does that.
 Only do this if your Deck can't reach GitHub, or you're installing a build you
 made yourself.
 
-1. Download `deckyemu.zip` from the
+1. Download `deckyemu-service.tar.gz` from the
    [releases page](https://github.com/elpendor/deckyemu/releases) on another
    machine and copy it to the Deck.
 2. Unpack it anywhere, and run the `install.sh` inside:
 
    ```
+   tar xzf deckyemu-service.tar.gz
    sh deckyemu/install.sh
    ```
 

@@ -28,6 +28,11 @@ import net
 REPO = "elpendor/deckyemu"
 RELEASES_URL = "https://api.github.com/repos/%s/releases" % REPO
 
+#: The service's own release asset. Plugin releases carry a zip instead, and
+#: plugin installs pick the first zip they see, so neither line takes the
+#: other's releases.
+ASSET = "deckyemu-service.tar.gz"
+
 # GitHub allows 60 unauthenticated requests an hour per address. One check an hour
 # leaves that budget almost untouched even with the panel opened repeatedly.
 CACHE_SECONDS = 60 * 60
@@ -41,7 +46,10 @@ CACHE_SECONDS = 60 * 60
 #:
 #: Only a successful fetch is written. A failure kept for an hour would be a
 #: check that refuses to retry, which is the opposite of what a cache is for.
-CACHE_PATH = os.path.join(appenv.DATA_DIR, "releases.json")
+#:
+#: Not `releases.json`: that is the plugin's, in the same folder, and holds the
+#: plugin's releases.
+CACHE_PATH = os.path.join(appenv.DATA_DIR, "service-releases.json")
 
 #: Bumped when the shape of a cached release changes. An older file is ignored
 #: rather than migrated: it is a cache, so the cost of throwing it away is one
@@ -124,11 +132,11 @@ def parse_release(entry):
     asset = None
     for candidate in entry.get("assets") or []:
         name = (candidate.get("name") or "").lower()
-        if name.endswith(".zip") and candidate.get("browser_download_url"):
+        if name == ASSET and candidate.get("browser_download_url"):
             asset = candidate
             break
     if not asset:
-        # A release with no zip is a release nobody can install.
+        # A plugin release, or one with nothing this can install.
         return None
 
     body = entry.get("body") or ""

@@ -75,7 +75,7 @@ import main  # noqa: E402
 
 _staging = inspect.getsource(main.Plugin.stage_update)
 check("stage_update takes the basename of the asset name",
-      'os.path.basename(release.get("asset_name") or "") or "deckyemu.zip"' in _staging,
+      'os.path.basename(release.get("asset_name") or "") or releases.ASSET' in _staging,
       True)
 
 section("a refusal from GitHub is not reported as no answer at all")

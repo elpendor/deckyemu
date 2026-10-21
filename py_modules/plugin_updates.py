@@ -267,7 +267,7 @@ class Updates(plugin_base.PluginContext):
             # path here. A basename cannot climb out of the runtime directory,
             # and an empty one falls back rather than naming the directory
             # itself.
-            name = os.path.basename(release.get("asset_name") or "") or "deckyemu.zip"
+            name = os.path.basename(release.get("asset_name") or "") or releases.ASSET
             path = os.path.join(appenv.DATA_DIR, name)
             with open(path, "wb") as handle:
                 handle.write(payload)

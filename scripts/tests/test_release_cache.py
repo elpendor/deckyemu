@@ -36,8 +36,8 @@ _PAYLOAD = [
     {
         "tag_name": "v9.9.9",
         "body": "Notes.\nsha256: " + ("a" * 64),
-        "assets": [{"name": "deckyemu.zip",
-                    "browser_download_url": "https://example.com/deckyemu.zip"}],
+        "assets": [{"name": "deckyemu-service.tar.gz",
+                    "browser_download_url": "https://example.com/deckyemu-service.tar.gz"}],
     },
 ]
 

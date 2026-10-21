@@ -17,8 +17,9 @@ import json
 import os
 import subprocess
 import sys
+import io
+import tarfile
 import tempfile
-import zipfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -34,13 +35,21 @@ import migrate  # noqa: E402
 import selfupdate  # noqa: E402
 
 
-def release(name, files):
-    """A release zip, laid out the way CI builds one: everything under one folder."""
-    path = os.path.join(tempfile.mkdtemp(dir=TMP), name + ".zip")
-    with zipfile.ZipFile(path, "w") as zipped:
-        for rel, body in files.items():
-            zipped.writestr("deckyemu/" + rel, body)
+def _tar(path, members):
+    with tarfile.open(path, "w:gz") as tarred:
+        for name, body in members.items():
+            data = body.encode("utf-8")
+            info = tarfile.TarInfo(name)
+            info.size = len(data)
+            info.mode = 0o755 if name.endswith(".sh") else 0o644
+            tarred.addfile(info, io.BytesIO(data))
     return path
+
+
+def release(name, files):
+    """A release, laid out the way CI builds one: everything under one folder."""
+    path = os.path.join(tempfile.mkdtemp(dir=TMP), name + ".tar.gz")
+    return _tar(path, {"deckyemu/" + rel: body for rel, body in files.items()})
 
 
 WHOLE = {name: "" for name in selfupdate.REQUIRED}
@@ -69,15 +78,26 @@ except selfupdate.Refused as refusal:
     refused = str(refusal)
 check("so is Python that does not compile", "main.py" in refused, True)
 
-escaping = os.path.join(tempfile.mkdtemp(dir=TMP), "escape.zip")
-with zipfile.ZipFile(escaping, "w") as zipped:
-    zipped.writestr("../outside.txt", "x")
+escaping = _tar(os.path.join(tempfile.mkdtemp(dir=TMP), "escape.tar.gz"), {"../outside.txt": "x"})
 try:
     selfupdate.install(escaping, "1.0.0")
     refused = ""
 except selfupdate.Refused as refusal:
     refused = str(refusal)
 check("and an archive that names a path outside itself", "outside itself" in refused, True)
+
+linking = os.path.join(tempfile.mkdtemp(dir=TMP), "link.tar.gz")
+with tarfile.open(linking, "w:gz") as tarred:
+    link = tarfile.TarInfo("deckyemu/main.py")
+    link.type = tarfile.SYMTYPE
+    link.linkname = "/etc/passwd"
+    tarred.addfile(link)
+try:
+    selfupdate.install(linking, "1.0.0")
+    refused = ""
+except selfupdate.Refused as refusal:
+    refused = str(refusal)
+check("and one that holds a link", "not a file" in refused, True)
 check("no staging folder is left behind",
       [n for n in os.listdir(selfupdate.APP) if n.startswith(".staging-")], [])
 

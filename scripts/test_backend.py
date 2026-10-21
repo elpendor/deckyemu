@@ -5990,7 +5990,7 @@ check("a short version pads out", releases._version_tuple("2"), (2, 0, 0))
 check("rubbish sorts lowest rather than raising", releases._version_tuple("not-a-version"), (0, 0, 0))
 
 
-def _release(tag, zip_name="deckyemu.zip", body="", **extra):
+def _release(tag, zip_name=releases.ASSET, body="", **extra):
     entry = {
         "tag_name": tag,
         "body": body,
@@ -6006,7 +6006,7 @@ parsed = releases.parse_release(
     _release("v1.2.3", body="Notes here" + os.linesep + "sha256: " + "a" * 64)
 )
 check("the leading v is dropped", parsed["version"], "1.2.3")
-check("the download url is picked up", parsed["asset_url"], "https://example/deckyemu.zip")
+check("the download url is picked up", parsed["asset_url"], "https://example/" + releases.ASSET)
 # CI writes the digest into the body so stage_update can verify the download.
 check("the sha256 is read from the notes", parsed["sha256"], "a" * 64)
 check("notes survive", parsed["notes"].startswith("Notes here"), True)
@@ -6035,7 +6035,9 @@ check(
     "Handwritten notes, no trailer at all.",
 )
 
-check("a release with no zip is unusable", releases.parse_release(_release("v1.0.0", zip_name="")), None)
+check("a release with no asset is unusable", releases.parse_release(_release("v1.0.0", zip_name="")), None)
+# The plugin line's releases carry a zip, and are not this line's to install.
+check("nor is a plugin release", releases.parse_release(_release("v0.19.2", zip_name="deckyemu.zip")), None)
 check("a draft is ignored", releases.parse_release(_release("v1.0.0", draft=True)), None)
 check("so is a tag that is not a version", releases.parse_release(_release("nightly")), None)
 check("a missing digest is not fatal", releases.parse_release(_release("v1.0.0"))["sha256"], "")

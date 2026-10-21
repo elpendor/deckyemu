@@ -16,12 +16,11 @@ if [ -n "$HERE" ] && [ -f "$HERE/service.py" ]; then
     exec python3 "$HERE/service.py" --install
 fi
 
-URL="https://github.com/elpendor/deckyemu/releases/latest/download/deckyemu.zip"
+URL="https://github.com/elpendor/deckyemu/releases/latest/download/deckyemu-service.tar.gz"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
 echo "Downloading DeckyEmu..."
-curl -fsSL "$URL" -o "$WORK/deckyemu.zip"
-python3 -m zipfile -e "$WORK/deckyemu.zip" "$WORK"
+curl -fsSL "$URL" | tar xzf - -C "$WORK"
 python3 "$WORK/deckyemu/service.py" --install
 echo "Done. Steam's UI picks DeckyEmu up the next time Steam starts."

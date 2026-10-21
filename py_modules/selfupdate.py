@@ -17,8 +17,8 @@ counts its starts, and too many puts `current` back.
 import json
 import os
 import shutil
+import tarfile
 import time
-import zipfile
 
 import appenv
 
@@ -53,18 +53,22 @@ def _point(link, target):
 
 
 def _extract(archive, into):
-    """Unpack a zip without letting any member land outside `into`, keeping
-    the permission bits it was built with."""
+    """Unpack a release tarball without letting any member land outside `into`
+    or be anything but a file or a folder. Permission bits are kept."""
     root = os.path.realpath(into)
-    with zipfile.ZipFile(archive) as zipped:
-        for info in zipped.infolist():
-            dest = os.path.realpath(os.path.join(into, info.filename))
+    try:
+        tarred = tarfile.open(archive, "r:gz")
+    except (tarfile.TarError, OSError) as error:
+        raise Refused("the release is not a tarball: %s" % error) from error
+    with tarred:
+        members = tarred.getmembers()
+        for member in members:
+            dest = os.path.realpath(os.path.join(into, member.name))
             if dest != root and not dest.startswith(root + os.sep):
-                raise Refused("the archive names a path outside itself: %s" % info.filename)
-            zipped.extract(info, into)
-            mode = (info.external_attr >> 16) & 0o777
-            if mode and not info.is_dir():
-                os.chmod(dest, mode)
+                raise Refused("the archive names a path outside itself: %s" % member.name)
+            if not (member.isfile() or member.isdir()):
+                raise Refused("the archive holds something that is not a file: %s" % member.name)
+        tarred.extractall(into, members=members, filter="data")
 
 
 def _validate(version_dir):
@@ -85,7 +89,7 @@ def _validate(version_dir):
 
 
 def install(archive, version):
-    """Unpack `archive` (a release zip) as `version` and switch to it.
+    """Unpack `archive` (a release tarball) as `version` and switch to it.
 
     Returns the new version's folder. Raises Refused, leaving the running
     version exactly as it was, if anything about the release is wrong.

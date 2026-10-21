@@ -191,6 +191,12 @@ jobs:
             echo "::error::$tag already exists. Pick a bump, or use bump=none only for a version never released."
             exit 1
           fi
+          # 0.19.x and below is the plugin line, released from `legacy`.
+          case "${{ steps.meta.outputs.version }}" in
+            0.[0-9].*|0.1[0-9].*)
+              echo "::error::$tag is on the plugin line. Release 0.20.0 or later."
+              exit 1 ;;
+          esac
 
       - name: Commit the bump
         if: inputs.publish && inputs.bump != 'none'
@@ -389,7 +395,7 @@ jobs:
       - name: Package
         if: inputs.publish
         run: |
-          cd artifact && zip -qr ../deckyemu.zip deckyemu && cd ..
+          tar czf deckyemu-service.tar.gz -C artifact deckyemu
           # The changelog first, then the machine trailer. `sha256:` is not
           # decoration -- releases.py scans the body for it and stage_update
           # verifies the download against it, so it has to survive whatever the
@@ -399,7 +405,7 @@ jobs:
             cat release-notes.md
             echo ""
             echo ""
-            echo "sha256: $(sha256sum deckyemu.zip | cut -d' ' -f1)"
+            echo "sha256: $(sha256sum deckyemu-service.tar.gz | cut -d' ' -f1)"
             echo ""
             echo "Built from ${{ steps.commit.outputs.sha }}."
           } > notes.md
@@ -409,9 +415,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "v${{ steps.meta.outputs.version }}" deckyemu.zip install.sh \
+          gh release create "v${{ steps.meta.outputs.version }}" deckyemu-service.tar.gz install.sh \
             --repo "$GITHUB_REPOSITORY" \
             --target "${{ steps.commit.outputs.sha }}" \
             --title "v${{ steps.meta.outputs.version }}" \
             --notes-file notes.md \
+            --latest \
             --discussion-category "Announcements"
