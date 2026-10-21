@@ -153,6 +153,15 @@ try:
           os.path.realpath(old_settings), os.path.realpath(appenv.SETTINGS_DIR))
     check("and says so", any("moved" in note for note in notes), True)
     check("a second run changes nothing", migrate.carry_over(), [])
+
+    # An older build put back an empty folder where the link was.
+    os.remove(old_settings)
+    os.makedirs(old_settings)
+    notes = migrate.carry_over()
+    check("an empty folder at the old path becomes the link again",
+          os.path.realpath(old_settings), os.path.realpath(appenv.SETTINGS_DIR))
+    check("and the state stays put", os.path.exists(os.path.join(appenv.SETTINGS_DIR, "library.json")), True)
+    check("and says so", any("linked" in note for note in notes), True)
 finally:
     appenv.SETTINGS_DIR = _saved
 

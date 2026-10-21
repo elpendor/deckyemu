@@ -39,7 +39,17 @@ def carry_over():
         if os.path.islink(old) or not os.path.isdir(old):
             continue
         if not _empty(new):
-            notes.append("kept %s; %s already has state" % (old, new))
+            if not _empty(old):
+                notes.append("kept %s; %s already has state" % (old, new))
+                continue
+            # Recreated empty by an older build: the shortcuts it made still
+            # name this path, so it becomes the link again.
+            try:
+                os.rmdir(old)
+                os.symlink(new, old)
+                notes.append("linked %s to %s" % (old, new))
+            except OSError as error:
+                notes.append("could not link %s: %s" % (old, error))
             continue
         try:
             os.makedirs(os.path.dirname(new), exist_ok=True)
