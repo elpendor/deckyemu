@@ -8,7 +8,7 @@ import {
 } from "./steamui";
 import { addEventListener, removeEventListener, useQuickAccessVisible } from "./host";
 import type { ReactNode } from "react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { FaCog, FaGamepad } from "react-icons/fa";
 
 import {
@@ -445,9 +445,9 @@ const GuardedManagePage = () => (
  * DialogButton is sized for a dialog footer and defaults far wider than a header
  * row has to spare; 28x40 is what a Quick Access header button measures, and
  * the narrower 30px this used before was small enough to be awkward with a
- * thumbstick. Beside the name rather than pushed to the right edge: Steam's
- * title slot is wider than the panel shows -- 822px against a panel a third of
- * that, measured on a Deck -- so the right edge is off screen.
+ * thumbstick. At the right edge of the panel, not of the title row: Steam
+ * stretches the row across a column far wider than the panel shows, and caps
+ * only the panel below it (its own `max-width`), so the row copies that width.
  *
  * The glyph is centred by making the button a flex container rather than by
  * nudging the icon up with a negative margin. The nudge was tuned against one
@@ -455,19 +455,38 @@ const GuardedManagePage = () => (
  * which is how it ended up sitting low here.
  */
 function TitleView() {
+  const row = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState<number>();
+  const [inset, setInset] = useState<string>();
+  useLayoutEffect(() => {
+    const panel = row.current?.nextElementSibling;
+    if (!row.current || !panel) return;
+    // Steam's Title pads only the left; the right mirrors it to line up with
+    // the rows below.
+    setInset(getComputedStyle(row.current).paddingLeft);
+    const measure = () => setWidth(panel.getBoundingClientRect().width || undefined);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(panel);
+    return () => observer.disconnect();
+  }, []);
   return (
     <div
+      ref={row}
       className={quickAccessMenuClasses.Title}
       style={{
         display: "flex",
         alignItems: "center",
+        justifyContent: "space-between",
+        boxSizing: "border-box",
+        width,
+        paddingRight: inset,
         boxShadow: "none",
       }}
     >
       <div>DeckyEmu</div>
       <DialogButton
         style={{
-          marginLeft: "12px",
           height: "28px",
           width: "40px",
           minWidth: 0,
