@@ -13,8 +13,8 @@ ENTRY = {
     "source": {
         "kind": "github",
         "repo": "HarbourMasters/Shipwright",
-        "asset": r"^SoH-[A-Za-z-]+-Linux\.zip$",
-        "extract": r"^soh\.appimage$",
+        # A bare AppImage since 9.3.0; before that, one inside a -Linux.zip.
+        "asset": r"^SoH-[A-Za-z-]+\.appimage$",
     },
     "root": "deckyemu/emulators/shipwright",
     "databases": ["Nintendo - Nintendo 64"],
