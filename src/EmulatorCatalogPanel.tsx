@@ -175,6 +175,7 @@ function describe(entry: CatalogEmulator, build?: EmulatorBuild): ReactNode {
 export function EmulatorCatalogPanel({ onChanged, ports = false }: Props) {
   const [entries, setEntries] = useState<CatalogEmulator[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
   // Which entry is installing, and how far along. Only one at a time: two
   // concurrent flatpak transactions block on each other's lock anyway.
   const [busyId, setBusyId] = useState("");
@@ -299,6 +300,8 @@ export function EmulatorCatalogPanel({ onChanged, ports = false }: Props) {
      * was refused is one missing row; not knowing what is installed is an empty
      * tab.
      */
+    setLoading(true);
+    setLoadFailed(false);
     void (async () => {
       try {
         setProblems((await callWithRetry(importedEmulators)).problems);
@@ -307,7 +310,10 @@ export function EmulatorCatalogPanel({ onChanged, ports = false }: Props) {
       }
       callWithRetry(listEmulatorCatalog)
         .then((all) => setEntries(all.filter((entry) => Boolean(entry.port) === ports)))
-        .catch((loadError) => logError("could not read the catalog", loadError))
+        .catch((loadError) => {
+          logError("could not read the catalog", loadError);
+          setLoadFailed(true);
+        })
         .finally(() => setLoading(false));
     })();
     void loadBuilds();
@@ -747,9 +753,19 @@ export function EmulatorCatalogPanel({ onChanged, ports = false }: Props) {
         </PanelSectionRow>
       )}
 
-      {/* Neither list can be empty now, so this is the shape of one that
-          failed to load rather than an ordinary state. */}
-      {!loading && entries.length === 0 && (
+      {!loading && loadFailed && (
+        <PanelSectionRow>
+          <ButtonItem
+            layout="below"
+            description={`DeckyEmu didn't answer, so the list of ${ports ? "ports" : "emulators"} couldn't load.`}
+            onClick={load}
+          >
+            Try again
+          </ButtonItem>
+        </PanelSectionRow>
+      )}
+
+      {!loading && !loadFailed && entries.length === 0 && (
         <PanelSectionRow>
           <Field
             description={

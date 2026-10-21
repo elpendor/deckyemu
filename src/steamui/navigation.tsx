@@ -138,8 +138,13 @@ export function SidebarNavigation({ pages, title }: { pages: SidebarPage[]; titl
   const active =
     [...items].sort((a, b) => b.identifier.length - a.identifier.length).find((item) => path.startsWith(item.identifier))
       ?.identifier ?? items[0]?.identifier;
+  // Replaced, not pushed: switching pages is not a step back has to undo, so B
+  // leaves the whole screen as it does in Steam's own Settings.
   const go = (identifier: string) => {
-    if (identifier.startsWith("/")) Navigation.Navigate(identifier);
+    if (!identifier.startsWith("/")) return;
+    const history = mainWindow()?.History;
+    if (typeof history?.replace === "function") history.replace(identifier);
+    else Navigation.Navigate(identifier);
   };
   const Paged = pagedSettingsComponent();
   if (Paged) {
