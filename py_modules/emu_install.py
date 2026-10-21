@@ -32,6 +32,7 @@ import shutil
 import subprocess
 import time
 import tarfile
+import threading
 import zipfile
 from urllib.parse import unquote
 
@@ -443,11 +444,39 @@ def flatpak_updates():
     Runtimes and extensions come back in the same listing. Callers intersect with
     ids they already know, so this is deliberately not "things to update".
     """
-    return _parse_ids(
-        _flatpak_lines(
-            ["remote-ls", "--user", "--updates", "flathub", "--columns=application"]
+    cached = _UPDATES_CACHE.get("answer")
+    # Already being asked: answer with what is known rather than hold a thread.
+    if not _UPDATES_LOCK.acquire(blocking=False):
+        return set(cached or ())
+    try:
+        marker = _flatpak_changed()
+        if (cached is not None and _UPDATES_CACHE.get("marker") == marker
+                and time.monotonic() - _UPDATES_CACHE["at"] < UPDATES_TTL):
+            return set(cached)
+        answer = _parse_ids(
+            _flatpak_lines(
+                ["remote-ls", "--user", "--updates", "flathub", "--columns=application"]
+            )
         )
-    )
+        _UPDATES_CACHE.update(answer=answer, marker=marker, at=time.monotonic())
+        return set(answer)
+    finally:
+        _UPDATES_LOCK.release()
+
+
+# One `remote-ls` at a time: on a cold appstream cache it takes a minute, and a
+# tab retrying meanwhile ran twelve at once and filled every executor thread.
+UPDATES_TTL = 600
+_UPDATES_LOCK = threading.Lock()
+_UPDATES_CACHE = {}
+
+
+def _flatpak_changed():
+    """Flatpak touches this on every install, update and removal."""
+    try:
+        return os.stat(os.path.join(sysenv.user_home(), ".local", "share", "flatpak", ".changed")).st_mtime_ns
+    except OSError:
+        return None
 
 
 def flatpak_held():
