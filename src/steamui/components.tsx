@@ -209,9 +209,10 @@ export interface TextFieldProps extends Any {
   onChange?: (event: ChangeEvent<HTMLInputElement>) => void;
   onBlur?: (event: unknown) => void;
   style?: CSSProperties;
+  layout?: "below" | "inline";
 }
 
-export const TextField = steam<TextFieldProps>(
+const SteamTextField = steam<TextFieldProps>(
   "TextField",
   () => findExport("TextField", fieldModule(), (v, src) => isRef(v) && src.includes('childrenContainerWidth:"fixed"')),
   ({ label, value, disabled, bIsPassword, onChange, onBlur, style }) => (
@@ -222,6 +223,10 @@ export const TextField = steam<TextFieldProps>(
     </label>
   ),
 );
+
+// Steam's default puts the label beside a fixed-width input, which overflows
+// the 300px Quick Access panel and scrolls it sideways on focus.
+export const TextField: FC<TextFieldProps> = (props) => <SteamTextField layout="below" {...props} />;
 
 export interface ToggleFieldProps extends Any {
   label?: ReactNode;

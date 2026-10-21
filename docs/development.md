@@ -458,3 +458,7 @@ recording:
   Icon=4, HeroBlur=5`; DeckyEmu writes the first four.
 - Collections are managed through the `collectionStore` global. Every call there
   is guarded, and failing to file a game into a collection never fails the add.
+- Steam's `TextField` lays its label beside a fixed-width input unless given
+  `layout: "below"`. In the 300px Quick Access panel that input ran 120px past
+  the edge, and focusing it scrolled the whole tab sideways, so the wrapper in
+  `src/steamui/components.tsx` defaults to `below`.
