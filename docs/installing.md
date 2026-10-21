@@ -54,8 +54,12 @@ made yourself.
 ## The library tile
 
 The **DeckyEmu** tile in your library opens a page of its own in Steam's
-browser: which version is running, whether its tab is showing, and buttons to
-update, go back to the previous version, or restart DeckyEmu.
+browser. On the left, a status card marks each part of DeckyEmu with a tick or
+a cross: the service, Steam's UI, the Quick Access tab and the panel, and below
+them each change DeckyEmu makes to Steam's UI, so you can see which one a Steam
+update broke. On the right are buttons to restart DeckyEmu, update it, go back
+to the previous version, or refresh the page. The log is folded away at the
+bottom.
 
 It's there for the day something goes wrong. A Steam update that changes the
 Quick Access menu can leave DeckyEmu's tab missing; the tile still works then,

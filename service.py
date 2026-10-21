@@ -149,20 +149,24 @@ class Service:
     def rescue_status(self):
         state = self.injector.state
         versions = self.selfupdate.status()
-        rows = [
-            ("Version", "%s (%s)" % (appenv.VERSION, versions["current"])),
-            ("Steam's UI", state.get("steam")),
-            ("Quick Access tab", "showing" if state.get("rendered") else "not showing"),
-            ("Panel", state.get("bundle")),
-            ("Patches", ", ".join("%s: %s" % kv for kv in (state.get("patches") or {}).items()) or "none yet"),
+        steam = state.get("steam") or "unknown"
+        bundle = state.get("bundle") or "not loaded"
+        # (label, what it is, "ok" | "bad" | "warn") for the page's status card.
+        checks = [
+            ("Service", "running", "ok"),
+            ("Steam's UI", steam, "ok" if steam == "running" else "bad"),
+            ("Quick Access tab", "showing" if state.get("rendered") else "not showing",
+             "ok" if state.get("rendered") else "bad"),
+            ("Panel", bundle, "ok" if bundle == "loaded" else "bad"),
         ]
         if versions.get("pending"):
-            rows.append(("Update", "not yet confirmed working"))
+            checks.append(("Update", "not yet confirmed", "warn"))
         rolled = os.path.join(appenv.ROOT, "rolled-back.json")
         if os.path.exists(rolled):
-            rows.append(("Last update", "rolled back after failing to start"))
-        return {"rows": rows, "previous": versions.get("previous"), "versions": versions,
-                "injector": state, "frontend": self.frontend_report}
+            checks.append(("Last update", "rolled back", "warn"))
+        return {"version": "%s (%s)" % (appenv.VERSION, versions["current"]), "checks": checks,
+                "patches": state.get("patches") or {}, "previous": versions.get("previous"),
+                "versions": versions, "injector": state, "frontend": self.frontend_report}
 
     def rescue_update(self):
         future = asyncio.run_coroutine_threadsafe(self.plugin.stage_update(), self.loop)

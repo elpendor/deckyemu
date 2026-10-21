@@ -5,16 +5,17 @@ inside Steam does -- the patch refused on a new Steam build, the panel failing
 to start, or an update that went wrong. What it offers is what fixes those:
 update, roll back, restart, and the log to say which is needed.
 
-Loopback only, under a path that is new every start: a web page open in
-Steam's browser can reach 127.0.0.1 too, and must not be able to press these
-buttons. The path is written to `run/rescue-url`, readable by this user only,
-and nowhere else.
+Loopback only, under a secret path: a web page open in Steam's browser can
+reach 127.0.0.1 too, and must not be able to press these buttons. The path is
+written to `run/rescue-url`, readable by this user only, and kept across
+restarts so the page can reload into itself.
 """
 
 import html
 import http.server
 import json
 import os
+import re
 import secrets
 import socketserver
 import threading
@@ -48,35 +49,80 @@ PAGE = """<!doctype html>
 <meta name="viewport" content="width=device-width">
 <style>
  body { background:#171d25; color:#dcdedf; font:18px sans-serif; margin:32px; }
- h1 { margin:0 0 16px; } .row { margin:6px 0; } .dim { opacity:.7 }
- button { font-size:20px; padding:14px 22px; margin:8px 12px 8px 0; border:0; border-radius:4px;
-          background:#3d4450; color:#fff; } button:focus, button:hover { background:#1a9fff; }
+ h1 { margin:0 0 20px; font-size:30px; } h1 small { font-size:18px; font-weight:normal; opacity:.6; }
+ .cols { display:grid; grid-template-columns:minmax(0, 1fr) 320px; gap:24px; align-items:start; }
+ @media (max-width:760px) { .cols { grid-template-columns:1fr; } }
+ .card { background:#23262e; border-radius:6px; padding:18px 22px; }
+ .card h2 { font-size:15px; letter-spacing:.08em; text-transform:uppercase; opacity:.6; margin:0 0 10px; }
+ .card h2 + .item, .card .item { display:flex; gap:12px; margin:7px 0; }
+ .card .sub { margin-top:18px; }
+ .mark { width:1.2em; text-align:center; font-weight:bold; }
+ .ok .mark { color:#59bf40; } .bad .mark { color:#e05252; } .warn .mark { color:#e8b030; }
+ .label { flex:1; } .value { opacity:.7; text-align:right; }
+ .actions { display:flex; flex-direction:column; gap:10px; }
+ button { font-size:20px; padding:14px 22px; border:0; border-radius:4px; text-align:left;
+          background:#3d4450; color:#fff; overflow-wrap:anywhere; }
+ button:focus, button:hover { background:#1a9fff; }
+ button small { display:block; font-size:15px; opacity:.7; margin-top:2px; }
+ #result { margin:6px 2px; font-weight:bold; }
+ details { margin-top:24px; } summary { font-size:18px; cursor:pointer; opacity:.8; }
  pre { background:#0e1218; padding:12px; white-space:pre-wrap; font-size:13px; max-height:40vh; overflow:auto; }
- #result { margin:12px 0; font-weight:bold; }
 </style></head><body>
-<h1>DeckyEmu</h1>
-%(rows)s
-<div>
- <button onclick="act('update')">Update to the latest release</button>
- %(rollback)s
- <button onclick="act('restart')">Restart DeckyEmu</button>
- <button onclick="location.reload()">Refresh</button>
+<h1>DeckyEmu <small>%(version)s</small></h1>
+<div class="cols">
+ <div class="card">
+  <h2>Status</h2>
+%(checks)s
+  <h2 class="sub">Patches</h2>
+%(patches)s
+ </div>
+ <div class="actions">
+  <button onclick="act('restart')">Restart</button>
+  <button onclick="act('update')">Update</button>
+  %(rollback)s
+  <button onclick="location.reload()">Refresh</button>
+  <div id="result"></div>
+ </div>
 </div>
-<div id="result"></div>
-<div class="dim">The newest log:</div>
-<pre>%(log)s</pre>
+<details><summary>Log</summary><pre>%(log)s</pre></details>
 <script>
 async function act(what) {
   const out = document.getElementById("result");
   out.textContent = "Working...";
   try {
-    const r = await fetch(what, { method: "POST" });
+    // From the page's own path: it has no trailing slash, so a relative
+    // "update" would drop the secret segment and every button would 404.
+    const r = await fetch(location.pathname.replace(/[/]+$/, "") + "/" + what, { method: "POST" });
     const j = await r.json();
     out.textContent = j.message || (j.ok ? "Done." : "That did not work.");
     if (j.ok && what !== "update") setTimeout(() => location.reload(), 4000);
   } catch (e) { out.textContent = "DeckyEmu is restarting. Refresh in a few seconds."; }
 }
 </script></body></html>"""
+
+#: The mark beside a check, by its state.
+MARKS = {"ok": "\u2713", "bad": "\u2717", "warn": "!"}
+
+
+def _item(label, value, state):
+    return ('  <div class="item %s"><span class="mark">%s</span><span class="label">%s</span>'
+            '<span class="value">%s</span></div>'
+            % (state, MARKS.get(state, ""), html.escape(str(label)), html.escape(str(value))))
+
+
+def patch_state(value):
+    """(what to say, state) for one patch's status from the preload."""
+    value = str(value or "")
+    if value.startswith("patched"):
+        return "applied", "ok"
+    if value.startswith("refused"):
+        return "refused", "bad"
+    return "not found", "bad"
+
+
+STALE = """<!doctype html><meta charset="utf-8"><title>DeckyEmu</title>
+<body style="background:#171d25;color:#dcdedf;font:20px sans-serif;padding:32px">
+<p>This page is out of date. Launch DeckyEmu from your library again.</p></body>"""
 
 
 class Rescue:
@@ -121,6 +167,9 @@ class Rescue:
                     self._send(200, rescue._page(), "text/html")
                 elif route == "status":
                     self._send(200, json.dumps(rescue._status(), default=str))
+                elif route is None:
+                    # An address from before a reinstall, or another port.
+                    self._send(404, STALE, "text/html")
                 else:
                     self._send(404, '{"ok": false}')
 
@@ -149,10 +198,19 @@ class Rescue:
         if not self._server:
             appenv.logger.error("Could not start the rescue page")
             return
-        self.url = "http://127.0.0.1:%d/%s" % (self._server.server_address[1], self._token)
         run_dir = os.path.join(appenv.ROOT, "run")
         os.makedirs(run_dir, exist_ok=True)
         path = os.path.join(run_dir, "rescue-url")
+        # The last start's secret, kept: the page reloads itself after a
+        # restart or a rollback, and a new secret would leave it on a 404.
+        try:
+            with open(path, encoding="utf-8") as handle:
+                kept = handle.read().strip().rsplit("/", 1)[-1]
+            if re.fullmatch(r"[A-Za-z0-9_-]{24}", kept):
+                self._token = kept
+        except OSError:
+            pass
+        self.url = "http://127.0.0.1:%d/%s" % (self._server.server_address[1], self._token)
         with open(path + ".tmp", "w", encoding="utf-8") as handle:
             handle.write(self.url)
         os.chmod(path + ".tmp", 0o600)
@@ -166,11 +224,16 @@ class Rescue:
 
     def _page(self):
         status = self._status()
-        rows = []
-        for label, value in status.get("rows", []):
-            rows.append('<div class="row"><span class="dim">%s:</span> %s</div>'
-                        % (html.escape(str(label)), html.escape(str(value))))
+        checks = [_item(*check) for check in status.get("checks", [])]
+        patches = [_item(name, *patch_state(value))
+                   for name, value in (status.get("patches") or {}).items()]
         previous = status.get("previous")
-        rollback = ('<button onclick="act(\'rollback\')">Go back to %s</button>' % html.escape(previous)
+        rollback = ('<button onclick="act(\'rollback\')">Go back<small>to %s</small></button>' % html.escape(previous)
                     if previous else "")
-        return PAGE % {"rows": "\n".join(rows), "rollback": rollback, "log": html.escape(_log_tail())}
+        return PAGE % {
+            "version": html.escape(str(status.get("version", ""))),
+            "checks": "\n".join(checks),
+            "patches": "\n".join(patches) or _item("Not reported yet", "", "warn"),
+            "rollback": rollback,
+            "log": html.escape(_log_tail()),
+        }
