@@ -10,6 +10,7 @@ from typing import Optional
 import appenv
 
 import cheevos
+import claim
 import emulator_catalog
 import emulators
 import fileserver
@@ -207,6 +208,44 @@ UNGATED_METHODS = frozenset({
 })
 
 
+#: What a backend that stays off still answers: enough for the panel to say why,
+#: and to update, since a newer build is the way past a newer data format.
+WHILE_BLOCKED = frozenset({
+    "get_status",
+    "log_frontend_error",
+    "plugin_version",
+    "check_for_update",
+    "stage_update",
+})
+
+
+class Blocked(Exception):
+    """Raised by the block gate. The panel explains it; see claim.py."""
+
+
+def _refuse_while_blocked(cls):
+    """Refuse everything but WHILE_BLOCKED when `_main` found it must stay off."""
+    def wrap(name, method):
+        @functools.wraps(method)
+        async def refused(self, *args, **kwargs):
+            if getattr(self, "_blocked", None):
+                raise Blocked("%s is not available: %s" % (name, self._blocked))
+            return await method(self, *args, **kwargs)
+
+        return refused
+
+    for klass in cls.__mro__:
+        if klass is object:
+            continue
+        for name, method in list(vars(klass).items()):
+            if name.startswith("_") or not inspect.iscoroutinefunction(method):
+                continue
+            if name in WHILE_BLOCKED:
+                continue
+            setattr(klass, name, wrap(name, method))
+    return cls
+
+
 class UnsupportedDevice(Exception):
     """Raised by the gate. Never shown -- the panel explains it properly."""
 
@@ -252,6 +291,7 @@ def _require_supported_device(cls):
 
 
 @_log_failures
+@_refuse_while_blocked
 @_require_supported_device
 class Plugin(
     plugin_accounts.Accounts,
@@ -274,6 +314,11 @@ class Plugin(
         self._cores = []
         self._emulators = []
         appenv.logger.info("DeckyEmu starting")
+        # Before anything reads or writes the state: see claim.py.
+        self._blocked = await self._run(claim.blocked)
+        if self._blocked:
+            appenv.logger.warning("Staying off: %s", self._blocked)
+            return
         _check_own_modules()
         # Said once, at the top of the log, so a report from unsupported
         # hardware explains itself before anyone reads a line of what went
@@ -425,6 +470,10 @@ class Plugin(
                 await self._run(step)
             except Exception:
                 appenv.logger.exception("Unload: could not %s", label)
+        try:
+            await self._run(claim.release)
+        except Exception:
+            appenv.logger.exception("Unload: could not release the lock")
         appenv.logger.info("DeckyEmu unloading")
 
     async def _uninstall(self):
@@ -673,6 +722,18 @@ class Plugin(
         return await self.get_status()
 
     async def get_status(self):
+        blocked = getattr(self, "_blocked", None)
+        # The other build may be gone by now: try again, so the panel opening
+        # after it was uninstalled is a working one.
+        if blocked and blocked.get("reason") == "running" and not getattr(self, "_retrying", False):
+            self._retrying = True
+            try:
+                await self._main()
+            finally:
+                self._retrying = False
+            blocked = self._blocked
+        if blocked:
+            return {"blocked": blocked}
         # The panel opening is the cheapest regular chance to notice that an
         # emulator has rewritten its config since its settings were written --
         # which is what its *first* run does, because a config written into a

@@ -1,0 +1,141 @@
+"""Whether this backend may use the state under `appenv.ROOT` at all.
+
+Two checks, both run first thing at start. Another DeckyEmu build may hold the
+state already: two backends writing the same JSON files lose each other's
+changes. And the state may have been written by a newer build, whose files this
+one could misread. Either way the backend stays off and the panel says why.
+
+The lock is a file naming its holder. A holder that died without removing it is
+told apart by its process start time, so a reused pid does not keep it held.
+"""
+
+import json
+import os
+
+import appenv
+
+#: The format of what is stored under appenv.ROOT. Raise it when a stored file
+#: changes in a way the previous build would misread; never lower it.
+FORMAT = 1
+
+LOCK = "running.json"
+STAMP = "format.json"
+
+
+def _path(name):
+    return os.path.join(appenv.ROOT, name)
+
+
+def _read(path):
+    try:
+        with open(path, encoding="utf-8") as f:
+            value = json.load(f)
+        return value if isinstance(value, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _started(pid):
+    """The process's start time in clock ticks since boot, or "" if unknown."""
+    try:
+        with open("/proc/%d/stat" % pid, encoding="utf-8") as f:
+            # The command name may hold spaces; the fields after it do not.
+            return f.read().rsplit(")", 1)[1].split()[19]
+    except (OSError, IndexError, ValueError):
+        return ""
+
+
+def _boot():
+    try:
+        with open("/proc/sys/kernel/random/boot_id", encoding="utf-8") as f:
+            return f.read().strip()
+    except OSError:
+        return ""
+
+
+def _alive(holder):
+    pid = holder.get("pid")
+    if not isinstance(pid, int) or pid <= 0 or pid == os.getpid():
+        return False
+    if holder.get("boot") != _boot():
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        pass
+    return holder.get("started") == _started(pid)
+
+
+def take():
+    """Hold the lock. Returns None, or what the build holding it says of itself."""
+    os.makedirs(appenv.ROOT, exist_ok=True)
+    me = {
+        "pid": os.getpid(),
+        "boot": _boot(),
+        "started": _started(os.getpid()),
+        "build": appenv.BUILD,
+        "version": appenv.VERSION,
+    }
+    for _ in range(3):
+        try:
+            fd = os.open(_path(LOCK), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+        except FileExistsError:
+            holder = _read(_path(LOCK))
+            if _alive(holder):
+                return {"build": str(holder.get("build") or "Another DeckyEmu"),
+                        "version": str(holder.get("version") or "")}
+            appenv.logger.info("Lock: %s left by %s, which is gone", LOCK, holder or "nobody")
+            try:
+                os.remove(_path(LOCK))
+            except FileNotFoundError:
+                pass
+            continue
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(me, f)
+        return None
+    # Lost every race for it: somebody else is starting at this very moment.
+    return {"build": "Another DeckyEmu", "version": ""}
+
+
+def release():
+    """Give the lock up, if it is ours."""
+    if _read(_path(LOCK)).get("pid") == os.getpid():
+        try:
+            os.remove(_path(LOCK))
+        except FileNotFoundError:
+            pass
+
+
+def check_format():
+    """None if this build can read the stored state, else the newer format found.
+
+    Stamps the state with FORMAT when it is older or has no stamp yet, so call it
+    only while holding the lock.
+    """
+    found = _read(_path(STAMP)).get("format")
+    if isinstance(found, int) and found > FORMAT:
+        return found
+    if found != FORMAT:
+        temp = _path(STAMP + ".tmp")
+        with open(temp, "w", encoding="utf-8") as f:
+            json.dump({"format": FORMAT}, f)
+        os.replace(temp, _path(STAMP))
+    return None
+
+
+def blocked():
+    """Both checks, in order. None, or why this backend has to stay off."""
+    holder = take()
+    if holder:
+        return dict(holder, reason="running")
+    try:
+        newer = check_format()
+    except Exception:
+        release()
+        raise
+    if newer:
+        release()
+        return {"reason": "format", "found": newer, "supported": FORMAT}
+    return None

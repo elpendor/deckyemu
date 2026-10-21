@@ -18,6 +18,15 @@ export interface DeviceState {
   why: string;
 }
 
+/** Why the backend stays off; see py_modules/claim.py. */
+export interface BlockedState {
+  /** "running": another build holds the state; "format": the data is newer. */
+  reason: string;
+  /** For "running": how the other build names itself, and its version. */
+  build?: string;
+  version?: string;
+}
+
 export interface RetroArchStatus {
   found: boolean;
   kind: "" | "flatpak" | "native" | "appimage";
@@ -53,6 +62,8 @@ export interface RetroArchStatus {
    * one this exists to prevent.
    */
   device?: DeviceState;
+  /** Set only when the backend stays off, and then it is the only field. */
+  blocked?: BlockedState;
 }
 
 /** A user-registered standalone emulator, e.g. Dolphin or PCSX2. */

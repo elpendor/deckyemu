@@ -23,6 +23,7 @@ import {
   type RetroArchStatus,
   type UpdateCheck,
 } from "./backend";
+import { blockScreen } from "./blockGate";
 import { deviceGate } from "./deviceGate";
 import { updateBadge } from "./updateBadge";
 import { noteCheck, noteUpdate, setUpdateDotEnabled } from "./updateSignal";
@@ -273,6 +274,20 @@ function Content() {
             Try again
           </ButtonItem>
         </PanelSectionRow>
+      </PanelSection>
+    );
+  }
+
+  // First of all: a backend that stays off answers nothing else. Update stays
+  // on offer, since a newer build is the way past newer data.
+  const block = blockScreen(status.blocked);
+  if (block) {
+    return (
+      <PanelSection title={block.title}>
+        <PanelSectionRow>
+          <Field description={block.body} />
+        </PanelSectionRow>
+        {updateRow}
       </PanelSection>
     );
   }

@@ -12,6 +12,9 @@ import os
 
 NAME = "DeckyEmu"
 
+BUILD = "The DeckyEmu service"
+"""How another build names this one when this one holds the state."""
+
 
 def _env(name: str, default: str) -> str:
     return os.environ.get(name) or default

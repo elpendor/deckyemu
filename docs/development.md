@@ -286,6 +286,8 @@ py_modules/                 Backend logic. Plain Python, no third-party
   selfupdate.py             Install a release beside the running one; switch,
                             commit once healthy, roll back
   migrate.py                Carry an older install's state over, once
+  claim.py                  The lock on the state and its format stamp; why
+                            the backend stays off when either says no
   cdp.py                    Steam's remote-debugging port: list pages, talk to one
   injector.py               Keep the preload, the panel and the call channel in
                             Steam's UI across its restarts
