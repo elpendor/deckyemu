@@ -148,6 +148,9 @@ check("**it copies, and never syncs** -- sync would delete from the remote "
       "whatever this Deck no longer has",
       [argv[argv.index("--config") + 2] for argv in sent], ["copy"] * 3)
 
+check("and never replaces a save up there that is newer than this Deck's",
+      ["--update" in argv for argv in sent], [True] * 3)
+
 check("the source is the directory on the Deck and the target is the remote",
       moved(sent[0]),
       ("/home/deck/ra/saves", "dropbox:DeckyEmu/saves/retroarch/saves"))

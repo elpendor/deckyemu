@@ -520,7 +520,10 @@ def push_steps(remote, ids=None):
             command = cloudsave.argv(
                 ["copy", path, "%s:%s/%s" % (remote, root_of(remote), target),
                  "--backup-dir", "%s:%s/%s/%s" % (
-                     remote, replaced_of(remote), when, target)]
+                     remote, replaced_of(remote), when, target),
+                 # A save up there newer than this Deck's is left alone: an
+                 # older one replaced a newer one on a real Deck.
+                 "--update"]
                 + _only_for(source, segment)
                 + _excludes(source) + _by_content(remote) + _FILES_AT_ONCE + _STATS
             )
