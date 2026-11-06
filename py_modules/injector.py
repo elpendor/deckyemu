@@ -30,7 +30,16 @@ import appenv
 import cdp
 
 POLL_SECONDS = 0.015
+
+#: How long our tab may take to render before that is reported. Waiting goes on
+#: after it, more slowly: a Steam that is slow to start still gets the panel.
 RENDER_WAIT_SECONDS = 120
+LATE_RENDER_POLL_SECONDS = 5
+
+#: Pause before attaching again to a page we lost while Steam kept it,
+#: doubling while attaching keeps failing.
+RETRY_SECONDS = 2
+RETRY_MAX_SECONDS = 60
 
 BINDING = "__deckyemuHost"
 
@@ -40,11 +49,16 @@ def _js(value):
 
 
 class Injector:
-    def __init__(self, app_dir, dispatch):
+    def __init__(self, app_dir, dispatch, ready=None):
         """`dispatch(method, args, done)` runs a call and invokes
-        `done(ok, value)` when it finishes, from any thread."""
+        `done(ok, value)` when it finishes, from any thread. The panel's bundle
+        waits for `ready`, an Event set once the backend has started."""
         self._app_dir = app_dir
         self._dispatch = dispatch
+        if ready is None:
+            ready = threading.Event()
+            ready.set()
+        self._ready = ready
         self._page = None
         self._lock = threading.Lock()
         self._stop = threading.Event()
@@ -92,15 +106,18 @@ class Injector:
     # -----------------------------------------------------------------
 
     def _run(self):
-        seen = None
+        lost, again_at, retry = None, 0.0, RETRY_SECONDS
         while not self._stop.is_set():
             try:
                 target = cdp.ui_page(cdp.targets())
             except (OSError, ValueError):
                 target = None
                 self.state["steam"] = "not running"
-            if target and target.get("id") != seen:
-                seen = target["id"]
+            # A new page is attached at once: its boot is the race to win. The
+            # page we just lost is still listed only when our connection went
+            # and the page did not; it is attached again, as a service restart
+            # would, after a pause that doubles while attaching keeps failing.
+            if target and (target.get("id") != lost or time.monotonic() >= again_at):
                 try:
                     self._tend(target)
                 except Exception:  # noqa: BLE001 - the loop must outlive any one page
@@ -110,11 +127,21 @@ class Injector:
                         self._page = None
                     self.state["page"] = None
                     self.state["bundle"] = "not loaded"
+                attached = self.state.get("attached_at")
+                retry = RETRY_SECONDS if attached or target.get("id") != lost else min(retry * 2, RETRY_MAX_SECONDS)
+                lost, again_at = target.get("id"), time.monotonic() + retry
+                self.state["attached_at"] = None
             self._stop.wait(POLL_SECONDS)
 
     def _tend(self, target):
-        preload = self._read("preload.js")
         page = cdp.Page(target["webSocketDebuggerUrl"])
+        try:
+            self._tend_page(page, target)
+        finally:
+            page.close()
+
+    def _tend_page(self, page, target):
+        preload = self._read("preload.js")
         # Registration first: the navigation it has to beat is imminent.
         registered = page.send("Page.addScriptToEvaluateOnNewDocument", source=preload)
         now = page.send("Runtime.evaluate", expression=preload)
@@ -206,8 +233,8 @@ class Injector:
 
     def _load_bundle(self, page):
         deadline = time.time() + RENDER_WAIT_SECONDS
-        status = None
-        while time.time() < deadline and not page.closed.is_set():
+        late = False
+        while not page.closed.is_set():
             try:
                 raw = page.evaluate("JSON.stringify((window.__deckyemu||{}).status||null)")
                 status = json.loads(raw) if raw else None
@@ -217,12 +244,21 @@ class Injector:
                 self.state["patches"] = status.get("patches", {})
                 if status.get("rendered"):
                     break
-            time.sleep(0.5)
-        if not status or not status.get("rendered"):
-            self.state["bundle"] = "waiting for Steam to show our tab"
-            appenv.logger.error("Our Quick Access tab never rendered: %s", json.dumps(status))
+            if not late and time.time() >= deadline:
+                late = True
+                self.state["bundle"] = "waiting for Steam to show our tab"
+                appenv.logger.error("Our Quick Access tab has not rendered after %ds: %s",
+                                    RENDER_WAIT_SECONDS, json.dumps(status))
+            time.sleep(LATE_RENDER_POLL_SECONDS if late else 0.5)
+        if page.closed.is_set():
             return
+        if late:
+            appenv.logger.info("Our Quick Access tab rendered after all")
         self.state["rendered"] = True
+        # The panel calls the backend as soon as it starts.
+        while not self._ready.wait(0.5):
+            if page.closed.is_set():
+                return
         try:
             bundle = self._read("deckyemu.js")
             page.evaluate("window.__deckyemu.service=%s;true" % _js({"version": appenv.VERSION}))

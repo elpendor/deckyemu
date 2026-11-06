@@ -104,7 +104,11 @@ class Service:
         self.started = time.time()
         self.healthy = False
         self.frontend_report = None
-        self.injector = injector.Injector(APP_DIR, self.dispatch)
+        # Set once the backend's `_main` is done. The injector and the rescue
+        # page start before it, so a slow start neither misses Steam's boot nor
+        # looks to the library tile like a service that is not answering.
+        self.ready = threading.Event()
+        self.injector = injector.Injector(APP_DIR, self.dispatch, self.ready)
         self.injector.on_bundle_started = self.mark_healthy
         self.host = hostcalls.HostCalls(self)
         self.rescue = rescue.Rescue(self.rescue_status, {
@@ -192,6 +196,8 @@ class Service:
                 "versions": versions, "injector": state, "frontend": self.frontend_report}
 
     def rescue_update(self):
+        if not self.ready.is_set():
+            return False, "DeckyEmu is still starting. Try again in a moment."
         future = asyncio.run_coroutine_threadsafe(self.plugin.stage_update(), self.loop)
         result = future.result(timeout=600)
         if not result.get("ok"):
@@ -231,9 +237,13 @@ class Service:
         signal.signal(signal.SIGINT, stop)
 
         async def lifetime():
-            await self.plugin._main()
             self.injector.start()
             self.rescue.start()
+            try:
+                await self.plugin._main()
+            except Exception:  # noqa: BLE001 - the panel and the rescue page stay up to say so
+                appenv.logger.exception("The backend did not start")
+            self.ready.set()
             threading.Thread(target=self._health_without_steam, daemon=True).start()
             await stopping.wait()
             appenv.logger.info("Stopping")
