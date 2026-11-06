@@ -1,0 +1,9 @@
+{
+  // The plugin build: its own entry and host modules, plus the shared panel.
+  // The shared files are checked against the service's host here; the plugin's
+  // host is held to the same names by plugin/src/hostContract.ts.
+  "extends": "../tsconfig.json",
+  "compilerOptions": { "outDir": "dist" },
+  "include": ["src", "../src"],
+  "exclude": ["../node_modules", "../src/main.tsx", "../src/preload"]
+}

@@ -1,7 +1,8 @@
 name: CI
 
 # The same commands the deploy loop runs by hand: both test suites, typecheck,
-# bundle, plus an installable plugin to download.
+# bundle, plus both builds to download -- the standalone service and the
+# loader plugin, from this one tree. A release carries both.
 #
 # Dispatched by hand, and run on every pull request. Still not on push: commits
 # that land directly are validated before they leave the machine, a build per
@@ -113,7 +114,9 @@ jobs:
         run: pnpm exec vitest run
 
       - name: Typecheck
-        run: pnpm exec tsc --noEmit
+        run: |
+          pnpm exec tsc --noEmit
+          pnpm exec tsc --noEmit -p plugin/tsconfig.json
 
       # The backend half. Not strict -- see mypy.ini for what is off and why --
       # but it is what found prepare_shortcut indexing an install that the
@@ -122,6 +125,8 @@ jobs:
         run: |
           pip install mypy
           python -m mypy py_modules main.py
+          # The plugin's own modules, which shadow two of the shared ones.
+          MYPYPATH=plugin:py_modules python -m mypy plugin/py_modules
 
       # Offline: the live section reaches thumbnails.libretro.com and
       # steamgriddb.com, which would make CI fail on their availability rather
@@ -150,7 +155,7 @@ jobs:
       # otherwise only surface on the device -- and selfupdate would refuse the
       # release there, which is the right answer but a late one.
       - name: Compile every backend module
-        run: python -m compileall -q main.py service.py launcher.py py_modules
+        run: python -m compileall -q main.py service.py launcher.py py_modules plugin/py_modules
 
       # Both directions of the development-only guarantee: absent from a release
       # build, and *still present* in a development one. The second half is what
@@ -191,12 +196,6 @@ jobs:
             echo "::error::$tag already exists. Pick a bump, or use bump=none only for a version never released."
             exit 1
           fi
-          # 0.19.x and below is the plugin line, released from `legacy`.
-          case "${{ steps.meta.outputs.version }}" in
-            0.[0-9].*|0.1[0-9].*)
-              echo "::error::$tag is on the plugin line. Release 0.20.0 or later."
-              exit 1 ;;
-          esac
 
       - name: Commit the bump
         if: inputs.publish && inputs.bump != 'none'
@@ -261,8 +260,8 @@ jobs:
 
       # The bundle is what actually ships, so a silently empty one is worth
       # catching here rather than after a deploy.
-      - name: Check the bundle is not empty
-        run: test -s dist/deckyemu.js && test -s dist/preload.js
+      - name: Check the bundles are not empty
+        run: test -s dist/deckyemu.js && test -s dist/preload.js && test -s plugin/dist/index.js
 
       # The same guarantee again, against the bytes that actually ship. The step
       # above proves the mechanism works; it cannot prove anything about this
@@ -284,14 +283,16 @@ jobs:
           python - <<'PY'
           import pathlib, sys
           sys.path.insert(0, "scripts")
-          from check_release_build import FORBIDDEN
-          bundle = pathlib.Path("dist/deckyemu.js").read_text(encoding="utf-8", errors="replace")
-          found = [needle for needle in FORBIDDEN if needle in bundle]
-          for needle in found:
-              print("::error::Release bundle contains development-only code: %s" % needle)
+          from check_release_build import BUNDLES, FORBIDDEN
+          found = []
+          for kind, path in BUNDLES.items():
+              bundle = pathlib.Path(path).read_text(encoding="utf-8", errors="replace")
+              found += [(kind, needle) for needle in FORBIDDEN if needle in bundle]
+          for kind, needle in found:
+              print("::error::The %s release bundle contains development-only code: %s" % (kind, needle))
           if found:
               sys.exit(1)
-          print("No development-only code in the bundle (%d checked)." % len(FORBIDDEN))
+          print("No development-only code in either bundle (%d checked)." % len(FORBIDDEN))
           PY
 
       # Built here rather than committed, for the reason `dist/` is not
@@ -318,25 +319,20 @@ jobs:
             }
           done
 
-      # Only what runs on the Deck, under one top-level folder, which is the
-      # shape selfupdate.install unpacks. REQUIRED there is the list it checks.
-      - name: Assemble the release
+      # Only what runs on the Deck, each under one top-level folder: the shape
+      # selfupdate.install unpacks, and the folder the loader names a plugin's
+      # settings after. scripts/package.py says what goes in each.
+      - name: Assemble both builds
         run: |
-          mkdir -p artifact/deckyemu
-          cp -r service.py launcher.py rescue.sh install.sh main.py package.json py_modules dist bin assets artifact/deckyemu/
-          chmod +x artifact/deckyemu/rescue.sh artifact/deckyemu/install.sh
-          # The compile is asserted above; this asserts it was *packaged*. A
-          # shim that does not ship is not a failure anybody sees: `resolved_env`
-          # drops an LD_PRELOAD whose file is missing, so shadPS4 starts with
-          # motion switched on and its axes unrotated -- tilting works, turning
-          # does nothing, and nothing anywhere says why.
-          test -s artifact/deckyemu/bin/gyroshim.so
-          # And the icon, for the same reason: Steam stores the *path* to a
-          # shortcut's icon, so one that did not ship leaves every game added
-          # by a released build pointing at a file that is not there.
-          test -s artifact/deckyemu/assets/game-icon.png
-          find artifact -name '__pycache__' -type d -prune -exec rm -rf {} +
-          find artifact -name '*.pyc' -delete
+          python scripts/package.py service artifact/service
+          python scripts/package.py plugin artifact/plugin
+          for kind in service plugin; do
+            # The compile is asserted above; this asserts it was *packaged*. A
+            # shim that does not ship is not a failure anybody sees:
+            # `resolved_env` drops an LD_PRELOAD whose file is missing, so
+            # shadPS4 starts with motion on and its axes unrotated.
+            test -s "artifact/$kind/deckyemu/bin/gyroshim.so"
+          done
           # The backend half of the stamp. It must agree with what was compiled
           # into the bundle above, which is why both come from this one job.
           #
@@ -350,18 +346,17 @@ jobs:
           python - <<'PY'
           import datetime, json, os, pathlib
           notes = pathlib.Path("release-notes.md")
-          json.dump(
-              {
-                  "version": os.environ["VERSION"],
-                  "commit": os.environ["COMMIT"],
-                  "built_at": datetime.datetime.now(datetime.timezone.utc)
-                  .strftime("%Y-%m-%dT%H:%M:%SZ"),
-                  "run": os.environ["RUN"],
-                  "notes": notes.read_text(encoding="utf-8").strip() if notes.exists() else "",
-              },
-              open("artifact/deckyemu/build.json", "w", encoding="utf-8"),
-              indent=2,
-          )
+          stamp = {
+              "version": os.environ["VERSION"],
+              "commit": os.environ["COMMIT"],
+              "built_at": datetime.datetime.now(datetime.timezone.utc)
+              .strftime("%Y-%m-%dT%H:%M:%SZ"),
+              "run": os.environ["RUN"],
+              "notes": notes.read_text(encoding="utf-8").strip() if notes.exists() else "",
+          }
+          for kind in ("service", "plugin"):
+              with open("artifact/%s/deckyemu/build.json" % kind, "w", encoding="utf-8") as handle:
+                  json.dump(stamp, handle, indent=2)
           PY
 
       # Fails the build rather than shipping halves that disagree, which is the
@@ -376,8 +371,10 @@ jobs:
       # for a day.
       - name: Check both halves carry the same stamp
         run: |
-          grep -q "FRONTEND_BUILD = \"${{ steps.commit.outputs.sha }}\"" artifact/deckyemu/dist/deckyemu.js
-          grep -q "${{ steps.commit.outputs.sha }}" artifact/deckyemu/build.json
+          grep -q "FRONTEND_BUILD = \"${{ steps.commit.outputs.sha }}\"" artifact/service/deckyemu/dist/deckyemu.js
+          grep -q "FRONTEND_BUILD = \"${{ steps.commit.outputs.sha }}\"" artifact/plugin/deckyemu/dist/index.js
+          grep -q "${{ steps.commit.outputs.sha }}" artifact/service/deckyemu/build.json
+          grep -q "${{ steps.commit.outputs.sha }}" artifact/plugin/deckyemu/build.json
 
       - uses: actions/upload-artifact@v7
         with:
@@ -388,24 +385,27 @@ jobs:
       # --- publish ------------------------------------------------------------
       #
       # DeckyEmu's updater reads GitHub releases, so a release is what makes an
-      # update reachable. The zip keeps deckyemu/ at its root, which is what
-      # selfupdate.install expects. install.sh also goes up on its own, for a
-      # first install to fetch by a fixed URL.
+      # update reachable. One release carries both builds, each with deckyemu/
+      # at its root; each build only looks for its own file. install.sh also
+      # goes up on its own, for a first install to fetch by a fixed URL.
 
       - name: Package
         if: inputs.publish
         run: |
-          tar czf deckyemu-service.tar.gz -C artifact deckyemu
-          # The changelog first, then the machine trailer. `sha256:` is not
-          # decoration -- releases.py scans the body for it and stage_update
-          # verifies the download against it, so it has to survive whatever the
-          # notes above happen to say. DeckyEmu strips this trailer back off
-          # before showing the notes to anyone.
+          tar czf deckyemu-service.tar.gz -C artifact/service deckyemu
+          (cd artifact/plugin && zip -qr ../../deckyemu.zip deckyemu)
+          # The changelog first, then the machine trailer. The digests are not
+          # decoration -- releases.py scans the body for them and stage_update
+          # verifies each download against its own, so they have to survive
+          # whatever the notes above happen to say. The plain `sha256:` line is
+          # the zip's and comes first: installed plugins read the first one they
+          # find. DeckyEmu strips this trailer back off before showing the notes.
           {
             cat release-notes.md
             echo ""
             echo ""
-            echo "sha256: $(sha256sum deckyemu-service.tar.gz | cut -d' ' -f1)"
+            echo "sha256: $(sha256sum deckyemu.zip | cut -d' ' -f1)"
+            echo "sha256 (deckyemu-service.tar.gz): $(sha256sum deckyemu-service.tar.gz | cut -d' ' -f1)"
             echo ""
             echo "Built from ${{ steps.commit.outputs.sha }}."
           } > notes.md
@@ -415,7 +415,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "v${{ steps.meta.outputs.version }}" deckyemu-service.tar.gz install.sh \
+          gh release create "v${{ steps.meta.outputs.version }}" deckyemu-service.tar.gz deckyemu.zip install.sh \
             --repo "$GITHUB_REPOSITORY" \
             --target "${{ steps.commit.outputs.sha }}" \
             --title "v${{ steps.meta.outputs.version }}" \

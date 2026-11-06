@@ -8,7 +8,7 @@ import {
   quickAccessMenuClasses,
 } from "./steamui";
 import { addEventListener, removeEventListener, useQuickAccessVisible } from "./host";
-import type { ReactNode } from "react";
+import type { ReactElement, ReactNode } from "react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { FaCog, FaGamepad } from "react-icons/fa";
 
@@ -21,6 +21,7 @@ import {
   shortcutHealth,
   type AddedGame,
   type RetroArchStatus,
+  type BlockedState,
   type UpdateCheck,
 } from "./backend";
 import { blockScreen } from "./blockGate";
@@ -47,7 +48,6 @@ import { watchLaunches } from "./launchGate";
 import { watchPlaying } from "./playWatch";
 import { OVER_THE_NETWORK, callWithRetry } from "./timeout";
 import { openModal } from "./modalStack";
-import { ensureRescueTile } from "./rescueTile";
 
 const EMPTY_STATUS: RetroArchStatus = {
   found: false,
@@ -287,6 +287,7 @@ function Content() {
         <PanelSectionRow>
           <Field description={block.body} />
         </PanelSectionRow>
+        {extras.blocked?.(status.blocked!)}
         {updateRow}
       </PanelSection>
     );
@@ -434,6 +435,8 @@ function Content() {
       </PanelSection>
 
       {canAddGames && <AddGamePanel status={status} onGameAdded={loadGames} />}
+
+      {extras.panels?.(() => void loadStatus())}
     </>
   );
 }
@@ -525,16 +528,27 @@ function TitleView() {
 
 /** What `start` hands the bundle's entry to put in the Quick Access tab. */
 export interface Started {
-  title: ReactNode;
-  content: ReactNode;
-  icon: ReactNode;
+  title: ReactElement;
+  content: ReactElement;
+  icon: ReactElement;
   /** The full-screen page, served under `/deckyemu`. */
   page: () => ReactNode;
   stop(): void;
 }
 
+/** What only one build adds to the panel. */
+export interface Extras {
+  /** Under the message of a backend that stays off. */
+  blocked?: (blocked: BlockedState) => ReactNode;
+  /** Below the panel's own sections; `reload` re-reads the status. */
+  panels?: (reload: () => void) => ReactNode;
+}
+
+let extras: Extras = {};
+
 /** Start the panel: everything that runs whether or not it is open. */
-export function start(): Started {
+export function start(options: Extras = {}): Started {
+  extras = options;
 
   // The "DeckyEmu" submenu behind the cog on a game's page -- Edit and Remove.
   // The cache is filled first because the item decides whether to appear by
@@ -542,9 +556,6 @@ export function start(): Started {
   // a game that is ours.
   void refreshAddedGames();
   const unpatchContextMenu = patchGameContextMenu(editGameMenuItem);
-
-  // The way in that works when nothing else of ours does. See rescueTile.ts.
-  void ensureRescueTile();
 
   // Steam will not warn before launching one of our games over a running one
   // -- its check is gated on an app_type our shortcuts do not carry. The

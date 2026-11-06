@@ -350,10 +350,13 @@ py_modules/                 Backend logic. Plain Python, no third-party
                             The sequence they run in stays in main.py's _main
   plugin_transfers.py       Sending files to the Deck, and reading a report back
   plugin_updates.py         What build this is, and finding + installing newer
-                            ones. These twelve are mixins: the service exposes
-                            the methods it finds on the Plugin object, so the
-                            names must stay on Plugin while the code lives
-                            somewhere findable.
+                            ones
+  buildhost.py              What the service build does its own way: installing
+                            a release. The plugin build ships its own in
+                            plugin/py_modules. The plugin_* modules and this are
+                            mixins: the methods are found on the Plugin object,
+                            so the names must stay on Plugin while the code
+                            lives somewhere findable.
                             None of them may be instantiated alone.
 
 src/                        Frontend (React + TypeScript, bundled by rollup).

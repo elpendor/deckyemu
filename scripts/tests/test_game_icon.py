@@ -233,11 +233,18 @@ check("and the game is back on the shipped picture",
 
 section("and the packaging carries it")
 
-for _where, _name in ((os.path.join(REPO, "scripts", "deploy.sh"), "deploy"),
-                      (os.path.join(REPO, ".github", "workflows", "ci.yml"), "CI")):
+sys.path.insert(0, os.path.join(REPO, "scripts"))
+import package  # noqa: E402
+
+check("both builds' packages copy assets/", "assets" in package.COMMON, True)
+check("and require the icon", all("assets/game-icon.png" in names for names in package.REQUIRED.values()), True)
+for _where, _name, _needle in (
+    (os.path.join(REPO, "scripts", "deploy.sh"), "the service's deploy", "assets"),
+    (os.path.join(REPO, "scripts", "deploy-plugin.sh"), "the plugin's deploy", "scripts/package.py plugin"),
+    (os.path.join(REPO, ".github", "workflows", "ci.yml"), "CI", "scripts/package.py plugin"),
+):
     with open(_where, encoding="utf-8") as _handle:
-        _text = _handle.read()
-    check("%s copies assets/ into the plugin" % _name, "assets" in _text, True)
+        check("%s carries assets/" % _name, _needle in _handle.read(), True)
 
 
 if __name__ == "__main__":

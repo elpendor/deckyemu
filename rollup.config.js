@@ -1,8 +1,10 @@
 import { readFileSync } from "fs";
+import { resolve } from "path";
 
 import commonjs from "@rollup/plugin-commonjs";
 import { nodeResolve } from "@rollup/plugin-node-resolve";
 import typescript from "@rollup/plugin-typescript";
+import externalGlobals from "rollup-plugin-external-globals";
 
 const pkg = JSON.parse(readFileSync("./package.json", "utf-8"));
 
@@ -44,12 +46,34 @@ const stamp = {
   },
 };
 
-const plugins = () => [
+const plugins = (tsconfig = "./tsconfig.json") => [
   stamp,
-  typescript({ tsconfig: "./tsconfig.json", noEmitOnError: true }),
+  typescript({ tsconfig, noEmitOnError: true }),
   nodeResolve({ browser: true }),
   commonjs(),
 ];
+
+/*
+ * The plugin build's host: these three shared modules are replaced by the
+ * plugin's own wherever the shared panel imports them. Everything else is the
+ * same file in both builds.
+ */
+const SWAPS = new Map([
+  ["src/host/index.ts", "plugin/src/host.ts"],
+  ["src/steamui/index.ts", "plugin/src/steamui.ts"],
+  ["src/steam/contextMenu.ts", "plugin/src/contextMenu.ts"],
+].map(([from, to]) => [resolve(from), resolve(to)]));
+
+const manifest = JSON.parse(readFileSync("./plugin/plugin.json", "utf-8"));
+
+const pluginHost = {
+  name: "deckyemu-plugin-host",
+  async resolveId(source, importer, options) {
+    if (!importer || !source.startsWith(".")) return null;
+    const found = await this.resolve(source, importer, { ...options, skipSelf: true });
+    return (found && SWAPS.get(resolve(found.id))) ?? null;
+  },
+};
 
 export default [
   /*
@@ -80,5 +104,33 @@ export default [
         "react/jsx-runtime": "DECKYEMU_JSX",
       },
     },
+  },
+  /*
+   * The plugin, for the loader: an ES module whose default export is the
+   * plugin definition. React and the loader's UI library come from the
+   * loader's globals. Into plugin/dist, never dist/: the zip puts it at
+   * dist/index.js, beside nothing of the service's.
+   */
+  {
+    input: "plugin/src/index.tsx",
+    plugins: [
+      pluginHost,
+      ...plugins("./plugin/tsconfig.json"),
+      externalGlobals({
+        react: "SP_REACT",
+        "react/jsx-runtime": "SP_JSX",
+        "react-dom": "SP_REACTDOM",
+        "@decky/ui": "DFL",
+        // The loader's API reads its plugin's manifest from this import.
+        "@decky/manifest": JSON.stringify(manifest),
+      }),
+    ],
+    context: "window",
+    external: ["react", "react-dom", "react/jsx-runtime", "@decky/ui", "@decky/manifest"],
+    // What the loader's own build preset uses, and what the plugin has always
+    // shipped with. Without it the development-only panel's calls survive into
+    // a release: the loader's `callable` is not known to be pure.
+    treeshake: { pureExternalImports: { pure: ["@decky/ui", "@decky/api"] }, preset: "smallest" },
+    output: { file: "plugin/dist/index.js", format: "esm", exports: "default", sourcemap: false },
   },
 ];

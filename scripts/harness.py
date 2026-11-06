@@ -55,6 +55,10 @@ os.environ["DECKYEMU_ROOT"] = os.path.join(TMP, "deckyemu")
 # Sandboxed in the temp dir so adopting an older install cannot read a real one.
 os.environ["DECKYEMU_PREVIOUS_ROOT"] = os.path.join(TMP, "previous")
 sys.path.insert(0, os.path.join(REPO_ROOT, "py_modules"))
+# A test of the plugin build sets this before importing the harness: the
+# plugin's own modules then shadow the shared ones, as in its package.
+if os.environ.get("DECKYEMU_TEST_BUILD") == "plugin":
+    sys.path.insert(0, os.path.join(REPO_ROOT, "plugin", "py_modules"))
 
 import appenv  # noqa: E402
 

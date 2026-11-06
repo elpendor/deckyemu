@@ -15,6 +15,7 @@ import type { Bridge } from "./preload/bridge";
 import { call, connect } from "./host/channel";
 import { resolveAll, steamLookups } from "./steamui";
 import { start } from "./index";
+import { ensureRescueTile } from "./rescueTile";
 
 declare const __DECKYEMU_VERSION__: string;
 
@@ -35,6 +36,8 @@ if (!bridge?.qam) {
     bridge.pages.set(started.page);
     bridge.status.failed = undefined;
     bridge.status.started = __DECKYEMU_VERSION__;
+    // The way in that works when nothing else of ours does. See rescueTile.ts.
+    void ensureRescueTile();
     bridge.unload = () => {
       started.stop();
       bridge.unload = undefined;

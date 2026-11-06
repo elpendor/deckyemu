@@ -8,7 +8,7 @@ import {
 
 import { AboutModal } from "./AboutModal";
 import { clampNotes, countItems, parseNotes, type NoteItem } from "./releaseNotes";
-import { toaster } from "./host";
+import { toaster, updates } from "./host";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
@@ -281,10 +281,7 @@ export function UpdatePanel({
         });
         return;
       }
-      toaster.toast({
-        title: `Installed ${staged.version ?? release.version}`,
-        body: "DeckyEmu is restarting into it.",
-      });
+      toaster.toast(await updates.finish(staged, release.version));
       // Shown in a dialog, this closes it: the dialog belongs to the version
       // being replaced, and would otherwise stay over the screen after it.
       onHandedOff?.();
@@ -293,7 +290,7 @@ export function UpdatePanel({
       logError("could not start the update", error);
       toaster.toast({
         title: "Could not start the update",
-        body: error instanceof Error ? error.message : "The service did not answer.",
+        body: error instanceof Error ? error.message : updates.noAnswer,
       });
     } finally {
       if (live.current) setInstalling(false);
@@ -359,8 +356,12 @@ export function UpdatePanel({
             <ButtonItem
               layout="below"
               onClick={() => void install()}
-              disabled={installing}
-              description={`${running ? `You are running ${running}. ` : ""}Installed beside this version, which stays as the one to go back to.`}
+              disabled={installing || !updates.available()}
+              description={
+                !updates.available()
+                  ? updates.unavailable
+                  : `${running ? `You are running ${running}. ` : ""}${updates.how}`
+              }
             >
               {installing ? "Preparing..." : `Update to ${update.latest.version}`}
             </ButtonItem>

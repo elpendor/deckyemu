@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { updateDotVisible, watchUpdates } from "./updateSignal";
+import { updates } from "./host";
 
 /**
  * The orange dot on DeckyEmu's Quick Access tab, while an update waits.
@@ -9,9 +10,10 @@ import { updateDotVisible, watchUpdates } from "./updateSignal";
  * without interrupting what they are doing: the tab bar is on screen every
  * time the Quick Access menu is.
  *
- * 8px inside the corner of the tab, the offset an icon badge in that bar
- * takes. `position: absolute` with no positioned wrapper of ours, so it
- * resolves against Steam's tab element rather than the glyph.
+ * Each build says where it sits (`updates.dotOffset`): the icon is in the tab
+ * bar in one and beside the name in a list in the other. `position: absolute`
+ * with no positioned wrapper of ours, so it resolves against the element the
+ * icon is drawn in rather than the glyph.
  */
 function useUpdateDot(): boolean {
   const [show, setShow] = useState<boolean>(updateDotVisible);
@@ -35,8 +37,8 @@ export function UpdateDot() {
     <div
       style={{
         position: "absolute",
-        top: "8px",
-        right: "8px",
+        top: updates.dotOffset,
+        right: updates.dotOffset,
         height: "10px",
         width: "10px",
         background: "orange",

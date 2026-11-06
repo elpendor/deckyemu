@@ -26,7 +26,7 @@ export default tseslint.config(
   {
     // Build output and the toolchain's own files. `dist/` is regenerated on
     // every build and is not ours to lint.
-    ignores: ["dist/**", "node_modules/**", "*.config.js"],
+    ignores: ["dist/**", "plugin/dist/**", "node_modules/**", "*.config.js"],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
@@ -34,7 +34,7 @@ export default tseslint.config(
   // and declare `plugins` as an array of strings, which flat config refuses.
   reactHooks.configs.flat["recommended-latest"],
   {
-    files: ["src/**/*.{ts,tsx}"],
+    files: ["src/**/*.{ts,tsx}", "plugin/src/**/*.{ts,tsx}"],
     rules: {
       /*
        * The whole point. Warn-by-default in the plugin's own preset; an error
@@ -87,7 +87,7 @@ export default tseslint.config(
   },
   {
     // The suite mocks modules and reaches into internals on purpose.
-    files: ["src/**/*.test.ts"],
+    files: ["src/**/*.test.ts", "plugin/src/**/*.test.ts"],
     rules: { "@typescript-eslint/no-explicit-any": "off" },
   },
 );

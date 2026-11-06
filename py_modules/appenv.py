@@ -15,6 +15,9 @@ NAME = "DeckyEmu"
 BUILD = "The DeckyEmu service"
 """How another build names this one when this one holds the state."""
 
+KIND = "service"
+"""Which build this is: "service" or "plugin"."""
+
 
 def _env(name: str, default: str) -> str:
     return os.environ.get(name) or default

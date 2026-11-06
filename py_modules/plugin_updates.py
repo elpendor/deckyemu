@@ -14,8 +14,8 @@ otherwise indistinguishable from a bug -- the backend behaves like the new
 version and the interface is the old one -- and the two halves being able to
 disagree out loud is what makes that diagnosable at all.
 
-`releases.py` does the looking and `selfupdate.py` the installing; neither
-reaches back here. What is left is the policy: how often to look, how long to
+`releases.py` does the looking and each build's `buildhost.py` the installing;
+neither reaches back here. What is left is the policy: how often to look, how long to
 back off when the network is not there, and refusing to install anything whose
 hash does not match what the release said.
 
@@ -32,16 +32,12 @@ import asyncio
 import hashlib
 import json
 import os
-import signal
-import threading
-import time
 
 import appenv
 
 import plugin_base
 
 import releases
-import selfupdate
 import sysenv
 
 #: Held while a release is being installed. Two at once share the download
@@ -49,15 +45,6 @@ import sysenv
 #: version to go back to.
 _installing = asyncio.Lock()
 
-
-def _restart_soon(delay=2.0):
-    """Ask the service to stop, after the reply has had time to reach the panel.
-    The unit starts it again, from the version just switched to."""
-    def later():
-        time.sleep(delay)
-        os.kill(os.getpid(), signal.SIGTERM)
-
-    threading.Thread(target=later, daemon=True).start()
 
 class Updates(plugin_base.PluginContext):
     """Version, update checks and staging. See the module docstring."""
@@ -241,14 +228,11 @@ class Updates(plugin_base.PluginContext):
             await asyncio.sleep(delay)
 
     async def stage_update(self):
-        """Download the newest release, install it beside this one, and
-        restart into it.
+        """Download the newest release, check it, and have this build install it.
 
-        The digest is checked against the file actually obtained. selfupdate
-        unpacks and checks it in a staging folder and switches only once it is
-        whole; the version running now stays installed, and the launcher goes
-        back to it if the new one never reports healthy. One at a time: a
-        second call while one runs is refused, not queued.
+        The digest is checked against the file actually obtained, before
+        `_install_release` (buildhost.py) is handed it. One at a time: a second
+        call while one runs is refused, not queued.
         """
         if _installing.locked():
             return {"ok": False, "error": "An update is already being installed."}
@@ -291,13 +275,5 @@ class Updates(plugin_base.PluginContext):
             await self._run(os.remove, path)
             return {"ok": False, "error": "The download did not match its published digest."}
 
-        try:
-            installed = await self._run(selfupdate.install, path, release["version"])
-        except selfupdate.Refused as refusal:
-            return {"ok": False, "error": "Not installed: %s" % refusal}
-        finally:
-            await self._run(os.remove, path)
-
-        appenv.logger.info("Installed %s at %s; restarting into it", release["version"], installed)
-        _restart_soon()
-        return {"ok": True, "version": release["version"], "sha256": digest, "restarting": True}
+        # Each build installs its own way: see buildhost.py.
+        return await self._install_release(path, release, digest)

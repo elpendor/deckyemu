@@ -36,8 +36,8 @@ section("the Plugin mixins -- one name, one home")
 _bases = [cls for cls in main.Plugin.__mro__ if cls is not object]
 check("every mixin written is mixed in",
       sorted(cls.__name__ for cls in _bases),
-      ["Accounts", "Audit", "Collections", "DevReset", "Emulators", "Firmware",
-       "Library", "PackagedGames", "Plugin", "PluginContext", "Probe",
+      ["Accounts", "Audit", "BuildHost", "Collections", "DevReset", "Emulators",
+       "Firmware", "Library", "PackagedGames", "Plugin", "PluginContext", "Probe",
        "RetroArchInstall", "Startup", "Transfers", "Updates"])
 
 # PluginContext is the exception and the only one: it *declares* the shared
@@ -60,7 +60,7 @@ check("no name is defined by more than one of them", _collisions, {})
 # Not a tautology: the classes really do contribute, so an empty collision set
 # means something.
 check("and they contribute enough for that to mean something",
-      len(_owners) > 100 and len(_bases) == 15, True)
+      len(_owners) > 100 and len(_bases) == 16, True)
 
 # The other direction, which is what the declarations are for: everything a
 # mixin is promised must actually exist further along the MRO. Without this a

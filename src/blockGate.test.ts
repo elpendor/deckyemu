@@ -21,6 +21,12 @@ describe("the panel when the backend stays off", () => {
     expect(blockScreen({ reason: "format" })?.title).toBe("Update DeckyEmu");
   });
 
+  it("says where DeckyEmu went after a switch to the service", () => {
+    const screen = blockScreen({ reason: "switched", version: "0.21.0" });
+    expect(screen?.title).toBe("DeckyEmu moved");
+    expect(screen?.body).toMatch(/^DeckyEmu 0\.21\.0 now runs on its own/);
+  });
+
   it("explains a reason it does not know rather than showing nothing", () => {
     expect(blockScreen({ reason: "something-new" })?.title).toBe("DeckyEmu is off");
   });

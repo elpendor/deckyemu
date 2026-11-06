@@ -28,10 +28,11 @@ import net
 REPO = "elpendor/deckyemu"
 RELEASES_URL = "https://api.github.com/repos/%s/releases" % REPO
 
-#: The service's own release asset. Plugin releases carry a zip instead, and
-#: plugin installs pick the first zip they see, so neither line takes the
-#: other's releases.
-ASSET = "deckyemu-service.tar.gz"
+#: The file each build installs from. A release carries both, and a build only
+#: considers releases that carry its own: older plugin releases carry only the
+#: zip, and installed plugins take the first zip they see.
+ASSETS = {"service": "deckyemu-service.tar.gz", "plugin": "deckyemu.zip"}
+ASSET = ASSETS[appenv.KIND]
 
 # GitHub allows 60 unauthenticated requests an hour per address. One check an hour
 # leaves that budget almost untouched even with the panel opened repeatedly.
@@ -47,23 +48,33 @@ CACHE_SECONDS = 60 * 60
 #: Only a successful fetch is written. A failure kept for an hour would be a
 #: check that refuses to retry, which is the opposite of what a cache is for.
 #:
-#: Not `releases.json`: that is the plugin's, in the same folder, and holds the
-#: plugin's releases.
-CACHE_PATH = os.path.join(appenv.DATA_DIR, "service-releases.json")
+#: Shared by both builds, which read it alike. Not `releases.json` or
+#: `service-releases.json`: older builds wrote those, one asset each.
+CACHE_PATH = os.path.join(appenv.DATA_DIR, "release-check.json")
 
 #: Bumped when the shape of a cached release changes. An older file is ignored
 #: rather than migrated: it is a cache, so the cost of throwing it away is one
 #: request, and the cost of reading a stale shape is a crash in the panel.
-CACHE_FORMAT = 1
+CACHE_FORMAT = 2
 
 # CI writes this line into the release body so the download can be verified.
+# The zip's is the plain line: installed plugins check theirs against the first
+# `sha256:` in the body. Every other asset names itself, `sha256 (<name>): ...`.
 _SHA256_RE = re.compile(r"sha256:\s*([0-9a-f]{64})", re.IGNORECASE)
+
+
+def _digest(body, asset_name):
+    named = re.search(r"sha256 \(%s\):\s*([0-9a-f]{64})" % re.escape(asset_name), body, re.IGNORECASE)
+    if named:
+        return named.group(1).lower()
+    plain = _SHA256_RE.search(body) if asset_name == ASSETS["plugin"] else None
+    return plain.group(1).lower() if plain else ""
 
 # `ok` is whether the last request *succeeded*, which is not the same as whether
 # it found anything. A repository with no releases yet returns an empty list, and
 # reporting that as a failure told the user GitHub was unreachable when it had
 # answered perfectly.
-_cache = {"at": 0.0, "releases": [], "ok": False, "error": "Not checked yet.",
+_cache = {"at": 0.0, "releases": [], "others": {}, "ok": False, "error": "Not checked yet.",
           "failed_at": 0.0, "blocked_until": 0.0}
 
 #: How long a *failed* check waits before going back to GitHub.
@@ -104,7 +115,7 @@ def _version_tuple(version):
 # build. Showing them as "release notes" is how a user ended up being told a
 # sha256 when they asked what changed.
 _TRAILER_RE = re.compile(
-    r"^\s*(sha256:\s*[0-9a-f]{64}|Built from [0-9a-f]{7,40}\.?)\s*$",
+    r"^\s*(sha256( \([^)]+\))?:\s*[0-9a-f]{64}|Built from [0-9a-f]{7,40}\.?)\s*$",
     re.IGNORECASE | re.MULTILINE,
 )
 
@@ -119,8 +130,10 @@ def readable_notes(body):
     return _TRAILER_RE.sub("", body or "").strip()
 
 
-def parse_release(entry):
-    """One GitHub release, or None when it is not something we can install."""
+def parse_release(entry, asset_name=None):
+    """One GitHub release, or None when it carries no `asset_name` (this
+    build's own, by default) to install."""
+    wanted = (asset_name or ASSET).lower()
     if not isinstance(entry, dict) or entry.get("draft"):
         return None
 
@@ -132,22 +145,21 @@ def parse_release(entry):
     asset = None
     for candidate in entry.get("assets") or []:
         name = (candidate.get("name") or "").lower()
-        if name == ASSET and candidate.get("browser_download_url"):
+        if name == wanted and candidate.get("browser_download_url"):
             asset = candidate
             break
     if not asset:
-        # A plugin release, or one with nothing this can install.
+        # The other build's release, or one with nothing this can install.
         return None
 
     body = entry.get("body") or ""
-    digest = _SHA256_RE.search(body)
     return {
         "version": version,
         "tag": tag,
         "notes": readable_notes(body),
         "asset_url": asset["browser_download_url"],
         "asset_name": asset.get("name", ""),
-        "sha256": digest.group(1).lower() if digest else "",
+        "sha256": _digest(body, wanted),
         "prerelease": bool(entry.get("prerelease")),
         "published_at": entry.get("published_at") or "",
     }
@@ -208,6 +220,8 @@ def _load_cache():
         return
 
     _cache["releases"] = releases
+    others = saved.get("others")
+    _cache["others"] = others if isinstance(others, dict) else {}
     _cache["at"] = float(at)
     # Loaded from a file that is only written on success, so this *is* a
     # successful check -- an older one, which is what the timestamp is for.
@@ -224,6 +238,7 @@ def _save_cache():
                 "format": CACHE_FORMAT,
                 "at": _cache["at"],
                 "releases": _cache["releases"],
+                "others": _cache["others"],
             },
         )
     except OSError as error:
@@ -343,7 +358,16 @@ def _fetch_locked(force):
     releases = [release for release in (parse_release(item) for item in raw) if release]
     releases.sort(key=lambda release: _version_tuple(release["version"]), reverse=True)
 
+    # The other build's newest, for the panel's offer to switch.
+    others = {}
+    for kind, name in ASSETS.items():
+        if kind != appenv.KIND:
+            found = [r for r in (parse_release(item, name) for item in raw) if r and not r["prerelease"]]
+            found.sort(key=lambda release: _version_tuple(release["version"]), reverse=True)
+            others[kind] = found[0] if found else None
+
     _cache["releases"] = releases
+    _cache["others"] = others
     _cache["at"] = now
     _cache["ok"] = True
     _cache["error"] = ""
@@ -397,9 +421,16 @@ def check(current_version, force=False, allow_prerelease=False):
     return result
 
 
+def other_release(kind, force=False):
+    """The newest stable release of the other build, `kind`, or None."""
+    fetch_releases(force=force)
+    return (_cache.get("others") or {}).get(kind)
+
+
 def clear_cache():
     global _loaded
     _cache["releases"] = []
+    _cache["others"] = {}
     _cache["at"] = 0.0
     _cache["ok"] = False
     _cache["error"] = "Not checked yet."

@@ -6003,12 +6003,15 @@ def _release(tag, zip_name=releases.ASSET, body="", **extra):
 
 
 parsed = releases.parse_release(
-    _release("v1.2.3", body="Notes here" + os.linesep + "sha256: " + "a" * 64)
+    _release("v1.2.3", body="Notes here" + os.linesep + "sha256 (%s): " % releases.ASSET + "a" * 64)
 )
 check("the leading v is dropped", parsed["version"], "1.2.3")
 check("the download url is picked up", parsed["asset_url"], "https://example/" + releases.ASSET)
 # CI writes the digest into the body so stage_update can verify the download.
 check("the sha256 is read from the notes", parsed["sha256"], "a" * 64)
+# The plain line is the zip's: installed plugins read the first one they see.
+check("but not from the plain line, which is the plugin's",
+      releases.parse_release(_release("v1.2.3", body="sha256: " + "a" * 64))["sha256"], "")
 check("notes survive", parsed["notes"].startswith("Notes here"), True)
 # The digest is for stage_update to verify against, not for a reader. Leaving it
 # in `notes` is how the Updates tab came to answer "what changed?" with a hash.

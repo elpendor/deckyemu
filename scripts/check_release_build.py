@@ -22,6 +22,7 @@ should have.
 """
 
 import os
+import re
 import subprocess
 import sys
 
@@ -33,11 +34,15 @@ FORBIDDEN = (
 )
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-BUNDLE = os.path.join(REPO_ROOT, "dist", "deckyemu.js")
+#: Each build's panel. One rollup run builds both.
+BUNDLES = {
+    "service": os.path.join(REPO_ROOT, "dist", "deckyemu.js"),
+    "plugin": os.path.join(REPO_ROOT, "plugin", "dist", "index.js"),
+}
 
 
 def build(stamp):
-    """Bundle with DECKYEMU_BUILD set to `stamp`. Returns the bundle's text."""
+    """Bundle with DECKYEMU_BUILD set to `stamp`. Returns each bundle's text."""
     environment = dict(os.environ)
     if stamp:
         environment["DECKYEMU_BUILD"] = stamp
@@ -53,38 +58,50 @@ def build(stamp):
         stderr=subprocess.DEVNULL,
         shell=os.name == "nt",
     )
-    with open(BUNDLE, "r", encoding="utf-8", errors="replace") as handle:
-        return handle.read()
+    texts = {}
+    for kind, path in BUNDLES.items():
+        with open(path, "r", encoding="utf-8", errors="replace") as handle:
+            texts[kind] = handle.read()
+    return texts
 
 
 def main():
     failed = False
 
-    print("Building a release bundle...")
-    release = build("0" * 40)
-    for needle in FORBIDDEN:
-        if needle in release:
-            print("FAIL: release bundle contains development-only code: %s" % needle)
-            failed = True
-        else:
-            print("ok: absent from release bundle -- %s" % needle)
+    print("Building release bundles...")
+    releases = build("0" * 40)
+    for kind, release in releases.items():
+        for needle in FORBIDDEN:
+            if needle in release:
+                print("FAIL: %s release bundle contains development-only code: %s" % (kind, needle))
+                failed = True
+            else:
+                print("ok: absent from %s release bundle -- %s" % (kind, needle))
+
+    # Steam cannot resolve a bare import of the loader's library; the plugin
+    # build has to have turned every one into a read of its global.
+    if re.search(r"""from\s*['"]@decky/ui['"]""", releases["plugin"]):
+        print("FAIL: plugin release bundle imports @decky/ui by name; Steam cannot load it")
+        failed = True
+    else:
+        print("ok: no bare @decky/ui import in the plugin release bundle")
 
     # The inverse, so a passing run cannot be the result of the strings having
     # been renamed or the panel deleted. Both halves have to be true for the
     # check to mean anything.
-    print("Building a development bundle...")
-    development = build("")
-    for needle in FORBIDDEN:
-        if needle in development:
-            print("ok: present in development bundle -- %s" % needle)
-        else:
-            print("FAIL: development bundle is missing %s -- this check is testing nothing"
-                  % needle)
-            failed = True
+    print("Building development bundles...")
+    for kind, development in build("").items():
+        for needle in FORBIDDEN:
+            if needle in development:
+                print("ok: present in %s development bundle -- %s" % (kind, needle))
+            else:
+                print("FAIL: %s development bundle is missing %s -- this check is testing nothing"
+                      % (kind, needle))
+                failed = True
 
     if failed:
         return 1
-    print("Release bundle is clean.")
+    print("Release bundles are clean.")
     return 0
 
 

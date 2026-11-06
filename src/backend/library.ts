@@ -73,7 +73,7 @@ export const checkForUpdate = callable<[force: boolean], UpdateCheck>("check_for
  */
 export const stageUpdate = callable<
   [],
-  { ok: boolean; error?: string; version?: string; sha256?: string; restarting?: boolean }
+  { ok: boolean; error?: string; version?: string; sha256?: string; url?: string; restarting?: boolean }
 >("stage_update");
 
 export const getSettings = callable<[], PluginSettings>("get_settings");

@@ -21,6 +21,7 @@ import launchers
 import libretro_meta
 import net
 import platforms
+import buildhost
 import discset
 import plugin_accounts
 import plugin_audit
@@ -307,6 +308,7 @@ class Plugin(
     plugin_startup.Startup,
     plugin_transfers.Transfers,
     plugin_updates.Updates,
+    buildhost.BuildHost,
 ):
     async def _main(self):
         self.loop = asyncio.get_event_loop()
@@ -319,6 +321,8 @@ class Plugin(
         if self._blocked:
             appenv.logger.warning("Staying off: %s", self._blocked)
             return
+        # Then, before anything reads the state: see buildhost.py.
+        await self._host_claimed()
         _check_own_modules()
         # Said once, at the top of the log, so a report from unsupported
         # hardware explains itself before anyone reads a line of what went
@@ -413,6 +417,10 @@ class Plugin(
                 # here: a cancelled startup is the service shutting down,
                 # and it must be allowed to.
                 appenv.logger.exception("Startup: could not %s -- carrying on", label)
+        try:
+            await self._host_started()
+        except Exception:
+            appenv.logger.exception("Startup: this build's own steps failed -- carrying on")
 
     async def _unload(self):
         # Cancelled before stopping, and only here. Stopping deliberately leaves
@@ -433,6 +441,10 @@ class Plugin(
         # a reference to a backend the service has finished with, and would wake
         # up six
         # hours later to call methods on it.
+        try:
+            await self._host_stopping()
+        except Exception:
+            appenv.logger.exception("Unload: this build's own steps failed")
         task = getattr(self, "_update_task", None)
         if task is not None:
             task.cancel()

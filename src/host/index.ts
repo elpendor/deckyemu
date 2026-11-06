@@ -6,3 +6,5 @@ export { addEventListener, call, callable, removeEventListener } from "./channel
 export { FileSelectionType, openFilePicker, type FilePickerResult } from "./filePicker";
 export { toaster, type Toast } from "./toaster";
 export { useQuickAccessVisible } from "../steamui/navigation";
+export { updates, type Staged } from "./updates";
+export { openPanel } from "./panel";

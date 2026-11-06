@@ -21,6 +21,15 @@ export function blockScreen(blocked: BlockedState | undefined): BlockScreen | nu
         "This version could misread them, so it stays off until it is updated.",
     };
   }
+  if (blocked.reason === "switched") {
+    const which = ["DeckyEmu", blocked.version].filter(Boolean).join(" ");
+    return {
+      title: "DeckyEmu moved",
+      body:
+        `${which} now runs on its own, with the same games and settings. ` +
+        "Its tab replaces this one once Steam restarts.",
+    };
+  }
   if (blocked.reason === "running") {
     const who = [blocked.build || "Another DeckyEmu", blocked.version].filter(Boolean).join(" ");
     return {
