@@ -113,6 +113,14 @@ check("and the first is previous", os.path.realpath(selfupdate.PREVIOUS), os.pat
 check("with the switch pending until it reports healthy",
       json.load(open(selfupdate.PENDING))["attempts"], 0)
 
+# Another update before the second proved itself: going back must still reach
+# the first, the last version known to work.
+second = selfupdate.install(release("two-b", WHOLE), "1.1.1")
+check("an install over an unproven one is current", os.path.realpath(selfupdate.CURRENT),
+      os.path.realpath(second))
+check("and previous stays the last proven one", os.path.realpath(selfupdate.PREVIOUS),
+      os.path.realpath(first))
+
 
 section("the launcher counts starts, then goes back")
 
@@ -184,6 +192,35 @@ try:
     check("and says so", any("linked" in note for note in notes), True)
 finally:
     appenv.SETTINGS_DIR = _saved
+
+
+section("a crash loop does not push out the logs from before it")
+
+sys.path.insert(0, REPO_ROOT)
+import service  # noqa: E402
+import time  # noqa: E402
+
+_saved_logs = appenv.LOG_DIR
+appenv.LOG_DIR = os.path.join(TMP, "prune-logs")
+os.makedirs(appenv.LOG_DIR)
+try:
+    def _log(started, lasted):
+        path = os.path.join(appenv.LOG_DIR, time.strftime("%Y-%m-%d %H.%M.%S", time.localtime(started)) + ".log")
+        open(path, "w").close()
+        os.utime(path, (started + lasted, started + lasted))
+        return os.path.basename(path)
+
+    _now = time.time() - 3600
+    # Three runs that lasted hours, then thirty starts two seconds apart.
+    good = [_log(_now - 30000 + i * 10000, 9000) for i in range(3)]
+    loop = [_log(_now + i * 2, 1) for i in range(30)]
+    service._prune_logs()
+    kept = sorted(os.listdir(appenv.LOG_DIR))
+    check("the runs that lasted are kept", [n for n in good if n in kept], good)
+    check("and the newest of the loop, one short of the limit for the next start",
+          [n for n in kept if n in loop], loop[-(service.KEEP_LOGS - 1):])
+finally:
+    appenv.LOG_DIR = _saved_logs
 
 
 if __name__ == "__main__":

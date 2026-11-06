@@ -112,9 +112,13 @@ def install(archive, version):
 
 
 def switch(target):
-    """Run `target` from the next start, keeping what runs now as `previous`."""
+    """Run `target` from the next start, keeping what runs now as `previous`.
+
+    Unless what runs now is itself unproven: `previous` then stays the last
+    version known to work.
+    """
     running = _target(CURRENT)
-    if running and running != os.path.realpath(target):
+    if running and running != os.path.realpath(target) and not os.path.exists(PENDING):
         _point(PREVIOUS, running)
     _point(CURRENT, target)
     with open(PENDING + ".tmp", "w", encoding="utf-8") as handle:

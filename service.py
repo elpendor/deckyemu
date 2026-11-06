@@ -38,22 +38,45 @@ import migrate  # noqa: E402
 #: Logs kept, newest first; one per start.
 KEEP_LOGS = 10
 
+#: Also kept: the newest few from runs that lasted, so a crash loop restarting
+#: every two seconds cannot push out the log of what came before it.
+KEEP_LIVED_LOGS = 3
+LIVED_SECONDS = 60
+
 #: How long a new version must run, with Steam's UI absent, before it counts as
 #: healthy. With Steam's UI present, loading the panel is the test instead.
 HEALTHY_WITHOUT_STEAM_SECONDS = 90
 
 
-def _logging():
-    os.makedirs(appenv.LOG_DIR, exist_ok=True)
+def _lived(path):
+    """Whether the run that wrote this log lasted LIVED_SECONDS."""
+    try:
+        started = time.mktime(time.strptime(os.path.basename(path)[:-4], "%Y-%m-%d %H.%M.%S"))
+        return os.path.getmtime(path) - started >= LIVED_SECONDS
+    except (OSError, ValueError, OverflowError):
+        return False
+
+
+def _prune_logs():
     logs = sorted(
         (name for name in os.listdir(appenv.LOG_DIR) if name.endswith(".log")),
         reverse=True,
     )
+    lived = 0
     for old in logs[KEEP_LOGS - 1:]:
+        path = os.path.join(appenv.LOG_DIR, old)
+        if lived < KEEP_LIVED_LOGS and _lived(path):
+            lived += 1
+            continue
         try:
-            os.remove(os.path.join(appenv.LOG_DIR, old))
+            os.remove(path)
         except OSError:
             pass
+
+
+def _logging():
+    os.makedirs(appenv.LOG_DIR, exist_ok=True)
+    _prune_logs()
     path = os.path.join(appenv.LOG_DIR, time.strftime("%Y-%m-%d %H.%M.%S") + ".log")
     formatter = logging.Formatter("[%(asctime)s][%(levelname)s]: %(message)s")
     to_file = logging.FileHandler(path, encoding="utf-8")

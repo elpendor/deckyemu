@@ -73,7 +73,7 @@ import inspect  # noqa: E402 -- next to the one check that needs it
 
 import main  # noqa: E402
 
-_staging = inspect.getsource(main.Plugin.stage_update)
+_staging = inspect.getsource(main.Plugin._stage_update)
 check("stage_update takes the basename of the asset name",
       'os.path.basename(release.get("asset_name") or "") or releases.ASSET' in _staging,
       True)
@@ -136,6 +136,42 @@ try:
 finally:
     net._urlopen = _real_urlopen
     appenv.logger.setLevel(_level)
+
+section("one update installs at a time")
+
+# Update pressed twice, or on the rescue page and in the panel: two installs
+# would share the download path and the second would make the first, unproven
+# one the version to go back to.
+import asyncio  # noqa: E402
+import threading  # noqa: E402
+
+_release_gate = threading.Event()
+_real_check = releases.check
+
+
+def _slow_check(*_args, **_kwargs):
+    _release_gate.wait(5)
+    return {}
+
+
+async def _twice():
+    plugin = main.Plugin()
+    plugin.loop = asyncio.get_running_loop()
+    first = asyncio.ensure_future(plugin.stage_update())
+    await asyncio.sleep(0.2)
+    second = await plugin.stage_update()
+    _release_gate.set()
+    return await first, second
+
+
+releases.check = _slow_check
+try:
+    _first, _second = asyncio.run(_twice())
+finally:
+    releases.check = _real_check
+check("the second is refused while the first runs", _second,
+      {"ok": False, "error": "An update is already being installed."})
+check("and the first carries on", _first, {"ok": False, "error": "No release to install."})
 
 
 if __name__ == "__main__":

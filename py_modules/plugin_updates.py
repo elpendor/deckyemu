@@ -44,6 +44,10 @@ import releases
 import selfupdate
 import sysenv
 
+#: Held while a release is being installed. Two at once share the download
+#: path, and the second switch would make the first, unproven install the
+#: version to go back to.
+_installing = asyncio.Lock()
 
 
 def _restart_soon(delay=2.0):
@@ -243,9 +247,16 @@ class Updates(plugin_base.PluginContext):
         The digest is checked against the file actually obtained. selfupdate
         unpacks and checks it in a staging folder and switches only once it is
         whole; the version running now stays installed, and the launcher goes
-        back to it if the new one never reports healthy.
+        back to it if the new one never reports healthy. One at a time: a
+        second call while one runs is refused, not queued.
         """
-        current = (await self.plugin_version())["version"]
+        if _installing.locked():
+            return {"ok": False, "error": "An update is already being installed."}
+        async with _installing:
+            return await self._stage_update()
+
+    async def _stage_update(self):
+        current =(await self.plugin_version())["version"]
         found = await self._run(releases.check, current, True, False)
 
         release = found.get("latest")
