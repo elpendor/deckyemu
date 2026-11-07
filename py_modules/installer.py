@@ -51,8 +51,8 @@ DEFAULT_ARCH = "x86_64"
 def _machine():
     """What the kernel calls this machine, lowercased, or "" if it will not say.
 
-    `os.uname` rather than `platform.machine`: decky's frozen interpreter is
-    not known to carry `platform`, and `scripts/tests/test_module_guard.py` is
+    `os.uname` rather than `platform.machine`: the plugin build's frozen
+    interpreter is not known to carry `platform`, and `scripts/tests/test_module_guard.py` is
     what says which modules it does.
     """
     try:

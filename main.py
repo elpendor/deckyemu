@@ -558,7 +558,7 @@ class Plugin(
             # Closed rather than dropped: a coroutine that is never awaited
             # warns when it is collected, and the warning names nothing.
             coro.close()
-            decky.logger.info("%s is already running; not starting a second", event)
+            appenv.logger.info("%s is already running; not starting a second", event)
             return running
 
         async def guarded():

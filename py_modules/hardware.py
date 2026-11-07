@@ -120,7 +120,7 @@ def has_deck_sensors():
     and the gyro layout exists to stop Steam powering that IMU down. No other
     machine has one for either to find.
 
-    Measured on an ASUS desktop running Decky, rather than assumed: the server
+    Measured on an ASUS desktop running the plugin build, rather than assumed: the server
     downloads, starts, binds its UDP port and sends nothing at all, because
     there is no Deck controller behind it. Every launcher for an emulator that
     speaks DSU was rewritten to start it, so the cost was real and the benefit
