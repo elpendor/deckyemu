@@ -65,6 +65,22 @@ def install_env(base=None):
     return env
 
 
+def start_unit(run=subprocess.run):
+    """Start the installed service, and at every login from now on.
+    Returns (worked, what systemctl printed)."""
+    try:
+        done = run(
+            ["systemctl", "--user", "enable", "--now", "deckyemu.service"],
+            env=install_env(),
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+    except (OSError, subprocess.SubprocessError) as error:
+        return False, str(error)
+    return done.returncode == 0, ((done.stdout or "") + (done.stderr or "")).strip()
+
+
 def install(folder, run=subprocess.run):
     """Run the service's installer. Returns (worked, what it printed)."""
     try:

@@ -40,6 +40,7 @@ if os.name == "nt":
 
 import appenv  # noqa: E402
 import buildhost  # noqa: E402
+import builds  # noqa: E402
 import handoff  # noqa: E402
 import releases  # noqa: E402
 import service_switch  # noqa: E402
@@ -190,34 +191,67 @@ _plugin._unload = _unload
 _plugin._main = _main
 _release = {"version": "0.21.0", "sha256": hashlib.sha256(SERVICE).hexdigest(),
             "asset_url": "https://example/s.tar.gz", "prerelease": False}
-_real = (releases.other_release, releases.download, service_switch.install)
+_real = (releases.other_release, releases.download, service_switch.install, service_switch.start_unit)
 releases.other_release = lambda kind, force=False: _release if kind == "service" else None
 releases.download = lambda release: SERVICE
 try:
-    check("the offer names the service's version",
-          _plugin.loop.run_until_complete(_plugin.service_offer()), {"available": True, "version": "0.21.0"})
-    service_switch.install = lambda folder: (True, "installed")
-    result = _plugin.loop.run_until_complete(_plugin.switch_to_service())
+    check("the offer names the service's version, to download",
+          _plugin.loop.run_until_complete(_plugin.switch_offer()),
+          {"available": True, "to": "service", "installed": False, "version": "0.21.0"})
+
+    def _installed(folder):
+        # What the service's installer does, as far as the plugin can see.
+        builds._write(builds._record_path("service"), {
+            "build": "The DeckyEmu service", "version": "0.21.0", "app_dir": appenv.ROOT})
+        builds.use("service")
+        return True, "installed"
+
+    service_switch.install = _installed
+    result = _plugin.loop.run_until_complete(_plugin.switch_build())
     check("it reports the version it switched to", result, {"ok": True, "version": "0.21.0"})
     check("after stopping the plugin", _calls, ["unload"])
-    check("which stays off, and says why", _plugin._blocked, {"reason": "switched", "version": "0.21.0"})
+    check("which stays off, and says for which", _plugin._blocked,
+          {"reason": "switched", "kind": "service", "build": "The DeckyEmu service", "version": "0.21.0"})
     check("and the unpacked release is cleaned up",
           os.path.exists(os.path.join(appenv.DATA_DIR, "service-switch")), False)
 
     _calls.clear()
     _plugin._blocked = None
+    check("installed, the offer says so",
+          _plugin.loop.run_until_complete(_plugin.switch_offer()),
+          {"available": True, "to": "service", "installed": True, "version": "0.21.0"})
+    builds.use("plugin")
+    _units = []
+    service_switch.start_unit = lambda: (_units.append("start"), (True, ""))[1]
+    result = _plugin.loop.run_until_complete(_plugin.switch_build())
+    check("and switching starts it, without a download",
+          (result["ok"], _calls, _units, builds.in_use()), (True, ["unload"], ["start"], "service"))
+
+    _calls.clear()
+    _plugin._blocked = None
+    service_switch.start_unit = lambda: (False, "no bus")
+    result = _plugin.loop.run_until_complete(_plugin.switch_build())
+    check("a service that does not start is reported", result["ok"], False)
+    check("and the plugin starts again, named as in use",
+          (_calls, _plugin._blocked, builds._read(os.path.join(appenv.ROOT, builds.IN_USE))),
+          (["unload", "main"], None, {"kind": "plugin"}))
+
+    os.remove(builds._record_path("service"))
+    _calls.clear()
+    _plugin._blocked = None
     service_switch.install = lambda folder: (False, "no bus")
-    result = _plugin.loop.run_until_complete(_plugin.switch_to_service())
+    result = _plugin.loop.run_until_complete(_plugin.switch_build())
     check("a failed install is reported", result["ok"], False)
     check("and the plugin starts again", (_calls, _plugin._blocked), (["unload", "main"], None))
 
     _calls.clear()
     releases.download = lambda release: b"something else"
-    result = _plugin.loop.run_until_complete(_plugin.switch_to_service())
+    result = _plugin.loop.run_until_complete(_plugin.switch_build())
     check("a download that does not match its digest stops before anything",
           (result["ok"], _calls), (False, []))
 finally:
-    releases.other_release, releases.download, service_switch.install = _real
+    (releases.other_release, releases.download, service_switch.install,
+     service_switch.start_unit) = _real
     _plugin.loop.close()
 
 

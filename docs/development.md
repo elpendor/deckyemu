@@ -288,6 +288,8 @@ py_modules/                 Backend logic. Plain Python, no third-party
   migrate.py                Carry an older install's state over, once
   claim.py                  The lock on the state and its format stamp; why
                             the backend stays off when either says no
+  builds.py                 Which build, service or plugin, is in use when
+                            both are installed
   cdp.py                    Steam's remote-debugging port: list pages, talk to one
   injector.py               Keep the preload, the panel and the call channel in
                             Steam's UI across its restarts
@@ -348,11 +350,13 @@ py_modules/                 Backend logic. Plain Python, no third-party
                             it keeps
   plugin_startup.py         One-time migrations of data already on the device.
                             The sequence they run in stays in main.py's _main
+  plugin_switching.py       Switching between the service and plugin builds;
+                            the one not in use steps aside
   plugin_transfers.py       Sending files to the Deck, and reading a report back
   plugin_updates.py         What build this is, and finding + installing newer
                             ones
   buildhost.py              What the service build does its own way: installing
-                            a release. The plugin build ships its own in
+                            a release, turning its unit off when not in use. The plugin build ships its own in
                             plugin/py_modules. The plugin_* modules and this are
                             mixins: the methods are found on the Plugin object,
                             so the names must stay on Plugin while the code

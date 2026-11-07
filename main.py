@@ -34,6 +34,7 @@ import plugin_packages
 import plugin_probe
 import plugin_retroarch
 import plugin_startup
+import plugin_switching
 import plugin_transfers
 import plugin_updates
 import ra_cores
@@ -217,6 +218,7 @@ WHILE_BLOCKED = frozenset({
     "plugin_version",
     "check_for_update",
     "stage_update",
+    "take_over",
 })
 
 
@@ -306,6 +308,7 @@ class Plugin(
     plugin_probe.Probe,
     plugin_retroarch.RetroArchInstall,
     plugin_startup.Startup,
+    plugin_switching.Switching,
     plugin_transfers.Transfers,
     plugin_updates.Updates,
     buildhost.BuildHost,
@@ -316,10 +319,14 @@ class Plugin(
         self._cores = []
         self._emulators = []
         appenv.logger.info("DeckyEmu starting")
+        # Watches which build is in use, on or off: see plugin_switching.py.
+        self._watch_in_use()
         # Before anything reads or writes the state: see claim.py.
         self._blocked = await self._run(claim.blocked)
         if self._blocked:
             appenv.logger.warning("Staying off: %s", self._blocked)
+            if self._blocked.get("reason") == "switched":
+                await self._host_stepped_aside()
             return
         # Then, before anything reads the state: see buildhost.py.
         await self._host_claimed()
@@ -445,6 +452,10 @@ class Plugin(
             await self._host_stopping()
         except Exception:
             appenv.logger.exception("Unload: this build's own steps failed")
+        try:
+            await self._stop_watching_in_use()
+        except Exception:
+            appenv.logger.exception("Unload: could not stop the in-use watch")
         task = getattr(self, "_update_task", None)
         if task is not None:
             task.cancel()
@@ -735,9 +746,10 @@ class Plugin(
 
     async def get_status(self):
         blocked = getattr(self, "_blocked", None)
-        # The other build may be gone by now: try again, so the panel opening
-        # after it was uninstalled is a working one.
-        if blocked and blocked.get("reason") == "running" and not getattr(self, "_retrying", False):
+        # The other build may be gone by now, or the user switched back to
+        # this one: try again, so the panel opening then is a working one.
+        retry = ("running", "switched")
+        if blocked and blocked.get("reason") in retry and not getattr(self, "_retrying", False):
             self._retrying = True
             try:
                 await self._main()

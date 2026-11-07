@@ -21,7 +21,6 @@ import {
   shortcutHealth,
   type AddedGame,
   type RetroArchStatus,
-  type BlockedState,
   type UpdateCheck,
 } from "./backend";
 import { blockScreen } from "./blockGate";
@@ -38,6 +37,7 @@ import { repairGameLayouts } from "./repairLayouts";
 import { AddedGamesPanel } from "./AddedGamesPanel";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { closeModalsWhenPanelSettles } from "./modalStack";
+import { SwitchPanel, TakeOverRows } from "./SwitchPanel";
 import { OrphanModal } from "./OrphanModal";
 import { shortcutNudge, type ShortcutCounts } from "./shortcutNudge";
 import { CloudStatusPanel } from "./CloudStatusPanel";
@@ -287,7 +287,9 @@ function Content() {
         <PanelSectionRow>
           <Field description={block.body} />
         </PanelSectionRow>
-        {extras.blocked?.(status.blocked!)}
+        {status.blocked?.reason === "switched" && (
+          <TakeOverRows onTaken={() => void loadStatus()} />
+        )}
         {updateRow}
       </PanelSection>
     );
@@ -436,7 +438,7 @@ function Content() {
 
       {canAddGames && <AddGamePanel status={status} onGameAdded={loadGames} />}
 
-      {extras.panels?.(() => void loadStatus())}
+      <SwitchPanel onSwitched={() => void loadStatus()} />
     </>
   );
 }
@@ -536,19 +538,8 @@ export interface Started {
   stop(): void;
 }
 
-/** What only one build adds to the panel. */
-export interface Extras {
-  /** Under the message of a backend that stays off. */
-  blocked?: (blocked: BlockedState) => ReactNode;
-  /** Below the panel's own sections; `reload` re-reads the status. */
-  panels?: (reload: () => void) => ReactNode;
-}
-
-let extras: Extras = {};
-
 /** Start the panel: everything that runs whether or not it is open. */
-export function start(options: Extras = {}): Started {
-  extras = options;
+export function start(): Started {
 
   // The "DeckyEmu" submenu behind the cog on a game's page -- Edit and Remove.
   // The cache is filled first because the item decides whether to appear by

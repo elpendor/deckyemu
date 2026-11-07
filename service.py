@@ -282,6 +282,7 @@ def install():
     import shutil
     import subprocess
 
+    import builds
     import selfupdate
 
     os.makedirs(selfupdate.APP, exist_ok=True)
@@ -298,6 +299,9 @@ def install():
     os.makedirs(unit_dir, exist_ok=True)
     with open(os.path.join(unit_dir, "deckyemu.service"), "w", encoding="utf-8") as handle:
         handle.write(UNIT)
+    # Installing it is choosing it: a plugin build, if installed, steps aside.
+    builds.record_self(here)
+    builds.use("service")
     for argv in (["systemctl", "--user", "daemon-reload"],
                  ["systemctl", "--user", "enable", "deckyemu.service"],
                  ["systemctl", "--user", "restart", "deckyemu.service"]):

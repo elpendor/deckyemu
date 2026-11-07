@@ -1,7 +1,6 @@
 """What the plugin build does its own way, mixed into `Plugin`.
 
-Ships in place of the service's `buildhost.py`, with the same four methods,
-plus the calls behind the panel's offer to move to the standalone service.
+Ships in place of the service's `buildhost.py`, with the same methods.
 """
 
 import hashlib
@@ -9,6 +8,7 @@ import os
 import shutil
 
 import appenv
+import builds
 
 import plugin_base
 
@@ -45,19 +45,34 @@ class BuildHost(plugin_base.PluginContext):
     async def _host_stopping(self):
         await self._run(handoff.stop)
 
-    async def service_offer(self):
-        """The standalone version the panel offers a switch to, if one is out."""
+    async def _host_stepped_aside(self):
+        """Nothing to stop: the loader keeps this backend loaded, off."""
+
+    async def _host_switch_offer(self):
+        found = await self._run(builds.record, "service")
+        if found:
+            return {"available": True, "to": "service", "installed": True,
+                    "version": str(found.get("version") or "")}
         release = await self._run(releases.other_release, "service")
         if not release:
             return {"available": False}
-        return {"available": True, "version": release["version"]}
+        return {"available": True, "to": "service", "installed": False,
+                "version": release["version"]}
 
-    async def switch_to_service(self):
-        """Install the standalone service and hand it the state.
+    async def _host_switch(self):
+        """Start the standalone service, installing it first if need be.
 
         This plugin stops first and releases the lock, since the service takes
-        it as it starts. If the install fails, the plugin starts again.
+        it as it starts. If that fails, the plugin starts again.
         """
+        found = await self._run(builds.record, "service")
+        if found:
+            version = str(found.get("version") or "")
+            await self._run(builds.use, "service")
+            await self._step_aside("service")
+            worked, said = await self._run(service_switch.start_unit)
+            return await self._after_switch(worked, said, version)
+
         release = await self._run(releases.other_release, "service")
         if not release:
             return {"ok": False, "error": "No standalone release is published yet."}
@@ -78,13 +93,19 @@ class BuildHost(plugin_base.PluginContext):
         except service_switch.Refused as refusal:
             return {"ok": False, "error": "Not installed: %s" % refusal}
 
-        await self._unload()
-        self._blocked = {"reason": "switched", "version": release["version"]}
+        # The installer names the service as the build in use.
+        await self._step_aside("service")
         worked, said = await self._run(service_switch.install, folder)
         await self._run(shutil.rmtree, work, True)
+        return await self._after_switch(worked, said, release["version"])
+
+    async def _after_switch(self, worked, said, version):
         if not worked:
-            appenv.logger.error("The service did not install: %s", said)
+            appenv.logger.error("The service did not start: %s", said)
+            await self._run(builds.use, "plugin")
             await self._main()
-            return {"ok": False, "error": "The service did not install: %s" % (said[-300:] or "no output")}
-        appenv.logger.info("Switched to the service %s: %s", release["version"], said)
-        return {"ok": True, "version": release["version"]}
+            return {"ok": False, "error": "The service did not start: %s" % (said[-300:] or "no output")}
+        appenv.logger.info("Switched to the service %s: %s", version, said)
+        # Again, now that a service installed just now has said what it is.
+        self._blocked = await self._run(builds.switched_to, "service")
+        return {"ok": True, "version": version}

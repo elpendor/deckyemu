@@ -1,5 +1,6 @@
 import { callable } from "../host";
 import { type PluginSettings } from "./games";
+import { type BlockedState } from "./emulators";
 
 /**
  * Everything after a game is added: settings, updates, collections, the
@@ -75,6 +76,26 @@ export const stageUpdate = callable<
   [],
   { ok: boolean; error?: string; version?: string; sha256?: string; url?: string; restarting?: boolean }
 >("stage_update");
+
+/** The other build of DeckyEmu, the service or the plugin, to switch to. */
+export interface SwitchOffer {
+  available: boolean;
+  to?: "service" | "plugin";
+  /** False when switching downloads and installs it first. */
+  installed?: boolean;
+  version?: string;
+}
+
+export interface SwitchResult {
+  ok: boolean;
+  error?: string;
+  version?: string;
+}
+
+export const switchOffer = callable<[], SwitchOffer>("switch_offer");
+export const switchBuild = callable<[], SwitchResult>("switch_build");
+/** From the panel of a build that stays off: use it instead of the other. */
+export const takeOver = callable<[], SwitchResult & { blocked?: BlockedState }>("take_over");
 
 export const getSettings = callable<[], PluginSettings>("get_settings");
 export const setSettings = callable<[patch: Record<string, unknown>], PluginSettings>(

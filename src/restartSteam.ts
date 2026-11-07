@@ -1,5 +1,5 @@
 /**
- * Restart Steam, as the loader's own prompt does. The argument is required: the
+ * Restart Steam, as Steam's own prompts do. The argument is required: the
  * call with none does nothing.
  */
 export function restartSteam(): void {

@@ -13,6 +13,7 @@ import json
 import os
 
 import appenv
+import builds
 
 #: The format of what is stored under appenv.ROOT. Raise it when a stored file
 #: changes in a way the previous build would misread; never lower it.
@@ -66,6 +67,12 @@ def _alive(holder):
     except PermissionError:
         pass
     return holder.get("started") == _started(pid)
+
+
+def held():
+    """What the live build holding the lock says of itself, or None."""
+    holder = _read(_path(LOCK))
+    return holder if _alive(holder) else None
 
 
 def take():
@@ -126,10 +133,21 @@ def check_format():
 
 
 def blocked():
-    """Both checks, in order. None, or why this backend has to stay off."""
+    """The checks, in order. None, or why this backend has to stay off.
+
+    First, whether the user switched to the other build (builds.py). With no
+    build named, the first to take the lock becomes the one in use.
+    """
+    os.makedirs(appenv.ROOT, exist_ok=True)
+    builds.record_self()
+    using = builds.in_use()
+    if using and using != appenv.KIND:
+        return builds.switched_to(using)
     holder = take()
     if holder:
         return dict(holder, reason="running")
+    if not using:
+        builds.use(appenv.KIND)
     try:
         newer = check_format()
     except Exception:

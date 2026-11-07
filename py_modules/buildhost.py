@@ -1,20 +1,24 @@
 """What the service build does its own way, mixed into `Plugin`.
 
 The plugin build ships a `buildhost.py` of its own in this one's place, with
-the same four methods. Everything else in the backend is the same file in
+the same methods. Everything else in the backend is the same file in
 both builds.
 """
 
 import os
 import signal
+import subprocess
 import threading
 import time
 
 import appenv
+import builds
 
 import plugin_base
 
 import selfupdate
+
+UNIT = "deckyemu.service"
 
 
 def _restart_soon(delay=2.0):
@@ -23,6 +27,16 @@ def _restart_soon(delay=2.0):
     def later():
         time.sleep(delay)
         os.kill(os.getpid(), signal.SIGTERM)
+
+    threading.Thread(target=later, daemon=True).start()
+
+
+def _turn_off_soon(delay=2.0):
+    """Stop the service and keep it from starting at login, after the reply
+    has had time to reach the panel. Switching back turns it on again."""
+    def later():
+        time.sleep(delay)
+        subprocess.run(["systemctl", "--user", "disable", "--now", UNIT], check=False)
 
     threading.Thread(target=later, daemon=True).start()
 
@@ -52,3 +66,23 @@ class BuildHost(plugin_base.PluginContext):
 
     async def _host_stopping(self):
         """Early in `_unload`."""
+
+    async def _host_stepped_aside(self):
+        """The other build is in use: this service stays off, at login too."""
+        appenv.logger.info("Turning the service off")
+        _turn_off_soon()
+
+    async def _host_switch_offer(self):
+        found = await self._run(builds.record, "plugin")
+        if not found:
+            return {"available": False}
+        return {"available": True, "to": "plugin", "installed": True,
+                "version": str(found.get("version") or "")}
+
+    async def _host_switch(self):
+        found = await self._run(builds.record, "plugin")
+        if not found:
+            return {"ok": False, "error": "The plugin version is not installed."}
+        await self._run(builds.use, "plugin")
+        await self._step_aside("plugin")
+        return {"ok": True, "version": str(found.get("version") or "")}

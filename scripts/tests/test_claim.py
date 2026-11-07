@@ -100,6 +100,43 @@ check("and blocks, without holding the lock",
 _write(STAMP, {"format": claim.FORMAT})
 
 
+section("the build in use")
+
+import builds  # noqa: E402
+
+IN_USE = os.path.join(appenv.ROOT, builds.IN_USE)
+OTHER_APP = os.path.join(appenv.ROOT, "other-app")
+os.makedirs(OTHER_APP, exist_ok=True)
+OTHER = builds.other_kind()
+
+
+def _other_installed(app_dir=OTHER_APP):
+    _write(os.path.join(appenv.ROOT, builds.RECORDS, OTHER + ".json"),
+           {"build": "The other build", "version": "9.9.9", "app_dir": app_dir})
+
+
+for path in (IN_USE, STAMP):
+    if os.path.exists(path):
+        os.remove(path)
+check("with none named, the first to start is the one in use",
+      (claim.blocked(), builds.in_use()), (None, appenv.KIND))
+claim.release()
+check("and it recorded itself", builds.record(appenv.KIND)["app_dir"], appenv.APP_DIR)
+
+_other_installed()
+builds.use(OTHER)
+check("the other one named, this one stays off, without the lock",
+      (claim.blocked(), os.path.exists(LOCK)),
+      ({"reason": "switched", "kind": OTHER, "build": "The other build", "version": "9.9.9"}, False))
+
+_other_installed(os.path.join(appenv.ROOT, "uninstalled"))
+check("a named build that is gone counts for nothing", (claim.blocked(), builds.in_use()),
+      (None, appenv.KIND))
+claim.release()
+
+builds.use(appenv.KIND)
+
+
 section("a backend that stays off")
 
 _plugin = plugin_main.Plugin()
@@ -130,6 +167,62 @@ finally:
     other.kill()
     other.wait()
     os.remove(LOCK)
+
+
+section("switching")
+
+_plugin._blocked = None
+_steps = []
+
+
+async def _aside():
+    _steps.append("aside")
+
+
+async def _main():
+    _steps.append("main")
+    _plugin._blocked = None
+
+
+async def _unload():
+    _steps.append("unload")
+
+
+_plugin._host_stepped_aside = _aside
+_plugin._main = _main
+_plugin._unload = _unload
+
+_other_installed()
+builds.use(OTHER)
+_plugin.loop.run_until_complete(_plugin._check_in_use())
+check("running, it steps aside when the other is named",
+      (_steps, _plugin._blocked["reason"]), (["unload", "aside"], "switched"))
+
+_steps.clear()
+_plugin.loop.run_until_complete(_plugin._check_in_use())
+check("and stays off while it is", _steps, [])
+
+builds.use(appenv.KIND)
+other = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+try:
+    _held_by(other.pid)
+    _plugin.loop.run_until_complete(_plugin._check_in_use())
+    check("named again, it waits for the other to let go", _steps, [])
+finally:
+    other.kill()
+    other.wait()
+    os.remove(LOCK)
+_plugin.loop.run_until_complete(_plugin._check_in_use())
+check("then starts", (_steps, _plugin._blocked), (["main"], None))
+
+_steps.clear()
+_plugin._blocked = builds.switched_to(OTHER)
+builds.use(OTHER)
+check("taking over names this one and starts",
+      (_plugin.loop.run_until_complete(_plugin.take_over()), builds.in_use(), _steps),
+      ({"ok": True}, appenv.KIND, ["main"]))
+_plugin._in_use_task.cancel()
+_plugin.loop.run_until_complete(asyncio.sleep(0))
 _plugin.loop.close()
 
 

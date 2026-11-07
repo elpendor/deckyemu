@@ -3,19 +3,16 @@
  *
  * Everything the panel does is `start` in src/index.tsx, the same in both
  * builds. What is here is what the loader asks for and the service does not:
- * the plugin definition, the settings page's route, its own title row, and the
- * way across to the standalone service.
+ * the plugin definition, the settings page's route, and its own title row.
  */
 
-import { DialogButton, findModuleByExport, getReactRoot, quickAccessMenuClasses, ButtonItem, PanelSectionRow } from "./steamui";
+import { DialogButton, findModuleByExport, getReactRoot, quickAccessMenuClasses } from "./steamui";
 import { definePlugin, routerHook } from "./host";
 import { FaCog } from "react-icons/fa";
 
 import { start } from "../../src/index";
 import { MANAGE_ROUTE, openManagePage } from "../../src/ManagePage";
 import { keepDeckyRoutesWorking, type DeckyRouterHook } from "./repairRoutes";
-import { restartSteam } from "./restartSteam";
-import { SwitchToServicePanel } from "./SwitchToServicePanel";
 
 /**
  * The plugin's row in the Quick Access header: its name, and a way to the
@@ -55,19 +52,7 @@ function TitleView() {
 }
 
 export default definePlugin(() => {
-  const started = start({
-    // The service's tab is patched in as Steam loads, so after a switch it
-    // appears only once Steam restarts; this saves looking for one.
-    blocked: (blocked) =>
-      blocked.reason === "switched" && (
-        <PanelSectionRow>
-          <ButtonItem layout="below" onClick={restartSteam}>
-            Restart Steam
-          </ButtonItem>
-        </PanelSectionRow>
-      ),
-    panels: (reload) => <SwitchToServicePanel onSwitched={reload} />,
-  });
+  const started = start();
 
   // Not exact: each tab has its own URL under this one (see `tabRoute`), and an
   // exact route leaves those unresolved, so tapping a tab navigates to nothing.

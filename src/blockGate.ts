@@ -22,12 +22,12 @@ export function blockScreen(blocked: BlockedState | undefined): BlockScreen | nu
     };
   }
   if (blocked.reason === "switched") {
-    const which = ["DeckyEmu", blocked.version].filter(Boolean).join(" ");
+    const which = [blocked.build || "Another DeckyEmu", blocked.version].filter(Boolean).join(" ");
     return {
-      title: "DeckyEmu moved",
+      title: "DeckyEmu is in use elsewhere",
       body:
-        `${which} now runs on its own, with the same games and settings. ` +
-        "Its tab replaces this one once Steam restarts.",
+        `${which} is the one in use, with the same games and settings, so this one stays off. ` +
+        "Its tab appears once Steam restarts.",
     };
   }
   if (blocked.reason === "running") {
