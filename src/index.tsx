@@ -538,31 +538,11 @@ export interface Started {
   stop(): void;
 }
 
-/** Start the panel: everything that runs whether or not it is open. */
-export function start(): Started {
-
-  // The "DeckyEmu" submenu behind the cog on a game's page -- Edit and Remove.
-  // The cache is filled first because the item decides whether to appear by
-  // reading it, and a menu opened before the first read would show nothing for
-  // a game that is ours.
+/** What `start` runs once it knows the backend is on. */
+function startWithState() {
+  // For the "DeckyEmu" submenu behind the cog on a game's page: the item
+  // decides whether to appear by reading this cache, so it is filled first.
   void refreshAddedGames();
-  const unpatchContextMenu = patchGameContextMenu(editGameMenuItem);
-
-  // Steam will not warn before launching one of our games over a running one
-  // -- its check is gated on an app_type our shortcuts do not carry. The
-  // launcher script is what actually stops it; this is the panel collecting
-  // that decision and asking. See launchGate.ts.
-  const stopWatchingLaunches = watchLaunches();
-
-  /*
-   * And the other end of a game: copying its saves up once it is closed.
-   *
-   * Here rather than in the launcher script, which is where it looks like it
-   * belongs. Steam's reaper waits for every descendant of what it started, so
-   * an upload in the launcher's exit trap holds the library tile on "Running"
-   * until the network is finished. See playWatch.ts.
-   */
-  const stopWatchingPlaying = watchPlaying();
 
   /*
    * Games added before their emulator asked for a layout do not have it, and
@@ -585,6 +565,43 @@ export function start(): Started {
   void repairGameIcons().catch((error: unknown) =>
     console.error("[deckyemu] could not repair game icons", error),
   );
+
+  /*
+   * Whether the dot is wanted, read once at load.
+   *
+   * Here rather than in whichever panel renders first, because the icon is one
+   * of the things that exists before any panel does -- and somebody who turned
+   * the dot off should not see it once more on every boot while something
+   * catches up. Failure leaves it on, which is the stored default.
+   */
+  void callWithRetry(getSettings)
+    .then((settings) => setUpdateDotEnabled(settings.show_update_dot !== false))
+    .catch((error) =>
+      console.error("[deckyemu] could not read the update dot setting", error),
+    );
+
+}
+
+/** Start the panel: everything that runs whether or not it is open. */
+export function start(): Started {
+
+  const unpatchContextMenu = patchGameContextMenu(editGameMenuItem);
+
+  // Steam will not warn before launching one of our games over a running one
+  // -- its check is gated on an app_type our shortcuts do not carry. The
+  // launcher script is what actually stops it; this is the panel collecting
+  // that decision and asking. See launchGate.ts.
+  const stopWatchingLaunches = watchLaunches();
+
+  /*
+   * And the other end of a game: copying its saves up once it is closed.
+   *
+   * Here rather than in the launcher script, which is where it looks like it
+   * belongs. Steam's reaper waits for every descendant of what it started, so
+   * an upload in the launcher's exit trap holds the library tile on "Running"
+   * until the network is finished. See playWatch.ts.
+   */
+  const stopWatchingPlaying = watchPlaying();
 
   /*
    * The backend checks on a timer and says so here. Registered at plugin scope
@@ -613,18 +630,15 @@ export function start(): Started {
     .catch((error) => console.error("[deckyemu] could not check for updates", error));
 
   /*
-   * Whether the dot is wanted, read once at load.
-   *
-   * Here rather than in whichever panel renders first, because the icon is one
-   * of the things that exists before any panel does -- and somebody who turned
-   * the dot off should not see it once more on every boot while something
-   * catches up. Failure leaves it on, which is the stored default.
+   * The rest reads the state, so only when this build is the one in use: a
+   * backend that stays off refuses each of them (see claim.py). Asked once;
+   * after a switch, Steam restarts and this runs again.
    */
-  void callWithRetry(getSettings)
-    .then((settings) => setUpdateDotEnabled(settings.show_update_dot !== false))
-    .catch((error) =>
-      console.error("[deckyemu] could not read the update dot setting", error),
-    );
+  void callWithRetry(getStatus)
+    .then((status) => {
+      if (!status.blocked) startWithState();
+    })
+    .catch((error) => console.error("[deckyemu] could not read the status", error));
 
   return {
     title: <TitleView />,
