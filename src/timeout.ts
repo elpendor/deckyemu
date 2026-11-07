@@ -55,6 +55,18 @@ export interface RetryOptions {
  */
 export const OVER_THE_NETWORK: RetryOptions = { attempts: 2, ms: 30000 };
 
+/** A backend that stays off refuses with this (main.py's `Blocked`): an
+ * answer, not a lost reply, so asking again changes nothing. Every string on
+ * the error is read: one host leaves `message` empty and puts the text in a
+ * traceback field. */
+function isRefusal(error: unknown): boolean {
+  const parts =
+    error && typeof error === "object"
+      ? [(error as { message?: unknown }).message, ...Object.values(error)]
+      : [error];
+  return parts.some((part) => typeof part === "string" && part.includes(" is not available: "));
+}
+
 export async function callWithRetry<T>(
   call: () => Promise<T>,
   {
@@ -73,7 +85,7 @@ export async function callWithRetry<T>(
       return await withTimeout(call(), ms);
     } catch (error) {
       lastError = error;
-      if (attempt >= attempts) break;
+      if (attempt >= attempts || isRefusal(error)) break;
 
       // Backs off because the usual cause is a burst of reloads, not one: a
       // deploy restarts the service, which drops every call in flight, so the
