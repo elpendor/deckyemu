@@ -1,7 +1,8 @@
 # Installing DeckyEmu
 
-How to install it, the install for a Deck that can't reach GitHub, what lands on
-your device, and how to take it off again.
+How to install it, the plugin version and switching between the two, the
+install for a Deck that can't reach GitHub, what lands on your device, and how
+to take it off again.
 
 Back to [the README](https://github.com/elpendor/deckyemu#readme).
 
@@ -100,19 +101,50 @@ Anything that's yours to keep lives under `~/deckyemu`:
 
 Uninstalling DeckyEmu doesn't touch any of it.
 
-## Moving from the Decky Loader plugin
+## The plugin version
 
-Earlier releases of DeckyEmu were a plugin for Decky Loader. The first time this
-version starts it moves that install's settings, records and logs to
-`~/.local/share/deckyemu`, and leaves a link where they were, so every game you
-already added keeps launching without being touched.
+DeckyEmu also comes as a plugin for
+[Decky Loader](https://github.com/SteamDeckHomebrew/decky-loader), built from
+the same code and released alongside the standalone version. The two do the
+same things with the same games and settings, and both keep themselves up to
+date. What differs is how they get into Steam. The standalone version needs
+nothing else, and keeps working when a Steam update breaks Decky. The plugin
+suits you if you already use Decky and want DeckyEmu in its menu with the rest.
 
-Then remove the old plugin, so the two don't run side by side — from Decky's own
-plugin list, or in Konsole:
+To install the plugin, open the **Decky** menu in Quick Access, go to its
+settings, find **Install from URL** and give it `https://get.deckyemu.xyz`. That
+redirects to
+`https://github.com/elpendor/deckyemu/releases/latest/download/deckyemu.zip`,
+which you can paste instead if you'd rather see where it goes.
 
-```
-sudo rm -rf ~/homebrew/plugins/deckyemu
-```
+## Switching between them
+
+You can have both installed. Only one runs at a time, and they share
+everything: your games, settings, emulators and firmware are the same whichever
+one you're using.
+
+At the bottom of the tab of the one in use, **Other version** offers the other
+one, once it's installed. Switching turns this one off and the other on, which
+takes a couple of seconds, then asks to restart Steam so the right tab shows.
+The standalone version, when it's not the one in use, is off entirely and
+doesn't start at login.
+
+The plugin offers the standalone version even before it's installed: switching
+then downloads it, checks it against the digest published with the release,
+installs it and starts it, all from the tab, with no trip to Desktop Mode.
+
+The tab of the one not in use says which one is, and has a **Use this one
+instead** button. That's your way back if a Steam update ever breaks the other
+one's tab.
+
+Running the install script makes the standalone version the one in use, even
+if the plugin was.
+
+Plugin releases from before the two shared a codebase kept their state under
+`~/homebrew`. Either version moves it to `~/.local/share/deckyemu` the first
+time it starts, and leaves a link where it was, so every game you already added
+keeps launching without being touched. Update an old plugin, or remove it from
+Decky's plugin list: it doesn't know how to share.
 
 ## Uninstalling
 
@@ -127,6 +159,8 @@ and nothing else. Your records, launcher scripts, ROMs and Steam shortcuts all
 survive, so everything in your library launches exactly like before. You just
 lose the tab that manages them. Its tab leaves the Quick Access menu the next
 time Steam starts.
+
+The plugin version uninstalls from Decky's plugin list, with the same result.
 
 Which also means reinstalling picks up where you left off: same games, same
 collections, same emulator setup, same firmware state, nothing to redo.

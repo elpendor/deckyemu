@@ -64,9 +64,12 @@ curl -fsSL https://github.com/elpendor/deckyemu/releases/latest/download/install
 Then go back to Game Mode. Nothing else is needed first: RetroArch and its cores
 install from DeckyEmu, and an existing RetroArch is found on its own.
 
+Already use Decky Loader? DeckyEmu also comes as a plugin for it, and you can
+switch between the two from either one's tab.
+
 [Installing](docs/installing.md) has the rest — what the script does before you
-run it, the install for a Deck that can't reach GitHub, and what lands where on
-your device.
+run it, the plugin version, the install for a Deck that can't reach GitHub, and
+what lands where on your device.
 
 Then [Getting started](docs/getting-started.md) walks from there to a game
 running: send a ROM, pick what runs it, add it to Steam.
@@ -76,7 +79,7 @@ running: send a ROM, pick what runs it, add it to Steam.
 | | |
 | --- | --- |
 | [Getting started](docs/getting-started.md) | The walkthrough: install to first game, then everyday tasks and what to do when one misbehaves |
-| [Installing](docs/installing.md) | Installing and uninstalling, the install without GitHub, and what DeckyEmu puts on your Deck |
+| [Installing](docs/installing.md) | Installing and uninstalling, the plugin version and switching, the install without GitHub, and what DeckyEmu puts on your Deck |
 | [Getting files onto the Deck](docs/transfers.md) | Sending ROMs, BIOS files and keys from another device, and where each one ends up |
 | [RetroArch](docs/retroarch.md) | Installing it and its cores, fullscreen, on-screen chatter, the menu combo, achievements |
 | [Standalone emulators](docs/emulators.md) | The one-press catalog, moving between builds, registering your own |

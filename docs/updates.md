@@ -22,6 +22,9 @@ to. DeckyEmu restarts into the new one, and its tab is replaced where it stands.
 If the new version fails to start three times, the one before comes back on its
 own; the library tile can also go back by hand.
 
+The plugin version hands the checked download to Decky instead, which installs
+it with its own prompt.
+
 ### When it checks
 
 A dot appears on DeckyEmu's Quick Access tab when a newer release exists.
