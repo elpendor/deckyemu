@@ -78,6 +78,11 @@ const CSS = `
 .dek-field.dek-highlight.gpfocus .dek-desc,
 .dek-field.dek-highlight.gpfocuswithin .dek-desc { color: rgb(220, 222, 223); }
 .dek-children .DialogButton { width: 100%; min-width: 160px; padding: 10px 24px; }
+/* Steam's own: a control scrolled into view stops 55px above the bottom, so
+   the button bar does not cover it. */
+.dek-field.Focusable, .dek-field :is(.Focusable, input, textarea, button),
+.dek-page-content :is(.Focusable, input, textarea, button),
+.dek-modal :is(.Focusable, input, textarea, button) { scroll-margin: 20px 0 55px; }
 
 .dek-spinner {
   display: inline-block; aspect-ratio: 1; height: 24px; box-sizing: border-box;
@@ -157,7 +162,13 @@ const CSS = `
 .dek-page-icon { height: 20px; width: 20px; margin: auto 16px auto 0; }
 .dek-page-icon svg { width: 100%; height: 100%; }
 .dek-page-title { flex-grow: 1; margin: auto 0; }
-.dek-page-content { flex: 1; min-width: 0; overflow: hidden auto; background: rgb(26, 28, 33); }
+.dek-page-content {
+  flex: 1; min-width: 0; overflow: hidden auto; background: rgb(26, 28, 33);
+  padding-bottom: var(--gamepadui-current-footer-height, 0px);
+  /* For the browser's own focus scrolling, which a text field gets and which
+     ignores scroll-margin. */
+  scroll-padding: 20px 0 55px;
+}
 .dek-page-body.DialogContent { background: none; }
 .dek-page-body { padding: calc(12px + 2.25vh) 2.8vw; padding-top: calc(12px + 2.25vh + var(--basicui-header-height, 0px)); }
 
