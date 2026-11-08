@@ -17,19 +17,34 @@ const CSS = `
 .dek-section-title > div { flex-grow: 1; }
 .dek-row { --dek-gutter: 16px; }
 
+/* Steam's Field has two looks. Away from Quick Access each row is a filled
+   box with gaps between; in Quick Access ("classic") rows bleed to the panel
+   edges and separators divide them. */
 .dek-field {
   position: relative; display: flex; flex-direction: row; gap: 0 12px;
   border-radius: 2px; color: rgb(150, 150, 150); font-size: 16px;
-  padding: 10px var(--dek-gutter, 16px); margin: 0 calc(-1 * var(--dek-gutter, 16px));
+  padding: 12px; background: rgb(35, 38, 46);
 }
-.dek-field.dek-sep::after, .dek-field.dek-sep-thick::after {
+.dek-field + .dek-field, .dek-row + .dek-row > .dek-field { margin-top: 6px; }
+.dek-field.dek-highlight.gpfocus, .dek-field.dek-highlight.gpfocuswithin {
+  background: rgb(61, 68, 80); color: #fff; z-index: 1;
+}
+#QuickAccess-Menu .dek-field {
+  background: none; padding: 10px var(--dek-gutter, 16px);
+  margin: 0 calc(-1 * var(--dek-gutter, 16px));
+}
+#QuickAccess-Menu .dek-field.dek-highlight.gpfocus,
+#QuickAccess-Menu .dek-field.dek-highlight.gpfocuswithin {
+  background: rgb(61, 68, 80);
+}
+#QuickAccess-Menu .dek-field.dek-sep::after,
+#QuickAccess-Menu .dek-field.dek-sep-thick::after {
   content: ""; position: absolute; left: var(--dek-gutter, 16px);
   right: var(--dek-gutter, 16px); background: rgba(255, 255, 255, 0.1);
 }
-.dek-field.dek-sep::after { bottom: -0.5px; height: 1px; }
-.dek-field.dek-sep-thick::after { bottom: -0.75px; height: 1.5px; }
-.dek-field.dek-highlight.gpfocus, .dek-field.dek-highlight.gpfocuswithin {
-  background: rgb(61, 68, 80); color: #fff; z-index: 1;
+#QuickAccess-Menu .dek-field.dek-sep::after { bottom: -0.5px; height: 1px; }
+#QuickAccess-Menu .dek-field.dek-sep-thick::after {
+  bottom: -0.75px; height: 1.5px;
 }
 .dek-field.dek-highlight.gpfocus::after,
 .dek-field.dek-highlight.gpfocuswithin::after { display: none; }
@@ -41,6 +56,8 @@ const CSS = `
   justify-content: flex-end; align-items: center;
 }
 .dek-field.dek-below .dek-label-row { margin-bottom: 6px; }
+.dek-label-row { column-gap: 12px; }
+#QuickAccess-Menu .dek-label-row { column-gap: 10px; }
 .dek-label {
   flex-grow: 1; display: flex; flex-direction: row; max-width: 100%;
   word-break: break-word; font-size: 16px; line-height: 20px; color: rgb(220, 222, 223);
@@ -50,6 +67,8 @@ const CSS = `
 .dek-field.dek-highlight.gpfocuswithin .dek-label { color: #fff; }
 .dek-children { display: flex; flex-flow: row; }
 .dek-children > div { flex-grow: 1; min-width: 0; }
+.dek-field { align-items: flex-start; }
+#QuickAccess-Menu .dek-field { align-items: center; }
 .dek-inline-children { flex-shrink: 0; max-width: 50%; display: flex; }
 .dek-desc {
   margin-top: 4px; font-size: 12px; line-height: 16px; color: rgb(184, 188, 191);
@@ -110,8 +129,8 @@ const CSS = `
   padding-bottom: var(--gamepadui-current-footer-height, 0px);
 }
 .dek-page-items {
-  line-height: 16px; white-space: nowrap; overflow: hidden auto; padding: 16px 0;
-  padding-top: calc(16px + var(--basicui-header-height, 0px));
+  line-height: 16px; white-space: nowrap; overflow: hidden auto;
+  padding: var(--basicui-header-height, 0px) 0 16px;
   flex: 1 1 auto; display: flex; flex-direction: column;
 }
 .dek-page-item {
@@ -131,7 +150,8 @@ const CSS = `
 .dek-page-icon { height: 20px; width: 20px; margin: auto 16px auto 0; }
 .dek-page-icon svg { width: 100%; height: 100%; }
 .dek-page-title { flex-grow: 1; margin: auto 0; }
-.dek-page-content { flex: 1; min-width: 0; overflow: hidden auto; }
+.dek-page-content { flex: 1; min-width: 0; overflow: hidden auto; background: rgb(26, 28, 33); }
+.dek-page-body.DialogContent { background: none; }
 .dek-page-body { padding: calc(12px + 2.25vh) 2.8vw; padding-top: calc(12px + 2.25vh + var(--basicui-header-height, 0px)); }
 
 .dek-option-list { display: flex; flex-direction: column; max-height: 60vh; overflow: hidden auto; }
@@ -143,7 +163,13 @@ const CSS = `
 const ID = "deckyemu-ui-kit";
 
 function ensure(doc: Document): void {
-  if (doc.getElementById(ID)) return;
+  // Replaced when it differs: Steam's documents outlive an update of ours,
+  // and the sheet the previous version put there would otherwise stay.
+  const found = doc.getElementById(ID);
+  if (found) {
+    if (found.textContent !== CSS) found.textContent = CSS;
+    return;
+  }
   const style = doc.createElement("style");
   style.id = ID;
   style.textContent = CSS;

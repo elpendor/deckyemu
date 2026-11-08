@@ -65,6 +65,9 @@ export function SidebarNavigation({ pages, title }: { pages: SidebarPage[]; titl
               key={item.id}
               role="tab"
               aria-selected={item.id === active}
+              autoFocus={item.id === active}
+              noFocusRing
+              preferredFocus={item.id === active}
               className={item.id === active ? "dek-page-item dek-active" : "dek-page-item"}
               onActivate={() => go(item.id)}
               onClick={() => go(item.id)}

@@ -53,6 +53,7 @@ export function Tabs({ tabs, activeTab, onShowTab }: TabsProps) {
             <Focusable
               key={tab.id}
               role="tab"
+              noFocusRing
               aria-selected={tab.id === tabs[index]?.id}
               className={tab.id === tabs[index]?.id ? "dek-tab dek-active" : "dek-tab"}
               onActivate={() => onShowTab(tab.id)}

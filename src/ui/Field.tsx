@@ -70,19 +70,17 @@ export const Field = forwardRef<HTMLDivElement, FieldProps>(function Field(props
   );
   const hasLabel = label !== undefined && label !== null && label !== "";
   return (
-    <Focusable {...rest} ref={ref} className={classes} focusable={!!focusable && !disabled}>
+    <Focusable noFocusRing {...rest} ref={ref} className={classes}
+      focusable={!!focusable && !disabled}>
       {/* The stylesheet goes in from a plain element: Steam's Focusable is
           not known to hand its ref to the DOM. */}
       <div className="dek-field-body" ref={styled}>
-        {(hasLabel || (!below && children)) && (
+        {hasLabel && (
           <div className="dek-label-row">
-            {hasLabel && (
-              <div className="dek-label">
-                {icon}
-                {label}
-              </div>
-            )}
-            {!below && children && <div className="dek-inline-children">{children}</div>}
+            <div className="dek-label">
+              {icon}
+              {label}
+            </div>
           </div>
         )}
         {below && children && (
@@ -92,6 +90,8 @@ export const Field = forwardRef<HTMLDivElement, FieldProps>(function Field(props
         )}
         {description && <div className="dek-desc">{description}</div>}
       </div>
+      {/* Beside the label and description together, as Steam lays it out. */}
+      {!below && children && <div className="dek-inline-children">{children}</div>}
     </Focusable>
   );
 });
