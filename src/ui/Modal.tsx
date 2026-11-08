@@ -60,7 +60,13 @@ export function ModalRoot({
   // move it from. At mount the layer's tree is not active yet and taking
   // focus does nothing, so it is retried until focus is inside.
   const frame = useRef<FrameHandle | null>(null);
+  // And the browser's focus, as Steam's own frame takes it: that is what makes
+  // the window holding the dialog the active one, so Quick Access closes
+  // instead of staying in front of a dialog opened from it.
+  const element = useRef<HTMLElement | null>(null);
   useEffect(() => {
+    const el = element.current;
+    if (el && !el.contains(el.ownerDocument.activeElement)) el.focus();
     let tries = 0;
     let timer = 0;
     const attempt = () => {
@@ -73,7 +79,7 @@ export function ModalRoot({
     return () => window.clearTimeout(timer);
   }, []);
   return (
-    <Focusable className="dek-modal" onCancel={cancel} navRef={frame}>
+    <Focusable className="dek-modal" onCancel={cancel} navRef={frame} ref={element} tabIndex={-1}>
       <div className="dek-modal-backdrop" ref={styled}
         onClick={bDisableBackgroundDismiss ? undefined : cancel} />
       <Focusable
