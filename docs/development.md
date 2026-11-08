@@ -20,8 +20,10 @@ inside Steam's UI over Steam's remote-debugging port:
   string literals and localization keys, never on minified names. Any doubt
   leaves Steam's code as it was.
 - `dist/deckyemu.js` is the panel. It is evaluated once our Quick Access tab has
-  rendered, and builds every control from Steam's own components, found in
-  Steam's build by anchors (`src/steamui/`).
+  rendered. Its fields, sections, dialogs, tabs, dropdowns and settings sidebar
+  are our own (`src/ui/`); only the controls that have never broken across
+  Steam updates -- `Focusable`, buttons, text fields, toggles and the modal
+  manager -- are Steam's, found in its build by anchors (`src/steamui/`).
 - The panel calls the backend through a `Runtime.addBinding` function on that
   same debugger session, so there is no port or token for anything else to find.
 
@@ -370,13 +372,17 @@ src/                        Frontend (React + TypeScript, bundled by rollup).
                             main.tsx registers
   preload/                  The script Steam runs before its own UI code, and
                             bridge.ts, the contract it shares with the bundle
+  ui/                       Our own fields, sections, dialogs, tabs, dropdowns
+                            and settings sidebar, styled with Steam's measured
+                            values; both builds use them
   steamui/                  Steam's own controls, navigation and modals, found in
-                            its build at runtime, each with a plain stand-in
+                            its build at runtime, each with a plain stand-in.
+                            base.ts names the few the ui/ kit is built on
   host/                     The channel to the service, toasts and the file
                             picker
   rescueTile.ts             The library tile that opens the rescue page
-  ManagePage.tsx            The settings page. One route per tab -- Steam's
-                            SidebarNavigation picks its tab from the URL.
+  ManagePage.tsx            The settings page. One route per tab -- the
+                            sidebar (src/ui) picks its tab from the URL.
   ErrorBoundary.tsx         One per surface. A throw during render is not
                             contained otherwise: it unmounts to whatever
                             boundary Steam happens to have, which is an empty

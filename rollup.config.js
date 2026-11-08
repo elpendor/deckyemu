@@ -61,6 +61,7 @@ const plugins = (tsconfig = "./tsconfig.json") => [
 const SWAPS = new Map([
   ["src/host/index.ts", "plugin/src/host.ts"],
   ["src/steamui/index.ts", "plugin/src/steamui.ts"],
+  ["src/steamui/base.ts", "plugin/src/steamuiBase.ts"],
   ["src/steam/contextMenu.ts", "plugin/src/contextMenu.ts"],
 ].map(([from, to]) => [resolve(from), resolve(to)]));
 

@@ -4,9 +4,9 @@
  * its navigator, history, menu store and modal manager.
  */
 
-import { createElement, useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
-import { DialogButton, Focusable, pagedSettingsComponent, registerLookup, type SidebarPage } from "./components";
+import { registerLookup } from "./components";
 import { findExport, findModule } from "./webpack";
 
 type Any = Record<string, any>;
@@ -117,57 +117,4 @@ export function useQuickAccessVisible(): boolean {
   const hook = sideMenuHook();
   // The hook is chosen once and never changes, so the rule of hooks holds.
   return hook ? hook(SideMenu.QuickAccess) : true;
-}
-
-// --- a page with a sidebar
-// ------------------------------------------------------------
-
-/**
- * Steam's paged settings layout -- the sidebar of Settings -- with each page
- * reached by its route, so the back button and a link to one page both work.
- */
-export function SidebarNavigation({ pages, title }: { pages: SidebarPage[]; title?: ReactNode }) {
-  const path = useCurrentPath();
-  const items = pages.map((page, index) => ({
-    identifier: page.route ?? page.identifier ?? String(index),
-    title: page.title,
-    icon: page.icon,
-    content: page.content,
-    hideTitle: page.hideTitle,
-  }));
-  const active =
-    [...items].sort((a, b) => b.identifier.length - a.identifier.length).find((item) => path.startsWith(item.identifier))
-      ?.identifier ?? items[0]?.identifier;
-  // Replaced, not pushed: switching pages is not a step back has to undo, so B
-  // leaves the whole screen as it does in Steam's own Settings.
-  const go = (identifier: string) => {
-    if (!identifier.startsWith("/")) return;
-    const history = mainWindow()?.History;
-    if (typeof history?.replace === "function") history.replace(identifier);
-    else Navigation.Navigate(identifier);
-  };
-  const Paged = pagedSettingsComponent();
-  if (Paged) {
-    return createElement(Paged as never, {
-      pages: items,
-      page: active,
-      onPageRequested: go,
-      title,
-      showTitle: !!title,
-    } as never);
-  }
-  const current = items.find((item) => item.identifier === active);
-  return (
-    <div style={{ display: "flex", height: "100%" }}>
-      <Focusable style={{ width: "240px", display: "flex", flexDirection: "column", gap: "4px", padding: "16px" }}>
-        {items.map((item) => (
-          <DialogButton key={item.identifier} onClick={() => go(item.identifier)}
-            style={{ opacity: item.identifier === active ? 1 : 0.7 }}>
-            {item.title}
-          </DialogButton>
-        ))}
-      </Focusable>
-      <div style={{ flex: 1, overflow: "auto", padding: "16px" }}>{current?.content}</div>
-    </div>
-  );
 }

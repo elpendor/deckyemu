@@ -1,6 +1,7 @@
 /**
- * Steam's own UI pieces, as the loader's library finds them. The standalone
- * branch has its own; the rest of src/ imports from here on both.
+ * Steam's own UI pieces, as the loader's library finds them, plus DeckyEmu's
+ * own copies of the ones Steam updates break most (src/ui). The service build
+ * has its own; the rest of src/ imports from here on both.
  *
  * Named, never `export *`: the build turns imports of the library into reads
  * of the loader's global, and it cannot rewrite an `export *`, which then
@@ -9,18 +10,10 @@
 
 export {
   afterPatch,
-  ButtonItem,
-  ConfirmModal,
-  DialogBody,
   DialogButton,
   DialogButtonPrimary,
   DialogButtonSecondary,
-  DialogFooter,
-  DialogHeader,
-  Dropdown,
-  DropdownItem,
   fakeRenderComponent,
-  Field,
   findInReactTree,
   findInTree,
   findModuleByExport,
@@ -29,23 +22,31 @@ export {
   getReactRoot,
   MenuGroup,
   MenuItem,
-  ModalRoot,
   Navigation,
-  PanelSection,
-  PanelSectionRow,
   QuickAccessTab,
   quickAccessMenuClasses,
   showModal,
-  SidebarNavigation,
-  Spinner,
-  Tabs,
   TextField,
   ToggleField,
 } from "@decky/ui";
-export type {
-  DropdownOption,
-  GamepadEvent,
-  Patch,
-  ShowModalResult,
-  SingleDropdownOption,
-} from "@decky/ui";
+export type { GamepadEvent, Patch, ShowModalResult } from "@decky/ui";
+
+// DeckyEmu's own copies of the controls Steam updates break most: src/ui.
+export {
+  ButtonItem,
+  ConfirmModal,
+  DialogBody,
+  DialogBodyText,
+  DialogFooter,
+  DialogHeader,
+  Dropdown,
+  DropdownItem,
+  Field,
+  ModalRoot,
+  PanelSection,
+  PanelSectionRow,
+  SidebarNavigation,
+  Spinner,
+  Tabs,
+} from "../../src/ui";
+export type { DropdownOption, SingleDropdownOption } from "../../src/ui";

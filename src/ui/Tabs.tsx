@@ -1,0 +1,72 @@
+import { type ReactNode } from "react";
+
+import { Focusable, GamepadButton, type GamepadEvent } from "../steamui/base";
+import { styled } from "./styles";
+
+export interface Tab {
+  id: string;
+  title: ReactNode;
+  content: ReactNode;
+}
+
+export interface TabsProps {
+  tabs: Tab[];
+  activeTab: string;
+  onShowTab: (id: string) => void;
+  autoFocusContents?: boolean;
+}
+
+// Steam's numbers, used if its enum ever stops naming them.
+const BUMPER_LEFT = () => GamepadButton.BUMPER_LEFT ?? 5;
+const BUMPER_RIGHT = () => GamepadButton.BUMPER_RIGHT ?? 6;
+
+/** The shoulder-button glyphs Steam serves for its own tab bars. */
+function Bumper({ side }: { side: "l1" | "r1" }) {
+  return (
+    <div className="dek-bumper">
+      <img src={`/steaminputglyphs/sd_${side}.svg`} alt={side.toUpperCase()} />
+    </div>
+  );
+}
+
+/**
+ * A row of pill tabs over the active tab's content, switched by tapping a tab
+ * or with L1 and R1 from anywhere inside, as Steam's own tab bars are.
+ */
+export function Tabs({ tabs, activeTab, onShowTab }: TabsProps) {
+  const index = Math.max(0, tabs.findIndex((tab) => tab.id === activeTab));
+  const step = (by: number) => {
+    const next = tabs[index + by];
+    if (next) onShowTab(next.id);
+  };
+  const onButtonDown = (event: GamepadEvent) => {
+    const button = event.detail?.button;
+    if (button === BUMPER_LEFT()) step(-1);
+    else if (button === BUMPER_RIGHT()) step(1);
+  };
+  return (
+    <Focusable className="dek-tabs" onButtonDown={onButtonDown}>
+      <div className="dek-tab-bar" ref={styled}>
+        <Bumper side="l1" />
+        <Focusable className="dek-tab-list" flow-children="row" role="tablist">
+          {tabs.map((tab) => (
+            <Focusable
+              key={tab.id}
+              role="tab"
+              aria-selected={tab.id === tabs[index]?.id}
+              className={tab.id === tabs[index]?.id ? "dek-tab dek-active" : "dek-tab"}
+              onActivate={() => onShowTab(tab.id)}
+              onClick={() => onShowTab(tab.id)}
+            >
+              {tab.title}
+            </Focusable>
+          ))}
+        </Focusable>
+        <Bumper side="r1" />
+      </div>
+      <div className="dek-tab-content" role="tabpanel">
+        {tabs[index]?.content}
+      </div>
+    </Focusable>
+  );
+}
