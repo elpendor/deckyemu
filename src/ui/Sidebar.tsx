@@ -59,7 +59,8 @@ export function SidebarNavigation({ pages, title }: { pages: SidebarPage[]; titl
     <Focusable className="dek-pages" flow-children="row">
       <div className="dek-page-list" ref={styled}>
         {title && <div className="dek-section-title" style={{ padding: "16px 24px 0" }}>{title}</div>}
-        <Focusable className="dek-page-items" role="tablist" aria-orientation="vertical">
+        <Focusable className="dek-page-items" role="tablist" aria-orientation="vertical"
+          flow-children="column">
           {items.map((item) => (
             <Focusable
               key={item.id}
@@ -82,7 +83,10 @@ export function SidebarNavigation({ pages, title }: { pages: SidebarPage[]; titl
         </Focusable>
       </div>
       <div className="dek-page-content">
-        <Focusable className="DialogContent _DialogLayout dek-page-body" role="tabpanel">
+        {/* A column of its own: left unsaid, it takes the row the page uses
+            to put the sidebar beside it, and rows need left and right. */}
+        <Focusable className="DialogContent _DialogLayout dek-page-body" role="tabpanel"
+          flow-children="column">
           <div className="DialogContent_InnerWidth">
             {current && !current.hideTitle && (
               <div className="DialogHeader" role="heading" aria-level={2}>{current.title}</div>

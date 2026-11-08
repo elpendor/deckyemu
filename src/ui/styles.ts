@@ -69,7 +69,8 @@ const CSS = `
 .dek-children > div { flex-grow: 1; min-width: 0; }
 .dek-field { align-items: flex-start; }
 #QuickAccess-Menu .dek-field { align-items: center; }
-.dek-inline-children { flex-shrink: 0; max-width: 50%; display: flex; }
+.dek-inline-children { flex-shrink: 0; min-width: 0; max-width: 50%; display: flex; }
+.dek-field:not(:has(.dek-desc)) { align-items: center; }
 .dek-desc {
   margin-top: 4px; font-size: 12px; line-height: 16px; color: rgb(184, 188, 191);
 }
@@ -162,7 +163,12 @@ const CSS = `
 
 .dek-option-list { display: flex; flex-direction: column; max-height: 60vh; overflow: hidden auto; }
 .dek-option-group { padding: 12px 16px 4px; font-size: 12px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; color: rgba(255, 255, 255, 0.7); }
-.dek-dropdown .DialogButton { display: flex; justify-content: space-between; align-items: center; text-align: start; gap: 8px; }
+.dek-dropdown { display: flex; min-width: 0; max-width: 100%; }
+.dek-dropdown .DialogButton {
+  display: flex; justify-content: space-between; align-items: center; text-align: start;
+  gap: 8px; min-width: 0; max-width: 100%; padding: 10px 16px;
+}
+.dek-dropdown .DialogButton > span:last-child { flex-shrink: 0; }
 .dek-dropdown .DialogButton > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 `;
 
