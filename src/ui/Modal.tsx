@@ -26,6 +26,25 @@ export const DialogBody = classed("DialogBody", true);
 export const DialogBodyText = classed("DialogBodyText", false);
 export const DialogFooter = classed("DialogFooter", false);
 
+/**
+ * Steam draws its own window over a running game only while it is told a
+ * dialog is up -- its composition reads this flag, and Steam's own dialog
+ * frame sets it for as long as it is mounted. Without it a dialog opened
+ * during a game exists but is never shown. Counted, because one of our
+ * dialogs can open another and only the last one closing may clear it.
+ */
+let globalDialogs = 0;
+function showingGlobalDialog(on: boolean): void {
+  globalDialogs = Math.max(0, globalDialogs + (on ? 1 : -1));
+  try {
+    const main = (window as unknown as { SteamUIStore?: Any }).SteamUIStore?.WindowStore
+      ?.GamepadUIMainWindowInstance;
+    main?.SetShowingGlobalModal?.(globalDialogs > 0);
+  } catch (error) {
+    console.error("[deckyemu] could not mark a dialog as showing", error);
+  }
+}
+
 interface FrameHandle {
   TakeFocus?: () => void;
   BFocusWithin?: () => boolean;
@@ -64,6 +83,10 @@ export function ModalRoot({
   // the window holding the dialog the active one, so Quick Access closes
   // instead of staying in front of a dialog opened from it.
   const element = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    showingGlobalDialog(true);
+    return () => showingGlobalDialog(false);
+  }, []);
   useEffect(() => {
     const el = element.current;
     if (el && !el.contains(el.ownerDocument.activeElement)) el.focus();
