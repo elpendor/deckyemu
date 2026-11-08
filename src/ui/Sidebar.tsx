@@ -1,6 +1,6 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
-import { Focusable, Navigation } from "../steamui/base";
+import { Focusable, GamepadButton, Navigation, type GamepadEvent } from "../steamui/base";
 import { styled } from "./styles";
 
 type Any = Record<string, any>;
@@ -55,6 +55,23 @@ export function SidebarNavigation({ pages, title }: { pages: SidebarPage[]; titl
   };
   const current = items.find((item) => item.id === active);
 
+  // Text after the last control has nothing to focus, so the D-pad cannot
+  // bring it into view. When a press leaves focus where it was, the page
+  // scrolls a step instead, as Steam's own pages do.
+  const scroller = useRef<HTMLDivElement | null>(null);
+  const onButtonDown = (event: GamepadEvent) => {
+    const button = event.detail?.button;
+    const down = button === (GamepadButton.DIR_DOWN ?? 10);
+    const up = button === (GamepadButton.DIR_UP ?? 9);
+    const box = scroller.current;
+    if ((!down && !up) || !box) return;
+    const doc = box.ownerDocument;
+    const before = doc.activeElement;
+    window.setTimeout(() => {
+      if (doc.activeElement === before) box.scrollBy({ top: down ? 160 : -160, behavior: "smooth" });
+    }, 0);
+  };
+
   return (
     <Focusable className="dek-pages" flow-children="row">
       <div className="dek-page-list" ref={styled}>
@@ -82,11 +99,11 @@ export function SidebarNavigation({ pages, title }: { pages: SidebarPage[]; titl
           ))}
         </Focusable>
       </div>
-      <div className="dek-page-content">
+      <div className="dek-page-content" ref={scroller}>
         {/* A column of its own: left unsaid, it takes the row the page uses
             to put the sidebar beside it, and rows need left and right. */}
         <Focusable className="DialogContent _DialogLayout dek-page-body" role="tabpanel"
-          flow-children="column">
+          flow-children="column" onButtonDown={onButtonDown}>
           <div className="DialogContent_InnerWidth">
             {current && !current.hideTitle && (
               <div className="DialogHeader" role="heading" aria-level={2}>{current.title}</div>
