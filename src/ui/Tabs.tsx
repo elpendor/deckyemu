@@ -1,4 +1,4 @@
-import { type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { Focusable, GamepadButton, type GamepadEvent } from "../steamui/base";
 import { styled } from "./styles";
@@ -35,6 +35,25 @@ function Bumper({ side }: { side: "l1" | "r1" }) {
  */
 export function Tabs({ tabs, activeTab, onShowTab }: TabsProps) {
   const index = Math.max(0, tabs.findIndex((tab) => tab.id === activeTab));
+  // Steam's navigation node for each tab pill.
+  type NavNode = { current: { TakeFocus?: () => void } | null };
+  const [pills] = useState(() => new Map<string, NavNode>());
+  const pillRef = (id: string): NavNode => {
+    let ref = pills.get(id);
+    if (!ref) pills.set(id, (ref = { current: null }));
+    return ref;
+  };
+  const shown = useRef<string | undefined>(undefined);
+  const activeId = tabs[index]?.id;
+  useEffect(() => {
+    // A switch unmounts what had focus, and with nothing focused Steam has
+    // nowhere to send the D-pad or the bumpers, so all of them stop. Focus
+    // goes to the new tab's pill, as Steam's own tab bars keep it in view.
+    if (shown.current !== undefined && shown.current !== activeId) {
+      pills.get(activeId ?? "")?.current?.TakeFocus?.();
+    }
+    shown.current = activeId;
+  }, [activeId, pills]);
   const step = (by: number) => {
     const next = tabs[index + by];
     if (next) onShowTab(next.id);
@@ -54,6 +73,7 @@ export function Tabs({ tabs, activeTab, onShowTab }: TabsProps) {
               key={tab.id}
               role="tab"
               noFocusRing
+              navRef={pillRef(tab.id)}
               aria-selected={tab.id === tabs[index]?.id}
               className={tab.id === tabs[index]?.id ? "dek-tab dek-active" : "dek-tab"}
               onActivate={() => onShowTab(tab.id)}

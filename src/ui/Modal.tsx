@@ -1,4 +1,4 @@
-import { forwardRef, useState, type FC, type ReactNode } from "react";
+import { forwardRef, useEffect, useRef, useState, type FC, type ReactNode } from "react";
 
 import { DialogButtonPrimary, DialogButtonSecondary, Focusable } from "../steamui/base";
 import { styled } from "./styles";
@@ -26,6 +26,11 @@ export const DialogBody = classed("DialogBody", true);
 export const DialogBodyText = classed("DialogBodyText", false);
 export const DialogFooter = classed("DialogFooter", false);
 
+interface FrameHandle {
+  TakeFocus?: () => void;
+  BFocusWithin?: () => boolean;
+}
+
 export interface ModalRootProps extends Any {
   closeModal?: () => void;
   onCancel?: () => unknown;
@@ -50,8 +55,25 @@ export function ModalRoot({
   const cancel = () => {
     if (!onCancel?.()) closeModal?.();
   };
+  // Steam's navigation handle for the frame. Focus otherwise stays on the
+  // dialog layer's root, which holds no control, so the D-pad has nowhere to
+  // move it from. At mount the layer's tree is not active yet and taking
+  // focus does nothing, so it is retried until focus is inside.
+  const frame = useRef<FrameHandle | null>(null);
+  useEffect(() => {
+    let tries = 0;
+    let timer = 0;
+    const attempt = () => {
+      const handle = frame.current;
+      if (!handle || handle.BFocusWithin?.()) return;
+      handle.TakeFocus?.();
+      if (++tries < 10) timer = window.setTimeout(attempt, 50);
+    };
+    attempt();
+    return () => window.clearTimeout(timer);
+  }, []);
   return (
-    <Focusable className="dek-modal" onCancel={cancel}>
+    <Focusable className="dek-modal" onCancel={cancel} navRef={frame}>
       <div className="dek-modal-backdrop" ref={styled}
         onClick={bDisableBackgroundDismiss ? undefined : cancel} />
       <Focusable
