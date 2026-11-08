@@ -45,6 +45,15 @@ export function Tabs({ tabs, activeTab, onShowTab }: TabsProps) {
   };
   const shown = useRef<string | undefined>(undefined);
   const activeId = tabs[index]?.id;
+  // Which way the content slides in: from the side of the tab moved to. Kept
+  // in state, set while rendering when the tab changes, so the first render
+  // of the new tab already carries it.
+  const [slide, setSlide] = useState<{ id?: string; index: number; from: "left" | "right" | "" }>(
+    { id: activeId, index, from: "" },
+  );
+  if (slide.id !== activeId) {
+    setSlide({ id: activeId, index, from: index < slide.index ? "left" : "right" });
+  }
   useEffect(() => {
     // A switch unmounts what had focus, and with nothing focused Steam has
     // nowhere to send the D-pad or the bumpers, so all of them stop. Focus
@@ -85,7 +94,11 @@ export function Tabs({ tabs, activeTab, onShowTab }: TabsProps) {
         </Focusable>
         <Bumper side="r1" />
       </div>
-      <div className="dek-tab-content" role="tabpanel">
+      <div
+        key={activeId}
+        className={slide.from ? `dek-tab-content dek-slide-${slide.from}` : "dek-tab-content"}
+        role="tabpanel"
+      >
         {tabs[index]?.content}
       </div>
     </Focusable>

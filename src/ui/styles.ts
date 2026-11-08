@@ -98,7 +98,9 @@ const CSS = `
   padding: calc(12px + 2.25vh) 2.8vw; width: 660px; box-sizing: border-box;
   position: relative; animation: dek-fade 0.5s cubic-bezier(0.17, 0.45, 0.14, 0.83);
 }
-.dek-modal > .DialogContent.DialogContentFullSize { width: max-content; }
+/* Fixed, not sized to content: a tabbed dialog would change width per tab.
+   77vw is what Steam's measured on the Deck. */
+.dek-modal > .DialogContent.DialogContentFullSize { width: 77vw; }
 .dek-modal .DialogContentFullSize .DialogContent_InnerWidth { max-width: calc(88vw - 48px); }
 @keyframes dek-fade { from { opacity: 0; } to { opacity: 1; } }
 
@@ -121,6 +123,10 @@ const CSS = `
 .dek-tab.dek-active { color: #fff; background: rgba(255, 255, 255, 0.15); }
 .dek-tab.gpfocus { color: #fff; background: rgba(255, 255, 255, 0.3); outline: none; }
 .dek-tab-content { flex: 1; min-height: 0; overflow: hidden auto; }
+.dek-slide-right { animation: dek-slide-right 0.25s cubic-bezier(0.17, 0.45, 0.14, 0.83); }
+.dek-slide-left { animation: dek-slide-left 0.25s cubic-bezier(0.17, 0.45, 0.14, 0.83); }
+@keyframes dek-slide-right { from { opacity: 0; transform: translateX(48px); } }
+@keyframes dek-slide-left { from { opacity: 0; transform: translateX(-48px); } }
 
 .dek-pages { display: flex; flex-direction: row; height: 100%; flex-grow: 1; background: rgb(14, 20, 27); }
 .dek-page-list {
