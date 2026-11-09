@@ -1,27 +1,12 @@
 """Installing a catalog emulator, through whichever channel it publishes on.
 
-Two channels, and the split is not arbitrary.
+Flatpak wherever Flathub carries the emulator: `--user` needs no password, and
+updating, rolling back and pinning are flatpak's own questions to answer.
+Release AppImages are the fallback for emulators with no flatpak, since an
+AppImage is a file this plugin then owns forever.
 
-**Flatpak is preferred wherever Flathub carries the emulator.** `--user` scope
-needs no password, which is the only reason installing RetroArch from the panel
-works at all, and the same argument applies here. It also means this plugin never
-tracks a version of its own: updating, going back to a past build and pinning one
-are all questions flatpak already answers about its own installs, so they are
-asked rather than reimplemented.
-
-**GitHub releases are the fallback**, for RPCS3, Azahar and Vita3K, which publish
-no flatpak. It is deliberately not the default: an AppImage is a file this plugin
-then owns forever, and browser-downloaded AppImages arriving without an execute
-bit is already the single most common way a registered emulator silently does
-nothing (see `emulators.ensure_executable`).
-
-Two things were learned building this and are worth keeping. Both Ryujinx
-mirrors answer **HTTP 451** from the GitHub API -- they were taken down and now
-self-host their git -- so no amount of asset-pattern work reaches a Switch
-emulator that way; `io.github.ryubing.Ryujinx` on Flathub is the route
-that works. And release assets carry aarch64 builds beside x86_64 ones, so the
-asset pattern must be anchored rather than a substring match: installing the
-wrong architecture fails at exec time with nothing that names the cause.
+Release asset patterns must be anchored: assets carry aarch64 builds beside
+x86_64 ones, and the wrong one fails at exec time with no useful error.
 """
 
 import hashlib
@@ -49,30 +34,21 @@ import sysenv
 
 FLATHUB_REPO = "https://flathub.org/repo/flathub.flatpakrepo"
 
-# Well above the largest emulator AppImage published today (Vita3K is around
-# 90MB), and low enough that a redirect to something unexpected is refused
-# rather than written to the user's home directory.
+# Well above any emulator AppImage, low enough to refuse a redirect to
+# something unexpected.
 MAX_APPIMAGE_BYTES = 400 * 1024 * 1024
 
 
 def emulators_dir(*parts, create=True):
     """Where AppImage emulators live: `~/deckyemu/emulators`.
 
-    Under the user's own directory rather than appenv.DATA_DIR, which
-    a reset wipes. A libretro core is a few megabytes and trivially
-    re-downloaded; a 200MB emulator that vanishes because the plugin was
-    reinstalled is a different thing entirely.
+    Not appenv.DATA_DIR, which a reset wipes.
     """
     return sysenv.user_dir("emulators", *parts, create=create)
 
 
 def firmware_dir():
-    """Where BIOS files, keys and firmware the user supplies are collected.
-
-    Nothing here is shipped or downloaded -- these are the user's own dumps. The
-    folder exists so there is somewhere to send them to that is not the ROM
-    folder, and so the transfer flow has a destination to name.
-    """
+    """Where the user's own BIOS files, keys and firmware are collected."""
     return sysenv.user_dir("firmware")
 
 
@@ -86,12 +62,8 @@ def flatpak_binary():
 def flatpak_install_steps(app_id):
     """Commands that install `app_id` for the current user.
 
-    Same shape and same reasoning as `installer.retroarch_install_argv`: the
-    remote is added first because a Deck that has never used flatpak has no
-    flathub remote, and `--if-not-exists` makes that a no-op when it does.
-
-    `-y` without `--noninteractive`: the plan and percentages it then prints
-    are what `flatpak_progress` reads.
+    The remote is added first, since a fresh Deck has none. `-y` without
+    `--noninteractive`, because `flatpak_progress` reads the percentages.
     """
     flatpak = flatpak_binary()
     if not flatpak or not _valid_app_id(app_id):
@@ -105,10 +77,7 @@ def flatpak_install_steps(app_id):
 def flatpak_files_dir(app_id):
     """The deployed `files/` tree of an installed flatpak, or "".
 
-    `<root>/app/<id>/current/active/files` -- the same symlinks
-    `sysenv.flatpak_deployed` follows, one level further in, so what comes back
-    is whatever build is installed right now rather than a path recorded when it
-    was.
+    Follows `current/active`, so it is the build installed right now.
     """
     if not _valid_app_id(app_id):
         return ""
@@ -124,23 +93,12 @@ def flatpak_files_dir(app_id):
 def seed_bundled_files(app_id, seed):
     """Copy files a flatpak ships into the place its application looks for them.
 
-    For the case where those are not the same place. Supermodel is why this
-    exists and states the problem exactly: the Flathub build installs its
-    `Assets` to `/app/bin/Assets`, while `FileSystemPath::GetPath(Assets)`
-    resolves under the application's own data directory, and nothing bridges the
-    two. The result is not a degraded feature -- `CCrosshair::Init` loads both
-    crosshair bitmaps unconditionally, whatever the crosshair setting, and
-    aborts the program when it cannot. So a stock install launches every game,
-    prints "Unable to load bitmap crosshair texture", and exits before the
-    emulator is built. There is no flag for it, unlike `Games.xml`, which has
-    the same fault and can at least be pointed at the packaged copy.
+    Supermodel's Flathub build installs `Assets` under `/app/bin` but looks for
+    them in its data directory, and exits on launch without the crosshair
+    bitmaps; no flag points it elsewhere.
 
-    Only what is missing is copied, so a file the user replaced is theirs and
-    stays. Only regular files directly inside the source directory: this is for
-    small data an application ships beside itself, and a recursive copy of an
-    arbitrary tree is a bigger promise than anything needs.
-
-    Returns (paths copied, error).
+    Copies only missing files, so a user's replacement stays, and only regular
+    files directly inside the source directory. Returns (paths copied, error).
     """
     if not seed:
         return [], ""
@@ -153,9 +111,8 @@ def seed_bundled_files(app_id, seed):
         origin = os.path.join(files, *source.split("/"))
         target = os.path.join(sysenv.user_home(), *destination.split("/"))
         if not os.path.isdir(origin):
-            # The package moved its data, which is a thing to say rather than a
-            # thing to fail over: everything else about the install is fine, and
-            # the emulator may well have been fixed upstream.
+            # The package moved its data; the install is fine otherwise, and
+            # upstream may have fixed it.
             appenv.logger.warning(
                 "%s ships no %s to seed from", app_id, source)
             continue
@@ -180,20 +137,10 @@ def seed_bundled_files(app_id, seed):
 
 
 def flatpak_uninstall_argv(app_id, delete_data=False):
-    """Remove a user-scope flatpak. Never `--system`, for the usual reason.
+    """Remove a user-scope flatpak.
 
-    Data is kept unless asked for. Uninstalling an emulator from this panel
-    normally means "I do not want it in my list", and destroying saves and
-    configuration on the way out is not what that says -- so `--delete-data` is
-    a separate answer to a separate question, defaulted off, exactly as it is
-    for RetroArch.
-
-    What it removes is `~/.var/app/<id>` entire: configuration, saves, save
-    states, memory cards, and anything the emulator unpacked into itself.
-    Nothing else brings the emulator back to never-installed, which is why the
-    option exists at all -- without it a reinstall inherits whatever the last
-    one left, and flatpak keeps that directory even when the application is
-    gone.
+    Data is kept unless asked for. `--delete-data` removes `~/.var/app/<id>`
+    whole, saves included, which is the only way back to never-installed.
     """
     flatpak = flatpak_binary()
     if not flatpak or not _valid_app_id(app_id):
@@ -212,8 +159,8 @@ def _valid_app_id(app_id):
     return bool(_APP_ID_RE.match(app_id or ""))
 
 
-#: An OSTree commit. Checked before it reaches a command line, for the same
-#: reason `_valid_app_id` is: both arrive from the frontend.
+#: An OSTree commit. Checked before a command line, since it comes from the
+#: frontend.
 _COMMIT_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
@@ -230,15 +177,9 @@ def flatpak_update_argv(app_id):
 
 
 def flatpak_downgrade_argv(app_id, commit):
-    """Deploy one specific past build.
+    """Deploy one specific past build with `flatpak update --commit=`.
 
-    `flatpak update --commit=` is the documented way back, and it is an *update*
-    rather than a separate verb -- flatpak treats "move this app to that commit"
-    as one operation in both directions.
-
-    Refuses a commit that is not a bare hash. This value comes from the frontend,
-    which read it from `flatpak_history`, and a command line is the wrong place to
-    find out that something else arrived.
+    Refuses anything but a bare hash.
     """
     flatpak = flatpak_binary()
     if not flatpak or not _valid_app_id(app_id) or not valid_commit(commit):
@@ -252,11 +193,7 @@ def flatpak_downgrade_argv(app_id, commit):
 def flatpak_hold_argv(app_id, held):
     """Pin an app at its current build, or release it.
 
-    Load-bearing rather than a nicety. Without a mask the next update -- ours, or
-    anything else on the device that runs one -- silently undoes a downgrade, so
-    somebody rolls back, plays fine, and finds the same game broken a week later
-    with nothing to connect it to. A version this plugin was asked to go back to
-    has to be a version it will not move again.
+    Without a mask, the next update from anywhere silently undoes a downgrade.
     """
     flatpak = flatpak_binary()
     if not flatpak or not _valid_app_id(app_id):
@@ -269,10 +206,7 @@ def flatpak_hold_argv(app_id, held):
 def _flatpak_lines(args, timeout=60):
     """Run a read-only flatpak query and return its stdout lines.
 
-    Its own helper because every one of these is the same shape and the same three
-    failure modes -- no flatpak, a non-zero exit, a timeout -- none of which is
-    exceptional enough to raise over. An empty list means "could not tell", which
-    every caller has to treat as different from "nothing found".
+    Empty means "could not tell", which callers must not read as "nothing found".
     """
     flatpak = flatpak_binary()
     if not flatpak:
@@ -292,10 +226,8 @@ def _flatpak_lines(args, timeout=60):
     return done.stdout.decode("utf-8", errors="replace").splitlines()
 
 
-# The parsers are separate from the commands that produce their input, so the
-# suite can hold flatpak's real output against them without a device or a
-# subprocess. That is where the risk is: these formats are what they are, and a
-# parser written from the documentation is one that works until it meets the tool.
+# Parsers are kept apart from the commands so tests can feed them flatpak's real
+# output.
 
 
 def _parse_ids(lines):
@@ -308,21 +240,17 @@ def _parse_ids(lines):
     return found
 
 
-#: Fields worth reading out of `remote-info` for one build. `download` is the
-#: one that changes a decision: switching build re-fetches the whole app, and
-#: 409MB is a different proposition on a handheld from a config tweak.
+#: Fields worth reading out of `remote-info` for one build. `download` matters
+#: most: switching build re-fetches the whole app.
 _DETAIL_KEYS = ("version", "license", "download", "installed", "subject", "date",
                 "commit", "parent")
 
 
 def _clean_value(value):
-    """One field's value, with flatpak's formatting made safe to display.
+    """One field's value, made safe to display.
 
-    Sizes are printed with a narrow no-break space between the number and the
-    unit, and flatpak substitutes `?` for it when it runs without a UTF-8 locale
-    -- which is how it runs from here, since the plugin does not inherit a login
-    shell. Both forms become a plain space, so "409.0?MB" and "409.0 MB"
-    read the same on screen.
+    Sizes carry a narrow no-break space before the unit, printed as `?` without
+    a UTF-8 locale, as here. Both become a plain space.
     """
     value = re.sub(r"(?<=\d)(\?|[^\x20-\x7e])(?=[A-Za-z])", " ", value)
     value = re.sub(r"[^\x20-\x7e]", "", value)
@@ -332,9 +260,7 @@ def _clean_value(value):
 def _parse_fields(lines):
     """`remote-info`'s labelled lines as a dict, for the fields worth showing.
 
-    First occurrence wins. The header repeats the app's name and description
-    above the fields, and a `Subject:` further down belongs to the build rather
-    than to anything above it.
+    First occurrence wins.
     """
     found = {}
     for line in lines:
@@ -350,8 +276,7 @@ def _parse_fields(lines):
 def flatpak_build_details(app_id, commit):
     """Everything flatpak knows about one build. Empty when it cannot be read.
 
-    Deliberately not part of `flatpak_history`: this is a call per build, and the
-    list is drawn before anybody has said which one they are interested in.
+    Separate from `flatpak_history` because it costs a call per build.
     """
     if not _valid_app_id(app_id) or not valid_commit(commit):
         return {}
@@ -369,8 +294,7 @@ def _parse_commit(lines):
         label, _, value = line.partition(":")
         if label.strip().lower() == "commit":
             candidate = value.strip()
-            # A truncated hash is what `--columns` prints and `--commit=` will
-            # not take, so half an answer is worse than none.
+            # `--commit=` refuses a truncated hash.
             return candidate if valid_commit(candidate) else ""
     return ""
 
@@ -386,9 +310,7 @@ def _parse_history(lines, limit=12):
         key = label.strip().lower()
         value = value.strip()
         if key == "commit":
-            # Every Commit line starts a record, including the first -- which
-            # describes the newest build rather than a past one, so the whole
-            # list is the menu and not its tail.
+            # Every Commit line starts a record; the first is the newest build.
             if current.get("commit"):
                 builds.append(current)
             current = {"commit": value if valid_commit(value) else "", "date": "", "subject": ""}
@@ -403,10 +325,7 @@ def _parse_history(lines, limit=12):
 def flatpak_hold(app_id, held):
     """Pin `app_id` at its current build, or release it. Returns (ok, message).
 
-    Run and waited for rather than streamed: masking is instantaneous, and a
-    progress bar for it would be a bar that appears and vanishes. The output is
-    kept because a mask that did not take must not read as one that did -- the
-    whole value of holding is that somebody can trust the version stopped moving.
+    Waited for, not streamed, since masking is instant. A failure is reported.
     """
     argv = flatpak_hold_argv(app_id, held)
     if not argv:
@@ -434,21 +353,13 @@ def flatpak_hold(app_id, held):
 def flatpak_updates():
     """App ids with a newer build waiting, as a set.
 
-    One command for every app rather than one per app. `remote-info` costs about
-    two seconds each -- which is flatpak's own startup, not the network -- so
-    asking per emulator would be fourteen seconds to draw one tab.
-
-    Compares commits, not version strings, and that distinction is not academic:
-    RetroArch was observed offering an update whose `Version:` was character for
-    character the one already installed. Anything keyed on the version would have
-    called that up to date. flatpak does the comparing here, which is the reason
-    to ask it rather than work it out.
-
-    Runtimes and extensions come back in the same listing. Callers intersect with
-    ids they already know, so this is deliberately not "things to update".
+    One command for all apps, since each flatpak call costs about two seconds.
+    flatpak compares commits, not versions: an update can carry the same
+    `Version:` as the installed build. Runtimes are included; callers intersect
+    with the ids they know.
     """
     cached = _UPDATES_CACHE.get("answer")
-    # Already being asked: answer with what is known rather than hold a thread.
+    # Already being asked: answer from the cache rather than hold a thread.
     if not _UPDATES_LOCK.acquire(blocking=False):
         return set(cached or ())
     try:
@@ -467,8 +378,8 @@ def flatpak_updates():
         _UPDATES_LOCK.release()
 
 
-# One `remote-ls` at a time: on a cold appstream cache it takes a minute, and a
-# tab retrying meanwhile ran twelve at once and filled every executor thread.
+# One `remote-ls` at a time: on a cold cache it takes a minute, and retries
+# once filled every executor thread.
 UPDATES_TTL = 600
 _UPDATES_LOCK = threading.Lock()
 _UPDATES_CACHE: dict = {}
@@ -497,15 +408,8 @@ def flatpak_installed_commit(app_id):
 def installed_build(entry):
     """Which build of `entry` is installed, as something comparable, or "".
 
-    The one fact that lets a notice about an emulator be *observed* rather than
-    believed. A workaround names the build that fixed it; without knowing what
-    is actually on this Deck, saying "no longer needed" is a claim about
-    somebody's install made from a plugin release, and it is wrong for everyone
-    who updated the plugin and not the emulator.
-
-    Empty is a real answer and the important one: it means we cannot tell, and
-    nothing is then claimed. An install predating the build record has none, and
-    a rolling release with no version to compare is the same case.
+    Lets a workaround notice check the build on this Deck rather than assume
+    one. Empty means we cannot tell, and then nothing is claimed.
     """
     source = (entry or {}).get("source") or {}
     if source.get("kind") == "flatpak":
@@ -523,13 +427,8 @@ def installed_build(entry):
 def flatpak_history(app_id, limit=12):
     """Past builds available on the remote, newest first.
 
-    The remote keeps this, which is what makes going back possible at all --
-    including to a build this device never had, since the local copy of an old one
-    is pruned as soon as it is replaced.
-
-    The date and subject are the point. A list of hashes is not something anybody
-    can choose from with a controller; "2026-07-26 -- Install metainfo to
-    share/metainfo" is.
+    From the remote, so it includes builds this device never had. Date and
+    subject are what the user chooses by.
     """
     if not _valid_app_id(app_id):
         return []
@@ -542,16 +441,9 @@ def flatpak_history(app_id, limit=12):
 def flatpak_installed(app_id):
     """Whether `app_id` is installed for this user.
 
-    Read off the filesystem rather than by running `flatpak list`, because this is
-    called for every catalog entry whenever the panel opens and eleven
-    subprocesses per mount is not a reasonable way to answer a question the
-    directory layout already answers.
-
-    A `.var/app/<id>` directory is deliberately *not* accepted: that is left
-    behind by an uninstall that kept its data, and treating it as an install is
-    the same mistake `ra_detect.flatpak_scope` avoids. Nor is the deploy
-    directory alone -- a failed operation leaves one standing with nothing
-    deployed in it, and `sysenv.flatpak_deployed` is what tells the two apart.
+    Read off the filesystem, since it runs for every entry when the panel opens.
+    Neither `.var/app/<id>` (kept data) nor a bare deploy directory (a failed
+    operation) counts.
     """
     if not _valid_app_id(app_id):
         return False
@@ -561,8 +453,7 @@ def flatpak_installed(app_id):
 def flatpak_scope(app_id):
     """'user', 'system' or '' -- which install we are looking at.
 
-    A system-scope flatpak cannot be removed without root, so the UI has to be
-    able to say why the button is not there instead of showing a dead one.
+    A system install needs root to remove, so the UI explains instead.
     """
     if not _valid_app_id(app_id):
         return ""
@@ -574,12 +465,8 @@ def flatpak_scope(app_id):
     return ""
 
 
-#: What flatpak says when asked to remove something it does not have.
-#:
-#: Matched rather than inferred from the exit code, which is the same 1 as
-#: every other failure. The distinction is worth making because "there was
-#: nothing to remove" is the goal already met, and reporting it as a failed
-#: removal is what leaves somebody pressing a button that can never work.
+#: What flatpak says when asked to remove something it does not have. The exit
+#: code is 1 either way, and nothing to remove is the goal already met.
 _NOTHING_INSTALLED = re.compile(r"no installed refs? found", re.I)
 
 
@@ -591,22 +478,14 @@ def nothing_to_uninstall(error):
 def remove_flatpak_husk(app_id):
     """Delete a deploy directory flatpak has disowned. Returns bytes freed.
 
-    The leftover of an operation that failed partway: the commit trees are
-    still on disk, with no `current` and no `active` pointing at any of them,
-    so flatpak considers the application not installed and will neither run it
-    nor remove it. Two full deploys of DuckStation sat there that way.
-
-    Guarded on flatpak having disowned it rather than on the uninstall having
-    just run, because that guard is what makes deleting inside flatpak's own
-    store safe: with nothing deployed there is nothing for flatpak to be using,
-    and a real install -- mid-download included, since the ref is written
-    first -- is left alone.
+    A failed operation can leave commit trees with no `current` or `active`;
+    flatpak then neither runs nor removes them. Safe because nothing is
+    deployed: a real install, even mid-download, is left alone.
     """
     if not _valid_app_id(app_id):
         return 0
     freed = 0
-    # The user's own installation only. A system one belongs to root, and the
-    # plugin could not have created that mess or be trusted to tidy it.
+    # User installation only; a system one belongs to root.
     _system, user_root = sysenv.flatpak_roots()
     if sysenv.flatpak_deployed(user_root, app_id):
         return 0
@@ -627,59 +506,42 @@ def remove_flatpak_husk(app_id):
 
 GITHUB_API = "https://api.github.com/repos/%s/releases/latest"
 
-#: The same question asked of the website, which answers by redirecting to
-#: `/releases/tag/<tag>`. Off the API's 60-an-hour budget entirely, and the
-#: body is empty -- so checking fourteen entries costs nothing that installing
-#: one later needs. Excludes pre-releases exactly as the API's `latest` does;
-#: the atom feed does not, which is why it is not this.
+#: The same question asked of the website, which redirects to
+#: `/releases/tag/<tag>`. Off the API's hourly budget, and excludes
+#: pre-releases as `latest` does.
 GITHUB_LATEST_PAGE = "https://github.com/%s/releases/latest"
 
-#: What that redirect lands on. A repository with no releases lands on
-#: `/releases` instead, which this does not match -- so "none published" stays
-#: distinguishable from a tag.
+#: What that redirect lands on. No releases lands on `/releases`, which
+#: this does not match.
 _TAG_IN_URL = re.compile(r"/releases/tag/([^/?#]+)")
 
 
-#: Same call against a self-hosted forge. A project taken off GitHub tends to
-#: run its own, and the common ones answer the same shape at a different
-#: address -- `tag_name`, `assets[].name`, `assets[].browser_download_url` --
-#: so one channel covers both and only the host differs. Not named after any
-#: particular forge: what is being described is the reply shape.
+#: Same call against a self-hosted forge, which answers the same shape.
 SELF_HOSTED_API = "https://%s/api/v1/repos/%s/releases/latest"
 
-#: A hostname, not a URL. An entry says *which server*, and cannot point the
-#: plugin at an arbitrary path on it or drop to plain HTTP.
+#: A hostname, not a URL, so an entry cannot name a path or plain HTTP.
 _HOST_RE = re.compile(
     r"^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?"
     r"(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+$"
 )
 
 
-#: The biggest a publisher's update feed may be. It is a few hundred bytes of
-#: plain text; anything larger is not the file we asked for.
+#: A feed is a few hundred bytes; anything this large is not one.
 MAX_FEED_BYTES = 64 * 1024
 
 
 def resolve_feed_build(feed_url, want):
     """The build `want` names in a publisher's own update feed. (asset, error).
 
-    **The feed is the one thing this kind of source has.** A project with no
-    releases API and no flatpak still has to tell its own updater where the
-    current build is, and BigPEmu's is a plain-text file its "Check for
-    Updates" reads:
+    For a project with no releases API: BigPEmu's updater reads a plain-text
+    feed with one line per platform, giving the download, an unused patch
+    installer, then the file's 64-bit FNV-1a:
 
         BUILD_INFO 1
         VERSION 1.221
         Linux64 "http://.../BigPEmu_Linux64_v1221.tar.gz" "" C1B241BBFA5135CB ...
 
-    One line per platform: the download, an optional patch installer this
-    plugin never uses, then the file's 64-bit FNV-1a. So the feed answers all
-    three questions an install asks -- which version, from where, and whether
-    what arrived is what was meant.
-
-    The scheme is forced to https. The feed states its own URLs as http, the
-    same files serve fine over TLS, and a download this plugin makes is not
-    going over plain HTTP because somebody else's file says so.
+    The scheme is forced to https; the same files serve over TLS.
     """
     if not net.is_web_url(feed_url):
         return None, "That is not a usable address for an update feed."
@@ -718,9 +580,7 @@ def resolve_feed_build(feed_url, want):
     return None, "The project publishes no %s build." % want
 
 
-#: How many past builds a feed-installed emulator offers to go back to.
-#: The same ceiling the releases list uses, for the same reason: a dialog is
-#: read, not scrolled through.
+#: How many past builds a feed-installed emulator offers, as for releases.
 FEED_HISTORY_LIMIT = 12
 
 
@@ -737,8 +597,7 @@ def _versions_named(notes_text):
 def _clip(text, limit):
     """`text` no longer than `limit`, cut at a word and marked as cut.
 
-    A slice alone ends mid-word, which reads as a rendering fault rather than
-    as a paragraph that carries on.
+    A bare slice ends mid-word and looks like a rendering fault.
     """
     if len(text) <= limit:
         return text
@@ -758,15 +617,9 @@ def _merged(known, *more):
 def remember_versions(entry, notes_text, extra=()):
     """Every version this device has ever seen of `entry`, merged and stored.
 
-    **The history goes backwards with the build.** The list of past releases is
-    read out of the notes inside the installed build, so going back to 1.17
-    leaves a device whose notes end at 1.17 -- and a dialog that offers no way
-    back to the build it just replaced. What has been seen is therefore kept in
-    the build record, which does not move when the build does.
-
-    Called wherever a history is read rather than only after an install, so a
-    device that has never installed anything since still remembers the list its
-    current build named the first time the dialog was opened.
+    The version list comes from the installed build's notes, so it shrinks
+    when the build goes back; the build record keeps what has been seen.
+    Called wherever a history is read, not only after an install.
     """
     record = read_build_record(entry["id"])
     known = _merged(record.get("versions"), _versions_named(notes_text), extra)
@@ -779,36 +632,20 @@ def remember_versions(entry, notes_text, extra=()):
 def feed_history(entry, notes_text, probe=None, remembered=(), newest=None):
     """Past builds of a feed-installed emulator, newest first. (builds, error).
 
-    **The publisher's own list, and it ships inside the download.** A project
-    with no releases API has no history to query -- but this one writes its
-    release notes into the `ReadMe.txt` beside the binary, one `Version 1.22`
-    heading per release, which is the only enumeration of them that exists
-    anywhere. Third-party sites carry shorter copies of the same list; the file
-    on disk is the author's, needs no network, and grows by itself because
-    every build ships its own notes.
+    The list is the `Version x.y` headings in the `ReadMe.txt` shipped beside
+    the binary, the only enumeration that exists. An old build's address is
+    the version without dots, an undocumented convention; it is only applied
+    to versions the notes name, and `probe` confirms each file exists.
 
-    The address of an old build is the version with its dots removed -- a
-    convention the author never documented, which the AUR's PKGBUILD and
-    EmuDeck both rely on as well. That is safe *here* and nowhere else: the
-    notes say which versions are real, so the guess is only ever made about a
-    release that exists, and `probe` confirms the file before it is offered.
-    Without the list the same guess invents 1.20, which was never released.
-
-    No checksum on a past build: the feed states one for the current release
-    only, and `newest` is that release -- passed in, so the row for it carries
-    the address and the checksum the publisher stated rather than the guess the
-    older rows have to make. Said plainly in the dialog rather than papered
-    over.
+    The feed gives a checksum for the current release only; `newest` is that
+    release, so its row uses the stated address and checksum.
     """
     source = entry.get("source") or {}
     pattern = source.get("build_name") or ""
     if not pattern:
         return [], ""
 
-    # The heading, and everything under it until the next one: that is what
-    # changed in that release, in the author's own words. A Flathub build shows
-    # its whole changelog the same way, so the dialog already knows what to do
-    # with a paragraph.
+    # A heading and the lines under it, until the next: that release's notes.
     seen = list(remembered or ())
     notes = {}
     current = ""
@@ -825,9 +662,8 @@ def feed_history(entry, notes_text, probe=None, remembered=(), newest=None):
     if not seen:
         return [], "No release notes came with this build, so its past builds are not listed."
 
-    # Newest first, and a version is its own ordering: the part after the dot
-    # is read as a fraction so 1.221 sits above 1.22, which sits above 1.19.
-    # Comparing it as a whole number would put 1.1 below 1.09.
+    # Newest first. The part after the dot is read as a fraction, so 1.221
+    # sits above 1.22, which sits above 1.19.
     def _order(version):
         head, _, tail = version.partition(".")
         try:
@@ -839,18 +675,11 @@ def feed_history(entry, notes_text, probe=None, remembered=(), newest=None):
 
     builds = []
     for version in seen[:FEED_HISTORY_LIMIT]:
-        # The current release is the one build whose address does not have to
-        # be guessed: the feed states it, along with a checksum. Taking it from
-        # there means the newest row downloads exactly what an update would,
-        # verified the same way, and keeps working if the naming convention
-        # the older rows rely on ever changes.
+        # The current release's address and checksum come from the feed.
         stated = newest if newest and newest.get("tag") == version else None
         url = (stated["url"] if stated
                else pattern.replace("{version}", version.replace(".", "")))
-        # One request answers both questions: whether the build is still
-        # published, and what it weighs. A release listing carries the size
-        # already; here it has to be asked for, and asking twice would double
-        # the wait for a dialog that lists a dozen builds.
+        # One request says both whether it is still published and its size.
         size = probe(url) if probe else 0
         if not size:
             continue
@@ -862,9 +691,7 @@ def feed_history(entry, notes_text, probe=None, remembered=(), newest=None):
             "digest": stated["digest"] if stated else "",
             "published": "",
             "prerelease": False,
-            # Capped, because some releases here run to thirty lines and the
-            # row shows this in full once opened. The first few say what the
-            # release was for, which is what somebody choosing a build needs.
+            # Capped; the first lines say what the release was for.
             "notes": _clip(" ".join(notes.get(version, ())[:6]), 600),
         })
     if not builds:
@@ -875,8 +702,7 @@ def feed_history(entry, notes_text, probe=None, remembered=(), newest=None):
 def read_build_notes(entry):
     """The release notes shipped with the installed build, or "".
 
-    Read off the disk rather than fetched: the file came down with the build,
-    so listing past versions costs no network at all.
+    Shipped with the build, so no network is needed.
     """
     source = entry.get("source") or {}
     name = source.get("notes") or ""
@@ -893,10 +719,8 @@ def read_build_notes(entry):
 def build_size(url):
     """How big a past build is, or 0 if it is no longer published.
 
-    Kept as its own function so the listing can be tested without the network:
-    `feed_history` takes the probe rather than calling one. Zero means both
-    "gone" and "unreadable", which is the same answer for this purpose -- a
-    build that cannot be sized cannot be offered honestly either.
+    Separate so `feed_history` can be tested with a fake probe. Zero means
+    gone or unreadable, and either way the build is not offered.
     """
     return net.head_size(url)
 
@@ -904,13 +728,8 @@ def build_size(url):
 def resolve_release_asset(repo, pattern, host="", failure=None):
     """Newest release asset matching `pattern`, from GitHub or a self-hosted forge.
 
-    `host` empty means GitHub. Anything else is a hostname running the same
-    releases API, which is how a project that left GitHub stays reachable: its
-    old repository answers 451 there, so no asset pattern gets near it.
-
-    No token is used or wanted: these are other people's public repositories,
-    and the plugin's own GitHub token is scoped to this project and has no
-    business being sent to them.
+    `host` empty means GitHub; otherwise a host running the same releases
+    API. No token is sent: the plugin's own is scoped to this project.
     """
     if not re.match(r"^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$", repo or ""):
         return None, "Not a valid repository name."
@@ -925,9 +744,8 @@ def resolve_release_asset(repo, pattern, host="", failure=None):
 GITHUB_RELEASES = "https://api.github.com/repos/%s/releases"
 SELF_HOSTED_RELEASES = "https://%s/api/v1/repos/%s/releases"
 
-#: A release tag on its way to becoming a folder-free download URL. Tags are the
-#: projects' own strings, so this is deliberately permissive about shape and
-#: strict about characters -- it arrives from the frontend like a commit does.
+#: A release tag. Permissive on shape, strict on characters, since it comes
+#: from the frontend.
 _TAG_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$")
 
 
@@ -940,11 +758,7 @@ def resolve_release_list(repo, pattern, host="", limit=30):
 
     Returns (builds, error). Each build is {tag, name, url, size, published}.
 
-    Separate from `resolve_release_asset` because the questions differ: that one
-    asks "what should I install", which is always the newest, while this one asks
-    "what else is there", which is only ever asked once somebody has decided to
-    move. Releases without a matching asset are skipped rather than listed as
-    unavailable -- an aarch64-only release is not a build this device can choose.
+    Releases with no matching asset, such as aarch64-only ones, are skipped.
     """
     if not re.match(r"^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$", repo or ""):
         return [], "Not a valid repository name."
@@ -953,16 +767,14 @@ def resolve_release_list(repo, pattern, host="", limit=30):
 
     api = SELF_HOSTED_RELEASES % (host, repo) if host else GITHUB_RELEASES % repo
     if not host:
-        # GitHub returns 30 releases by default. That was every release anybody
-        # cared about while emulators tagged a handful a year -- Vita3K-builds
-        # publishes one per build, several a week, so 30 was about a fortnight.
+        # GitHub's default of 30 can be two weeks for a project that tags
+        # every build.
         api += "?per_page=100"
     label = "%s on %s" % (repo, host) if host else repo
     failure = {}
     payload = net.get_json(api, failure=failure)
     if not isinstance(payload, list):
-        # Same reasoning as `_resolve_asset`: the build list is the other place
-        # a rate limit surfaced as a claim about the project having moved.
+        # Name the real failure; see `_resolve_asset`.
         return [], (
             net.failure_message(failure, "the builds of %s" % label)
             or "No releases came back for %s. The project may have moved off "
@@ -1009,22 +821,12 @@ def resolve_github_asset(repo, pattern):
 
 
 def _resolve_asset(api_url, pattern, label, failure=None):
-    # The caller may want the reply's details as well as the message -- a rate
-    # limit carries the moment it lifts, which is the difference between backing
-    # off correctly and guessing.
+    # The caller may want the details: a rate limit says when it lifts.
     failure = {} if failure is None else failure
     payload = net.get_json(api_url, failure=failure)
     if payload is None:
-        # Which failure it was decides what to say, and saying the wrong one is
-        # worse than saying little: a rate-limited address was reported as the
-        # project having moved off GitHub, which is a confident wrong answer
-        # about somebody else's repository and sends the reader nowhere useful.
-        # xemu's hard disk image was reported as gone from the project when the
-        # address had merely been rate-limited; it was never missing.
-        #
-        # 451 is what the Ryujinx mirrors answer and it has no status branch of
-        # its own, so it falls to the line below -- which is still the right
-        # thing for it, and better than blaming the connection.
+        # Name the real failure: a rate limit once read as the project having
+        # moved. 451 (taken-down repositories) falls to the generic line.
         return None, (
             net.failure_message(failure, "the latest release of %s" % label)
             or "No release came back for %s. The project may have moved off "
@@ -1064,11 +866,8 @@ def _resolve_asset(api_url, pattern, label, failure=None):
 #: How GitHub states an asset's checksum, e.g. "sha256:5c73...".
 _DIGEST_RE = re.compile(r"^sha256:([0-9a-f]{64})$", re.IGNORECASE)
 
-#: The other digest a publisher hands us, and the reason it is here: BigPEmu's
-#: update feed states a 64-bit FNV-1a of each build and nothing else. Verified
-#: against the published value for the v1.221 Linux build before this was
-#: written -- it is the standard algorithm over the file's bytes, xor then
-#: multiply, and the site's own download page prints the same number.
+#: BigPEmu's feed states a 64-bit FNV-1a of each build and nothing else;
+#: checked against a published value.
 _FNV_RE = re.compile(r"^fnv1a64:([0-9a-f]{16})$", re.IGNORECASE)
 _FNV_PRIME = 1099511628211
 _FNV_OFFSET = 14695981039346656037
@@ -1091,15 +890,9 @@ def _fnv1a64(path):
 def _digest_matches(path, digest):
     """Whether the file at `path` is what the release said it would be. (ok, error).
 
-    **This is an integrity check, not an authenticity one.** The checksum comes
-    down in the same API response as the download URL, so whoever could swap one
-    could swap the other. What it catches is a download that arrived wrong --
-    truncated, or a CDN serving a stale object -- which otherwise reaches the
-    user as an emulator that will not start and says nothing about why.
-
-    An asset with no digest passes: GitHub only began publishing them recently,
-    and a self-hosted forge an imported definition names may publish none at all.
-    Refusing those would be refusing to install from anywhere but github.com.
+    Integrity, not authenticity: the checksum comes in the same reply as the
+    URL. It catches a truncated or stale download. An asset with no digest
+    passes, since many sources publish none.
     """
     weak = _FNV_RE.match((digest or "").strip())
     if weak:
@@ -1132,8 +925,8 @@ def _digest_matches(path, digest):
 def install_appimage(entry, asset, on_progress=None):
     """Download an AppImage into its own folder under `~/deckyemu/emulators`.
 
-    Returns (path, error). A folder per emulator so a later version can replace
-    the previous one without guessing which loose file belonged to what.
+    Returns (path, error). A folder per emulator, so a new build replaces the
+    old cleanly.
     """
     if not emulator_catalog.is_safe_id(entry.get("id")):
         return "", "Invalid emulator id."
@@ -1150,8 +943,7 @@ def install_appimage(entry, asset, on_progress=None):
     if not ok:
         return "", error or "Download failed."
 
-    # Before anything is unpacked or made executable, because a damaged archive
-    # is worth refusing rather than half-extracting.
+    # Before unpacking, so a damaged archive is refused whole.
     whole, damaged = _digest_matches(path, asset.get("digest", ""))
     if not whole:
         try:
@@ -1160,15 +952,11 @@ def install_appimage(entry, asset, on_progress=None):
             pass
         return "", damaged
 
-    # A release that ships the program inside an archive. The archive is not the
-    # thing to run, and without this it would be made executable and handed to
-    # Steam, which fails at exec time with nothing naming why.
+    # The program ships inside an archive, which is not the thing to run.
     source = entry.get("source") or {}
     extract = source.get("extract") or ""
     if extract and source.get("unpack"):
-        # A release that is a tree rather than one file: a binary with its own
-        # data folders beside it. Everything comes out, and `extract` names the
-        # one to run.
+        # A tree rather than one file; `extract` names the one to run.
         member, failure = _unpack_release(path, target_dir, extract)
         try:
             os.remove(path)
@@ -1192,24 +980,15 @@ def install_appimage(entry, asset, on_progress=None):
     try:
         os.chmod(path, 0o755)
     except OSError as error:
-        # Without the execute bit the launcher runs, exec says "Permission
-        # denied", and Steam shows the game closing instantly. Fail here, where
-        # it can be explained, rather than there.
+        # Fail here, where it can be explained; otherwise Steam shows the
+        # game closing instantly.
         return "", "Downloaded but could not make it executable: %s" % error
 
-    # A previous build in the same folder is now dead weight, and leaving it
-    # means the folder grows by a couple of hundred megabytes per update.
-    #
-    # Except where the folder is also the program's own data directory. A port
-    # that reads the directory it runs in keeps its settings, the archive it
-    # built from the user's game, and its *save files* right there -- so the
-    # sweep, which deletes everything that is not the new build, would take all
-    # three. Then only the build named by the record it is replacing goes.
+    # Sweep the previous build, except where the folder is also the program's
+    # data directory: then only the build the record names goes, and saves stay.
     if source.get("unpack"):
-        # Everything here came out of the archive together: the binary, its
-        # language files, its mods folder. The sweep keeps one name, which for a
-        # tree means deleting the program's own data the moment it is installed.
-        # A new release is written over the top instead.
+        # A tree: sweeping would delete the program's own data. The new
+        # release is written over the top.
         pass
     elif entry.get("game_beside"):
         previous = (read_build_record(entry["id"]) or {}).get("asset") or ""
@@ -1221,27 +1000,16 @@ def install_appimage(entry, asset, on_progress=None):
     else:
         _remove_others(target_dir, keep=asset["name"])
 
-    # After the cleanup, or it would be swept away with the old build. Written
-    # even when the tag is empty: "installed, build unknown" is a different state
-    # from "not installed", and only a record can tell them apart.
-    #
-    # The versions carried over are the ones already known plus whatever the
-    # build just installed names in its notes. **Going back must not lose the
-    # way forward**: an older build's notes end at itself, so without this a
-    # rollback to 1.19 left a dialog whose newest offer was 1.19.
+    # After the cleanup, or it is swept too. Written even with no tag, since
+    # "build unknown" differs from "not installed". Known versions carry over,
+    # so a rollback still offers the way forward.
     keep_versions = _merged(read_build_record(entry["id"]).get("versions"),
                             _versions_named(read_build_notes(entry)),
                             [asset.get("tag", "")])
     write_build_record(entry["id"], asset.get("tag", ""), asset["name"], keep_versions)
 
-    # Patched builds are derived from the build that was just installed, and the
-    # cleanup above has already taken the previous ones -- which is the point.
-    # A patched copy of yesterday's build left beside today's would be an
-    # emulator that silently stopped updating.
-    #
-    # Deliberately not part of the install's success: a build this patch does
-    # not fit still installs and still runs, and `emu_patch.unapplied` is how
-    # the panel says the fix could not be applied to it.
+    # Patched copies derive from the new build. Not part of success: an
+    # unpatchable build still runs, and `emu_patch.unapplied` reports it.
     emu_patch.refresh(entry, path, asset.get("tag", ""))
 
     appenv.logger.info("Installed %s to %s", entry["id"], path)
@@ -1256,16 +1024,12 @@ def _remove_others(directory, keep):
     except OSError:
         return
     for name in names:
-        # The record describes the build being kept, so it survives too. It is
-        # rewritten immediately after this either way; deleting it here would
-        # only widen the window where an interrupted install looks unknown.
+        # The record describes the kept build and is rewritten right after.
         if name in keeping or name == BUILD_RECORD:
             continue
         path = os.path.join(directory, name)
         try:
-            # Patching unpacks a 186MB tree beside the build. It clears up after
-            # itself, but a kill in the middle leaves one behind, and a
-            # directory here is otherwise a warning on every install forever.
+            # A patching tree left by a kill mid-way.
             if os.path.isdir(path):
                 shutil.rmtree(path)
             else:
@@ -1277,10 +1041,7 @@ def _remove_others(directory, keep):
 def tools_dir(*parts, create=True):
     """Where helper binaries live: `~/deckyemu/tools`.
 
-    Separate from `emulators` because these are not emulators and must not be
-    listed as any: the PS4 package extractor plays nothing, it turns a .pkg into
-    a folder shadPS4 can run. Same directory rules otherwise -- under the user's
-    own home, so a plugin reinstall does not delete it.
+    Separate from `emulators` so tools are never listed as emulators.
     """
     return sysenv.user_dir("tools", *parts, create=create)
 
@@ -1303,11 +1064,8 @@ def installed_tool(name):
 def _nothing_matched(pattern, names):
     """The error for an `extract` pattern that named no member of the archive.
 
-    It lists what was in there, because the pattern belongs to whoever wrote the
-    definition and the archive belongs to whoever cut the release, and the two
-    drift: PaperBoat's readme says `paperboat.appimage` while its zip ships
-    `Paperboat.AppImage`. "The download did not contain what was expected" sent
-    somebody to read the plugin's source to learn that the P was capital.
+    Lists what the archive holds, since patterns and releases drift, often
+    only in letter case.
     """
     listed = ", ".join(sorted(names)[:8]) or "nothing"
     if len(names) > 8:
@@ -1318,15 +1076,9 @@ def _nothing_matched(pattern, names):
 def _replace(target):
     """Take a file out of the way so the new one can be written over it.
 
-    **An archive's own permissions outlive the file.** BigPEmu ships its data
-    read-only -- `strings_en.txt` arrives as `r-xr-xr-x` -- so unpacking a
-    second build over the first failed with "Permission denied" the moment it
-    reached one: the first install created the files, and `open(..., "wb")`
-    cannot reopen a read-only one. Every install worked and every *change of
-    build* failed, which is the shape that hides until somebody rolls back.
-
-    Removing rather than chmod-ing, because the new file should inherit
-    nothing from the old one.
+    An archive can ship read-only files, and `open(..., "wb")` cannot reopen
+    one, so a second build failed over the first. Removed, not chmod-ed, so
+    the new file inherits nothing.
     """
     try:
         os.remove(target)
@@ -1339,11 +1091,8 @@ def _replace(target):
 def _safe_target(destination, name):
     """Where `name` lands under `destination`, or "" if it tries to leave it.
 
-    Every archive here comes off the network, so a member that is absolute or
-    climbs out with `..` is refused rather than trusted. `..` inside the name
-    is not enough on its own -- `a/../b` is fine -- so the resolved path is
-    compared against the destination, which is what catches a symlink-free
-    escape however it was spelled.
+    Archives come off the network, so an absolute or `..` member is refused,
+    and the resolved path is checked against the destination.
     """
     relative = os.path.normpath(name).replace("\\", "/")
     if relative.startswith("/") or relative.split("/")[0] == "..":
@@ -1358,11 +1107,8 @@ def _safe_target(destination, name):
 def _common_prefix(names):
     """The single folder every member sits in, or "".
 
-    A release tarball conventionally holds one directory -- `bigpemu/bigpemu`,
-    `bigpemu/Data/...` -- and unpacking that into a folder already named for
-    the emulator gives `emulators/bigpemu/bigpemu/bigpemu`. Measured on a Deck,
-    which is how this was noticed. Stripped only when *everything* is under the
-    same one, so an archive of loose files is left alone.
+    Stripped so a tarball's top folder does not nest inside ours. Only when
+    every member shares it.
     """
     first = ""
     for name in names:
@@ -1378,11 +1124,8 @@ def _common_prefix(names):
 def _unpack_tarball(archive, destination, pattern):
     """`_unpack_release` for a .tar.gz. Same contract, same refusals.
 
-    Tar carries things zip cannot -- symlinks, hard links, devices, absolute
-    names -- and `extractall` honours all of them. Only regular files and
-    directories come out here, so a link pointing anywhere is simply not
-    written. Python 3.12 gained `filter="data"` for this; the backend's runtime was
-    3.11, so the check is here rather than delegated.
+    Only regular files come out, so links and devices are never written.
+    `filter="data"` needs Python 3.12; the runtime was 3.11.
     """
     try:
         matcher = re.compile(pattern)
@@ -1411,8 +1154,7 @@ def _unpack_tarball(archive, destination, pattern):
                     continue
                 with source, open(target, "wb") as handle:
                     shutil.copyfileobj(source, handle)
-                # The mode the archive recorded, or the program comes out
-                # unrunnable -- a tarball is how the execute bit survives.
+                # The recorded mode carries the execute bit.
                 if member.mode:
                     os.chmod(target, member.mode & 0o777)
                 seen.append(os.path.basename(target))
@@ -1428,10 +1170,7 @@ def _unpack_tarball(archive, destination, pattern):
 def _unpack_release(archive, destination, pattern):
     """Unpack a whole archive, and return the member `pattern` names. (path, error).
 
-    Members are written under `destination` by their own relative paths, which
-    is the difference from `_extract_member` and the reason each one is checked:
-    a name that is absolute, or that climbs out with `..`, is refused rather
-    than trusted. This comes off the network.
+    Members keep their relative paths, so each is checked for escaping.
     """
     if tarfile.is_tarfile(archive):
         return _unpack_tarball(archive, destination, pattern)
@@ -1453,14 +1192,11 @@ def _unpack_release(archive, destination, pattern):
                     return "", "The download holds a path that leaves its own folder."
                 target = os.path.join(destination, *relative.split("/"))
                 os.makedirs(os.path.dirname(target), exist_ok=True)
-                # Same reason as the tarball path: a zip records modes too, and
-                # a read-only file from the last build cannot be written over.
+                # A read-only file from the last build cannot be written over.
                 _replace(target)
                 with bundle.open(info) as source, open(target, "wb") as handle:
                     shutil.copyfileobj(source, handle)
-                # Everything keeps the mode the archive recorded, or a binary
-                # comes out unrunnable and its own data files come out writable
-                # when they were not.
+                # Keep the recorded mode.
                 mode = info.external_attr >> 16
                 if mode:
                     os.chmod(target, mode & 0o777)
@@ -1477,14 +1213,8 @@ def _unpack_release(archive, destination, pattern):
 def _extract_member(archive, destination, pattern):
     """Pull one file out of a downloaded zip by basename. Returns (path, error).
 
-    Members are written by basename into `destination`, never by the path the
-    archive carries: this is fetched over the network, and `extractall` would
-    honour a directory inside it. Same rule, and the same reason, as the
-    firmware unpacker.
-
-    One file, because a tool is one binary and so is an emulator's build. An
-    archive matching the pattern twice is a pattern that does not say what was
-    meant, and taking the first of them would decide it silently.
+    Written by basename, never the archive's path. Exactly one must match;
+    two means the pattern is ambiguous.
     """
     try:
         matcher = re.compile(pattern)
@@ -1520,19 +1250,9 @@ def _extract_member(archive, destination, pattern):
 def install_tool(name, asset, on_progress=None, extract=""):
     """Download a helper binary. Returns (path, error).
 
-    Same shape as `install_appimage`, including the execute bit: a downloaded
-    AppImage without it fails at exec time with nothing that names the cause.
-
-    `extract` names the member to keep when the release ships a zip rather than
-    a bare binary -- which is the only shape some projects publish. The archive
-    is deleted once the file is out of it, so `installed_tool` cannot answer
-    with it: that returns the first file in the directory, and a leftover zip
-    sorting before the binary would be handed to a launcher as the tool.
-
-    A list of patterns takes several members, for a helper that is a binary and
-    a library it is linked against. The first pattern names the binary: it is
-    what is returned, made executable, and what `installed_tool` must answer
-    with.
+    Like `install_appimage`. `extract` names the member to keep from a zip;
+    the zip is deleted so `installed_tool` cannot return it. A list of
+    patterns keeps several, and the first names the binary.
     """
     if not emulator_catalog.is_safe_id(name):
         return "", "Invalid tool name."
@@ -1578,50 +1298,28 @@ def install_tool(name, asset, on_progress=None, extract=""):
 def motion_server(entry):
     """The installed motion server for a catalog entry, or ''.
 
-    Its own function because two callers must agree: the launcher writer, which
-    starts it beside the emulator, and whatever offers to fetch it. An emulator
-    with no `motion` block, or one whose server has not been downloaded yet,
-    answers '' -- and a launcher written then is the ordinary one, so motion is
-    the only thing missing rather than the game.
+    Shared by the launcher writer and the fetcher so they agree. '' means
+    the ordinary launcher, with only motion missing.
     """
     if not hardware.has_deck_sensors():
-        # Nothing to serve here, so the launcher is the ordinary one. Said in
-        # this function rather than at the call site because the two callers
-        # have to agree, which is the whole reason it exists.
+        # No sensors to serve.
         return ""
     server = ((entry or {}).get("motion") or {}).get("server") or {}
     name = server.get("name") or ""
     return installed_tool(name) if name else ""
 
 
-#: When it is worth asking GitHub about a motion server again, by tool name.
-#:
-#: **Because the same file is wanted by more than one emulator, and the startup
-#: check runs more than once.** Two emulators share one server, and the routine
-#: that calls this runs on every `get_status` -- so a Deck with both installed
-#: asked GitHub four times in under a second for one binary, against an
-#: unauthenticated budget of sixty an hour for the whole address. That budget is
-#: shared with everything else on the network, so spending it four at a time on
-#: a question already answered is how a download fails for somebody who was
-#: never near the limit.
-#:
-#: In memory rather than on disk: the point is to stop a burst, and a plugin
-#: reload is a fine moment to try again.
+#: When to ask GitHub about a tool again, by name. Emulators share a server
+#: and the check runs on every status call, which once spent four requests of
+#: the hourly budget in a second. In memory: a reload may retry.
 _TOOL_RETRY_AFTER: dict = {}
 
 
 def motion_configured(entry):
     """Whether the emulator itself is pointed at the motion server.
 
-    **The binary being present is not the same as motion working, and the gap is
-    silent.** `emu_config` refuses to write a file the user has made their own,
-    which is right -- but it means somebody who configured their controller by
-    hand keeps their config and gets no motion, with nothing saying so. Cemu is
-    where this bites: its profile is supplied whole, so one save in its own
-    controller settings takes ownership of the file for good.
-
-    Answers True when there is nothing to check, so an emulator that declares no
-    verification is never reported as misconfigured.
+    `emu_config` won't overwrite a file the user owns, so a hand-configured
+    controller silently gets no motion. True when there is nothing to check.
     """
     verify = ((entry or {}).get("motion") or {}).get("verify") or {}
     path, needle = verify.get("path"), verify.get("contains")
@@ -1632,44 +1330,28 @@ def motion_configured(entry):
         with open(full, "r", encoding="utf-8", errors="replace") as handle:
             return needle in handle.read()
     except OSError:
-        # No file yet is not "misconfigured": the emulator has not run and the
-        # settings pass has not reached it. Saying otherwise would report every
-        # fresh install as broken.
+        # Not run yet, which is not misconfigured.
         return True
 
 
 def motion_state(entry, now=None):
     """What the panel says about this emulator's motion server.
 
-    **Because nothing said anything, and that is how it went wrong once.** The
-    server is fetched quietly and a failure only reached the log, so a Deck
-    where GitHub had rate-limited the download looked identical to one where
-    motion simply did not work -- and the only way to tell them apart was to
-    read a log file over SSH. An emulator that needs a second file has to be
-    able to say whether it has it, the same way a firmware requirement does.
-
-    `waiting` is seconds until the next attempt, and it is the difference
-    between "this is broken" and "this is coming": a rate-limited address fixes
-    itself, and saying when turns a dead end into a wait.
+    A failed fetch used to reach only the log. `waiting` is seconds until the
+    next attempt, so a rate limit reads as a wait, not a fault.
     """
     server = ((entry or {}).get("motion") or {}).get("server") or {}
     name = server.get("name") or ""
-    # A row about a sensor this machine does not have is worse than no row: it
-    # reports a thing as missing that is never going to arrive. `declared`
-    # already means "this emulator has motion to talk about", and here it has
-    # none, so the panel says nothing and needs no new words for the case.
+    # No sensors: no row at all.
     if not name or not hardware.has_deck_sensors():
-        # Same shape whatever the answer, so a caller never has to ask which
-        # keys exist before reading them.
+        # Same keys whatever the answer.
         return {"declared": False, "ready": False, "configured": True, "waiting": 0}
     now = time.time() if now is None else now
     installed = bool(installed_tool(name))
     return {
         "declared": True,
         "ready": installed,
-        # Only asked once the binary is here: before that the emulator not being
-        # pointed at it is expected, and two faults where there is one reads as
-        # a bigger problem than it is.
+        # Only once the binary is here, so one fault is not reported as two.
         "configured": motion_configured(entry) if installed else True,
         "waiting": max(0, int(_TOOL_RETRY_AFTER.get(name, 0.0) - now)),
     }
@@ -1678,24 +1360,10 @@ def motion_state(entry, now=None):
 def ensure_tool(spec, now=None):
     """Fetch one declared tool if it is not here yet. Returns (path, error).
 
-    **Nobody is ever asked to install one of these.** A helper binary is not a
-    thing a user set out to acquire -- they turned on motion, or cloud saves --
-    so the feature that needs it fetches it, and the Tools section exists to
-    report state and to put one back after a removal, not to hand out a chore.
-
-    Called from two places on purpose. Turning the feature on is the obvious
-    one; startup is the one that matters, because anything switched on before
-    this existed would otherwise never get it, and there is no moment a user
-    would think to ask for a file they have not been told about.
-
-    **An error here is never fatal to anything.** What is lost is a feature that
-    has never worked yet, and every caller carries on -- the same trade the
-    launcher makes when the binary is missing at launch time.
-
-    **A failure is remembered for a while, and a rate limit until it lifts.**
-    GitHub says when its budget resets, so that is what is waited for rather
-    than a number chosen here; anything else backs off briefly, which is enough
-    to turn a burst into one attempt.
+    The feature that needs a tool fetches it; the Tools section only reports
+    and restores. Called when the feature is turned on and at startup, for
+    features enabled before the tool existed. Never fatal. A failure backs
+    off briefly, a rate limit until it lifts.
     """
     spec = spec or {}
     name = spec.get("name") or ""
@@ -1726,14 +1394,8 @@ def ensure_tool(spec, now=None):
 def ensure_motion_server(entry, now=None):
     """Fetch this emulator's motion server if it is not here yet. (path, error).
 
-    Not on a machine whose sensors it cannot read: `hardware.has_deck_sensors`.
-    Measured on a desktop before this check existed -- the binary downloaded and
-    every launcher for an emulator that speaks DSU was rewritten to start it, so
-    it cost a download, a process per launch and the `exec` those launchers give
-    up, and it could never send a single reading.
-
-    No error for that, because nothing failed. An empty answer is what every
-    caller already does the right thing with.
+    Not without Deck sensors (`hardware.has_deck_sensors`): it could never send
+    a reading. Nothing failed, so no error.
     """
     if not hardware.has_deck_sensors():
         return "", ""
@@ -1743,9 +1405,8 @@ def ensure_motion_server(entry, now=None):
 def ensure_hotkey_helper(entry, now=None):
     """Fetch the hotkey helper if this entry needs keys and it is not here yet.
 
-    Same rule as the motion server: the launcher names the binary when it is
-    written, so one arriving later reaches a game only when its launcher is
-    rewritten. A port with no keys declared asks for nothing.
+    A launcher names the binary when written, so a late arrival needs the
+    launcher rewritten. A port with no keys asks for nothing.
     """
     if not emulator_catalog.hotkeys.bindings_for(entry):
         return "", ""
@@ -1755,19 +1416,12 @@ def ensure_hotkey_helper(entry, now=None):
 def ensure_cloud_tool(now=None):
     """Fetch rclone if cloud saves are on and it is not here. (path, error).
 
-    The counterpart of `ensure_motion_server` for the tool that belongs to no
-    emulator. Whoever switches cloud saves on gets the binary; the row in Tools
-    is only ever a report and a way back from a removal.
+    Switching cloud saves on fetches it; the Tools row only reports.
     """
     return ensure_tool(emulator_catalog.cloud.RCLONE, now)
 
 
-#: What was installed, written beside the AppImage it describes.
-#:
-#: In the emulator's own folder rather than the settings directory so it travels
-#: with the install: the settings directory is cleared on
-#: uninstall, and an emulator whose build became unknown because the plugin was
-#: reinstalled is exactly the case this exists to avoid.
+#: What was installed, beside the AppImage, so it survives a plugin reinstall.
 BUILD_RECORD = ".build.json"
 
 
@@ -1778,9 +1432,7 @@ def build_record_path(entry_id):
 def read_build_record(entry_id):
     """{tag, asset} for an installed AppImage, or {} when it is not known.
 
-    Empty is a real answer and not an error. Anything installed before this was
-    recorded has no record, and reporting that honestly is what stops the panel
-    claiming a build it cannot actually identify.
+    Empty is not an error: older installs have no record.
     """
     if not emulator_catalog.is_safe_id(entry_id):
         return {}
@@ -1795,12 +1447,7 @@ def read_build_record(entry_id):
 def write_build_record(entry_id, tag, asset_name, versions=()):
     """Record which release an AppImage came from. Best effort.
 
-    `versions` is the list of releases that build knew about, and it is kept
-    for one reason: **the notes go backwards with the build.** BigPEmu's
-    history comes out of the ReadMe inside the installed build, so rolling back
-    to 1.19 leaves a Deck whose only list ends at 1.19 -- with no way back to
-    1.22 from the dialog that put it there. The remembered list is merged in,
-    so a build never loses sight of the ones that came after it.
+    `versions` are all releases seen, so a rollback still lists newer ones.
     """
     if not emulator_catalog.is_safe_id(entry_id):
         return
@@ -1810,32 +1457,20 @@ def write_build_record(entry_id, tag, asset_name, versions=()):
             json.dump({"tag": tag or "", "asset": asset_name or "",
                        "versions": kept}, handle, indent=2)
     except OSError as error:
-        # Not fatal: the emulator is installed and runs. What is lost is the
-        # ability to say which build it is, which degrades to "unknown".
+        # Not fatal: the build just reads as unknown.
         appenv.logger.warning("Could not record the build of %s: %s", entry_id, error)
 
 
-#: What the newest release of each AppImage emulator was, the last time somebody
-#: asked. Beside the build record rather than in it: the record says what *this
-#: device installed*, which is a fact about the install and must survive a failed
-#: network call, while this says what the *project has published*, which is a
-#: fact about somebody else's repository and is stale the moment it is written.
-#:
-#: In the settings directory, not the emulator's folder, because it is exactly
-#: the thing that may be thrown away: losing it costs one press of the check
-#: button, and losing the build record costs the ability to name the build at
-#: all.
+#: The newest release of each AppImage emulator at the last check. In the
+#: settings directory, unlike the build record: it is a disposable cache.
 LATEST_TAGS = os.path.join(appenv.DATA_DIR, "latest-tags.json")
 
 
 def read_latest_tags():
     """{entry_id: tag} from the last update check, or {}.
 
-    No timestamp, deliberately. A cached answer does not go wrong with age: the
-    only thing that changes it is installing the update, and that rewrites the
-    build record, which flips the comparison to "current" on its own. What a
-    stale entry costs is a *newer* update going unnoticed until the next check,
-    which is what the button is for.
+    No timestamp: installing the update rewrites the build record, which
+    flips the comparison by itself.
     """
     try:
         with open(LATEST_TAGS, "r", encoding="utf-8") as handle:
@@ -1858,8 +1493,7 @@ def write_latest_tags(tags):
 def github_latest_tag(repo):
     """The newest published tag for `repo`, or "". No API budget, no body.
 
-    A renamed repository redirects twice and still answers, which is how
-    `HarbourMasters/Lighthouse` kept working after it moved.
+    A renamed repository redirects and still answers.
     """
     if not re.match(r"^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$", repo or ""):
         return ""
@@ -1871,10 +1505,8 @@ def github_latest_tag(repo):
 def latest_tag(entry):
     """The newest published tag for one AppImage emulator, or ('', reason).
 
-    One network call. **Never call this per row or per tab open** -- that is the
-    whole reason the answer is cached in a file and asked for by a button. Four
-    catalog entries install from a release, so a check is four calls at worst,
-    and none of them is a call anybody is waiting on a screen for.
+    One network call: never per row or tab open, which is why the answer is
+    cached and asked for by a button.
     """
     source = entry.get("source") or {}
     if source.get("kind") == "url":
@@ -1889,8 +1521,7 @@ def latest_tag(entry):
         tag = github_latest_tag(repo)
         if tag:
             return tag, ""
-        # Falls through to the API rather than reporting nothing: the website
-        # answering oddly should not be the end of the check.
+        # Fall through to the API.
     asset, error = resolve_release_asset(repo, source.get("asset", ""), host)
     if not asset:
         return "", error or "Could not read the latest release."
@@ -1900,18 +1531,8 @@ def latest_tag(entry):
 def update_state(installed_tag, published_tag):
     """"available", "current", or "unknown" for one AppImage emulator.
 
-    **Unknown is the answer whenever either side is missing**, and it is a
-    different answer from "current" rather than a softer version of it. An
-    install made before the build record existed has no tag of its own, and a
-    check that never ran -- or ran and failed -- has nothing published to compare
-    it with. Both were previously reported as no update available, which is a
-    claim the plugin was in no position to make: it reads as "you are up to date"
-    and is the reason this function exists as its own named thing.
-
-    String equality, not version ordering. These are the projects' own tags --
-    `v0.9.1`, `2026-08-10`, `4074`, `canary_experimental` -- and there is no
-    ordering that is right for all of them. Equality only ever claims the two
-    are the same build, which is true whatever the shape.
+    Unknown whenever either side is missing; it must not read as up to date.
+    String equality, since tags come in shapes no one ordering fits.
     """
     if not installed_tag or not published_tag:
         return "unknown"
@@ -1922,19 +1543,13 @@ def installed_appimage(entry_id):
     """The AppImage installed for `entry_id`, or ''."""
     if not emulator_catalog.is_safe_id(entry_id):
         return ""
-    # Not created on the way past: this is a question, and answering it should
-    # not leave an empty folder behind for every emulator that is not installed.
+    # Not created: asking must not leave empty folders.
     directory = emulators_dir(entry_id, create=False)
-    # Saves kept behind by a removal live in here too, for a port that writes
-    # them beside its binary -- and one of them is a file, so without this the
-    # first of them alphabetically was returned as the program to run and the
-    # port read as still installed after it was removed.
+    # Saves kept by a removal may be files in here; never return one.
     saves = {os.path.normpath(one) for one in declared_saves(entry_id)}
     try:
         for name in sorted(os.listdir(directory)):
-            # The build record lives in here too, and sorts first because it
-            # starts with a dot -- so without this every emulator would report
-            # its metadata file as the binary to run.
+            # The build record sorts first.
             if name == BUILD_RECORD:
                 continue
             path = os.path.join(directory, name)
@@ -1950,8 +1565,7 @@ def installed_appimage(entry_id):
 def declared_saves(entry_id):
     """Absolute paths of what an entry calls its save data, as they exist now.
 
-    Read from the definition rather than guessed, and resolved through the same
-    patterns `savedata` expands, so the two always mean the same files.
+    Expanded through `savedata`'s patterns, so both mean the same files.
     """
     entry = emulator_catalog.find(entry_id)
     if not entry:
@@ -1966,28 +1580,15 @@ def declared_saves(entry_id):
 def remove_appimage(entry_id, keep=()):
     """Delete the folder an AppImage emulator was installed into.
 
-    `keep` are paths inside it to leave behind, and it is the difference
-    between removing an emulator and removing a port. An emulator installed
-    from a release keeps its saves in `~/.config` or `~/.local/share`, well
-    outside this folder, so deleting the folder costs nothing but the binary.
-    A port of the portable kind keeps them *beside* the binary -- `saves/`,
-    `Save/`, its own `.cfg.json` -- all inside the very directory this used to
-    delete whole.
-
-    So removing a port took its saves with it, silently, from a button that
-    offers to delete the data separately and defaults to not. `delete_data`
-    was honoured for a flatpak and meaningless here, because the code above
-    believed an AppImage kept nothing in its own folder.
+    `keep` are paths inside to leave behind: a portable port keeps its saves
+    beside the binary, which a whole-folder delete would take.
     """
     if not emulator_catalog.is_safe_id(entry_id):
         return False, "Invalid emulator id."
 
-    # create=False matters: creating the folder on the way to deleting it makes
-    # every removal "succeed", including the second one for an emulator that was
-    # already gone.
+    # create=False, or every removal "succeeds".
     directory = emulators_dir(entry_id, create=False)
-    # Refuse to delete anything that is not where we put it, so a future caller
-    # passing something odd cannot turn this into a general-purpose rm -rf.
+    # Only ever under our own emulators folder.
     root = os.path.normpath(emulators_dir(create=False))
     if not os.path.normpath(directory).startswith(root + os.sep):
         return False, "Refusing to remove %s" % directory
@@ -1998,9 +1599,7 @@ def remove_appimage(entry_id, keep=()):
             if not os.path.isdir(directory):
                 return False, "Nothing was installed for that emulator."
             _prune(directory, keeping)
-            # Nothing of the entry's was in here after all -- a port keeping
-            # its saves under `.local/share` rather than beside its binary --
-            # so the folder goes, as it did before anything was kept.
+            # Nothing kept was in here, so the folder goes.
             if not os.listdir(directory):
                 shutil.rmtree(directory)
         else:
@@ -2033,9 +1632,7 @@ def _prune(folder, keeping):
 def remove_tool(name):
     """Delete an installed helper binary. Returns (removed, error).
 
-    Only ever inside `tools_dir`, and only a directory this plugin made: the
-    name is checked the same way it is on the way in, so a name from the
-    frontend cannot name a path.
+    Only inside `tools_dir`; the name is checked so it cannot be a path.
     """
     if not emulator_catalog.is_safe_id(name):
         return False, "Invalid tool name."
@@ -2067,14 +1664,9 @@ def install_named_tool(name, on_progress=None):
 def tools_report(installed_emulator_ids=(), features=()):
     """Every fetched helper, with whether it is here and whether it is wanted.
 
-    `wanted` is what keeps the section honest: a tool for an emulator nobody has
-    installed is not missing, it is simply not needed yet, and showing it as
-    absent would invent a chore. The same rule the firmware section follows.
-
-    `features` is that same rule for the tools that belong to the plugin rather
-    than to an emulator: rclone is wanted once cloud saves are switched on and
-    not before, so the row appears when the setting does and there is never an
-    unexplained binary offered to somebody who asked for nothing.
+    A tool is `wanted` once an emulator needing it is installed, or for a
+    plugin tool such as rclone, once its feature is on. Unwanted is not
+    missing.
     """
     present = set(installed_emulator_ids or ())
     switched_on = set(features or ())
