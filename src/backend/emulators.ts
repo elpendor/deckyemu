@@ -24,6 +24,8 @@ export interface BlockedState {
   reason: string;
   /** For "running": how the other build names itself, and its version. */
   build?: string;
+  /** For "switched": the build in use, "service" or "plugin". */
+  kind?: string;
   version?: string;
 }
 

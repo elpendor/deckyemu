@@ -21,10 +21,10 @@ describe("the panel when the backend stays off", () => {
     expect(blockScreen({ reason: "format" })?.title).toBe("Update DeckyEmu");
   });
 
-  it("names the build in use after a switch", () => {
-    const screen = blockScreen({ reason: "switched", build: "The DeckyEmu service", version: "0.21.0" });
-    expect(screen?.title).toBe("DeckyEmu is in use elsewhere");
-    expect(screen?.body).toMatch(/^The DeckyEmu service 0\.21\.0 is the one in use/);
+  it("says which version is in use after a switch, in the words the panel uses", () => {
+    expect(blockScreen({ reason: "switched", kind: "service" })?.title).toBe("Running as the standalone version");
+    expect(blockScreen({ reason: "switched", kind: "plugin" })?.title).toBe("Running as the plugin version");
+    expect(blockScreen({ reason: "switched" })?.title).toBe("Running as the other version");
   });
 
   it("explains a reason it does not know rather than showing nothing", () => {

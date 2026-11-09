@@ -132,8 +132,19 @@ export const HEADER_BUTTON = {
   alignItems: "center",
 } as const;
 
+/**
+ * Whether Steam needs a restart to show the version in use: only on the
+ * plugin's tab, until the standalone version's tab has loaded. The plugin's
+ * tab shows whenever the plugin is installed.
+ */
+function restartWouldHelp(inUse: string | undefined): boolean {
+  if (inUse !== "service") return false;
+  const started = (window as unknown as { __deckyemu?: { status?: { started?: string } } }).__deckyemu?.status?.started;
+  return !started;
+}
+
 /** On the panel of the build that stays off, while the other is in use. */
-export function TakeOverRows({ onTaken }: { onTaken: () => void }) {
+export function TakeOverRows({ onTaken, inUse }: { onTaken: () => void; inUse?: string }) {
   const [busy, setBusy] = useState(false);
 
   const run = async () => {
@@ -168,11 +179,13 @@ export function TakeOverRows({ onTaken }: { onTaken: () => void }) {
           {busy ? "Switching..." : "Use this one instead"}
         </ButtonItem>
       </PanelSectionRow>
-      <PanelSectionRow>
-        <ButtonItem layout="below" onClick={restartSteam}>
-          Restart Steam
-        </ButtonItem>
-      </PanelSectionRow>
+      {restartWouldHelp(inUse) && (
+        <PanelSectionRow>
+          <ButtonItem layout="below" onClick={restartSteam}>
+            Restart Steam
+          </ButtonItem>
+        </PanelSectionRow>
+      )}
     </>
   );
 }

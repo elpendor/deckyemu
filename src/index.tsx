@@ -291,7 +291,7 @@ function Content() {
           <Field description={block.body} />
         </PanelSectionRow>
         {status.blocked?.reason === "switched" && (
-          <TakeOverRows onTaken={() => void loadStatus()} />
+          <TakeOverRows onTaken={() => void loadStatus()} inUse={status.blocked?.kind} />
         )}
         {updateRow}
       </PanelSection>
