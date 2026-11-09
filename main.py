@@ -53,22 +53,17 @@ import vita_games
 def own_module_names(root):
     """The module names py_modules/ provides, imported on this run or not.
 
-    Read off the directory rather than listed by hand. The list this replaces was
-    written out in full and drifted twice: eight modules the first time,
-    `diagnostics` the second. Both went unnoticed for the same reason -- a guard
-    that covers some of the names produces exactly the output of a clean run, so
-    there is nothing to notice.
+    Read off the directory: a hand-kept list drifts, and a guard missing names
+    looks exactly like a clean run.
     """
     names = set()
     package = os.path.join(root, "py_modules")
     try:
         entries = os.listdir(package)
     except OSError:
-        # Nothing to check is not a failure worth raising during startup; the
-        # caller is one step of `_main` and the plugin has to come up regardless.
+        # Startup must go on: nothing to check is not an error.
         return names
     for entry in entries:
-        # Dotfiles, `.keep` and `__pycache__`: not modules anyone imports.
         if entry.startswith((".", "_")):
             continue
         if entry.endswith(".py"):
@@ -81,17 +76,9 @@ def own_module_names(root):
 def _title_id_for(rom_path):
     """The title id a launcher needs, or "" for a game that launches by path.
 
-    Derived from the recorded ROM rather than stored beside it, so a library
-    written before any of this still rebuilds correctly. Empty for every game
-    but Vita3K's, which are installed rather than opened: their launcher runs
-    `-r <TITLE_ID>` and must carry no path at all.
-
-    One function because two callers both need it and only one of them had it.
-    `rebuild_launchers` derived it; `update_game` passed `write_launcher` its
-    arguments positionally and stopped one short of `title_id`, so saving an
-    edit rewrote a Vita launcher to open the eboot by path -- which starts
-    Vita3K's own interface and no game. Anything that writes a launcher gets
-    the id from here, and nothing has to remember that Vita is different.
+    Empty for all but Vita3K's games, which are installed rather than opened:
+    their launcher runs `-r <TITLE_ID>` with no path. Derived from the ROM, so
+    older libraries rebuild correctly. Every launcher writer gets it from here.
     """
     return vita_games.title_of(rom_path or "")
 
@@ -99,22 +86,15 @@ def _title_id_for(rom_path):
 def _check_own_modules():
     """Warn if one of our modules was shadowed by another of the same name.
 
-    A generic name can resolve to some other package's module instead of ours --
-    silently, and only for the parts that use it. `updater.py` did exactly that:
-    everything loaded, and one feature failed with "module 'updater' has no
-    attribute 'check'". Cheap to check, and it names the problem outright.
-
-    Every name py_modules offers is checked, not only the ones main.py imports:
-    a module reached through another module can be shadowed just as quietly, and
-    deriving the set means neither list has to be kept.
+    A generic name can resolve to another package's module, silently, breaking
+    only what uses it. Every name py_modules offers is checked, since a module
+    reached indirectly can be shadowed as quietly.
     """
     here = os.path.dirname(os.path.abspath(__file__))
     for name in sorted(own_module_names(here)):
         module = sys.modules.get(name)
         if module is None:
-            # Not imported on this run, so nothing has resolved the name yet and
-            # there is nothing to have resolved it wrongly.
-            continue
+            continue  # not imported, so not resolved wrongly
         path = os.path.abspath(getattr(module, "__file__", "") or "")
         if not path.startswith(here):
             appenv.logger.error(
@@ -123,33 +103,14 @@ def _check_own_modules():
             )
 
 
-
 def _log_failures(cls):
-    """Make every method the panel can call write down why it failed.
+    """Make every method the panel can call log why it failed.
 
-    The service hands an exception back to the panel and nothing
-    writes it anywhere. So the frontend gets a message, shows the user its own
-    wording for "that did not work", and the plugin log -- the one place anybody
-    looks afterwards, and the only thing a bug report can carry -- has nothing
-    in it. What the log does get is asyncio complaining about the wreckage,
-    which names neither the method nor the line.
-
-    That has cost this project twice. Six rounds went into a bug where a module
-    in `py_modules` shadowed one of the standard library's and the exception
-    never reached the log, and `_installed_catalog_ids` returning a coroutine
-    instead of a list surfaced only as "The report could not be prepared"
-    beside a log full of "Task was destroyed but it is pending".
-
-    Applied to the class rather than written at each of the hundred-odd methods:
-    a rule that has to be remembered at every call site is one that will be
-    missing from the method that needs it. Public coroutines only -- `_main` and
-    `_unload` catch their own steps deliberately, and a private helper fails
-    inside a public one that is already covered.
-
-    The exception is logged and re-raised, never swallowed: the frontend still
-    has to hear about it. `except Exception` and not `BaseException`, so an
-    `asyncio.CancelledError` from the service stopping passes through
-    without being dressed up as a failure.
+    An exception handed back to the panel is otherwise written nowhere, and the
+    log is what a bug report carries. Applied to the class, so no method can
+    forget it; public coroutines only, since `_main` and `_unload` catch their
+    own steps. Logged and re-raised, so the panel still hears of it.
+    `CancelledError` is not an `Exception` and passes through untouched.
     """
     def wrap(name, method):
         @functools.wraps(method)
@@ -162,12 +123,8 @@ def _log_failures(cls):
 
         return logged
 
-    # Each method is replaced on the class that *defines* it, walking the MRO,
-    # rather than all of them being set on `Plugin`. Setting them here would
-    # give Plugin an attribute for every method its mixins own -- which is
-    # exactly the shadowing `test_plugin_mixins` exists to catch, and it caught
-    # this. A name defined in two places is a name with two implementations, and
-    # nothing about logging should invent one.
+    # Wrapped on the class that defines each method: setting them all on
+    # Plugin would shadow the mixins' (see test_plugin_mixins).
     for klass in cls.__mro__:
         if klass is object:
             continue
@@ -178,21 +135,10 @@ def _log_failures(cls):
     return cls
 
 
-#: Methods that answer even on hardware the plugin does not support.
-#:
-#: The gate is a backstop, not the user interface -- the panel shows the
-#: explanation and never calls the rest. What survives is therefore only what is
-#: needed to *see* that explanation, act on it, and report it if it is wrong:
-#:
-#: * what the panel asks for on mount, or it renders nothing to explain with
-#: * the settings pair, which is how the override is turned on
-#: * frontend error logging, which must never be the thing that fails
-#: * the updater, so a machine can always be moved to a version that fixes this
-#: * the diagnostic report, which is how somebody tells us this gate is wrong
-#:
-#: An allowlist rather than a denylist because the risk is asymmetric: a
-#: mutating method left out of a denylist runs on hardware nothing has tested,
-#: while one wrongly left out of this list is a visible, reported failure.
+#: Methods that answer even on hardware the plugin does not support: enough to
+#: show why, turn on the override, log errors, update, and report a wrong
+#: verdict. An allowlist, because a method wrongly missing from it fails
+#: visibly, while one missing from a denylist would run untested.
 UNGATED_METHODS = frozenset({
     "get_status",
     "list_added",
@@ -256,17 +202,9 @@ class UnsupportedDevice(Exception):
 def _require_supported_device(cls):
     """Refuse the methods that change things when this is not a Steam Deck.
 
-    Everything here was built and measured on one, so anywhere else is untested
-    rather than merely unusual, and the failures it produces cannot be
-    reproduced on hardware the project targets.
-
-    The hardware is asked each time rather than cached at load: a cached answer
-    would be one more thing to be wrong after a suspend, an update or a change
-    nobody predicted, and reading two small sysfs files is not a cost worth
-    optimising against correctness.
-
-    Applied over `_log_failures` -- the gate is the inner wrapper, so a refusal
-    is logged with the method that caused it exactly like any other failure.
+    Anywhere else is untested. The hardware is asked on every call, not cached,
+    since two sysfs reads are cheap and a cached answer can go stale. The inner
+    wrapper, so `_log_failures` logs a refusal like any other failure.
     """
     def wrap(name, method):
         @functools.wraps(method)
@@ -331,62 +269,34 @@ class Plugin(
         # Then, before anything reads the state: see buildhost.py.
         await self._host_claimed()
         _check_own_modules()
-        # Said once, at the top of the log, so a report from unsupported
-        # hardware explains itself before anyone reads a line of what went
-        # wrong on it.
+        # First in the log, so a report from other hardware explains itself.
         hardware.log_once()
 
-        # What to do with a file the moment it finishes arriving. A save backup
-        # is moved out of the ROM inbox and everything else is left where it
-        # landed -- see `savedata.take_delivery`. Registered here rather than
-        # when the server starts, because the server also comes up on its own to
-        # hand a report out and the rule is the same either way.
+        # A save backup leaves the ROM inbox on arrival; see
+        # savedata.take_delivery. Set here as the server also starts on its own.
         fileserver.set_arrival_handler(savedata.take_delivery)
 
-        # Before the startup steps rather than after them, and it does not wait:
-        # the first check happens straight away and a failure climbs the retry
-        # ladder. Nothing here blocks on it -- it is a task -- and one hanging
-        # migration must not be the reason nobody is ever told about the fix
-        # for it.
-        # Whatever was watching before this call stops first. `_main` can run
-        # once per load, so this should never find anything -- but if it ever
-        # did, the old task would keep checking forever against a plugin nobody
-        # holds any more, and nothing would ever say so.
+        # Before the startup steps, as a task, so a hanging migration cannot
+        # stop the update that fixes it from being found. Any earlier watch
+        # stops first.
         previous = getattr(self, "_update_task", None)
         if previous is not None:
             previous.cancel()
         self._update_task = self.loop.create_task(self._watch_for_updates())
 
-        # A launcher holding a game at the starting line has written a file
-        # saying so, and this is what answers it. Here rather than in the panel
-        # because the panel is told about a launch a moment *after* the script
-        # runs -- measured twice on the device, and twice the game started
-        # before the save arrived. See `_watch_launches`.
+        # Answers a launcher holding its game for saves to arrive. Here, not in
+        # the panel, which hears of a launch only after it has started.
         previous_launch = getattr(self, "_launch_task", None)
         if previous_launch is not None:
             previous_launch.cancel()
         self._launch_task = self.loop.create_task(self._watch_launches())
 
-        # Ordered, and each one on its own. The sequence stays here because this
-        # is where it is read; the steps themselves are plugin_startup.py.
-        #
-        # The catalog is loaded first because everything after it reads it: an
-        # imported emulator has to be in it by the time launchers are upgraded
-        # and the library is backfilled, or a game added against one looks like
-        # a game whose emulator vanished.
-        #
-        # Caught individually because these are independent, and all but the
-        # first two are one-time migrations of data already on the device. A
-        # single `await` chain made every one of them a single point of failure
-        # for the whole of startup: one unreadable launcher, one imported
-        # definition that no longer parses, one config file with the wrong owner,
-        # and the steps after it never ran -- on this start or any later one,
-        # because nothing about the state that broke it would change. Reported
-        # per step, and startup continues, so a failure costs the one thing that
-        # failed rather than the plugin.
+        # In order (the steps are in plugin_startup.py), each caught on its own:
+        # one failing step costs only itself, not every step after it. The
+        # catalog loads first because the rest read it.
         for label, step in (
-            # Before the load, which is what would otherwise report each of them
-            # as clashing with a built-in.
+            # Before the load, which would report each as clashing with a
+            # built-in.
             ("drop definitions the plugin now ships", self._drop_superseded_definitions),
             ("load imported emulator definitions",
              lambda: self._run(emulator_catalog.reload_imported)),
@@ -402,16 +312,12 @@ class Plugin(
             ("re-file split firmware records", self._resplit_firmware_records),
             # Before sharing, which matches by content once this is loaded.
             ("load the BIOS checksum list", self._refresh_bios_dat),
-            # Every start, so a library that predates sharing gets it too. Safe
-            # to repeat: a share somebody removed is recorded and left alone.
+            # Every start; a share somebody removed is left alone.
             ("share firmware already on the Deck", self._share_firmware_with_library),
             ("fetch the cloud transfer tool", self._fetch_cloud_tool),
             ("forget settings that no longer exist", self._forget_removed_settings),
-            # Every start rather than on a version change: what it trims is
-            # written by playing, not by upgrading. See `LAUNCH_LOG_CAP` for why
-            # the capping happens here instead of in the launcher.
-            # A hotkey helper whose launcher was killed outright: nothing ran
-            # to stop it, and it types into whatever is open next.
+            # A helper left by a launcher killed outright would type into
+            # whatever opens next.
             ("stop stray hotkey helpers",
              lambda: self._run(launchers.stop_stray_helpers)),
             ("trim oversized launch logs",
@@ -419,10 +325,7 @@ class Plugin(
         ):
             try:
                 await step()
-            except Exception:
-                # Not CancelledError, which is a BaseException and so not caught
-                # here: a cancelled startup is the service shutting down,
-                # and it must be allowed to.
+            except Exception:  # not CancelledError: shutting down must work
                 appenv.logger.exception("Startup: could not %s -- carrying on", label)
         try:
             await self._host_started()
@@ -430,24 +333,8 @@ class Plugin(
             appenv.logger.exception("Startup: this build's own steps failed -- carrying on")
 
     async def _unload(self):
-        # Cancelled before stopping, and only here. Stopping deliberately leaves
-        # running transfers alone -- dismissing the dialog must not kill a
-        # multi-gigabyte upload -- but an unload is the end of the process that
-        # was writing them. Their handler threads would otherwise keep going with
-        # nothing left to rename the file into place, leaving a .uploading
-        # leftover that only the next start() would clear. Cancelling makes each
-        # handler delete its own partial on the way out, which is the one thing
-        # nothing else can do safely while it still holds the file open.
-        #
-        # Each independently, for the reason the startup steps are: the two
-        # listening sockets must not outlive the plugin, and a socket left bound
-        # because an unrelated cancel raised on the way past is exactly the
-        # failure that makes the *next* start unable to bind its port.
-        # Not in the list below: that one runs sync callables in the executor,
-        # and this is a task to cancel. An update watch left running would hold
-        # a reference to a backend the service has finished with, and would wake
-        # up six
-        # hours later to call methods on it.
+        # Each step on its own, as at startup: a socket left bound because an
+        # unrelated step raised would stop the next start from binding.
         try:
             await self._host_stopping()
         except Exception:
@@ -459,17 +346,8 @@ class Plugin(
         task = getattr(self, "_update_task", None)
         if task is not None:
             task.cancel()
-            # Waited for, briefly. A cancel only *requests*, and a task still
-            # pending when the loop goes away is logged by asyncio as "Task was
-            # destroyed but it is pending!" -- noise in the service's own output
-            # that
-            # reads like a bug of ours. Sleeping is the state it is in almost
-            # always, and that unwinds instantly.
-            #
-            # Bounded rather than awaited outright: if the cancel lands while the
-            # check is inside the executor, the request has to reach its own
-            # 20-second timeout before the thread returns, and an unload must not
-            # hold the service up for that.
+            # Waited for, so asyncio does not log it as destroyed while
+            # pending; bounded, as a check inside the executor can take 20s.
             try:
                 await asyncio.wait({task}, timeout=2)
             except Exception:
@@ -500,18 +378,8 @@ class Plugin(
         appenv.logger.info("DeckyEmu unloading")
 
     async def _uninstall(self):
-        # Nothing to clean up, and nothing is cleaned up for us either -- this
-        # comment used to say an uninstall removes the runtime dir, which it
-        # does not.
-        # Checked against the loader's own source at v3.2.6: the only `rmtree`
-        # in it takes the installed versions, the code itself. The
-        # settings and runtime directories are left exactly where they are.
-        #
-        # That turns out to be the behaviour worth having, so it is left alone
-        # rather than "fixed": the launcher scripts survive, so every game added
-        # goes on working after an uninstall, and a reinstall finds its whole
-        # library still recorded. Deleting either would break a shelf of Steam
-        # entries as a side effect of removing a plugin.
+        # Settings and launchers are deliberately kept: added games go on
+        # launching, and a reinstall finds the library as it was.
         appenv.logger.info("DeckyEmu uninstalled")
 
     async def _run(self, func, *args, **kwargs):
@@ -520,44 +388,21 @@ class Plugin(
     def _detach(self, coro, event, *args, once=False):
         """Run `coro` in the background, guaranteeing `event` fires either way.
 
-        An install runs detached because it takes minutes and streams progress,
-        so the panel's only way to learn it is over is the done event. A
-        detached task that raises reaches nobody: asyncio logs "Task exception
-        was never retrieved" into the service's own output and the panel keeps its
-        progress bar and its disabled button forever, which is the shape of
-        every "it just hung" report.
+        The done event is the panel's only sign the work ended, so an unexpected
+        exception still emits `event(*args, False, message)` instead of leaving
+        a progress bar forever.
 
-        The handlers inside these coroutines cover the failures that were
-        expected -- flatpak missing, a bad exit code. This covers the rest,
-        which is the class that has no name yet: a KeyError on an entry field, a
-        permission error writing a config, anything from the registration step
-        that runs after the download succeeded.
+        `once=True` allows one run per event and arguments: a second start
+        returns the running task. The panel forgets "running" when Quick Access
+        closes, so its button can be pressed again mid-install.
 
-        `event` is emitted as `event(*args, False, message)`, which fits both
-        shapes in use: `emulator_install_done(id, ok, message)` when an id is
-        passed and `retroarch_install_done(ok, message)` when nothing is.
-
-        **`once=True`: one of each, by event and arguments.** A second start
-        while the first is running returns the first task and runs nothing. The
-        panel holds
-        "running" in component state, which Steam throws away every time the
-        Quick Access panel closes, so the button comes back while the install is
-        still going and a second press started a second `flatpak install` of the
-        same app -- two transactions on one repo lock, behind a progress bar that
-        cannot tell either of them from a hang. Seen as two identical processes
-        under one plugin, 78 seconds apart.
-
-        Returns the task. Callers discard it -- detached is the point -- but a
-        test needs something to await, and polling for an event that is supposed
-        to arrive is how a test passes by timing out slowly.
+        Returns the task, for tests to await.
         """
         tasks = self._detached_tasks()
         key = (event,) + args
         running = tasks.get(key) if once else None
         if running is not None and not running.done():
-            # Closed rather than dropped: a coroutine that is never awaited
-            # warns when it is collected, and the warning names nothing.
-            coro.close()
+            coro.close()  # never awaited, so close it rather than warn later
             appenv.logger.info("%s is already running; not starting a second", event)
             return running
 
@@ -565,10 +410,7 @@ class Plugin(
             try:
                 await coro
             except asyncio.CancelledError:
-                # Unload cancels these. Swallowing it would keep the task alive
-                # while the loop is trying to close, so it goes back up -- and
-                # there is nothing left to emit to in any case.
-                raise
+                raise  # unload; the loop is closing
             except Exception as error:
                 appenv.logger.exception("Background work for %s failed", event)
                 try:
@@ -577,16 +419,13 @@ class Plugin(
                         "%s: %s" % (type(error).__name__, error),
                     )
                 except Exception:
-                    # The socket is the only way to report anything, so its
-                    # failure ends the matter. Logged rather than raised so the
-                    # original exception above stays the one in the log.
+                    # Logged, not raised, so the first failure stays logged.
                     appenv.logger.exception("Could not report the failure of %s", event)
 
         task = self.loop.create_task(guarded())
         if once:
             tasks[key] = task
-            # Only if it is still this task's entry: a finished one must not
-            # take a newer start's entry out with it.
+            # Only its own entry, never a newer start's.
             task.add_done_callback(
                 lambda finished, key=key: tasks.pop(key, None)
                 if tasks.get(key) is finished else None
@@ -603,13 +442,9 @@ class Plugin(
     async def running_work(self):
         """What is still running in the background, for a panel that just opened.
 
-        The panel's own notion of "running" does not survive Steam closing it,
-        and the done event fires whether or not anything is listening -- so a
-        panel that reopens mid-install has nothing to tell it a bar belongs
-        there. Asked for on mount, so the bar comes back instead of the button.
-
-        Each item is `{"event": ..., "args": [...]}`, the same pair the work
-        will emit its done event under.
+        The panel forgets running work when Steam closes it; asking on mount
+        brings its progress bar back. Each item is `{"event", "args"}`, the pair
+        the work's done event will carry.
         """
         return [
             {"event": key[0], "args": list(key[1:])}
@@ -619,22 +454,16 @@ class Plugin(
 
     # ------------------------------------------------- running other programs
     #
-    # Reached by four of the mixins through plugin_base, not only by the
-    # RetroArch installer they used to sit inside. They were in the middle of
-    # that section, between installing RetroArch and streaming its output,
-    # which read as if they belonged to it.
+    # Shared by several mixins, through plugin_base.
 
     @staticmethod
     def _subprocess_env():
         """Environment for flatpak, with HOME guaranteed to be the user's.
 
-        The plugin does not inherit a login shell's environment. `flatpak --user`
-        resolves its installation from HOME/XDG_DATA_HOME, so a missing or wrong
-        HOME makes it fail immediately -- and the exit code alone gives no hint
-        why.
+        No login shell's environment is inherited, and `flatpak --user` finds
+        its installation from HOME/XDG_DATA_HOME.
         """
-        # Steam's runtime libraries make flatpak fail instantly with an
-        # OPENSSL symbol error, so they are cleared first.
+        # Without Steam's runtime libraries, which break flatpak (OpenSSL).
         env = sysenv.clean_env()
         home = env.get("DECKYEMU_USER_HOME") or ra_detect.user_home()
         if home:
@@ -643,20 +472,9 @@ class Plugin(
             env.setdefault("XDG_CACHE_HOME", os.path.join(home, ".cache"))
         env.setdefault("PATH", "/usr/bin:/bin:/usr/local/bin")
 
-        # The session bus, which `flatpak uninstall --delete-data` needs and
-        # nothing else here does.
-        #
-        # The plugin is started by a systemd service and inherits no bus
-        # address, so flatpak tried to autolaunch one and answered "Cannot
-        # autolaunch D-Bus without X11 $DISPLAY" -- on a device that has no X11
-        # and does not need one, since the bus is already running and its socket
-        # is right there. What made it expensive is where it failed: the app was
-        # uninstalled first and the data deletion second, so removing RetroArch
-        # *with* its saves reported an error having already removed RetroArch.
-        #
-        # Set only when the socket exists, and never overriding an inherited
-        # one: naming an address for a bus that is not there turns a clear
-        # autolaunch message into a connection refused.
+        # The session bus, for `flatpak uninstall --delete-data`: a service
+        # inherits no bus address. Set only when the socket exists, never over
+        # an inherited one.
         runtime = env.get("XDG_RUNTIME_DIR")
         if not runtime and hasattr(os, "getuid"):
             runtime = "/run/user/%d" % os.getuid()
@@ -671,25 +489,11 @@ class Plugin(
     async def _run_flatpak(self, argv):
         """Run one flatpak command to completion and report what it said.
 
-        For the flatpak operations with nothing worth streaming -- removing
-        RetroArch, removing an emulator -- as opposed to `_stream_flatpak`, which
-        buffers the carriage-return redraws of a download to drive a progress
-        bar. Both exist; this is the one for a verb that either works or does
-        not.
-
-        Written once because it has already been written wrongly twice. The
-        dev-reset tab grew its own copy and left out `env=` -- and without that,
-        Steam's runtime libraries are still on the path and flatpak dies on
-        `libcrypto.so.3: version OPENSSL_3.4.0 not found` before it does
-        anything. That copy also logged nothing, so the failure arrived as a
-        toast and left no trace to read afterwards. Then the emulator uninstall
-        and the RetroArch uninstall carried two more copies, identical line for
-        line, one of them under a docstring saying this should be shared.
-
-        Every line flatpak prints is logged: a removal that fails needs its
-        reason kept somewhere the user was not required to be looking. The last
-        two lines come back as the error, because that is where flatpak puts the
-        reason and the exit code alone has cost a debugging round before.
+        For commands with no progress to show, such as removals;
+        `_stream_flatpak` drives a progress bar. Use this rather than calling
+        flatpak directly, so the environment and logging are right. Every line
+        is logged, and the last two come back as the error, where flatpak puts
+        the reason.
         """
         appenv.logger.info("Running: %s", " ".join(argv))
         try:
@@ -697,8 +501,6 @@ class Plugin(
                 *argv,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT,
-                # Steam's runtime libraries break system binaries. Without this
-                # the command never gets as far as doing anything.
                 env=self._subprocess_env(),
             )
             output, _ = await asyncio.wait_for(process.communicate(), timeout=180)
@@ -720,9 +522,8 @@ class Plugin(
             }
         return {"ok": True}
 
-    # `(?<!\d)` matters: output is read in fixed-size chunks, so a number can be
-    # split across two reads. Without the guard, "1425%" yields 425 and the
-    # progress bar is driven past 100 and off the right edge of its track.
+    # `(?<!\d)`: output arrives in chunks, and a number split across two must
+    # not read as a bigger one ("1425%" as 425).
     _PERCENT_RE = re.compile(r"(?<!\d)(\d{1,3})\s*%")
 
     @classmethod
@@ -758,32 +559,18 @@ class Plugin(
             blocked = self._blocked
         if blocked:
             return {"blocked": blocked}
-        # The panel opening is the cheapest regular chance to notice that an
-        # emulator has rewritten its config since its settings were written --
-        # which is what its *first* run does, because a config written into a
-        # file the emulator has never made is a config it regenerates. Startup
-        # was the only place that asked, and one install-then-play session
-        # happens entirely between two startups. See `_recheck_emulator_setups`.
+        # An emulator's first run rewrites its config, often between two
+        # starts, so the panel opening is when to check; see
+        # `_recheck_emulator_setups`.
         await self._recheck_emulator_setups()
 
-        # Three separate answers, and they used to be two: `default_rom_dir()`
-        # was `user_home()`, so one lookup filled both fields. It is the transfer
-        # folder now, and the coupling had to go with it -- `home_dir` is what
-        # keeps /home/deck out of the frontend, while the picker default is a
-        # place to start browsing, and nothing says those are the same path.
-        #
-        # Still one executor hop each rather than one per field per call: this is
-        # the call the panel makes every time it mounts.
+        # Asked together, as the panel makes this call on every mount.
         home, default_dir, waiting, device = await asyncio.gather(
             self._run(ra_detect.user_home),
             self._run(ra_detect.default_rom_dir),
-            # Where the picker should open instead, when a transferred file is
-            # still sitting unadded. "" the rest of the time, which is most of it.
+            # Where the picker opens while a transferred file waits; else "".
             self._run(fileserver.waiting_dir),
-            # What machine this is. Carried on the call the panel already makes
-            # on mount rather than added as a second one: the panel cannot
-            # render anything until it knows, so a separate round trip would
-            # only be a chance to show the wrong thing first.
+            # On this call because the panel renders nothing until it knows.
             self._device_state(),
         )
         if not self._install:
@@ -819,10 +606,8 @@ class Plugin(
     async def _device_state(self):
         """What the hardware is, plus whether the user has waived the answer.
 
-        Both together because neither is usable alone: `supported` decides the
-        message, `allowed` decides whether anything works, and the panel needs
-        to say "unsupported, and you chose to continue" as its own state rather
-        than as the absence of a warning.
+        `supported` picks the panel's message and `allowed` whether anything
+        works, so "unsupported, and you chose to continue" is its own state.
         """
         found = await self._run(hardware.detect)
         settings = await self._run(store.get_settings)
@@ -853,14 +638,11 @@ class Plugin(
                     if short
                     else (emulator.get("platform_full") or emulator.get("platform", ""))
                 )
-            # A port is not an emulator and not a core, and the picker says
-            # so in its own group. `to_core_entry` marks it.
+            # `to_core_entry` marks a port, which the picker groups apart.
             custom.append(emulators.to_core_entry(emulator, label))
 
-        # A short label per declared database, so the picker can offer the
-        # systems a multi-system core covers without the frontend needing a
-        # copy of the name table. Attached here rather than where each kind of
-        # core is built, because this is the one place both kinds meet.
+        # A short label per database, so the picker can offer each system a
+        # multi-system core covers without its own name table.
         return [
             dict(core, database_labels=[
                 platforms.short_name(database, "")
@@ -872,9 +654,8 @@ class Plugin(
     def _port_count(self):
         """How many registered entries are ports rather than emulators.
 
-        Counted out of the same list rather than tracked beside it: a port is
-        registered exactly as an emulator is, and the only thing that tells
-        them apart is the catalog entry behind the id.
+        A port registers exactly as an emulator does; only its catalog entry
+        tells them apart.
         """
         return sum(1 for entry in self._emulators
                    if emulators.is_port(entry.get("id") or ""))
@@ -886,13 +667,8 @@ class Plugin(
     async def disc_set_for(self, rom_path: str):
         """The discs beside `rom_path` that look like one game with it.
 
-        The same answer `probe_rom` carries in `disc_set`, asked on its own so
-        the transfer dialog can ask it before the add flow starts. A probe reads
-        the file, chooses cores and looks up artwork, none of which a list of
-        filenames needs, and the dialog asks the moment a button is pressed.
-
-        Returns {discs, playlist}. Fewer than two discs is not a set, and the
-        caller is meant to say nothing at all rather than announce one disc.
+        `probe_rom`'s `disc_set`, without the probe's cost, for the transfer
+        dialog. Returns {discs, playlist}; fewer than two discs is not a set.
         """
         discs = await self._run(discset.find_set, rom_path)
         if len(discs) < 2:
@@ -903,15 +679,9 @@ class Plugin(
     async def disc_candidate(self, rom_path: str, folder: str):
         """Whether `rom_path` may be added to a set being built by hand.
 
-        For the case the naming rules cannot reach: `FF7 d1.cue` and
-        `FF7 d2.cue` are a set and nothing about their names says so, so the
-        panel lets the user pick the other discs itself. What it may not do is
-        pick something that will not work, and there are exactly two ways it
-        would not: a disc in a different folder, since a playlist names files
-        beside itself, and a disc of a different format, since a core is chosen
-        for one extension.
-
-        Returns {ok, name, error}. `name` is what to put in the playlist.
+        For sets the naming rules miss (`Quest d1.cue`, `Quest d2.cue`). A disc
+        must sit in the same folder, as a playlist names files beside itself.
+        Returns {ok, name, error}; `name` goes in the playlist.
         """
         name = os.path.basename(rom_path)
         if not name or not await self._run(os.path.isfile, rom_path):
@@ -922,9 +692,7 @@ class Plugin(
                 "error": "A disc has to be in the same folder as the others. "
                          "Move it there first.",
             }
-        # The same rule detection uses, and it matters more here: the picker
-        # shows every file in the folder, so the twelve `.bin` tracks of a CD
-        # game are all one press away and every one of them looks like a disc.
+        # The picker shows every file, so a CD's `.bin` tracks look like discs.
         if await self._run(romshelf.part_of_a_disc, rom_path):
             return {
                 "ok": False, "name": "",
@@ -936,23 +704,11 @@ class Plugin(
     async def add_disc_to_game(self, app_id: int, disc_path: str):
         """Put another disc into a game that is already in the library.
 
-        The case this exists for is ordinary and was unreachable from Game Mode:
-        a two-disc game whose second disc turned up after the first was added.
-        Disc 1 went in as a single game, so there is no playlist, and the only
-        way to end up with one entry was to delete the game and add it again --
-        which throws away the Steam app id, and with it the play time and any
-        per-game controller layout.
-
-        What it does is small, because the pieces were all here. The disc is
-        filed beside the others exactly as adding a game files one, the playlist
-        is written or extended, and the caller repoints the shortcut through
-        `update_game`, which already knows how. Nothing is deleted and nothing
-        is renamed.
-
-        Returns {ok, playlist, discs, error}. `playlist` is the path to repoint
-        to -- the caller decides whether to, because whether the shortcut runs a
-        playlist depends on the core and that judgement lives in one place in
-        the panel.
+        For a disc that turns up after the game was added, without removing
+        and re-adding it, which would lose its app id, play time and layout.
+        The disc is filed beside the others and the playlist written or
+        extended. Returns {ok, playlist, discs, error}; the caller decides
+        whether to point the shortcut at `playlist`, as that depends on the core.
         """
         library = await self._run(store.get_library)
         entry = library.get(str(app_id))
@@ -969,19 +725,15 @@ class Plugin(
         if not disc_path or not await self._run(os.path.isfile, disc_path):
             return {"ok": False, "playlist": "", "discs": [],
                     "error": "That file is not there."}
-        # The same refusal the hand-picked path gives, and for the same reason:
-        # the picker shows every file in the folder, so a CD game's tracks are
-        # all one press away and every one of them looks like a disc.
+        # As in disc_candidate: a CD's tracks look like discs in the picker.
         if await self._run(romshelf.part_of_a_disc, disc_path):
             return {"ok": False, "playlist": "", "discs": [],
                     "error": "%s is one track of a disc, not a disc. Pick the "
                              ".cue that names it instead."
                              % os.path.basename(disc_path)}
 
-        # Filed the way adding a game files a ROM: out of the transfer folder,
-        # with its tracks, into `roms/<system>`. A disc the user keeps elsewhere
-        # comes back unmoved, and then it is not beside the others -- which a
-        # playlist cannot express, so it is refused rather than half-done.
+        # Filed as adding a game files a ROM. One kept elsewhere is not moved,
+        # and a playlist cannot name it from another folder, so it is refused.
         filed = await self._run(
             romshelf.file_rom, disc_path, entry.get("system", ""),
             await self._run(fileserver.default_dir, False),
@@ -1020,19 +772,9 @@ class Plugin(
     async def join_disc_to_game(self, app_id: int, disc_path: str):
         """Add a disc to a game and repoint its shortcut, in one press.
 
-        `add_disc_to_game` leaves the repointing to the caller because the panel
-        editing a game is already about to save. The transfer dialog is not: the
-        press there is "put this disc in that game", and everything after it is
-        bookkeeping the user has no reason to be shown.
-
-        Whether the shortcut moves to the playlist depends on the core, and the
-        rule is the one the panel uses -- a core that declares `m3u` is handed
-        the playlist, and one that does not goes on starting the disc it has
-        while the playlist is still written, because filing and deleting follow
-        it. PCSX2 is the case.
-
-        Returns what the Steam side needs: {ok, error, title, exe,
-        launcher_changed}.
+        For the transfer dialog. The shortcut moves to the playlist only for a
+        core that declares `m3u`; others keep starting their disc. Returns
+        {ok, error, title, exe, launcher_changed}.
         """
         added = await self.add_disc_to_game(app_id, disc_path)
         if not added["ok"]:
@@ -1062,17 +804,9 @@ class Plugin(
     async def make_disc_playlist(self, rom_path: str, discs: list):
         """Write the `.m3u` for a set and return the path to add instead.
 
-        Called at the moment the user presses Add, never at pick time. Two
-        reasons, and the second is the one that shaped the feature: backing out
-        of the add flow must leave the folder as it was, and everything before
-        this point -- the core list, the suggested system, the title, the
-        artwork search -- is computed from a *disc*, which is the file that
-        carries the evidence. A playlist carries none: `.m3u` is claimed by one
-        system in the whole catalog.
-
-        The file is written beside the discs and named after them, so it is a
-        plain playlist that works with or without this plugin. `romshelf` moves
-        and deletes the whole group already.
+        Only when Add is pressed: backing out must leave the folder as it was,
+        and everything before is worked out from a disc, not a playlist. A
+        plain playlist beside the discs, usable without this plugin.
         """
         folder = os.path.dirname(rom_path)
         path, error = await self._run(discset.write_playlist, folder, list(discs or []))
@@ -1086,8 +820,6 @@ class Plugin(
         if emulators.is_emulator_id(core_id):
             for emulator in self._emulators:
                 if emulator.get("id") == emulators.emulator_id(core_id):
-                    # The platform label is recomputed from `databases` wherever
-                    # it matters, so it is not needed here.
                     return emulators.to_core_entry(emulator)
             return None
 
@@ -1116,11 +848,9 @@ class Plugin(
         """
         core = self._core_by_id(core_id)
         databases = core["databases"] if core else []
-        # The ROM set's own name, for the same reason resolve_game uses it: the
-        # picker opened on `daytona2`, which is not a search anybody would type.
-        # The search hint rather than the full title, because this list is
-        # scored the same way and a subtitle SteamGridDB does not carry pushes
-        # the right game down it.
+        # The ROM set's real name, not its short filename (`racer2`). The
+        # search hint over the full title: a subtitle SteamGridDB lacks would
+        # rank the right game lower.
         _set_title, _set_hint = await self._romset_names(rom_path)
         term = (query or "").strip() or _set_hint or _set_title or (
             libretro_meta.display_title(libretro_meta.rom_stem(rom_path))
@@ -1152,25 +882,11 @@ class Plugin(
     ):
         """Fetch artwork for a candidate the user picked by hand.
 
-        `suggested_title` comes back with it. Reaching for the picker means the
-        automatic match was wrong, and choosing an entry there is the user
-        saying which game this is -- which is a better answer than the filename
-        heuristic that produced the name, and the only answer at all when the
-        filename is junk. The caller decides whether to take it; nothing here
-        renames anything.
-
-        `picked_name` is the label on the row that was pressed. It exists
-        because the SteamGridDB branch used to go and *ask* for the name after
-        fetching the art -- a second request, which answers "" on any failure,
-        so a flaky moment produced artwork with no name and a rename that
-        silently did half of itself. The name was never something to go and
-        find: the user read it off the row before choosing it.
+        Picking one says which game this is, so a `suggested_title` comes back;
+        the caller decides whether to rename. `picked_name` is the pressed row's
+        label, the fallback when the name lookup fails.
         """
-        # What was pressed, before anything is done about it. A pick that names
-        # the game wrongly and a pick that does not name it at all are the same
-        # report from the outside, and telling them apart afterwards meant
-        # inferring the choice from the artwork request it caused -- which is
-        # not the same thing and read wrongly twice.
+        # Logged first, so a report shows what was actually picked.
         appenv.logger.info(
             "apply_art_candidate: source=%s ref=%r system=%r row=%r",
             source, ref, system, picked_name,
@@ -1190,9 +906,7 @@ class Plugin(
             art = await self._download_art(urls)
             if not art:
                 return {"ok": False, "error": "That game has no usable artwork on SteamGridDB."}
-            # Asked for, then fallen back to what the user clicked. The
-            # request is still worth making -- it is the canonical spelling --
-            # but it is no longer the only way to know.
+            # The database's spelling, else the row's.
             name = await self._run(sgdb.game_name, api_key, game_id)
             name = name or (picked_name or "").strip()[:120]
             appenv.logger.info(
@@ -1214,8 +928,6 @@ class Plugin(
             art = await self._download_art({"capsule": url})
             if not art:
                 return {"ok": False, "error": "That thumbnail could not be downloaded."}
-            # The thumbnail's own name is the label the row showed, so there
-            # is nothing to fall back to and nothing that can fail.
             appenv.logger.info(
                 "apply_art_candidate -> %d image(s), named %r (thumbnail)", len(art), ref,
             )
@@ -1224,9 +936,7 @@ class Plugin(
                 "art": art,
                 "art_source": "libretro",
                 "art_game_name": ref,
-                # Through the same tidier a filename goes through, because a
-                # libretro thumbnail is named like one: "Super Mario World
-                # (USA)" is the right artwork and the wrong shortcut name.
+                # Tidied like a filename: thumbnails carry tags like "(USA)".
                 "suggested_title": libretro_meta.display_title(ref),
             }
 
@@ -1234,18 +944,13 @@ class Plugin(
 
     # ---------------------------------------------------------------- shortcuts
 
-    # How a game runs, as opposed to where it is filed. These sat in the
-    # collections block and are not about collections: every caller here is
-    # in this section, and plugin_audit and plugin_startup reach them
-    # through plugin_base.
+    # How a game runs; plugin_audit and plugin_startup use these too.
     @staticmethod
     def _menu_combo(settings):
         """The RetroArch menu shortcut to bake in, validated before it is used.
 
-        Global rather than per game, so it is read straight from settings here
-        instead of going through _launch_options. Validated because an unknown
-        key would otherwise reach RetroArch as no combo at all, silently leaving
-        the user with no way into the menu.
+        Global, not per game. An unknown key would reach RetroArch as no combo,
+        leaving no way into the menu.
         """
         combo = settings.get("menu_combo", "start_select")
         return combo if combo in launchers.MENU_COMBOS else "start_select"
@@ -1266,8 +971,7 @@ class Plugin(
                 else bool(fullscreen)
             ),
             "extra_args": (options.get("extra_args") or "").strip(),
-            # Passed through rather than resolved here: `emulators.for_game`
-            # needs the emulator to resolve against, and this has only the game.
+            # Resolved by `emulators.for_game`, which has the emulator.
             "workarounds": dict(options.get("workarounds") or {}),
         }
 
@@ -1285,9 +989,8 @@ class Plugin(
         extra_args = (options.get("extra_args") or "").strip()
         if extra_args:
             cleaned["extra_args"] = extra_args
-        # `{id: bool}`, and only the ids this game actually decides. An id left
-        # out follows the emulator's own setting, which is what "follow" means
-        # and why an empty dict is dropped rather than stored.
+        # `{id: bool}` for the ids this game decides; the rest follow the
+        # emulator.
         workarounds = {
             str(key): bool(value)
             for key, value in (options.get("workarounds") or {}).items()
@@ -1303,34 +1006,20 @@ class Plugin(
     ):
         """Write the launcher script and return the fields Steam needs.
 
-        `system` is what resolve_game worked out, and matters only for a core
-        covering more than one: it decides the collection the frontend files the
-        game into, which is otherwise the core's first database and put every
-        Wii game under GameCube.
+        `system` is resolve_game's answer, which picks the collection for a
+        core covering several systems (Dolphin: GameCube and Wii).
 
-        **`launch_name` separates what the game *is* from what gets run**, and
-        exists for one case: a multi-disc set whose emulator cannot read a
-        playlist. PCSX2 is the example -- it changes disc from its own menu and
-        has no idea what an `.m3u` is -- and the two halves pull in opposite
-        directions. The set still has to travel as one thing, so `rom_path` is
-        the playlist: that is what filing follows, what the library records, and
-        what deleting the game takes away. But handing PCSX2 the playlist gives
-        a shortcut that starts nothing, so the launcher runs a disc instead.
-
-        A bare filename, resolved against the folder the game is filed into --
-        never a path. It is read after filing for the same reason the launcher
-        is written after it: the discs move, and a path worked out beforehand is
-        a path to where they used to be.
+        `launch_name` is for a multi-disc set whose emulator cannot read a
+        playlist (PCSX2): `rom_path` stays the playlist, which filing and
+        deleting follow, while the launcher runs this disc. A bare filename,
+        resolved in the folder the game is filed into.
         """
         appenv.logger.info("prepare_shortcut: title=%r core=%s rom=%s", title, core_id, rom_path)
-        # The last plugin code that runs before a game exists to be launched, so
-        # the last chance to notice that the emulator about to run it has thrown
-        # its settings away. This is the sequence that produced the bug: install
-        # the emulator, open it once for firmware, add a game, play -- and the
-        # controller bindings were gone by the third step.
+        # The last chance to catch an emulator that reset its settings since
+        # they were written, before its first game is played.
         await self._recheck_emulator_setups()
         emulator = self._emulator_for_core_id(core_id)
-        # A custom emulator does not need RetroArch present at all.
+        # A standalone emulator does not need RetroArch.
         if not self._install and not emulator:
             return {"ok": False, "error": "RetroArch was not found on this system."}
 
@@ -1341,13 +1030,8 @@ class Plugin(
         if not os.path.isfile(rom_path):
             return {"ok": False, "error": "ROM file no longer exists: %s" % rom_path}
 
-        # An emulator that starts installed titles by id has no by-path form to
-        # fall back on, whatever `args` says. `launch_argv` would quietly use
-        # the path form, which for Vita3K writes a shortcut that cannot work --
-        # the content is still encrypted, and its AppImage re-splits the path on
-        # any space it contains. Refused here, at the one gate every add goes
-        # through, rather than left to fail at launch with nothing on screen
-        # naming the cause.
+        # An emulator that starts installed titles by id (Vita3K) cannot run a
+        # file path, so refuse here rather than fail silently at launch.
         if emulator and emulator.get("installed_args") and not title_id:
             return {
                 "ok": False,
@@ -1363,21 +1047,9 @@ class Plugin(
 
         settings = await self._run(store.get_settings)
 
-        # Filed before the launcher is written, and that ordering is the whole
-        # reason this is safe. The ROM path is baked into the launcher's argv,
-        # the launcher's own filename is a hash of it, and the library records
-        # it -- so moving a ROM afterwards breaks a game in three places at
-        # once. Moving it first means nothing has been told the old path yet.
-        # `_system_for` answers from the core's libretro databases, and an
-        # emulator for a system libretro has no core for -- Xenia, RPCS3,
-        # Ryujinx, shadPS4, Vita3K -- has none. It returned "", `folder_name`
-        # made "" of that, and `file_rom` did nothing: every one of those
-        # consoles left its ROM sitting in the transfer folder forever.
-        #
-        # Nothing said so. The game worked, launched from the inbox, and the
-        # only visible symptom was a folder that never emptied -- until deleting
-        # the game left the file behind too, because only ROMs under `roms/`
-        # count as this plugin's to delete.
+        # Filed before the launcher is written: the path ends up in its argv,
+        # its filename and the library, so it must not move afterwards. Falls
+        # back to the platform name for emulators with no libretro database.
         rom_path = await self._run(
             romshelf.file_rom,
             rom_path,
@@ -1386,11 +1058,8 @@ class Plugin(
             await self._run(romshelf.library_dir),
         )
 
-        # After filing, so this names a disc where it is now rather than where
-        # it was sent from. Falls back to the playlist when the name is not
-        # there, which is the safe direction: a launcher pointing at a file that
-        # exists and cannot be read is a plain failure, while one pointing at
-        # nothing at all is a game that closes instantly with no explanation.
+        # After filing, so it names the disc where it now is. Falls back to the
+        # playlist, which at least exists, rather than a missing file.
         launch_path = rom_path
         if launch_name:
             candidate = os.path.join(os.path.dirname(rom_path), os.path.basename(launch_name))
@@ -1410,9 +1079,7 @@ class Plugin(
                 core["path"],
                 launch_path,
                 settings.get("hide_osd", "startup"),
-                # No overrides on a game that does not exist yet, so this simply
-                # follows the emulator -- but it goes through the same
-                # resolution so there is one answer to how a launcher is built.
+                # A new game has no overrides yet, so this follows the emulator.
                 emulators.for_game(emulator),
                 settings.get("emulator_fullscreen", True),
                 "",
@@ -1432,10 +1099,7 @@ class Plugin(
             "launch_options": "",
             "launcher_path": script,
             "core_path": core["path"],
-            # Where the ROM ended up, which is not where the caller sent it if
-            # it was just filed. Returned so the library records the path the
-            # launcher actually runs -- otherwise every filed game would look
-            # like an orphan the moment anything checked.
+            # Where the ROM was filed, for the library to record.
             "rom_path": rom_path,
             # Resolved here so per-platform naming lives in one place.
             "collection_name": self._collection_name(
@@ -1444,23 +1108,13 @@ class Plugin(
                     settings, core, {"system": self._system_for(core, system)}
                 ),
             ),
-            # Guarded on the install existing at all. The check above lets
-            # `_install` be None whenever a standalone emulator was chosen --
-            # the plugin is usable with no RetroArch, which is the whole point
-            # of the emulator catalog -- and this line then indexed None and
-            # raised TypeError. Adding a game to a Deck that had never
-            # installed RetroArch failed here, at the last statement before
-            # success. Found by a type checker, not by use.
+            # `_install` is None when a standalone emulator was chosen.
             "warn_flatpak_sdcard": self._install is not None
             and self._install["kind"] == "flatpak"
             and rom_path.startswith("/run/media"),
-            # The Steam Input layout this game needs, when the emulator asks for
-            # a particular one. Vita3K is the case: the Deck powers its gyro down
-            # unless the *running game's* layout binds it, so a Vita game on any
-            # ordinary gamepad layout reads a sensor that never moves -- and the
-            # setting is one nobody would guess, in a Steam menu three levels
-            # from the game. Empty for every other emulator, which leaves Steam's
-            # choice alone. See `steam/layout.ts` for what is done with it.
+            # The Steam Input layout the emulator asks for, if any: the Deck
+            # powers its gyro down unless the game's layout binds it (Vita3K).
+            # See `steam/layout.ts`.
             "layout": (emulator or {}).get("layout", ""),
         }
 
@@ -1469,21 +1123,11 @@ class Plugin(
         cls, settings, app_id, title, rom_path, core_id, core, launcher_path,
         system="", previous=None,
     ):
-        """The registry record for one game, built the one way there is.
+        """The registry record for one game; every writer builds it here.
 
-        Three places wrote this dict by hand -- adding a game, editing one, and
-        adopting a previous install -- and the third built a fresh one rather
-        than updating what was there, so every per-game launch override was
-        silently reset to the global setting by an adoption. A field added to
-        the record later would have gone the same way.
-
-        `previous` is the record being replaced. Everything it holds that is not
-        recomputed here survives, which is what carries `options` through.
-
-        `system` is what resolve_game worked out for this add, and only matters
-        for a core covering more than one -- Dolphin declares GameCube and Wii.
-        Absent, the stored system is kept wherever the core still claims it, so
-        editing a Wii game's name does not refile it under GameCube.
+        Fields of `previous` not recomputed here survive, such as `options`.
+        `system` matters for a core covering several (Dolphin); absent, the
+        stored one is kept while the core still claims it.
         """
         entry = dict(previous or {})
         resolved = cls._system_for(core, system, entry.get("system", ""))
@@ -1497,8 +1141,7 @@ class Plugin(
                 "core_path": core["path"] if core else entry.get("core_path", ""),
                 "system": resolved,
                 "platform": platform,
-                # Remembered so a later rename knows which collection to move it
-                # out of, rather than guessing from the current settings.
+                # So a later rename knows which collection to move it out of.
                 "collection": cls._collection_name(settings, platform),
                 "launcher_path": launcher_path,
             }
@@ -1508,10 +1151,8 @@ class Plugin(
     async def games_without_icon(self) -> list:
         """Tracked games wearing the shipped icon, or none at all.
 
-        Told apart by the file rather than by asking Steam: a game whose lookup
-        found an icon has one written under its own app id, and a game that fell
-        back to the shipped picture has nothing there. So this is a directory
-        listing rather than a comparison of paths inside `shortcuts.vdf`.
+        A found icon is saved under the game's app id, so a missing file says
+        which games fell back.
         """
         library = await self._run(store.get_library)
         rows = []
@@ -1525,19 +1166,9 @@ class Plugin(
     async def fetch_game_icon(self, app_id: int) -> dict:
         """Look one game up on SteamGridDB and give it the icon it finds.
 
-        Three requests: a search, the icon lookup and the download. `art_urls`
-        asks for five slots at once, which is right when a game is being added
-        and wasteful here -- this runs once per game in a library.
-
-        Answers `found: False` rather than an error when SteamGridDB simply has
-        no icon for the game. That is an ordinary outcome for anything obscure,
-        and a run over a whole library would otherwise report a fistful of
-        failures that are nothing of the kind.
-
-        **`path` is always something to use.** Not finding an icon falls back to
-        the shipped picture, exactly as adding a game does -- so a game that had
-        no icon at all comes out of this with the plain tile rather than staying
-        blank, and the two ways a game can get an icon end in the same place.
+        Three requests (search, icon, download), not `art_urls`' five, as this
+        runs per game across a library. No icon is `found: False`, not an
+        error, and `path` then falls back to the shipped picture.
         """
         library = await self._run(store.get_library)
         entry = library.get(str(app_id))
@@ -1564,15 +1195,13 @@ class Plugin(
         if not url:
             return await nothing_found()
 
-        # The bytes rather than a data URI: `get_data_uri` labels everything it
-        # does not recognise as PNG, and plenty of these are `.ico`. The file's
-        # name has to say what is in it, so `gameicon.save` decides from the
-        # bytes and this hands it those.
+        # Raw bytes, as many are `.ico`; `gameicon.save` names the file by them.
         payload, _content_type = await self._run(net.get_bytes, url)
         if not payload:
             return await nothing_found()
 
-        path = await self._run(gameicon.save, app_id, payload) or             await self._run(gameicon.for_game, app_id, "")
+        path = (await self._run(gameicon.save, app_id, payload)
+                or await self._run(gameicon.for_game, app_id, ""))
         found = await self._run(gameicon.has_own, app_id)
         appenv.logger.info("fetch_game_icon: app_id=%s found=%s", app_id, found)
         return {"ok": True, "found": found, "path": path}
@@ -1580,11 +1209,9 @@ class Plugin(
     async def game_icon(self, app_id: int, data: str = "") -> dict:
         """Where to point Steam for this game's icon.
 
-        `data` is the `icon` slot from the artwork lookup, as a data URI. With
-        one, it is written under the game's own app id; without, every game gets
-        the picture that ships with the plugin. Steam records the path and reads
-        it from there afterwards, so this always answers with a file that exists
-        or with nothing at all.
+        `data` is the artwork lookup's icon as a data URI, saved under the
+        game's app id; without it, the shipped picture. Always a file that
+        exists, or nothing.
         """
         return {"path": await self._run(gameicon.for_game, app_id, data)}
 
@@ -1605,28 +1232,16 @@ class Plugin(
         entry = self._entry_for(
             settings, app_id, title, rom_path, core_id, core, launcher_path, system
         )
-        # What the caller actually managed, not what the settings say should have
-        # happened. Only the frontend can put a game on a shelf, so only the
-        # frontend knows whether it went -- and this field is what a later rename
-        # moves the game out of and what removing it empties, so a name recorded
-        # for a collection the game never reached makes both of those no-ops.
-        # Computed here as well until then, which is what said so.
-        #
-        # None rather than "" for "you decide": an empty string is a real answer
-        # meaning the game is on no shelf, which is what a failed filing records.
+        # The collection the frontend actually filed it into, which renames and
+        # removals act on. None means "work it out"; "" means on no shelf.
         if collection is not None:
             entry["collection"] = collection
         await self._run(store.remember_game, app_id, entry)
         await self._share_firmware([core_id])
 
-        # Keyed on the content extension so a zipped SNES ROM remembers the same
-        # core as a loose one.
-        #
-        # Off for a PS3 game, and it has to be: what boots is EBOOT.BIN, so
-        # remembering this would file `.bin` under RPCS3 and then suggest a PS3
-        # emulator for the next PS1 disc image somebody adds.
-        # Never a port: remembering one would preselect it for every other file
-        # of its system.
+        # By content extension, so a zipped ROM counts as a loose one. Callers
+        # turn it off for PS3 (whose `.bin` would mislead every PS1 disc), and
+        # never for a port.
         extension = (await self._run(ra_cores.content_extension, rom_path)
                      if remember_core and not emulators.core_is_port(core_id) else "")
         if extension and core_id:
@@ -1648,14 +1263,9 @@ class Plugin(
     ):
         """Change a tracked game's name, ROM, what runs it, or how it launches.
 
-        Artwork is handled separately (the picker applies it directly), because it
-        needs no launcher or collection work.
-
-        The caller must finish the job on the Steam side: rename the shortcut,
-        repoint it if the launcher moved, and move it between collections. This
-        returns everything needed for that, including the previous collection --
-        recording a new one without moving the app is the inconsistency that bit
-        us before.
+        Not artwork, which the picker applies itself. The caller finishes on
+        the Steam side (rename, repoint, move collections) with what this
+        returns, including the previous collection.
         """
         appenv.logger.info(
             "update_game: app_id=%s title=%r core=%s rom=%s options=%s",
@@ -1684,8 +1294,7 @@ class Plugin(
             return {"ok": False, "error": "Core '%s' is not available." % core_id}
         emulator = self._emulator_for_core_id(core_id)
 
-        # A ROM the chosen core cannot read would produce a launcher that starts
-        # the emulator and nothing else, which is a confusing way to find out.
+        # Refused now rather than launching an emulator with nothing to run.
         if rom_changed:
             extension = await self._run(ra_cores.content_extension, rom_path)
             supported = [text.lower() for text in core.get("extensions", [])]
@@ -1726,20 +1335,15 @@ class Plugin(
                 launch["extra_args"],
                 self._menu_combo(settings),
                 settings,
-                # The argument this list used to stop one short of. It has to be
-                # positional -- `_run` forwards *args and no keywords -- which
-                # is exactly why it was easy to miss: an eleven-argument call
-                # whose last one defaults to "a launcher that opens the eboot by
-                # path", and no error anywhere.
+                # Positional, as `_run` forwards no keywords: easy to drop.
                 _title_id_for(rom_path),
             )
         except OSError as error:
             appenv.logger.exception("Could not rewrite launcher")
             return {"ok": False, "error": "Could not write the launcher: %s" % error}
 
-        # The launcher filename embeds both the title and a hash of the ROM path,
-        # so renaming or repointing produces a new file and the old one would
-        # otherwise linger and be reported as a stray.
+        # The launcher's name embeds the title and a hash of the ROM path, so
+        # an edit can make a new file; the old one goes.
         old_launcher = entry.get("launcher_path", "")
         launcher_changed = bool(old_launcher) and os.path.normpath(old_launcher) != os.path.normpath(
             script
@@ -1748,17 +1352,8 @@ class Plugin(
             await self._run(launchers.remove_launcher, old_launcher)
 
         previous_collection = entry.get("collection", "")
-        # `system` empty means the edit said nothing about it, and the stored
-        # answer stands wherever the newly chosen core still claims it --
-        # `_entry_for` owns that rule. Given, it is the user answering the one
-        # question nothing else can: which of a multi-system core's systems this
-        # game is, for the games that were filed under the wrong one before the
-        # picker asked. That is the only way to move one without deleting it.
-        #
-        # The ROM file stays where it is. It was filed under the old system on
-        # the way in, and its path is baked into the launcher's argv, hashed
-        # into the launcher's filename and recorded here -- moving it is three
-        # more things to keep in step for a folder nobody sees in Game Mode.
+        # A given `system` re-files a multi-system core's game (rules in
+        # `_entry_for`). The ROM file itself stays where it is.
         entry = self._entry_for(
             settings, app_id, clean_title, rom_path, core_id, core, script,
             system, previous=entry,
@@ -1783,7 +1378,6 @@ class Plugin(
         }
 
 
-
     def _rom_of(self, app_id):
         """The ROM path of a tracked game, or "" if it is not one."""
         library = store.get_library()
@@ -1795,29 +1389,21 @@ class Plugin(
         rom_path = await self._run(self._rom_of, app_id)
         if not rom_path:
             return {"ok": False, "error": "That game is no longer tracked."}
-        # A hack somebody dropped in by hand is applied by RetroArch whether or
-        # not this list knows about it, so it is taken in rather than hidden.
+        # RetroArch applies hand-placed patches too, so they are listed.
         await self._run(rompatch.adopt, app_id, rom_path)
         return {
             "ok": True,
             "patches": await self._run(rompatch.listing, app_id),
             "warning": await self._run(rompatch.warning_for, rom_path),
-            # Always the transfer folder: it is where a patch sent from a phone
-            # lands, and adding one takes it out again, so this is the one place
-            # a patch is ever expected to be. It was briefly conditional, which
-            # meant the folder somebody was told about was not the folder that
-            # opened once they had used it.
+            # The transfer folder, where a sent patch lands.
             "start_in": await self._run(fileserver.default_dir),
         }
 
     async def add_rom_patch(self, app_id: int, patch_path: str) -> dict:
         """Take a patch into this game's list and apply it.
 
-        A patch that came through the transfer page is taken *out* of the inbox,
-        the same way adding a game moves its ROM out: the inbox is what has not
-        been dealt with yet, and it is supposed to empty itself as it is used.
-        Only the inbox's own top level, and only once we have our own copy --
-        anything the user keeps elsewhere is theirs.
+        A patch from the inbox's top level is removed from there once copied,
+        as adding a game moves its ROM out. Anything kept elsewhere is left.
         """
         source = (patch_path or "").strip()
         row, error = await self._run(rompatch.add, app_id, source)
@@ -1828,9 +1414,7 @@ class Plugin(
         if inbox and os.path.dirname(source) == os.path.normpath(inbox):
             try:
                 await self._run(os.remove, source)
-            except OSError as remove_error:
-                # The copy is made and the patch works; a file left in the inbox
-                # is untidy rather than broken.
+            except OSError as remove_error:  # untidy, not broken
                 appenv.logger.warning("Could not clear %s from the inbox: %s",
                                      source, remove_error)
         return await self.sync_rom_patches(app_id, name=(row or {}).get("name", ""))
@@ -1869,9 +1453,7 @@ class Plugin(
     async def patch_targets(self, patch_path: str) -> dict:
         """The games a ROM hack could be installed on, the likely ones first.
 
-        RetroArch games only. A standalone emulator ignores a file beside the
-        ROM, so offering one would promise a patch that never applies -- the
-        rule the editor's ROM hacks row already follows.
+        RetroArch games only: standalone emulators ignore a patch beside the ROM.
         """
         path = (patch_path or "").strip()
         if not await self._run(rompatch.kind_of, path):
@@ -1887,10 +1469,9 @@ class Plugin(
     def _game_content_for(self, app_id):
         """`(entry, games_root, base_id, problem)` for one game's updates and DLC.
 
-        `games_root` is empty when the game's emulator has nowhere to put them,
-        which is every emulator but Ryujinx. `problem` says why a game whose
-        emulator does still cannot take one: its own file does not say which
-        game it is, so nothing sent can be matched to it.
+        `games_root` is empty for emulators that take none (all but Ryujinx).
+        `problem` is set when the game's file does not say which game it is, so
+        nothing can be matched to it.
         """
         entry = store.get_library().get(str(app_id))
         if not entry:
@@ -1925,8 +1506,7 @@ class Plugin(
             return {"ok": False, "error": problem
                     or "This game's emulator does not take updates or DLC."}
         inbox = await self._run(fileserver.default_dir)
-        # An .nsz is unpacked on the way in, which for an update can take a
-        # while, so it reports the way the Unpack button does.
+        # An .nsz is unpacked on the way in, with progress as for Unpack.
         loop = asyncio.get_running_loop()
         name = os.path.basename(path or "")
 
@@ -1967,14 +1547,9 @@ class Plugin(
     async def launch_bounced(self, app_id: int) -> dict:
         """Did this game's launcher refuse to start, and what was in the way?
 
-        The launch gate (`launchers.launch_gate`) is what actually stops a
-        second game, because nothing on the Steam side can -- see the comment
-        there for the two calls that were tried and what each did instead. The
-        script leaves a note; this is the panel collecting it, so the dialog is
-        shown for a launch that really was stopped rather than for one this side
-        merely predicted would be.
-
-        Consumed by reading, so asking twice answers once.
+        The launcher's gate (`launchers.launch_gate`) stops a second game and
+        leaves a note, collected here so the panel's dialog follows what really
+        happened. Consumed by reading.
         """
         others = await self._run(launchers.take_bounce, app_id)
         return {"bounced": bool(others), "others": others}
@@ -1986,16 +1561,9 @@ class Plugin(
     async def launch_missing(self, app_id: int) -> dict:
         """Did this game's launcher stop because a piece of it is gone?
 
-        The same note-and-collect shape as `launch_bounced`, and asked the same
-        way round for the same reason: the script is what knows whether the ROM
-        and the emulator are on the disk, so this side waits to be told rather
-        than working it out and risking a dialog that disagrees with what
-        actually happened.
-
-        Answers "rom" or "emulator", and for an emulator the name the launcher
-        recorded when it was written -- which is the only place it is reliably
-        known, since removing an emulator can take its record with it.
-        Consumed by reading.
+        Collected like `launch_bounced`, from the note the launcher leaves.
+        Answers "rom" or "emulator", with the emulator's name as the launcher
+        recorded it, since its record may be gone. Consumed by reading.
         """
         kind, name = await self._run(launchers.take_missing, app_id)
         return {"missing": kind, "name": name}
@@ -2012,26 +1580,14 @@ class Plugin(
     async def rebuild_launchers(self):
         """Regenerate every launcher script from the current settings.
 
-        Not gated on RetroArch. It was, and that made every settings change
-        silently do nothing on a Deck running only catalog emulators -- which is
-        a configuration this plugin supports on purpose: `prepare_shortcut`
-        needs RetroArch only when the chosen core is a libretro one, and the
-        whole point of the emulator catalog is that a Deck can have no RetroArch
-        at all. The rebuild refused for all of them because one *kind* of game
-        needs it.
-
-        A libretro game still cannot be rebuilt without it -- there is no argv
-        to write without an install to run -- so those are skipped by name,
-        which is what the caller already reports. A standalone emulator's
-        launcher never needed it.
+        Works without RetroArch: only libretro games need it, and those are
+        skipped by name, while standalone emulators' launchers are rebuilt.
         """
         settings = await self._run(store.get_settings)
         library = await self._run(store.get_library)
 
-        # Resolving what each game needs is all in-memory, so it happens here;
-        # only the filesystem work is handed over, and in one pass rather than
-        # one per game. `_launch_options` is per game so a global change does not
-        # quietly discard the overrides someone set on one title.
+        # Worked out here in memory, then written in one executor pass. Per
+        # game, so each game's own overrides survive.
         jobs = []
         for entry in library.values():
             core_id = entry.get("core_id", "")
@@ -2041,20 +1597,12 @@ class Plugin(
                 {
                     "title": entry.get("title", "Game"),
                     "label": entry.get("title", "?"),
-                    # Carried so the writer can tell a libretro game from an
-                    # emulator one when neither has a record left to say so.
+                    # Tells libretro from emulator games when no record says.
                     "core_id": core_id,
                     "core_path": core["path"] if core else entry.get("core_path", ""),
                     "rom_path": entry.get("rom_path", ""),
-                    # Resolved for this game, exactly as `prepare_shortcut` and
-                    # `update_game` do. This was the one launcher writer that
-                    # did not, and it is the one `set_workaround` calls -- so
-                    # toggling a workaround for an emulator rewrote every one of
-                    # its launchers from the emulator's own record and discarded
-                    # whatever each game had chosen. It also decides *which
-                    # binary* runs now, and the patched build is only ever named
-                    # per game, so without this a fix that edits the emulator
-                    # could be switched on and never reach a launcher.
+                    # Per game, as in `prepare_shortcut`: it keeps each game's
+                    # workarounds and picks which binary runs.
                     "emulator": emulators.for_game(
                         self._emulator_for_core_id(core_id), entry.get("options")),
                     "hide_osd": launch["hide_osd"],
@@ -2075,22 +1623,9 @@ class Plugin(
     def _write_launchers(install, menu_combo, settings, jobs):
         """Write every launcher in `jobs`. Returns (rebuilt, skipped titles).
 
-        The ROM check lives here rather than at the call site because it is the
-        one piece of blocking filesystem work that was being done on the event
-        loop, where every other file operation in this class goes through the
-        executor.
-
-        **A missing ROM is not a reason to skip.** It was, and that meant the one
-        game in the library that could not start was the one game whose launcher
-        never received a fix -- measured on a Deck with a ROM renamed on purpose:
-        "Rebuilt 16 launcher(s), skipped 1", and the 1 was the broken one. The
-        launcher is what *reports* the missing file now, so refusing to write it
-        is refusing to write the thing that explains the failure.
-
-        Nothing about a launcher needs the ROM to exist: it is a path baked into
-        a command line, and a file that is gone today may be an SD card that is
-        mounted tomorrow. What is still refused is a job with no path at all, or
-        no core, because there is no argv to write.
+        Runs in the executor. A missing ROM is still written for: the launcher
+        is what reports it, and an SD card may be back tomorrow. Only a job with
+        no ROM path or core is skipped, as there is no command to write.
         """
         rebuilt = 0
         skipped = []
@@ -2098,18 +1633,12 @@ class Plugin(
             if not job["core_path"] or not job["rom_path"]:
                 skipped.append(job["label"])
                 continue
-            # A libretro core is run *by* RetroArch, so with no install there is
-            # no argv to write. Skipped by name rather than refused for the
-            # whole library: a standalone emulator's launcher does not involve
-            # RetroArch and must still be rebuilt on a Deck that has none.
+            # A libretro game needs RetroArch installed.
             if not install and not job["emulator"]:
                 skipped.append(job["label"])
                 continue
-            # An emulator game whose emulator is no longer registered. Writing
-            # anyway takes the libretro branch, where `core_path` is the
-            # emulator's own target -- so RetroArch was told to load an AppImage
-            # as a core. The script on disk is the last correct one and its
-            # preflight already names the emulator; reinstalling rebuilds it.
+            # An emulator no longer registered: writing would treat its program
+            # as a libretro core. The script on disk is the last good one.
             if emulators.is_emulator_id(job.get("core_id", "")) and not job["emulator"]:
                 skipped.append(job["label"])
                 continue
@@ -2136,32 +1665,19 @@ class Plugin(
         return rebuilt, skipped
 
 
-
     # ------------------------------------------------------- custom emulators
 
     async def list_emulators(self):
         """Registered emulators, each marked with where its definition came from.
 
-        Derived rather than stored. `catalog_recipe` is written by `to_emulator`
-        when a catalog install is registered, and `emulators.save` carries it
-        through every later edit, so its presence is what separates an emulator
-        that arrived by pressing Install from one described by hand.
-
-        Sent because the panel shows both together and the rows are otherwise
-        identical -- same name, same system -- with nothing to say why some of
-        them also appear in the catalog list above.
-
-        Copied rather than annotated in place: the list is `self._emulators`,
-        which the launcher and recipe-upgrade passes both read.
+        `from_catalog`: a catalog install keeps `catalog_recipe` through edits,
+        unlike one described by hand. Copies, as `self._emulators` is shared.
         """
         entries = await self._refresh_emulators()
         return [
             dict(entry,
                  from_catalog="catalog_recipe" in entry,
-                 # Which tab this row belongs on. A port registers exactly as an
-                 # emulator does, so nothing in the record tells them apart --
-                 # the catalog does, and it is the same answer `list_cores`
-                 # gives the picker.
+                 # Ports and emulators register alike; the catalog tells.
                  port=emulators.is_port(entry["id"]))
             for entry in entries
         ]
@@ -2169,11 +1685,8 @@ class Plugin(
     async def list_systems(self):
         """libretro system names an emulator can be mapped to, for artwork.
 
-        This is the field that matters: artwork lookup and the SteamGridDB era
-        check both key on the libretro database name, so a custom emulator that
-        declares one gets boxart exactly like a core does. Sourced from the core
-        catalog so the list covers everything libretro knows, not a hand-written
-        subset.
+        Artwork lookup keys on the libretro database name, so an emulator that
+        declares one gets boxart like a core. Taken from the core catalog.
         """
         names = set(platforms.SHORT_NAMES.keys())
         for core in self._cores:
@@ -2181,10 +1694,8 @@ class Plugin(
         for entry in await self._run(installer.core_catalog):
             names.update(entry.get("databases") or [])
 
-        # `label` is the full "Manufacturer - System" name and is what the picker
-        # shows. Sorting on it keeps each manufacturer's systems together, which
-        # short names cannot do -- they scatter Nintendo across 3DS, GBA, N64,
-        # SNES, Switch and Wii.
+        # Sorted on the full "Maker - System" label, keeping each maker's
+        # systems together.
         options = [
             {
                 "id": name,
@@ -2197,13 +1708,8 @@ class Plugin(
             for name in names
         ]
 
-        # Switch, Wii U, PS3 and friends are absent from libretro entirely, so
-        # they would otherwise be unselectable. They get a label for collection
-        # naming and rely on SteamGridDB for artwork.
-        #
-        # Skipped when libretro turns out to know the system after all: the Vita
-        # is in the catalog, and listing it twice offered the same name twice,
-        # once able to find boxart and once not.
+        # Systems libretro lacks (Switch, PS3...), named for collections, with
+        # artwork from SteamGridDB; skipped if libretro has them after all.
         for label, full, short in platforms.NO_LIBRETRO_PLATFORMS:
             if label in names:
                 continue
@@ -2223,24 +1729,15 @@ class Plugin(
 
     # ----------------------------------------------------------------- settings
 
-    #: How much of a frontend error to keep. A component stack is long, and the
-    #: log is a shared resource read two hundred lines at a time.
+    #: How much of a frontend error to keep; component stacks are long.
     _FRONTEND_ERROR_LIMIT = 2000
 
     async def log_frontend_error(self, where: str, message: str, detail: str = ""):
         """Write a frontend failure into the plugin log.
 
-        The two halves of this plugin fail into different places and only one of
-        them is reachable. A backend exception lands in the log, and now names
-        its own method; a frontend one goes to a CEF console that needs a second
-        machine, an IP address and a port to read -- so in Game Mode nobody sees
-        it, including the person it happened to and the person they report it
-        to. There were eighty-odd `console.error` calls on that side.
-
-        The same log, so the diagnostic report carries both halves. Truncated,
-        because a component stack is long and this is reachable by anything
-        running in Steam's JS context; and logged rather than acted on, because
-        nothing here should be steered by a string from that side.
+        The frontend's console is unreadable in Game Mode, so its errors join
+        the backend's log, which the diagnostic report carries. Truncated, and
+        only logged, as anything in Steam's JS context can call this.
         """
         where = (where or "the interface")[:120]
         message = (message or "")[:self._FRONTEND_ERROR_LIMIT]
@@ -2255,33 +1752,25 @@ class Plugin(
         # Never ship the key itself to the UI; only whether one is set.
         settings = dict(settings)
         settings["sgdb_api_key_set"] = bool((settings.pop("sgdb_api_key", "") or "").strip())
-        # The username is shown -- it is the whole point of saying who is signed
-        # in -- but the Connect token is password-equivalent and stays here.
+        # The username is shown; the token is a password and stays here.
         settings["cheevos_token_set"] = bool((settings.pop("cheevos_token", "") or "").strip())
         return settings
 
     async def set_settings(self, patch: dict):
-        # Filtered here rather than in `store.set_settings`: this is the one
-        # entry point that takes a dict from outside, and the internal callers
-        # write keys of their own choosing knowingly.
+        # Filtered here, the one entry point taking a dict from outside.
         patch, dropped = await self._run(store.known_only, patch)
         if dropped:
             appenv.logger.warning(
                 "Ignoring unknown setting(s): %s", ", ".join(sorted(dropped))
             )
         await self._run(store.set_settings, patch)
-        # Launch behaviour is baked into each game's launcher script, so a
-        # change here has to be written back out or it would only affect games
-        # added from now on.
+        # These are baked into each launcher, so existing ones are rewritten.
         if patch and any(
             key in patch
             for key in (
                 "hide_osd",
                 "emulator_fullscreen",
                 "menu_combo",
-                # Achievements are written into the same override file, so
-                # switching them on has to reach launchers that already exist --
-                # otherwise it would only apply to games added afterwards.
                 "cheevos_enable",
                 "cheevos_hardcore",
                 "cheevos_username",
@@ -2289,31 +1778,14 @@ class Plugin(
             )
         ):
             await self.rebuild_launchers()
-        # Whether a launch waits for saves is a file the launcher reads rather
-        # than a question it asks, so the file has to be rewritten here or the
-        # switch would only take effect at the next start of the plugin.
+        # Launchers read from a file whether to wait for saves, so it is
+        # rewritten whenever the answer can change.
         if "cloud_before_play" in patch:
             await self._run(self._note_cloud_state)
-        # Switching cloud saves on is the request for the tool it needs, not a
-        # prompt to go and install one. Failures are logged and left to startup
-        # to retry, because nothing here is worth failing a settings write over.
+        # Turning cloud saves on fetches its tool; a failure is retried at
+        # startup.
         if patch.get("cloud_saves"):
             await self._fetch_cloud_tool()
-        # Whether a launch should wait for saves is read by the launcher from a
-        # file, so it has to be rewritten whenever the answer can have changed
-        # -- switching cloud saves off is exactly when a launch must stop
-        # pausing for a panel that will never claim it.
         if "cloud_saves" in patch or "cloud_remote" in patch:
             await self._run(self._note_cloud_state)
         return await self.get_settings()
-
-
-
-
-
-
-
-
-
-
-
