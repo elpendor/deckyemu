@@ -47,6 +47,14 @@ LIVED_SECONDS = 60
 #: healthy. With Steam's UI present, loading the panel is the test instead.
 HEALTHY_WITHOUT_STEAM_SECONDS = 90
 
+#: rescue.sh stamps this before starting the service. Found fresh while the
+#: plugin is in use, the service stays up as the tile's page instead of off.
+TILE_MARKER = os.path.join(appenv.ROOT, "run", "tile-launch")
+TILE_MARKER_SECONDS = 60
+
+#: How long that standby lasts if nothing is pressed.
+STANDBY_SECONDS = 600
+
 
 def _lived(path):
     """Whether the run that wrote this log lasted LIVED_SECONDS."""
@@ -115,7 +123,9 @@ class Service:
             "update": self.rescue_update,
             "rollback": self.rescue_rollback,
             "restart": self.rescue_restart,
+            "take_over": self.rescue_take_over,
         })
+        self.standby = self._tile_standby()
         steam_dir = os.path.join(appenv.USER_HOME, ".local", "share", "Steam")
         if os.path.isdir(steam_dir) and cdp.ensure_enabled(steam_dir):
             appenv.logger.warning("Turned on Steam's debugging port; it takes effect when Steam next starts")
@@ -173,7 +183,25 @@ class Service:
     # --- the rescue page
     # ------------------------------------------------------------
 
+    def _tile_standby(self):
+        """Whether the tile started this service while the other build is in use."""
+        import builds
+
+        try:
+            fresh = time.time() - os.path.getmtime(TILE_MARKER) < TILE_MARKER_SECONDS
+            os.remove(TILE_MARKER)
+        except OSError:
+            return False
+        using = builds.in_use()
+        return fresh and using not in (None, appenv.KIND)
+
     def rescue_status(self):
+        if self.standby:
+            blocked = getattr(self.plugin, "_blocked", None) or {}
+            using = "%s %s" % (blocked.get("build") or "The other version", blocked.get("version") or "")
+            return {"version": appenv.VERSION, "standby": True,
+                    "checks": [("In use", using.strip(), "warn"),
+                               ("This version", "off", "warn")]}
         state = self.injector.state
         versions = self.selfupdate.status()
         steam = state.get("steam") or "unknown"
@@ -211,9 +239,52 @@ class Service:
         self.request_restart()
         return True, "Going back to %s. DeckyEmu is restarting." % os.path.basename(back)
 
+    def rescue_take_over(self):
+        """From standby: make this build the one in use, then restart Steam."""
+        import subprocess
+
+        import builds
+        import claim
+
+        if not self.standby:
+            return False, "This version is already the one in use."
+        # This process restarts below; its own in-use watcher must not start
+        # the backend here first.
+        self.plugin._switching = True
+        builds.use(appenv.KIND)
+        subprocess.run(["systemctl", "--user", "enable", "deckyemu.service"], check=False)
+        appenv.logger.info("Taking over from the other build, from the library tile")
+        # The other build polls every few seconds and lets go of the state.
+        for _ in range(45):
+            if not claim.held():
+                break
+            time.sleep(1)
+        else:
+            return False, "The other version did not stop. Restart the Deck and try again."
+        threading.Thread(target=self._restart_steam_and_self, daemon=True).start()
+        return True, "Switched to this version. Steam restarts now so its tab shows."
+
+    def _restart_steam_and_self(self):
+        import cdp
+
+        time.sleep(2)
+        try:
+            page = cdp.Page(cdp.ui_page(cdp.targets())["webSocketDebuggerUrl"])
+            page.evaluate("SteamClient.User.StartRestart(false)")
+            page.close()
+        except Exception:  # noqa: BLE001 - the switch already happened
+            appenv.logger.exception("Could not restart Steam")
+        self.request_restart(0.5)
+
     def rescue_restart(self):
         self.request_restart()
         return True, "DeckyEmu is restarting."
+
+    def _standby_over(self):
+        import subprocess
+
+        appenv.logger.info("Nothing chosen on the tile's page; turning the service off")
+        subprocess.run(["systemctl", "--user", "disable", "--now", "deckyemu.service"], check=False)
 
     def request_restart(self, delay=1.0):
         """Exit soon; the unit starts the service again."""
@@ -237,7 +308,18 @@ class Service:
         signal.signal(signal.SIGINT, stop)
 
         async def lifetime():
-            self.injector.start()
+            if self.standby:
+                # Only the page: a second panel beside the other build's tab
+                # would be two DeckyEmus.
+                import buildhost
+
+                buildhost.STANDBY = True
+                appenv.logger.info("Started from the library tile while the other build is in use")
+                timer = threading.Timer(STANDBY_SECONDS, self._standby_over)
+                timer.daemon = True
+                timer.start()
+            else:
+                self.injector.start()
             self.rescue.start()
             try:
                 await self.plugin._main()

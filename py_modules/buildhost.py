@@ -20,6 +20,10 @@ import selfupdate
 
 UNIT = "deckyemu.service"
 
+#: Set by the service when the library tile started it while the other build
+#: is in use; it then stays up to serve the tile's page (service.py).
+STANDBY = False
+
 
 def _restart_soon(delay=2.0):
     """Ask the service to stop, after the reply has had time to reach the panel.
@@ -69,6 +73,8 @@ class BuildHost(plugin_base.PluginContext):
 
     async def _host_stepped_aside(self):
         """The other build is in use: this service stays off, at login too."""
+        if STANDBY:
+            return
         appenv.logger.info("Turning the service off")
         _turn_off_soon()
 

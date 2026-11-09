@@ -73,13 +73,10 @@ PAGE = """<!doctype html>
  <div class="card">
   <h2>Status</h2>
 %(checks)s
-  <h2 class="sub">Patches</h2>
 %(patches)s
  </div>
  <div class="actions">
-  <button onclick="act('restart')">Restart</button>
-  <button onclick="act('update')">Update</button>
-  %(rollback)s
+%(actions)s
   <button onclick="location.reload()">Refresh</button>
   <div id="result"></div>
  </div>
@@ -95,7 +92,7 @@ async function act(what) {
     const r = await fetch(location.pathname.replace(/[/]+$/, "") + "/" + what, { method: "POST" });
     const j = await r.json();
     out.textContent = j.message || (j.ok ? "Done." : "That did not work.");
-    if (j.ok && what !== "update") setTimeout(() => location.reload(), 4000);
+    if (j.ok && what !== "update" && what !== "take_over") setTimeout(() => location.reload(), 4000);
   } catch (e) { out.textContent = "DeckyEmu is restarting. Refresh in a few seconds."; }
 }
 </script></body></html>"""
@@ -227,13 +224,25 @@ class Rescue:
         checks = [_item(*check) for check in status.get("checks", [])]
         patches = [_item(name, *patch_state(value))
                    for name, value in (status.get("patches") or {}).items()]
-        previous = status.get("previous")
-        rollback = ('<button onclick="act(\'rollback\')">Go back<small>to %s</small></button>' % html.escape(previous)
-                    if previous else "")
+        if status.get("standby"):
+            # Started by the tile while the other build is in use: switching
+            # back to this one is the only thing to offer.
+            actions = ('  <button onclick="act(\'take_over\')">Use this version instead'
+                       '<small>Steam restarts</small></button>')
+            patches = ""
+        else:
+            actions = ('  <button onclick="act(\'restart\')">Restart</button>\n'
+                       '  <button onclick="act(\'update\')">Update</button>')
+            previous = status.get("previous")
+            if previous:
+                actions += ('\n  <button onclick="act(\'rollback\')">Go back<small>to %s</small></button>'
+                            % html.escape(previous))
+            patches = ('  <h2 class="sub">Patches</h2>\n'
+                       + ("\n".join(patches) or _item("Not reported yet", "", "warn")))
         return PAGE % {
             "version": html.escape(str(status.get("version", ""))),
             "checks": "\n".join(checks),
-            "patches": "\n".join(patches) or _item("Not reported yet", "", "warn"),
-            "rollback": rollback,
+            "patches": patches,
+            "actions": actions,
             "log": html.escape(_log_tail()),
         }

@@ -71,6 +71,10 @@ the version before.
 An update that fails to start three times is rolled back on its own, and the
 tile says so.
 
+While the plugin version is the one in use, the tile says so and offers **Use
+this version instead**, which switches back to the standalone version and
+restarts Steam. That works even when a Steam update has broken Decky.
+
 ## Where things live
 
 DeckyEmu has two halves inside Steam. The Quick Access tab is for what you do

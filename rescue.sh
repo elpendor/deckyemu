@@ -22,6 +22,9 @@ wait_for_service() {
 }
 
 if ! answering; then
+    # Tells the service it was the tile: with the plugin in use, it then stays
+    # up to serve this page instead of turning itself off (service.py).
+    mkdir -p "$ROOT/run" && : > "$ROOT/run/tile-launch"
     systemctl --user restart deckyemu.service
     if ! wait_for_service; then
         python3 "$ROOT/launcher.py" --rollback-only 2>/dev/null
