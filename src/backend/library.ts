@@ -586,6 +586,8 @@ export const restoreSaveBackup = callable<
     not_installed?: string[];
     /** The archive, once it was deleted. Absent when it could not be. */
     removed?: string;
+    /** The backup holding what a replace overwrote, or "". */
+    kept?: string;
   }
 >("restore_save_backup");
 /**

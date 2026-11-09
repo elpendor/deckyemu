@@ -466,6 +466,7 @@ export function RestoreSavesModal({ closeModal }: Props) {
           // Named, because the file going is a thing that happened to something
           // of theirs. Silence reads as "where did my backup go".
           if (result.removed) parts.push("the backup was removed from this Deck");
+          if (result.kept) parts.push("what was replaced is kept as a backup on this Deck");
           toaster.toast({ title: "Saves restored", body: parts.join(", ") + "." });
           closeModal?.();
         })
@@ -479,9 +480,9 @@ export function RestoreSavesModal({ closeModal }: Props) {
   );
 
   /**
-   * The one action here that destroys something, behind the plugin's own
-   * confirmation. The sentence is the whole of the protection -- there is no
-   * undo -- so it counts what goes rather than describing it.
+   * The one action here that overwrites saves, behind the plugin's own
+   * confirmation, counting what it overwrites. A backup restore keeps those
+   * files as a backup first; a cloud restore offers to keep them in the cloud.
    */
   const confirmReplace = useCallback(() => {
     if (!contents) return;
@@ -495,7 +496,7 @@ export function RestoreSavesModal({ closeModal }: Props) {
             : `${overwritten} save file(s) on this Deck will be overwritten. ` +
               (chosen?.kind === "cloud"
                 ? "Keeping a copy first puts them in your storage under earlier copies, where you can get them back. Replacing without one cannot be undone."
-                : "Whatever they hold now is gone, and there is no undo.")
+                : "What they hold now is kept as a backup on this Deck, so you can restore it.")
         }
         {...(chosen?.kind === "cloud"
           ? {

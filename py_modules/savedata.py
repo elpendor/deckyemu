@@ -40,7 +40,9 @@ import fnmatch
 import json
 import os
 import posixpath
+import re
 import shutil
+import struct
 import time
 import zipfile
 
@@ -52,9 +54,10 @@ import sysenv
 from emulator_catalog import schema
 
 #: Version of the archive layout, written into the manifest and checked when one
-#: is read back. A restore that cannot read the layout must say so rather than
-#: extract half of it somewhere plausible.
-FORMAT = 1
+#: is read back. 2 holds `saves/<emulator>/<root>/...`, the cloud's own layout;
+#: 1 named roots by `_key` and is still read.
+FORMAT = 2
+_READABLE = (1, 2)
 
 #: Where a built archive waits to be read off the device. The runtime
 #: directory rather than the transfer folder: this is the plugin's own working
@@ -456,8 +459,88 @@ def sources():
     return listed
 
 
+def slug(label):
+    """A folder name for one save root, from what the emulator calls it."""
+    cleaned = re.sub(r"[^A-Za-z0-9._-]+", "-", (label or "").strip()).strip("-._")
+    return cleaned.lower() or "data"
+
+
+def roots_of(source):
+    """One (segment, local directory) per save root of one emulator.
+
+    The segment depends on that emulator alone, so its folder has the same name
+    in every zip and on every storage, whatever else was copied with it.
+    """
+    taken = set()
+    listed = []
+    for label, path in source["roots"]:
+        segment = slug(label)
+        candidate = segment
+        nth = 2
+        while candidate in taken:
+            candidate = "%s-%d" % (segment, nth)
+            nth += 1
+        taken.add(candidate)
+        listed.append((candidate, path))
+    return listed
+
+
+def file_root(path, source=None):
+    """Whether a declared save root is one file rather than a directory.
+
+    A file root travels inside a folder of its own name (`card.mcd/card.mcd`)
+    and comes back beside itself. The definition says so first (`one_file`):
+    on a Deck that lost the file, the disk cannot tell.
+    """
+    if path in ((source or {}).get("one_file") or ()):
+        return True
+    return os.path.isfile(path)
+
+
+def rows_from(files_by_emulator, names=None):
+    """The restore screen's rows from `{emulator: {"<root>/<path>": size}}`.
+
+    `names` names an emulator this Deck does not have, which still gets a row
+    saying so.
+    """
+    here = {source["id"]: source for source in _all_sources(True)}
+    landing = {}
+    for source in here.values():
+        for segment, path in roots_of(source):
+            landing[(source["id"], segment)] = path
+
+    found = []
+    for emulator, files in files_by_emulator.items():
+        source = here.get(emulator)
+        row = {
+            "id": emulator,
+            "name": source["name"] if source else (names or {}).get(emulator, emulator),
+            "installed": source is not None,
+            "files": 0,
+            "bytes": 0,
+            "present": 0,
+        }
+        for name, size in files.items():
+            parts = name.split("/")
+            if len(parts) < 2:
+                continue
+            row["files"] += 1
+            row["bytes"] += int(size or 0)
+            local = landing.get((emulator, parts[0]))
+            if local and file_root(local, source):
+                here_already = os.path.exists(local)
+            else:
+                here_already = bool(local) and os.path.exists(
+                    os.path.join(local, *parts[1:]))
+            if here_already:
+                row["present"] += 1
+        if row["files"]:
+            found.append(row)
+    return sorted(found, key=lambda row: row["name"])
+
+
 def _key(source_id, label, taken):
-    """A short readable name for one root inside the archive, unique across it."""
+    """Format 1's name for one root inside an archive."""
     base = "%s-%s" % (source_id, label.strip("._").lower().replace(" ", "-") or "data")
     key = base
     suffix = 2
@@ -466,6 +549,20 @@ def _key(source_id, label, taken):
         suffix += 1
     taken.add(key)
     return key
+
+
+def _add(bundle, absolute, name):
+    """Write one file into an archive, with its time in UTC.
+
+    A zip's own time field is local time with no zone, and rclone reads it as
+    UTC; the extended-timestamp field (0x5455) carries the real moment.
+    """
+    info = zipfile.ZipInfo.from_file(absolute, name)
+    info.compress_type = zipfile.ZIP_DEFLATED
+    info.extra = struct.pack("<HHBl", 0x5455, 5, 1, int(os.stat(absolute).st_mtime))
+    with open(absolute, "rb") as reading, \
+            bundle.open(info, "w", force_zip64=info.file_size > 2 ** 31) as writing:
+        shutil.copyfileobj(reading, writing, 1024 * 1024)
 
 
 def build(destination, ids=None):
@@ -484,29 +581,22 @@ def build(destination, ids=None):
     if not listed:
         return {"ok": False, "error": "There are no saves to back up yet."}
 
-    manifest = {"format": FORMAT, "home": sysenv.user_home(), "roots": []}
+    manifest = {"format": FORMAT, "emulators": {}}
     partial = destination + _PARTIAL
-    taken = set()
     written = 0
     try:
         os.makedirs(os.path.dirname(destination) or ".", exist_ok=True)
         with zipfile.ZipFile(partial, "w", zipfile.ZIP_DEFLATED) as bundle:
             for source in listed:
+                manifest["emulators"][source["id"]] = source["name"]
                 skip = _SKIP_TOP if source["whole"] else ()
-                for label, path in source["roots"]:
-                    key = _key(source["id"], label, taken)
-                    manifest["roots"].append({
-                        "key": key,
-                        "id": source["id"],
-                        "name": source["name"],
-                        "path": path,
-                        "whole": source["whole"],
-                    })
+                only = source.get("only") or {}
+                for (label, path), (segment, _) in zip(source["roots"], roots_of(source)):
                     for absolute, relative in _walk(
-                            path, skip, source.get("except", ()),
-                            (source.get("only") or {}).get(label, ())):
+                            path, skip, source.get("except", ()), only.get(label, ())):
                         try:
-                            bundle.write(absolute, posixpath.join("files", key, relative))
+                            _add(bundle, absolute,
+                                 posixpath.join("saves", source["id"], segment, relative))
                         except OSError as error:
                             # One unreadable file must not cost the whole backup.
                             # It is named in the log; every other save still goes.
@@ -546,39 +636,10 @@ def default_name():
 
 # ---------------------------------------------------------------- restoring
 #
-# **The archive never says where a file goes.** It arrived over the network from
-# a device this plugin knows nothing about, and honouring an absolute path out of
-# it would be an arbitrary write into the home directory -- the same hazard
-# `unpack` refuses by flattening to basenames, in a direction where flattening is
-# not available because the tree is the point.
-#
-# So the manifest is read for *which emulator* each root belongs to, and the
-# destination is recomputed from the catalog as it stands on this device. A key
-# naming an emulator that is not installed is reported and skipped rather than
-# guessed at; a member whose relative path would climb out of its root is
-# refused. Between the two, nothing outside an installed emulator's own save
-# directory can be written no matter what the archive contains.
-
-
-def _current_roots():
-    """{key: (source, absolute path)} for the roots this device has right now.
-
-    The keys are the ones `build` wrote, and they are stable across devices
-    because `_key` is built from the emulator's id and the last segment of the
-    path -- both properties of that emulator alone. Which *other* emulators are
-    installed cannot shift them, which is what lets an archive taken on one Deck
-    be read on another.
-
-    What does move them is the catalog changing an entry's `saves`. That is why
-    an unrecognised key is reported rather than matched to something nearby: a
-    near-miss here writes somebody's saves into the wrong directory.
-    """
-    taken: set = set()
-    mapping = {}
-    for source in _all_sources():
-        for label, path in source["roots"]:
-            mapping[_key(source["id"], label, taken)] = (source, path)
-    return mapping
+# **The archive never says where a file goes.** It arrived from a device this
+# plugin knows nothing about, so each file names only its emulator and root, and
+# the destination is recomputed from what this Deck has installed. A member that
+# would climb out of its root is refused.
 
 
 def _read_manifest(bundle):
@@ -593,15 +654,48 @@ def _read_manifest(bundle):
         return None, "The backup's manifest could not be read."
     if not isinstance(manifest, dict):
         return None, "The backup's manifest is not in the expected shape."
-    if manifest.get("format") != FORMAT:
-        # Refused rather than attempted. A layout this build does not know could
-        # put files anywhere, and "somewhere plausible" is the one outcome worth
-        # avoiding when the alternative is a clear message.
+    if manifest.get("format") not in _READABLE:
         return None, (
             "This backup was made in a layout this build does not know (version %s). "
             "Update DeckyEmu and try again." % manifest.get("format")
         )
     return manifest, ""
+
+
+def _entries(bundle, manifest):
+    """Every file in an archive as (emulator, "<root>/<path>", info), and names.
+
+    Format 1 named a root by `_key`, recomputed here against this Deck's
+    emulators; a key nothing here produces keeps its emulator but no root, so
+    it is reported rather than placed.
+    """
+    files = [info for info in bundle.infolist() if not info.is_dir()]
+    if manifest.get("format") == 2:
+        names = {str(k): str(v) for k, v in (manifest.get("emulators") or {}).items()}
+        found = []
+        for info in files:
+            parts = info.filename.split("/")
+            if len(parts) >= 4 and parts[0] == "saves":
+                found.append((parts[1], "/".join(parts[2:]), info))
+        return found, names
+
+    taken: set = set()
+    segments = {}
+    for source in _all_sources():
+        for (label, _), (segment, _) in zip(source["roots"], roots_of(source)):
+            segments[_key(source["id"], label, taken)] = (source["id"], segment)
+    found = []
+    names = {}
+    for root in manifest.get("roots") or []:
+        key = root.get("key") or ""
+        emulator, segment = segments.get(key, (root.get("id") or key, ""))
+        names.setdefault(emulator, root.get("name") or emulator)
+        prefix = "files/%s/" % key
+        for info in files:
+            if info.filename.startswith(prefix):
+                rest = info.filename[len(prefix):]
+                found.append((emulator, "%s/%s" % (segment, rest) if segment else "/" + rest, info))
+    return found, names
 
 
 def _safe_member(root, relative):
@@ -701,66 +795,87 @@ def backups_in(*directories):
 
 
 def describe(path):
-    """What an archive holds, per emulator, and whether this device can take it.
-
-    Answered without writing anything, so the panel can say what restoring would
-    do before anybody agrees to it. `installed` is the half that decides whether
-    a row is offered at all: saves for an emulator this Deck does not have are
-    reported and left alone rather than written into a directory nothing reads.
-    """
+    """What an archive holds, per emulator, and how much of it is already here."""
     try:
         with zipfile.ZipFile(path) as bundle:
             manifest, problem = _read_manifest(bundle)
             if problem:
                 return {"ok": False, "error": problem}
-            members = [info for info in bundle.infolist() if not info.is_dir()]
+            entries, names = _entries(bundle, manifest)
     except (OSError, zipfile.BadZipFile, ValueError) as error:
         return {"ok": False, "error": "This does not look like a zip file: %s" % error}
+    files: dict = {}
+    for emulator, name, info in entries:
+        files.setdefault(emulator, {})[name] = info.file_size
+    return {"ok": True, "sources": rows_from(files, names)}
 
-    here = _current_roots()
-    listed = {}
-    for root in manifest.get("roots") or []:
-        key = root.get("key") or ""
-        prefix = "files/%s/" % key
-        held = [info for info in members if info.filename.startswith(prefix)]
-        source, destination = here.get(key, (None, ""))
-        entry = listed.setdefault(root.get("id") or key, {
-            "id": root.get("id") or key,
-            # The name the backup was taken under, so a row reads the same on
-            # the Deck that made it even if the catalog has been renamed since.
-            "name": root.get("name") or key,
-            "installed": False,
-            "files": 0,
-            "bytes": 0,
-            "present": 0,
-        })
-        entry["files"] += len(held)
-        entry["bytes"] += sum(info.file_size for info in held)
-        if source is not None:
-            entry["installed"] = True
-            # How many of these already exist here. It is the whole of the
-            # decision between "put back what is missing" and "replace what is
-            # there", so it is counted rather than described.
-            for info in held:
-                landing = _safe_member(destination, info.filename[len(prefix):])
-                if landing and os.path.exists(landing):
-                    entry["present"] += 1
 
-    return {"ok": True, "sources": [entry for entry in listed.values() if entry["files"]]}
+#: Kept free on top of what a restore writes, as the cloud restore keeps.
+_SPACE_MARGIN = 256 * 1024 * 1024
+
+
+def _fits(writes):
+    """Whether `writes`, (destination, bytes) pairs, fit on their disks."""
+    needed: dict = {}
+    for path, size in writes:
+        at = path
+        while at and not os.path.isdir(at):
+            parent = os.path.dirname(at)
+            if parent == at:
+                break
+            at = parent
+        try:
+            device = os.stat(at).st_dev
+        except OSError:
+            continue
+        held = needed.setdefault(device, [at, 0])
+        held[1] += size
+    for at, size in needed.values():
+        try:
+            free = shutil.disk_usage(at).free
+        except OSError:
+            continue
+        if size + _SPACE_MARGIN > free:
+            return False, ("There is not enough room on this Deck: these saves need "
+                           "%d MB and %d MB is free." % (size // 10 ** 6, free // 10 ** 6))
+    return True, ""
+
+
+def _keep_aside(overwritten):
+    """Zip what a replace is about to overwrite, beside the other backups.
+
+    `overwritten` is (local path, name in the archive) pairs. The zip is an
+    ordinary backup, so Restore offers it like any other. Returns (name, error).
+    """
+    name = time.strftime("deckyemu-saves-replaced-%Y%m%d-%H%M%S.zip")
+    destination = os.path.join(arrivals_dir(), name)
+    partial = destination + _PARTIAL
+    emulators = sorted({member.split("/")[1] for _, member in overwritten})
+    try:
+        with zipfile.ZipFile(partial, "w", zipfile.ZIP_DEFLATED) as bundle:
+            for local, member in overwritten:
+                _add(bundle, local, member)
+            bundle.writestr("manifest.json", json.dumps(
+                {"format": FORMAT, "emulators": {e: e for e in emulators}}, indent=2))
+        os.replace(partial, destination)
+    except OSError as error:
+        try:
+            os.remove(partial)
+        except OSError:
+            pass
+        return "", str(error)
+    return name, ""
 
 
 def restore(path, ids=None, replace=False):
     """Put saves back from an archive. Returns what happened, per emulator.
 
-    `replace` is the difference between the two things somebody means by
-    restoring. Off -- the default -- writes only what is not already here, which
-    is right after wiping a Deck and cannot lose a save that has been played
-    since. On overwrites, which is what somebody wants when the saves on this
-    device are the ones they are trying to get rid of, and is destructive in a
-    way nothing else here undoes.
+    Off, `replace` writes only what is not here, which cannot lose a save
+    played since. On, it overwrites -- after zipping what it overwrites
+    beside the other backups, so a replace can be undone from Restore.
 
-    Each file is written beside its destination and renamed over it, so a disk
-    that fills up mid-restore leaves whole files rather than truncated ones.
+    Each file is written beside its destination and renamed over it, so a full
+    disk leaves whole files rather than truncated ones.
     """
     try:
         bundle = zipfile.ZipFile(path)
@@ -771,66 +886,93 @@ def restore(path, ids=None, replace=False):
         manifest, problem = _read_manifest(bundle)
         if problem:
             return {"ok": False, "error": problem}
+        entries, names = _entries(bundle, manifest)
 
-        here = _current_roots()
-        written = 0
-        skipped = 0
-        refused = 0
+        landing = {}
+        for source in _all_sources(True):
+            for segment, root in roots_of(source):
+                landing[(source["id"], segment)] = (source, root)
+        # A root holding only a file of its own name is a file root, even on a
+        # Deck that has lost that file. See `file_root`.
+        under: dict = {}
+        for emulator, name, _ in entries:
+            segment, _, rest = name.partition("/")
+            under.setdefault((emulator, segment), []).append(rest)
+
+        plan = []
         missing = []
         touched = []
-        for root in manifest.get("roots") or []:
-            key = root.get("key") or ""
-            source, destination = here.get(key, (None, ""))
-            name = root.get("name") or key
-            if source is None:
-                if name not in missing:
-                    missing.append(name)
+        refused = 0
+        skipped = 0
+        for emulator, name, info in entries:
+            if ids is not None and emulator not in ids:
                 continue
-            if ids is not None and source["id"] not in ids:
+            segment, _, rest = name.partition("/")
+            hit = landing.get((emulator, segment))
+            if hit is None:
+                label = names.get(emulator, emulator)
+                if label not in missing:
+                    missing.append(label)
+                continue
+            source, root = hit
+            one_file = file_root(root, source) or under[(emulator, segment)] == [segment]
+            target = _safe_member(os.path.dirname(root) if one_file else root, rest)
+            if not target:
+                # Logged: an archive holding one is not one we wrote.
+                appenv.logger.warning(
+                    "Save restore refused a member outside its root: %s", info.filename)
+                refused += 1
+                continue
+            if os.path.exists(target) and not replace:
+                skipped += 1
                 continue
             if source["name"] not in touched:
                 touched.append(source["name"])
+            plan.append((info, target, "saves/%s/%s" % (emulator, name)))
 
-            prefix = "files/%s/" % key
-            for info in bundle.infolist():
-                if info.is_dir() or not info.filename.startswith(prefix):
-                    continue
-                landing = _safe_member(destination, info.filename[len(prefix):])
-                if not landing:
-                    # A member naming its way out of the root it belongs to.
-                    # Counted and logged rather than silently dropped: an archive
-                    # that contains one is not an archive this plugin wrote.
-                    appenv.logger.warning(
-                        "Save restore refused a member outside its root: %s",
-                        info.filename,
-                    )
-                    refused += 1
-                    continue
-                if os.path.exists(landing) and not replace:
-                    skipped += 1
-                    continue
-                try:
-                    os.makedirs(os.path.dirname(landing), exist_ok=True)
-                    partial = landing + _PARTIAL
-                    with bundle.open(info) as reading, open(partial, "wb") as writing:
-                        shutil.copyfileobj(reading, writing)
-                    os.replace(partial, landing)
-                except OSError as error:
-                    appenv.logger.warning("Could not restore %s: %s", landing, error)
-                    refused += 1
-                    continue
-                written += 1
+        def size_of(target):
+            try:
+                return os.path.getsize(target)
+            except OSError:
+                return 0
+
+        overwritten = [(target, member) for _, target, member in plan
+                       if os.path.isfile(target)]
+        fits, tight = _fits(
+            [(target, max(0, info.file_size - size_of(target))) for info, target, _ in plan]
+            + [(arrivals_dir(), sum(size_of(target) for target, _ in overwritten))])
+        if not fits:
+            return {"ok": False, "error": tight}
+        kept = ""
+        if overwritten:
+            kept, failed = _keep_aside(overwritten)
+            if failed:
+                return {"ok": False, "error": "Your saves could not be kept first, so "
+                                              "nothing was replaced. %s" % failed}
+
+        written = 0
+        for info, target, _ in plan:
+            try:
+                os.makedirs(os.path.dirname(target), exist_ok=True)
+                partial = target + _PARTIAL
+                with bundle.open(info) as reading, open(partial, "wb") as writing:
+                    shutil.copyfileobj(reading, writing)
+                os.replace(partial, target)
+            except OSError as error:
+                appenv.logger.warning("Could not restore %s: %s", target, error)
+                refused += 1
+                continue
+            written += 1
 
     appenv.logger.info(
-        "Save restore: %d written, %d already there, %d refused", written, skipped, refused
-    )
+        "Save restore: %d written, %d already there, %d refused%s", written, skipped,
+        refused, ", replaced files kept in %s" % kept if kept else "")
     return {
         "ok": True,
         "written": written,
         "skipped": skipped,
         "refused": refused,
         "emulators": touched,
-        # Named so the panel can say which saves are still in the archive rather
-        # than reporting a smaller number with no explanation.
         "not_installed": missing,
+        "kept": kept,
     }

@@ -39,7 +39,6 @@ the restore screen. Every comparable project holds one remote and answers this
 by making you start again.
 """
 
-import concurrent.futures
 import json
 import os
 import re
@@ -157,65 +156,10 @@ KEEP = 10
 _SEGMENT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 
 
-def _slug(label):
-    """A folder name for one save root, from what the emulator calls it."""
-    cleaned = re.sub(r"[^A-Za-z0-9._-]+", "-", (label or "").strip()).strip("-._")
-    return cleaned.lower() or "data"
-
-
-def _roots_of(source):
-    """One (segment, local directory) per save root of one emulator.
-
-    The segment is stable for a given emulator whatever else is being copied,
-    which is what lets an upload of one emulator sit beside an upload of another
-    and lets a later download find it again. `savedata._key` cannot be used for
-    this: it numbers collisions against everything in the same archive, so the
-    same directory would land under a different name depending on what happened
-    to be ticked.
-    """
-    taken = set()
-    listed = []
-    for label, path in source["roots"]:
-        segment = _slug(label)
-        candidate = segment
-        nth = 2
-        while candidate in taken:
-            candidate = "%s-%d" % (segment, nth)
-            nth += 1
-        taken.add(candidate)
-        listed.append((candidate, path))
-    return listed
-
-
-def _file_root(path, source=None):
-    """A declared save that is one file rather than a directory.
-
-    `saves` may name a single file -- a record of achievements, a port's
-    config, a memory card -- and the two travel differently. A directory root
-    is copied into its own folder up there and back into itself; a file root
-    is *inside* a folder named after it, because rclone's `copy` puts a source
-    file into the destination directory rather than over it. So the remote
-    holds `achievements.json/achievements.json`, which is ugly and harmless.
-
-    What was not harmless is bringing it back. The fetch passed the local file
-    as rclone's destination, and rclone has to make a directory there to put
-    the file in, so it refused with *is a file not a directory* and the whole
-    restore stopped on the first emulator that declared one. Six of the nine
-    ports in one set declare exactly this, so it stopped on all of them.
-
-    The definition first, when it says -- `{"file": ...}` in `saves`, carried
-    here as the source's `one_file`. Otherwise the disk, which is all a plain
-    string offers.
-
-    **Existing and being a file, not merely not being a directory.** A save
-    directory this Deck has never had is neither, and reading that as a file
-    sent every root of a fresh restore into its parent. Which is the whole
-    reason the definition should say: the disk cannot answer on the Deck that
-    is missing the file, and that is the Deck doing the restoring.
-    """
-    if path in ((source or {}).get("one_file") or ()):
-        return True
-    return os.path.isfile(path)
+# Shared with the zip backup, so a folder has one name everywhere.
+_slug = savedata.slug
+_roots_of = savedata.roots_of
+_file_root = savedata.file_root
 
 
 def _only_for(source, segment):
@@ -876,46 +820,7 @@ def room_for(remote, ids=None, replace=False, stamp=""):
     return True, ""
 
 
-def _rows_from(files_by_emulator):
-    """Turn `{emulator: {name: size}}` into the rows the restore screen reads."""
-    here = {source["id"]: source for source in savedata._all_sources(True)}
-    landing = {}
-    for source in here.values():
-        for segment, path in _roots_of(source):
-            landing[(source["id"], segment)] = path
-
-    found = []
-    for emulator, files in files_by_emulator.items():
-        source = here.get(emulator)
-        row = {
-            "id": emulator,
-            # An emulator this Deck does not have still gets a row, saying so,
-            # rather than being dropped -- it is how somebody learns their Vita
-            # saves are safe on a Deck that has no Vita3K on it right now.
-            "name": source["name"] if source else emulator,
-            "installed": source is not None,
-            "files": 0,
-            "bytes": 0,
-            "present": 0,
-        }
-        for name, size in files.items():
-            parts = name.split("/")
-            if len(parts) < 2:
-                continue
-            row["files"] += 1
-            row["bytes"] += int(size or 0)
-            local = landing.get((emulator, parts[0]))
-            if local and _file_root(local, source):
-                # The file itself, not a path built inside it.
-                here_already = os.path.exists(local)
-            else:
-                here_already = bool(local) and os.path.exists(
-                    os.path.join(local, *parts[1:]))
-            if here_already:
-                row["present"] += 1
-        if row["files"]:
-            found.append(row)
-    return sorted(found, key=lambda row: row["name"])
+_rows_from = savedata.rows_from
 
 
 #: What every copy up leaves beside the saves, and what every launch reads.

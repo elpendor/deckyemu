@@ -212,25 +212,25 @@ with zipfile.ZipFile(_destination) as _bundle:
     _members = sorted(_bundle.namelist())
     _manifest = json.loads(_bundle.read("manifest.json").decode("utf-8"))
 
-check("every file is stored under the root it came from",
-      [name for name in _members if name.startswith("files/")],
-      ["files/aardvark-port-imported/achievements.json",
-       "files/aardvark-port-imported/config.json",
-       "files/aardvark-port-imported/saves/slot1.bin",
-       "files/plain-dev.plainly.plain/config/plain/memcards/card1.mcd",
-       "files/plain-dev.plainly.plain/config/plain/settings.ini",
-       "files/pretendo-home/00000001/savedata/GAME01/SAVE"])
-# Restoring has to put files back where they were, and working that out from the
-# shape of the paths would be a guess in the one direction where a wrong answer
-# overwrites something. So the archive says.
-check("the manifest names the absolute directory behind each root",
-      sorted((root["key"], os.path.basename(root["path"]))
-             for root in _manifest["roots"]),
-      [("aardvark-port-imported", "Imported"),
-       ("plain-dev.plainly.plain", "dev.plainly.Plain"),
-       ("pretendo-home", "home")])
+# The cloud's own layout, so one set of folder names serves both.
+check("every file is stored under its emulator and root, as the cloud stores it",
+      [name for name in _members if name.startswith("saves/")],
+      ["saves/aardvark-port/imported/achievements.json",
+       "saves/aardvark-port/imported/config.json",
+       "saves/aardvark-port/imported/saves/slot1.bin",
+       "saves/plain/dev.plainly.plain/config/plain/memcards/card1.mcd",
+       "saves/plain/dev.plainly.plain/config/plain/settings.ini",
+       "saves/pretendo/home/00000001/savedata/GAME01/SAVE"])
+check("the manifest names each emulator, for a Deck that does not have it",
+      _manifest["emulators"],
+      {"aardvark-port": "Aardvark Port", "plain": "Plain", "pretendo": "Pretendo"})
 check("and records the layout version so a restore can refuse an unknown one",
       _manifest["format"], savedata.FORMAT)
+# A zip's own time is local with no zone, and rclone reads it as UTC.
+with zipfile.ZipFile(_destination) as _bundle:
+    _info = _bundle.getinfo("saves/pretendo/home/00000001/savedata/GAME01/SAVE")
+check("each file carries its time in UTC as well",
+      _info.extra[:2], b"UT")
 
 section("a saves path may not reach outside what the entry owns")
 
@@ -359,11 +359,20 @@ check("a file changed since the backup survives a plain restore",
       io.open(os.path.join(_home, ".var", "app", "dev.plainly.Plain", "config",
                            "plain", "memcards", "card1.mcd")).read(),
       "played since the backup")
-savedata.restore(_destination, replace=True)
+_replaced = savedata.restore(_destination, replace=True)
 check("and is overwritten only when replacing was asked for",
       io.open(os.path.join(_home, ".var", "app", "dev.plainly.Plain", "config",
                            "plain", "memcards", "card1.mcd")).read(),
       "x")
+# Replacing keeps what it overwrites as a backup, so Restore undoes it.
+_kept = os.path.join(savedata.arrivals_dir(), _replaced["kept"])
+check("and what it overwrote is kept as a backup on this Deck",
+      (bool(_replaced["kept"]), savedata.is_backup(_kept)), (True, True))
+with zipfile.ZipFile(_kept) as _bundle:
+    check("holding the version that was replaced",
+          _bundle.read("saves/plain/dev.plainly.plain/config/plain/memcards/card1.mcd"),
+          b"played since the backup")
+os.remove(_kept)
 
 section("an archive may not say where its files go")
 
@@ -374,23 +383,16 @@ section("an archive may not say where its files go")
 _hostile = os.path.join(TMP, "hostile.zip")
 with zipfile.ZipFile(_hostile, "w") as _bundle:
     _bundle.writestr("manifest.json", json.dumps({
-        "format": savedata.FORMAT,
-        "home": "/home/somebody-else",
-        "roots": [{"key": "pretendo-home", "id": "pretendo", "name": "Pretendo",
-                   "path": "/home/somebody-else/.config/pretendo/dev_hdd0/home",
-                   "whole": False}],
-    }))
-    _bundle.writestr("files/pretendo-home/../../../../.ssh/authorized_keys", "pwned")
-    _bundle.writestr("files/pretendo-home/00000001/savedata/OK", "fine")
+        "format": savedata.FORMAT, "emulators": {"pretendo": "Pretendo"}}))
+    _bundle.writestr("saves/pretendo/home/../../../../.ssh/authorized_keys", "pwned")
+    _bundle.writestr("saves/pretendo/home/00000001/savedata/OK", "fine")
 
 _result = savedata.restore(_hostile)
 check("a member climbing out of its root is refused", _result["refused"], 1)
 check("the one that stayed inside is written", _result["written"], 1)
 check("and nothing was written outside the emulator's own directory",
       os.path.exists(os.path.join(_home, ".ssh", "authorized_keys")), False)
-# The manifest named another machine's home. It is ignored entirely: where a
-# file goes is decided by what this device has installed now.
-check("and the archive's own idea of where it came from is not used",
+check("and the file inside its root lands where this Deck keeps that root",
       os.path.isfile(os.path.join(_home, ".config", "pretendo", "dev_hdd0",
                                   "home", "00000001", "savedata", "OK")),
       True)
@@ -400,12 +402,8 @@ section("what cannot be restored is reported, not guessed at")
 _unknown = os.path.join(TMP, "unknown.zip")
 with zipfile.ZipFile(_unknown, "w") as _bundle:
     _bundle.writestr("manifest.json", json.dumps({
-        "format": savedata.FORMAT,
-        "home": _home,
-        "roots": [{"key": "notinstalled-home", "id": "notinstalled",
-                   "name": "Some Emulator", "path": "/x", "whole": False}],
-    }))
-    _bundle.writestr("files/notinstalled-home/SAVE", "x")
+        "format": savedata.FORMAT, "emulators": {"notinstalled": "Some Emulator"}}))
+    _bundle.writestr("saves/notinstalled/home/SAVE", "x")
 _result = savedata.restore(_unknown)
 check("saves for an emulator this Deck does not have are named, not written",
       (_result["written"], _result["not_installed"]), (0, ["Some Emulator"]))
@@ -413,6 +411,31 @@ check("saves for an emulator this Deck does not have are named, not written",
 check("a zip that is not one of ours says so",
       savedata.describe(_archive_not_ours())["error"].startswith("This zip is not"),
       True)
+
+# Backups made before the cloud layout name roots by key, and still restore.
+_old = os.path.join(TMP, "format1.zip")
+with zipfile.ZipFile(_old, "w") as _bundle:
+    _bundle.writestr("manifest.json", json.dumps({
+        "format": 1, "home": "/elsewhere",
+        "roots": [{"key": "pretendo-home", "id": "pretendo", "name": "Pretendo",
+                   "path": "/elsewhere/x", "whole": False}]}))
+    _bundle.writestr("files/pretendo-home/00000001/savedata/FROM_V1", "old")
+check("a backup in the first layout still describes and restores",
+      (savedata.describe(_old)["sources"][0]["id"], savedata.restore(_old)["written"]),
+      ("pretendo", 1))
+check("into the same place",
+      os.path.isfile(os.path.join(_home, ".config", "pretendo", "dev_hdd0", "home",
+                                  "00000001", "savedata", "FROM_V1")), True)
+
+# A restore that would fill the disk is refused before anything is written.
+_real_usage = savedata.shutil.disk_usage
+savedata.shutil.disk_usage = lambda _path: shutil._ntuple_diskusage(1, 1, 1)
+try:
+    _full = savedata.restore(_destination, replace=True)
+finally:
+    savedata.shutil.disk_usage = _real_usage
+check("and one that would not fit says so instead",
+      "not enough room" in (_full.get("error") or ""), True)
 
 # A layout this build does not know could put files anywhere, so it is refused
 # outright rather than attempted.
