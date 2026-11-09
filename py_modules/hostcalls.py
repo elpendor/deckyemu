@@ -6,6 +6,8 @@ not about games, and they must answer even on hardware the Plugin's gate
 refuses.
 """
 
+import base64
+import hashlib
 import json
 import os
 
@@ -55,10 +57,27 @@ class HostCalls:
         return self._service.rescue_status()
 
     def tile(self):
-        """What the library tile runs, for the panel to add to Steam."""
+        """What the library tile runs, for the panel to add to Steam.
+
+        `art` is the tile's artwork from assets/tile, and `art_version` changes
+        whenever it does, so an existing tile is given the new set.
+        """
+        assets = os.path.join(appenv.ROOT, "current", "assets")
+        art, digest = {}, hashlib.sha256()
+        for slot in ("capsule", "header", "hero", "logo"):
+            try:
+                with open(os.path.join(assets, "tile", slot + ".png"), "rb") as handle:
+                    data = handle.read()
+            except OSError:
+                continue
+            digest.update(data)
+            art[slot] = {"data": "data:image/png;base64," + base64.b64encode(data).decode(),
+                         "kind": "png"}
         return {
             "name": "DeckyEmu",
             "exe": os.path.join(appenv.ROOT, "rescue.sh"),
             "start_dir": appenv.ROOT,
-            "icon": os.path.join(appenv.ROOT, "current", "assets", "game-icon.png"),
+            "icon": os.path.join(assets, "game-icon.png"),
+            "art": art,
+            "art_version": digest.hexdigest()[:16] if art else "",
         }
