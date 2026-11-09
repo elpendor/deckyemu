@@ -127,8 +127,8 @@ You can have both installed. Only one runs at a time, and they share
 everything: your games, settings, emulators and firmware are the same whichever
 one you're using.
 
-At the bottom of the tab of the one in use, **Other version** offers the other
-one, once it's installed. Switching turns this one off and the other on, which
+In the header of the tab of the one in use, the ⇄ button beside the cog offers
+the other one, once it's installed. Switching turns this one off and the other on, which
 takes a couple of seconds, then asks to restart Steam so the right tab shows.
 The standalone version, when it's not the one in use, is off entirely and
 doesn't start at login.

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { ButtonItem, ConfirmModal, PanelSection, PanelSectionRow } from "./steamui";
+import { FaExchangeAlt } from "react-icons/fa";
+import { ButtonItem, ConfirmModal, DialogButton, PanelSectionRow } from "./steamui";
 
 import { switchBuild, switchOffer, takeOver, type SwitchOffer } from "./backend";
 import { openModal } from "./modalStack";
@@ -54,13 +55,20 @@ function description(offer: SwitchOffer): string {
   );
 }
 
+const SWITCHED = "deckyemu-switched";
+
+/** Runs `listener` after this panel switched to the other build. */
+export function onSwitched(listener: () => void): () => void {
+  window.addEventListener(SWITCHED, listener);
+  return () => window.removeEventListener(SWITCHED, listener);
+}
+
 /**
- * The way to the other build of DeckyEmu, the service or the plugin.
- *
- * Renders nothing until the backend has found one. Last in the panel: it is
- * never why the panel was opened.
+ * The way to the other build of DeckyEmu, the service or the plugin: an icon
+ * in the tab's header, beside the cog. Renders nothing until the backend has
+ * found one.
  */
-export function SwitchPanel({ onSwitched }: { onSwitched: () => void }) {
+export function SwitchButton() {
   const [offer, setOffer] = useState<SwitchOffer | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -78,7 +86,7 @@ export function SwitchPanel({ onSwitched }: { onSwitched: () => void }) {
     try {
       const result = await switchBuild();
       if (result.ok) {
-        onSwitched();
+        window.dispatchEvent(new Event(SWITCHED));
         switched(result.version ?? offer.version, to);
       } else {
         notSwitched(result.error);
@@ -91,32 +99,38 @@ export function SwitchPanel({ onSwitched }: { onSwitched: () => void }) {
   };
 
   return (
-    <PanelSection title="Other version">
-      <PanelSectionRow>
-        <ButtonItem
-          layout="below"
-          disabled={busy}
-          description={description(offer)}
-          onClick={() =>
-            openModal(
-              <ConfirmModal
-                strTitle={`Switch to the ${to}?`}
-                strDescription={
-                  (offer.installed ? "" : `DeckyEmu ${offer.version} is downloaded and installed. `) +
-                  `This one turns off, and the ${to} starts with the same games and settings.`
-                }
-                strOKButtonText="Switch"
-                onOK={() => void run()}
-              />,
-            )
-          }
-        >
-          {busy ? "Switching..." : `Switch to the ${to}`}
-        </ButtonItem>
-      </PanelSectionRow>
-    </PanelSection>
+    <DialogButton
+      style={HEADER_BUTTON}
+      disabled={busy}
+      onClick={() =>
+        openModal(
+          <ConfirmModal
+            strTitle={`Switch to the ${to}?`}
+            strDescription={
+              description(offer) +
+              (offer.installed ? "" : ` DeckyEmu ${offer.version} is downloaded and installed first.`)
+            }
+            strOKButtonText="Switch"
+            onOK={() => void run()}
+          />,
+        )
+      }
+    >
+      <FaExchangeAlt style={{ display: "block" }} />
+    </DialogButton>
   );
 }
+
+/** A Quick Access header button: 28x40 like Steam's own, glyph centred. */
+export const HEADER_BUTTON = {
+  height: "28px",
+  width: "40px",
+  minWidth: 0,
+  padding: 0,
+  display: "flex",
+  justifyContent: "center",
+  alignItems: "center",
+} as const;
 
 /** On the panel of the build that stays off, while the other is in use. */
 export function TakeOverRows({ onTaken }: { onTaken: () => void }) {

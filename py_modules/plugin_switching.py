@@ -75,6 +75,9 @@ class Switching(plugin_base.PluginContext):
 
     async def switch_offer(self):
         """The other build the panel offers, if there is one to switch to."""
+        if getattr(self, "_blocked", None):
+            # Off already; the panel offers taking over instead.
+            return {"available": False}
         return await self._host_switch_offer()
 
     async def switch_build(self):

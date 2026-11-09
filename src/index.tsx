@@ -37,7 +37,7 @@ import { repairGameLayouts } from "./repairLayouts";
 import { AddedGamesPanel } from "./AddedGamesPanel";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { closeModalsWhenPanelSettles } from "./modalStack";
-import { SwitchPanel, TakeOverRows } from "./SwitchPanel";
+import { HEADER_BUTTON, SwitchButton, TakeOverRows, onSwitched } from "./SwitchPanel";
 import { OrphanModal } from "./OrphanModal";
 import { shortcutNudge, type ShortcutCounts } from "./shortcutNudge";
 import { CloudStatusPanel } from "./CloudStatusPanel";
@@ -187,6 +187,9 @@ function Content() {
     void loadHealth();
     void loadUpdate();
   }, [visible, loadStatus, loadGames, loadHealth, loadUpdate]);
+
+  // The switch lives in the header (SwitchButton); the panel shows the result.
+  useEffect(() => onSwitched(() => void loadStatus()), [loadStatus]);
 
   /*
    * Nothing of ours may still be on the modal stack while this panel is up.
@@ -438,7 +441,6 @@ function Content() {
 
       {canAddGames && <AddGamePanel status={status} onGameAdded={loadGames} />}
 
-      <SwitchPanel onSwitched={() => void loadStatus()} />
     </>
   );
 }
@@ -510,20 +512,12 @@ function TitleView() {
       }}
     >
       <div>DeckyEmu</div>
-      <DialogButton
-        style={{
-          height: "28px",
-          width: "40px",
-          minWidth: 0,
-          padding: 0,
-          display: "flex",
-          justifyContent: "center",
-          alignItems: "center",
-        }}
-        onClick={() => openManagePage()}
-      >
-        <FaCog style={{ display: "block" }} />
-      </DialogButton>
+      <div style={{ display: "flex", gap: "6px" }}>
+        <SwitchButton />
+        <DialogButton style={HEADER_BUTTON} onClick={() => openManagePage()}>
+          <FaCog style={{ display: "block" }} />
+        </DialogButton>
+      </div>
     </Focusable>
   );
 }
