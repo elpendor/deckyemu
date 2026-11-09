@@ -59,6 +59,25 @@ For the Flatpak build of RetroArch the script also passes `--filesystem=` for
 the ROM's directory, so games on an SD card work without opening the sandbox
 wider than needed.
 
+## Two builds, one tree
+
+The standalone service and the loader plugin are built from the same code.
+Everything is shared except a thin host layer per build, and the loader is
+named only in the plugin's: `scripts/tests/test_host_confinement.py` fails if
+shared code or the service mentions it.
+
+The frontend's plugin build swaps four modules for its own, listed as `SWAPS`
+in `rollup.config.js`: `src/host/index.ts`, `src/steamui/index.ts`,
+`src/steamui/base.ts` and `src/steam/contextMenu.ts` become the files of the
+same role in `plugin/src/`. Shared code is type-checked against the service's
+side, so `plugin/src/hostContract.ts` holds each plugin module to the same
+exported names; a gap fails `tsc -p plugin`.
+
+The backend's plugin build lays `plugin/py_modules/` over `py_modules/`
+(`scripts/package.py`). Its `appenv.py` and `buildhost.py` replace the
+service's; the rest there exists only in the plugin. `buildhost.py` is where
+each build does things its own way, behind the same methods.
+
 ## Building
 
 ```sh
