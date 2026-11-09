@@ -5,6 +5,9 @@ back when something goes wrong.
 
 Back to [the README](https://github.com/elpendor/deckyemu#readme).
 
+Resetting your Deck or moving to another? [Back up everything](backup.md)
+instead: ROMs, emulators and settings go with the saves.
+
 ## Backing up save data
 
 Press **Back up saves** under **Save data** on the Library tab. It gathers the saves of every

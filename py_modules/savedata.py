@@ -254,19 +254,25 @@ def _measure(root, skip_top=(), except_names=(), only=()):
     return len(files), total
 
 
-def _retroarch_source():
+def _retroarch_source(anywhere=False):
     """RetroArch's saves and states, read out of its own configuration.
 
     Absent rather than guessed when RetroArch is not installed, and absent when
     its config names directories that do not exist -- which is what a fresh
-    install looks like before its first save.
+    install looks like before its first save. `anywhere` is for a full
+    restore: the flatpak's default folders, which a reinstall then uses.
     """
     install = ra_detect.detect()
-    if not install:
+    if install:
+        config_dir = install["config_dir"]
+    elif anywhere:
+        config_dir = os.path.join(sysenv.user_home(), ".var", "app", "org.libretro.RetroArch",
+                                  "config", "retroarch")
+    else:
         return None
     roots = []
-    for label, path in ra_detect.save_dirs(install["config_dir"]).items():
-        if path and os.path.isdir(path):
+    for label, path in ra_detect.save_dirs(config_dir).items():
+        if path and (anywhere or os.path.isdir(path)):
             roots.append((label, path))
     if not roots:
         return None
@@ -324,7 +330,7 @@ def _matching(path):
                   if fnmatch.fnmatch(name, pattern))
 
 
-def _catalog_sources(empty=False):
+def _catalog_sources(empty=False, anywhere=False):
     """The catalog emulators that are installed, and what to take from each.
 
     `empty` keeps an emulator that is installed but has no saves yet. Backing
@@ -340,7 +346,9 @@ def _catalog_sources(empty=False):
             os.path.join(home, *relative.split("/"))
             for relative in schema.owned_roots(entry)
         ]
-        if not any(os.path.isdir(path) for path in owned):
+        # `anywhere`: every entry, installed or not, for a full restore onto a
+        # Deck that has not reinstalled its emulators yet.
+        if not anywhere and not any(os.path.isdir(path) for path in owned):
             continue
 
         declared = schema.saves_of(entry)
@@ -403,7 +411,7 @@ def _catalog_sources(empty=False):
     return found
 
 
-def _all_sources(empty=False):
+def _all_sources(empty=False, anywhere=False):
     """Every emulator and port with something to back up, by name.
 
     `empty` is passed straight through to `_catalog_sources`: with it, an
@@ -417,10 +425,10 @@ def _all_sources(empty=False):
     that is not sorted.
     """
     found = []
-    libretro = _retroarch_source()
+    libretro = _retroarch_source(anywhere)
     if libretro:
         found.append(libretro)
-    return sorted(found + _catalog_sources(empty),
+    return sorted(found + _catalog_sources(empty, anywhere),
                   key=lambda source: source["name"].casefold())
 
 

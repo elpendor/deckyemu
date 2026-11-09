@@ -85,6 +85,7 @@ running: send a ROM, pick what runs it, add it to Steam.
 | [Standalone emulators](docs/emulators.md) | The one-press catalog, moving between builds, registering your own |
 | [Artwork](docs/artwork.md) | Where your cover art comes from, and getting a SteamGridDB key in without a keyboard |
 | [Your library](docs/library.md) | Editing a game, ROM hacks and add-ons, collections, and putting things back in order |
+| [Backing up everything](docs/backup.md) | All of DeckyEmu on an SD card or USB drive, and back after a reset or on another Deck |
 | [Save data](docs/saves.md) | Backing saves up, copying them to cloud storage of your own, and putting them back |
 | [Updates and problems](docs/updates.md) | Keeping it current, and what to send when something breaks |
 | [Emulator definitions](docs/emulator-definitions.md) | The JSON format for setting up an emulator DeckyEmu does not ship |

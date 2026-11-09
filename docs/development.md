@@ -342,6 +342,8 @@ py_modules/                 Backend logic. Plain Python, no third-party
                             Steam's UI across its restarts
   hostcalls.py              The service's own methods, called as `host.*`
   rescue.py                 The page the library tile opens: status and repairs
+  fullbackup.py             Everything DeckyEmu keeps, backed up to a drive
+  plugin_fullbackup.py      The panel's side of that backup
   rescue_pad.py             The controller on that page, forwarded from Steam's UI
   diagnostics.py            The redacted report behind Report a problem
   devreset.py               Development-only resets. Gated twice; absent from a

@@ -24,6 +24,7 @@ import plugin_devreset
 import plugin_discs
 import plugin_emulators
 import plugin_firmware
+import plugin_fullbackup
 import plugin_library
 import plugin_packages
 import plugin_probe
@@ -225,6 +226,7 @@ class Plugin(
     plugin_discs.Discs,
     plugin_emulators.Emulators,
     plugin_firmware.Firmware,
+    plugin_fullbackup.FullBackup,
     plugin_library.Library,
     plugin_packages.PackagedGames,
     plugin_probe.Probe,

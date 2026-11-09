@@ -34,6 +34,8 @@ import { OrphanModal } from "./OrphanModal";
 import { CloudSetupModal } from "./CloudSetupModal";
 import { SaveBackupModal } from "./SaveBackupModal";
 import { RestoreSavesModal } from "./RestoreSavesModal";
+import { FullBackupModal } from "./FullBackupModal";
+import { RestoreEverythingModal } from "./RestoreEverythingModal";
 import { callWithRetry } from "./timeout";
 import { humanSize } from "./TransferModal";
 import { ago } from "./ago";
@@ -588,6 +590,27 @@ export function LibraryPanel({ onRefresh }: Props) {
             />
           </PanelSectionRow>
         )}
+      </PanelSection>
+
+      <PanelSection title="Backup and restore">
+        <PanelSectionRow>
+          <ButtonItem
+            layout="below"
+            onClick={() => openModal(<FullBackupModal />)}
+            description="ROMs, saves, emulators and settings, to an SD card or USB drive."
+          >
+            Back up DeckyEmu
+          </ButtonItem>
+        </PanelSectionRow>
+        <PanelSectionRow>
+          <ButtonItem
+            layout="below"
+            onClick={() => openModal(<RestoreEverythingModal />)}
+            description="From a backup on an SD card or USB drive."
+          >
+            Restore DeckyEmu
+          </ButtonItem>
+        </PanelSectionRow>
       </PanelSection>
 
       <PanelSection title="Starting over">

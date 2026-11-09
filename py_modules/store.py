@@ -453,6 +453,18 @@ def remember_game(app_id, entry):
     remember_collections(_collections_in([entry]))
 
 
+def rekey_game(old, new):
+    """Move a game's record to a new app id, in one write. False if absent."""
+    with _lock:
+        library = _read_json(LIBRARY_PATH, {})
+        if not isinstance(library, dict) or str(old) not in library:
+            return False
+        entry = library.pop(str(old))
+        library[str(new)] = dict(entry, app_id=int(new))
+        _write_json(LIBRARY_PATH, library)
+        return True
+
+
 def forget_game(app_id):
     with _lock:
         library = _read_json(LIBRARY_PATH, {})

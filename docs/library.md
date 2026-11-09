@@ -337,8 +337,9 @@ It undoes everything DeckyEmu added: every shortcut, every launcher script,
 and any collection it made that ends up empty.
 
 > **Warning:** this also deletes the games DeckyEmu put on your Deck — ROMs
-> filed under a system, and games unpacked into an emulator. [Back up your
-> saves](saves.md#backing-up-save-data) first. ROMs you keep somewhere of your
+> filed under a system, and games unpacked into an emulator. [Back up
+> everything](backup.md) or [just your saves](saves.md#backing-up-save-data)
+> first. ROMs you keep somewhere of your
 > own are left alone.
 
 Collections only get deleted once they're empty, so one holding games you

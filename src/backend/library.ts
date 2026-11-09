@@ -1,5 +1,5 @@
 import { callable } from "../host";
-import { type PluginSettings } from "./games";
+import { type ArtImage, type PluginSettings } from "./games";
 import { type BlockedState } from "./emulators";
 
 /**
@@ -860,3 +860,71 @@ export const deleteStrayLaunchers = callable<
   [paths: string[]],
   { ok: boolean; deleted: number }
 >("delete_stray_launchers");
+
+/** A drive a full backup can go to. */
+export interface BackupDrive {
+  path: string;
+  label: string;
+  free: number;
+  total: number;
+  /** Backups already on the drive, newest first. */
+  backups: string[];
+  /** Space those backups take. */
+  backup_bytes: number;
+}
+export const fullBackupDrives = callable<
+  [],
+  { ok: boolean; drives: BackupDrive[]; unreadable?: { name: string; size: number }[] }
+>(
+  "full_backup_drives",
+);
+/** What each part of a full backup would carry. */
+export const fullBackupSizes = callable<
+  [],
+  { ok: boolean; sizes: Record<string, { files: number; bytes: number }> }
+>("full_backup_sizes");
+/** Start a full backup; it ends on `full_backup_done`. */
+export const startFullBackup = callable<
+  [drive: string, include: string[], replaceFirst?: boolean],
+  { ok: boolean; error?: string; started?: boolean }
+>("start_full_backup");
+/** Stop a running full backup. */
+export const cancelFullBackup = callable<[], { ok: boolean }>("cancel_full_backup");
+/** What a restore leaves to do. */
+export interface RestoreTodo {
+  emulators: { id: string; name: string }[];
+  retroarch: boolean;
+  /** Every restored game's app id; the panel checks which Steam is missing. */
+  games: number[];
+}
+  /** Restored games' app ids; the panel asks Steam which are missing. */
+export const startFullRestore = callable<
+  [path: string],
+  { ok: boolean; error?: string; started?: boolean }
+>("start_full_restore");
+/** A restored game, as Steam needs it to add it back. */
+export interface RestoredGame {
+  app_id: number;
+  title: string;
+  exe: string;
+  start_dir: string;
+  layout: string;
+  collection: string;
+}
+export const fullRestoreGames = callable<
+  [],
+  { ok: boolean; games: RestoredGame[]; cores: string[] }
+>("full_restore_games");
+export const fullRestoreArt = callable<
+  [appId: number],
+  { ok: boolean; art: Partial<Record<"capsule" | "header" | "hero" | "logo", ArtImage>> }
+>("full_restore_art");
+export const fullRestoreRekey = callable<
+  [oldId: number, newId: number],
+  { ok: boolean; error?: string }
+>("full_restore_rekey");
+export const rebuildLaunchers = callable<
+  [],
+  { ok: boolean; rebuilt?: number; skipped?: string[] }
+>("rebuild_launchers");
+export const fullRestoreFinished = callable<[], { ok: boolean }>("full_restore_finished");
