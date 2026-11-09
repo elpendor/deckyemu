@@ -1,10 +1,8 @@
 """Generate a tiny shell script per game and point the Steam shortcut at it.
 
-Steam stores a shortcut's arguments as a single LaunchOptions string, which it
-re-splits on launch. ROM filenames are full of spaces, apostrophes, brackets and
-ampersands, so round-tripping them through that field is a reliable source of
-"game won't start" bugs. A generated script sidesteps the quoting problem
-entirely and gives us one obvious place to look when a launch misbehaves.
+Steam re-splits a shortcut's launch options string, which breaks on the
+spaces, quotes and brackets ROM names are full of. A script quotes each
+argument properly, and is one obvious place to look when a launch misbehaves.
 """
 
 import hashlib
@@ -30,292 +28,97 @@ import sysenv
 
 LAUNCHER_DIR = os.path.join(appenv.DATA_DIR, "launchers")
 
-#: What the emulator said on its last run, one file per game.
-#:
-#: **This exists because the plugin took the emulator's own error channel away.**
-#: `hide_osd` defaults to "all" so a game launched from Steam looks like a game
-#: from Steam, and `store.py` records the cost in the same breath: RetroArch's
-#: error text goes with the chatter, so a core that cannot find its BIOS fails
-#: quietly. The stated replacement is the firmware check, which runs when a game
-#: is *added* and answers nothing afterwards -- a BIOS moved, a card unmounted,
-#: an emulator build that regressed, all present as a black screen and silence.
-#:
-#: One run, not a history: the file is truncated as the launcher starts, so what
-#: is here is always the launch somebody is asking about. See `LAUNCH_LOG_CAP`
-#: for what stops a long session filling the disk with it.
+#: What the emulator said on its last run, one file per game. Hiding the OSD
+#: also hides RetroArch's errors, so this is where a silent failure is read.
+#: Truncated at each launch; see `LAUNCH_LOG_CAP`.
 LAUNCH_LOG_DIR = os.path.join(appenv.DATA_DIR, "launch-logs")
 
-#: How much of one is worth keeping, swept at startup.
-#:
-#: The redirect is unbounded while a game runs -- capping it in shell needs a
-#: pipe, and a pipe whose reader exits sends the emulator SIGPIPE, which is a
-#: real crash traded for a diagnostic. So the size is dealt with afterwards
-#: instead: a log over this is truncated to its tail at startup, and the reader
-#: only ever asks for the last few thousand characters anyway. A verbose
-#: emulator can still write more than this during one session; it is one file
-#: per game and the next launch truncates it.
+#: How much of one is kept: longer logs are cut to their tail at startup. Not
+#: capped while the game runs, as a pipe that closes would SIGPIPE it.
 LAUNCH_LOG_CAP = 2 * 1024 * 1024
 
-#: Where the launch gate leaves its notes. Two kinds of one-line file, both
-#: named after the Steam app id: `bounced-<id>`, written by a launcher that
-#: refused to start and listing what was already running, and `approved-<id>`,
-#: written by the panel when the user said go and consumed by the next launch.
-#:
-#: A third kind joins them for cloud saves: `cloudwait` says the panel is
-#: fetching saves for this game and the launcher should hold, and
-#: `cloudready-<id>` says it may go. See `_CLOUD_GATE`.
-#:
-#: Files rather than a socket because the other end is `/bin/sh` with Steam's
-#: runtime stripped out of its environment. A file it can read with `[ -f ]` is
-#: the whole protocol, and nothing in the launch path depends on the plugin
-#: being loaded, or even installed.
+#: Where launchers and the panel leave each other notes, named by app id:
+#: `bounced-<id>` (refused, with what was running), `approved-<id>` (the user
+#: said go) and the cloud-save files of `_CLOUD_GATE`. Files, because the other
+#: end is `/bin/sh`, and launches must work without the plugin loaded.
 LAUNCH_GATE_DIR = os.path.join(appenv.DATA_DIR, "launch")
 
-# Bumped whenever a change here means existing launchers are wrong rather than
-# merely old. Nothing rewrites launchers on upgrade, so without this a fix only
-# reaches a game the next time some unrelated launch setting is changed -- which
-# is indistinguishable from the fix not working.
+# Bumped whenever existing launchers are wrong rather than merely old: startup
+# rewrites them all when it changes. A bump records that a rewrite ran, not
+# that it reached every game, so a fix to the rebuild itself costs two numbers.
 #
 #   1  the original format
 #   2  standalone emulators exported SDL_JOYSTICK_HIDAPI=1
-#   3  that export removed again -- measured inside Steam it changes nothing,
-#      and the controller fault was in the bindings, not the environment
-#   4  flatpak emulators are handed the gamescope socket, without which the
-#      bypass layer fails to connect and the emulator shows a Vulkan error
-#   5  emulators can carry environment into the sandbox, which shadPS4 needs to
-#      stop picking the software rasteriser out of four Vulkan devices. The
-#      argv is baked into every launcher when it is written, so fixing how it
-#      is built reaches nothing already on disk until they are rewritten --
-#      which is the whole reason this number exists.
-#   6  the default OSD mode became `all`. A launcher names the override file it
-#      was written with, so a game added under the old default went on pointing
-#      at retroarch-overrides-startup.cfg however the setting read afterwards --
-#      the panel would have said "Hide all on-screen messages" while the games
-#      already in the library kept showing them. Rewritten, each game resolves
-#      its own options again, so anything overridden per game is kept.
-#   7  the launch gate. Steam will not warn before launching one of these over
-#      a running game -- its check is gated on an app_type a non-Steam shortcut
-#      does not carry -- and nothing on the Steam side can stop the launch
-#      either, so the script does it. Existing games need this or the warning
-#      only ever appears for games added afterwards.
-#   8  the menu shortcut clears a quit binding on the same buttons. EmuDeck
-#      binds Start+Select to quitting -- twice, as a combo and as a hotkey
-#      pair -- which is the same press as the default menu shortcut, so opening
-#      the menu also quit. The override file carries the fix and is written
-#      when a launcher is, so an existing library needs rewriting or the
-#      shortcut goes on quitting for everyone who already had one.
-#   9  an emulator's environment can now suppress Steam's on-screen keyboard,
-#      which SDL2 opens over the game on a Deck unless the hint says otherwise.
-#      The environment is baked into the argv when a launcher is written, so
-#      like version 5 this reaches nothing already on disk until they are
-#      rewritten -- and a game already added is exactly where it was seen.
-#  10  and the same environment carries the joystick hint an emulator needs to
-#      read a pad at all when its window has no input focus. Same reason as 9:
-#      the argv is baked in when the launcher is written.
-#  11  save RAM reaches disk every second rather than every ten. Steam's Stop
-#      is not a clean exit -- the signal goes to `flatpak run` and the process
-#      inside never sees it -- so whatever has not been flushed is lost, and a
-#      Deck produced a Pokemon save with 11 of the 14 sectors it needed. The
-#      setting rides in the override file, written when a launcher is, so like
-#      version 8 an existing library keeps losing saves until they are
-#      rewritten.
-#  12  the launcher keeps what the emulator says. Nothing did, so a game that
-#      started and died left no trace at all -- and `hide_osd` had already
-#      taken away the on-screen text that would have explained it. Baked into
-#      the script, so like every version above it reaches nothing already on
-#      disk until the launchers are rewritten.
-#  13  RetroArch is launched with `--verbose`, which is the only thing that
-#      makes it say why a game did not start -- without it a missing ROM
-#      produced an empty log and version 12 collected nothing. **The argv is
-#      built in `ra_detect`, not here**, and that is exactly why this bump was
-#      missed the first time: the version governs everything baked into the
-#      script, wherever the code that bakes it lives. Anything that changes what
-#      the launcher runs needs a number here, or it reaches only games added
-#      afterwards -- which on a device that already has a library is nothing.
-#  14  and again, because 13 could not reach the game it was for. `rebuild`
-#      skipped any game whose ROM was missing, so the broken game kept its old
-#      launcher while the *number* was recorded as done -- and this number is
-#      the only thing that decides whether launchers are rewritten, so nothing
-#      would ever have retried. The skip is gone (see `_write_launchers`); this
-#      bump is what carries the fix to a device that already recorded 13.
-#
-#      Worth keeping in mind whenever a rebuild is fixed: the version says an
-#      upgrade *ran*, not that it reached every game, so a bug in the rebuild
-#      itself always costs two numbers.
-#  15  an emulator that reads motion off a socket starts its server here and
-#      stops it afterwards, which costs the `exec` for that emulator only. The
-#      server is named in the script, so a game added before it was fetched has
-#      a launcher with no motion in it and needs rewriting -- and fetching the
-#      server is exactly when that is true of every game already added.
-#  16  and again, for the reason version 14 gives: 15 ran on a Deck where the
-#      server had not downloaded yet -- GitHub was rate-limiting the address --
-#      so every launcher was rewritten without motion and the version recorded
-#      itself as done. Nothing would ever have retried. `_upgrade_emulator_setups`
-#      now rebuilds when the server *arrives*, which covers every future case;
-#      this number is what reaches the Decks that already recorded 15.
-#  17  the motion block execs when the server binary is missing, instead of
-#      running the emulator as a child for a cleanup that has nothing to clean.
-#      Only reachable when the binary is deleted from outside the panel, but the
-#      `exec` is deliberate everywhere else and a launcher should not give it up
-#      for nothing.
-#  18  the launcher checks that the game's ROM and its emulator are actually
-#      there, and refuses with a note instead of starting something that cannot
-#      run. Existing games need rewriting or the check only ever covers games
-#      added afterwards, which on a library that already exists is nothing.
-#  19  the note the preflight leaves names the emulator, so the dialog can say
-#      which one is gone rather than "the emulator". Baked into the script,
-#      because the name is known when it is written and may not be afterwards.
-#  20  that name is the emulator's, not its package's. A record registered
-#      with the link button carries its flatpak id in `name`, so the dialog
-#      said "io.github.ryubing.Ryujinx"; the catalog is asked first now. And a
-#      libretro core is described as a core rather than as the emulator.
-#  21  and again, because 20 was wrong for the case that prompted it. An
-#      emulator game whose emulator has no record arrives with `emulator` empty
-#      and its flatpak id in `core_path`, which version 20 read as a libretro
-#      core -- so the dialog said "The io.github.ryubing.Ryujinx core". Only a
-#      `.so` is a core now; anything else is looked up in the catalog by target.
-#  22  the launcher waits for cloud saves to come down, when the panel says a
-#      launch is worth waiting for. A file check that finds nothing on a Deck
-#      with cloud saves off, so it costs an existing game nothing -- but the
-#      line has to be in the script, and a game added before this has no line.
-#  23  and it waits for the panel to *claim* the launch first. 22 asked once,
-#      at the moment the script started, which is before the panel can have
-#      answered -- so the game began while the save was still coming down.
-#  24  and 23 lost the same race with a longer grace on it, measured on the
-#      device. The script now *announces itself* and waits; nothing has to
-#      hear about the launch from Steam in time to claim it.
-#  25  the wait follows the work rather than a fixed ceiling. 24 gave up at 8
-#      seconds and the fetch answered at 8.2 -- three network round trips,
-#      measured on the device. The backend now says it is still working and
-#      this waits while it keeps saying so.
-#  26  and a save conflict can answer "do not start", which is the third thing
-#      Steam's own cloud dialog offers and the only one that needed the script.
-#  27  the wait writes what it did to `lastwait.log`. The gate runs before the
-#      launch log is opened, so a launch that went wrong left nothing to read.
-#      It also clears its own leftovers before waiting, so a stop written after
-#      a launcher had gone cannot refuse the launch after it.
-#  28  and it says when a launch actually reached the emulator. Without that,
-#      a launch stopped at the save conflict still uploaded afterwards -- which
-#      overwrote the very saves the person had declined to overwrite.
-#  29  the wait is a stopped process rather than a conversation over files.
-#      Every timing bug 22-27 fixed was in that conversation; a stopped process
-#      has no timing. See `_CLOUD_GATE`.
-#  30  and refusing a launch wakes it to exit rather than killing it. Steam is
-#      waiting on that process: killed, the loading screen stayed up and the
-#      launch never finished.
-#  31  the wait believes `cloud-on` only while it is fresh, so a dialog can
-#      wait for a person instead of for a clock. 30 gave somebody 30 seconds to
-#      read it and then started the game anyway.
-#  32  a program that reads its game from its own config is told which game by
-#      the launcher, not when the game was added. Two games on one such program
-#      wrote the same key, so the second added repointed the first.
-#  33  the hotkey helper is told which button is its own, because the one it
-#      picks by default is half of the gesture it is there to provide: Start
-#      plus that button quits it, hardcoded, so the first press was the last.
-#  34  the previous run's output is kept beside the last one. A game that fails
-#      is launched again at once, and the retry was truncating the only account
-#      of what went wrong.
-#  35  an approval is honoured only while it is fresh. One left behind by a
-#      launch that never happened let the next one past the two-games gate
-#      without asking.
-#  36  every launcher reads ~/deckyemu/env.d, and a flatpak one carries a
-#      Vulkan layer's variables into the sandbox. Existing shortcuts get
-#      neither until they are rewritten, which is what this bump is for.
-#  37  those variables are matched by the prefix a layer gave itself rather
-#      than by name, so a second layer works without this list being edited.
-#  38  the check for a missing emulator or ROM runs before the wait for saves
-#      to come down, not after it. The note it leaves was arriving later than
-#      the four seconds the panel waits for one, so whether the dialog appeared
-#      depended on how long the network took.
-#  39  the marker that says a launch reached the emulator makes its own
-#      directory. The gates above create it and each only runs on a path that
-#      refuses a launch, so with cloud saves off nothing took off and the setup
-#      an emulator overwrote was never put back.
-#  40  the motion block is left out on a machine with no Deck sensors to read.
-#      It is baked into the script, so a desktop that already recorded 39 keeps
-#      starting a server that cannot send anything until this rewrites them --
-#      and giving up the `exec` for it is the part a user would never see.
-#  41  a port's window carries a class of ours, so a compositor rule can be
-#      written against it. Baked into the `env` on the exec line, so a shortcut
-#      that already exists names no class until this rewrites it -- and the
-#      whole point is to be matchable, which an old launcher is not.
-#  42  withdrawn. It unset `WAYLAND_DISPLAY` to push a launch onto X, and the
-#      variable is read by two things that disagree: libwayland falls back to
-#      the name `wayland-0` and connects anyway, while gamescope's Vulkan layer
-#      reads the variable, finds nothing, and fails -- so the emulator died at
-#      startup instead of drawing. Devices recorded it, so the number is spent.
-#  43  nothing of its own: the number past the withdrawal, so a device holding
-#      42 rewrites its launchers back to a script that works.
+#   3  that export removed again; it changed nothing inside Steam
+#   4  flatpak emulators get the gamescope socket, or Vulkan fails
+#   5  emulators can carry environment into the sandbox
+#   6  the default OSD mode became `all`; each game resolves its options again
+#   7  the launch gate: a second game is refused while one runs
+#   8  the menu shortcut clears a quit binding on the same buttons
+#   9  an emulator's environment can suppress Steam's on-screen keyboard
+#  10  and carries the joystick hint for reading a pad without window focus
+#  11  save RAM reaches disk every second, as Steam's Stop is not a clean exit
+#  12  the launcher keeps what the emulator says, in the launch log
+#  13  RetroArch runs with `--verbose` (built in ra_detect, baked in here)
+#  14  13 again, for games skipped while their ROM was missing
+#  15  emulators that read motion off a socket start their server here
+#  16  15 again, for Decks where the server had not downloaded yet
+#  17  the motion block execs when the server binary is missing
+#  18  the launcher checks its ROM and emulator exist, and leaves a note
+#  19  that note names the emulator
+#  20  the name is the emulator's, not its package's
+#  21  only a `.so` is described as a libretro core
+#  22  the launcher can wait for cloud saves to come down
+#  23  and waits for the panel to claim the launch first
+#  24  the script announces itself and waits, rather than racing the panel
+#  25  the wait follows the work, not a fixed ceiling
+#  26  a save conflict can answer "do not start"
+#  27  the wait logs to `lastwait.log` and clears its own leftovers
+#  28  the launcher says when a launch actually reached the emulator
+#  29  the wait is a stopped process, not a conversation over files
+#  30  refusing a launch wakes it to exit, so Steam's loading screen ends
+#  31  `cloud-on` counts only while fresh, so a dialog can wait for a person
+#  32  a program that reads its game from its config is told it at launch
+#  33  the hotkey helper is told which button is its own
+#  34  the previous run's output is kept beside the last one
+#  35  an approval counts only while fresh
+#  36  launchers read ~/deckyemu/env.d; flatpak ones carry Vulkan layer vars
+#  37  those variables are matched by prefix, not by name
+#  38  the missing-file check runs before the wait for saves
+#  39  the reached-the-emulator marker makes its own directory
+#  40  no motion block on a machine without Deck sensors
+#  41  a port's window carries a class a compositor rule can match
+#  42  withdrawn: unsetting WAYLAND_DISPLAY broke gamescope's Vulkan layer
+#  43  past the withdrawal, so a device holding 42 rewrites its launchers
 FORMAT_VERSION = 43
 
-# One file per OSD mode rather than one shared file. Games can override the
-# global setting individually, and a single file would mean the last game
-# written decided the behaviour of every other one.
-#
-# The menu shortcut below also lands in these files but is deliberately not part
-# of the key: it is a global setting, so every file written in one pass carries
-# the same value. Make it overridable per game and this has to be keyed by both.
+# One file per OSD mode, as games can override it individually. The menu
+# shortcut also lands in these but is global; if it ever becomes per game,
+# key these by both.
 OVERRIDE_CONFIGS = {
     "startup": os.path.join(appenv.DATA_DIR, "retroarch-overrides-startup.cfg"),
     "all": os.path.join(appenv.DATA_DIR, "retroarch-overrides-all.cfg"),
-    # "keep" suppresses nothing, so this file exists only when some other
-    # setting -- today the menu shortcut -- still needs to reach RetroArch.
+    # Suppresses nothing; written only when another setting must reach
+    # RetroArch.
     "keep": os.path.join(appenv.DATA_DIR, "retroarch-overrides-keep.cfg"),
 }
 
-# Launchers written before per-game OSD settings existed still reference this
-# path, so it is left in place. Nothing writes it any more; those launchers move
-# to a mode file the next time they are rebuilt.
+# Named by launchers older than per-game OSD settings; no longer written.
 OVERRIDE_CONFIG = os.path.join(appenv.DATA_DIR, "retroarch-overrides.cfg")
 
-# A controller profile for the pad Steam actually hands a game, and the
-# directory RetroArch is pointed at to find it.
+# A controller profile for the pad Steam hands a game, and the directory
+# RetroArch is pointed at to find it. Steam's virtual pad calls itself an Xbox
+# 360 pad but carries Valve's ids (0x28de/0x11ff), so RetroArch's own Xbox 360
+# profile never matches and, under the udev joypad driver, the pad has no
+# bindings at all. These are that profile's bindings under Valve's ids.
 #
-# RetroArch ships 1035 profiles and matches them on vendor and product id. The
-# pad a Steam-launched game sees is Steam Input's virtual one, which calls
-# itself "Microsoft X-Box 360 pad" but carries Valve's ids -- 0x28de/0x11ff --
-# so the X-Box 360 profile whose bindings are exactly right is rejected before
-# its name is even considered. RetroArch then reports:
+# One profile, not a mirror of RetroArch's set: under Steam Input the virtual
+# pad is the only one a game sees.
 #
-#   [Autoconf] Microsoft X-Box 360 pad 0 (10462/4607) not configured.
-#
-# and an unconfigured pad has no bindings at all: the game runs and nothing
-# responds. Read off a Deck rather than reasoned about, after a RetroArch data
-# directory was deleted and took the downloaded profiles with it.
-#
-# The bindings below are the bundled "Microsoft X-Box 360 pad.cfg" verbatim,
-# under Valve's ids. Confirmed on hardware before being written down here.
-#
-# One profile rather than a mirror of all 1035: RetroArch reads exactly one
-# autoconfig directory, and pointing at ours means the bundled set is not
-# consulted for these launches. Under Steam Input that costs nothing, because
-# the virtual pad is the only pad a Steam-launched game can see -- Steam hides
-# the real ones. Turn Steam Input off for such a game and its own pad would
-# find no profile here; mirroring 4.2MB of somebody else's data on every launch
-# to cover that is the worse trade.
-#
-# The `udev` folder name is not decoration and is also not a bug. RetroArch
-# reads profiles from the autoconfig directory and from
-# `<autoconfig dir>/<joypad driver>`, and nowhere else below it -- the scan is
-# not recursive and a profile's own `input_driver` line is not what selects it
-# (tasks/task_autodetect.c, matching is on vendor/product/name/phys). So under a
-# config set to `sdl2` -- which is exactly what EmuDeck's retroarch.cfg does --
-# RetroArch looks in `<ours>/sdl2` and finds nothing.
-#
-# **That is fine, and forcing the driver back to udev to "fix" it is a
-# regression.** The sdl2 joypad driver needs no profile at all: SDL recognises
-# Steam's virtual pad as a game controller, so RetroArch opens it with
-# SDL_GameControllerOpen and exposes normalised SDL_CONTROLLER_BUTTON_* indices
-# that its built-in default binds already cover (input/drivers_joypad/
-# sdl_joypad.c). Measured on a Deck with EmuDeck installed: config says sdl2,
-# only `udev/` exists here, controller works.
-#
-# The "unconfigured pad has no bindings at all" failure above is real but is a
-# *udev* failure -- that driver has no normalised layout to fall back on. Do not
-# generalise it to the other drivers, and do not add a line that names a joypad
-# driver: it would move a working sdl2 setup onto udev, where the controller
-# then depends entirely on the single profile below matching. A whole commit
-# went in and back out on that reasoning.
+# The `udev` folder is right, and must not be "fixed" by naming a joypad driver.
+# RetroArch looks in `<dir>/<driver>`, so with `sdl2` (EmuDeck's choice) it
+# finds nothing here, which is fine: SDL recognises the virtual pad and needs
+# no profile. Forcing udev would make every controller depend on this file.
 AUTOCONFIG_DIR = os.path.join(appenv.DATA_DIR, "autoconfig")
 
 _STEAM_PAD_PROFILE = """\
@@ -355,9 +158,8 @@ input_r_y_minus_axis = "-4"
 def write_pad_profile():
     """Put the Steam pad's controller profile where RetroArch will look.
 
-    Returns the directory to hand RetroArch, or '' if it could not be written --
-    in which case the launcher says nothing about autoconfig and RetroArch
-    behaves exactly as it did before this existed.
+    Returns the directory to hand RetroArch, or '' if it could not be written,
+    in which case the launcher leaves autoconfig alone.
     """
     folder = os.path.join(AUTOCONFIG_DIR, "udev")
     path = os.path.join(folder, "Steam Virtual Gamepad.cfg")
@@ -370,10 +172,8 @@ def write_pad_profile():
         return ""
     return AUTOCONFIG_DIR
 
-# RetroArch announces itself when content loads: an animated banner with the
-# game and core, followed by notices about controller autoconfig, refresh rate
-# and so on. Passing these through --appendconfig suppresses them for games
-# launched from here without editing the user's own retroarch.cfg.
+# The banner and notices RetroArch shows when content loads, turned off for
+# games launched from here without touching the user's retroarch.cfg.
 _STARTUP_QUIET = (
     ("menu_show_load_content_animation", "false"),
     ("notification_show_autoconfig", "false"),
@@ -388,16 +188,10 @@ _STARTUP_QUIET = (
 # Kills every on-screen message, including save-state confirmations and errors.
 _ALL_QUIET = _STARTUP_QUIET + (("video_font_enable", "false"),)
 
-# How to reach RetroArch's menu from a controller. Out of the box there is no
-# combo at all: RetroArch defaults this to 0, and its other default -- the Guide
-# button, bound by the controller autoconfig -- never reaches RetroArch on a
-# Deck, because Steam takes the Steam button first. So a game launched from here
-# has no way back to the menu unless we set one.
-#
-# RetroArch takes a fixed enum here rather than a free-form binding; the numbers
-# are `input_combo_type` in input/input_defines.h and are positional, so they
-# live next to their names here instead of being spelled out in the UI. "off"
-# writes nothing at all, which leaves whatever the user set in retroarch.cfg.
+# How to reach RetroArch's menu from a controller. RetroArch has no combo by
+# default, and the Guide button never reaches it on a Deck (Steam takes it).
+# Values are RetroArch's `input_combo_type` enum (input/input_defines.h); "off"
+# writes nothing, leaving the user's own setting.
 MENU_COMBOS = {
     "off": "",
     "down_y_l_r": "1",
@@ -413,20 +207,13 @@ MENU_COMBOS = {
 }
 
 
-#: RetroArch's button numbers for the pad, as its config writes them.
-#:
-#: Only the two the exit hotkey is built from are needed: EmuDeck binds
-#: `input_enable_hotkey_btn` to Select and `input_exit_emulator_btn` to Start,
-#: which is the same press as the `start_select` menu combo.
+#: RetroArch's button numbers for Select and Start, from which EmuDeck builds
+#: its exit hotkey.
 _SELECT_BTN = "4"
 _START_BTN = "6"
 
-#: The buttons each menu combo uses, for the ones that can collide with an exit
-#: hotkey. Keyed by the value written to `input_menu_toggle_gamepad_combo`.
-#:
-#: Only Start and Select matter here: an exit hotkey is a modifier plus a
-#: button, and every layout worth worrying about builds it from those two.
-#: A combo using neither cannot collide, so it is absent rather than empty.
+#: Which of Start and Select each menu combo uses, by its combo value. Combos
+#: using neither cannot collide with an exit hotkey and are absent.
 _COMBO_BUTTONS = {
     "3": {_SELECT_BTN, _START_BTN},   # L1+R1+Start+Select
     "4": {_SELECT_BTN, _START_BTN},   # Start+Select
@@ -439,27 +226,10 @@ _COMBO_BUTTONS = {
 def _quit_bindings_that_collide(config_dir, combo):
     """Settings that neutralise a quit binding sharing buttons with `combo`.
 
-    **The problem this exists for is EmuDeck, and it is not an edge case.**
-    EmuDeck's RetroArch config binds Start+Select to quit twice over -- once as
-    `input_quit_gamepad_combo = "4"`, and once as the hotkey pair
-    `input_enable_hotkey_btn = "4"` (Select) with `input_exit_emulator_btn =
-    "6"` (Start). This plugin's default menu shortcut is the same press. With
-    both installed, opening the menu also quits: RetroArch tears the core down
-    and the user sees their game vanish. On a core that aborts in
-    `retro_deinit` -- Beetle bsnes does -- it vanishes with a crash instead,
-    which reads as the game being broken.
-
-    Measured on a device: a config from before EmuDeck ran was 661 bytes with
-    no combo lines at all, and the menu shortcut worked. The one EmuDeck wrote
-    is 111KB and carries all three bindings.
-
-    Written into the per-launch override and nowhere else, so what EmuDeck set
-    still holds for everything started outside this plugin -- the same rule the
-    rest of this file follows, and the reason `config_save_on_exit` is turned
-    off beside it.
-
-    Returns [] when there is no collision, which is the ordinary case: a config
-    RetroArch wrote itself has no quit combo at all.
+    EmuDeck binds Start+Select to quit, both as a combo and as a hotkey pair,
+    which is our default menu shortcut: opening the menu would quit the game.
+    Only in the per-launch override, so EmuDeck's binding still holds outside
+    this plugin. Returns [] when nothing collides, the usual case.
     """
     wanted = _COMBO_BUTTONS.get(combo)
     if not wanted or not config_dir:
@@ -471,17 +241,14 @@ def _quit_bindings_that_collide(config_dir, combo):
 
     settings = []
 
-    # The standalone combo. Compared by the buttons it means rather than by the
-    # number, so `3` (L1+R1+Start+Select) and `4` (Start+Select) are seen to
-    # overlap -- pressing the four includes pressing the two.
+    # The quit combo, compared by buttons: L1+R1+Start+Select includes
+    # Start+Select.
     quit_combo = config.get("input_quit_gamepad_combo", "0")
     if _COMBO_BUTTONS.get(quit_combo, set()) & wanted:
         settings.append(("input_quit_gamepad_combo", "0"))
 
-    # And the hotkey pair, which is a second way to spell the same press.
-    # Cleared by unbinding the exit key rather than the modifier: the modifier
-    # is shared by every other hotkey the user has, and taking it away would
-    # cost them all of those.
+    # The hotkey pair: the exit key is unbound, not the modifier, which every
+    # other hotkey shares.
     hotkey = config.get("input_enable_hotkey_btn", "nul")
     exit_btn = config.get("input_exit_emulator_btn", "nul")
     if hotkey in wanted and exit_btn in wanted and hotkey != exit_btn:
@@ -510,8 +277,7 @@ def write_override_config(hide_osd, menu_combo="off", cheevos_settings=None,
         # A menu shortcut that also quits is worse than no menu shortcut.
         settings.extend(_quit_bindings_that_collide(config_dir, combo))
 
-    # Always, regardless of the OSD mode: without it the pad Steam hands the
-    # game matches no profile and nothing responds. See AUTOCONFIG_DIR.
+    # Always: see AUTOCONFIG_DIR.
     autoconfig = write_pad_profile()
     if autoconfig:
         settings.append(("joypad_autoconfig_dir", autoconfig))
@@ -519,43 +285,17 @@ def write_override_config(hide_osd, menu_combo="off", cheevos_settings=None,
     # Global like the menu combo, so it rides in the same per-OSD-mode files.
     settings.extend(cheevos.config_lines(cheevos_settings or {}))
 
-    # Nothing to say: pass no --appendconfig rather than an empty file, so the
-    # launcher stays as close to a plain RetroArch invocation as possible.
+    # Nothing to add: no --appendconfig at all.
     if not settings:
         return ""
 
-    # Stop RetroArch writing our overrides into the user's own retroarch.cfg.
-    #
-    # `--appendconfig` merges these values into the running configuration, and
-    # RetroArch ships with `config_save_on_exit = "true"`, so on quit it saves
-    # the *merged* result -- silently making every override here permanent and
-    # global. It is not theoretical: a Deck used for a few days had
-    # `input_menu_toggle_gamepad_combo = "4"`, `menu_show_load_content_animation`
-    # and `notification_show_autoconfig` sitting in its own config, none of which
-    # the user had set, all of them ours. The comment above about only affecting
-    # games launched from here was simply not true.
-    #
-    # The cost is that changes made from RetroArch's menu during one of these
-    # sessions are not saved either. That is the right trade -- silently
-    # rewriting a config we were asked not to touch is worse -- and RetroArch
-    # still has an explicit "Save Current Configuration" for anyone who wants it.
+    # RetroArch saves its merged config on exit, which would make these
+    # overrides permanent in the user's retroarch.cfg. The cost: menu changes
+    # made during these sessions are not saved either.
     settings.append(("config_save_on_exit", "false"))
 
-    # How long a save can be lost for. RetroArch holds the cartridge's save RAM
-    # in memory and writes it to disk on this interval, or on a clean exit --
-    # and a game launched from here gets no clean exit. There is no quit binding
-    # (see `_quit_bindings_that_collide`), so the only way out is Steam's Stop,
-    # which kills the process without RetroArch ever flushing.
-    #
-    # RetroArch's default is 10 seconds, and losing ten seconds means losing the
-    # save somebody just made. Measured on a Deck: Pokemon Sapphire wrote 11 of
-    # the 14 sectors a Gen-III save needs, and the game reported "the save file
-    # has been deleted" on the next launch -- an interval that caught the write
-    # half done. Waiting fifteen seconds before quitting kept it.
-    #
-    # One second rather than zero-and-flush-on-write: this is a whole-buffer
-    # write, at most 128KB, and only when the buffer is dirty, so a second costs
-    # nothing worth measuring on a device that is idle between saves anyway.
+    # Save RAM reaches disk every second, not every ten: Steam's Stop kills
+    # RetroArch without a flush, and a save interrupted mid-write is corrupt.
     settings.append(("autosave_interval", "1"))
 
     path = OVERRIDE_CONFIGS.get(hide_osd, OVERRIDE_CONFIGS["keep"])
@@ -571,9 +311,7 @@ def write_override_config(hide_osd, menu_combo="off", cheevos_settings=None,
 
     with open(path, "w", encoding="utf-8", newline="\n") as handle:
         handle.write("\n".join(lines))
-    # 0600 because this file can hold the RetroAchievements Connect token, which
-    # is password-equivalent. Set unconditionally: a mode that depends on the
-    # contents is one that will be wrong the first time the contents change.
+    # 0600, always: it can hold the RetroAchievements token, a password.
     try:
         os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
     except OSError as error:
@@ -589,12 +327,8 @@ def _slug(title):
 def _flat(text):
     """A value safe to put on a `#` line of a generated script.
 
-    The `exec` line is shlex-quoted, so the arguments are safe. The header
-    comments are not: they are built with `%`, and a newline in one closes the
-    comment and leaves whatever follows as a command in a script Steam runs.
-    Neither value is ours -- a title is whatever was typed, and a ROM filename
-    may contain a newline on Linux -- so both are flattened here rather than
-    trusted. Same reasoning as `fileserver.safe_name`, one layer further in.
+    The script's header comments are built with `%`, and a newline in a title
+    or ROM name would end the comment and run what follows as a command.
     """
     return re.sub(r"[\x00-\x1f\x7f]", " ", str(text or "")).strip()
 
@@ -607,10 +341,8 @@ DIGEST_LENGTH = 8
 def launch_log_path(launcher):
     """Where this launcher's last run is kept.
 
-    Named from the launcher rather than from the appid, because the launcher is
-    what the script knows about itself -- the appid is read out of `/proc` by the
-    gate and is empty whenever that read fails, which is not a thing to hang a
-    filename on.
+    Named after the launcher, which the script always knows; its app id comes
+    from `/proc` and can be empty.
     """
     stem = os.path.splitext(os.path.basename(launcher))[0]
     return os.path.join(LAUNCH_LOG_DIR, "%s.log" % stem)
@@ -619,9 +351,8 @@ def launch_log_path(launcher):
 def previous_launch_log_path(launcher):
     """Where the run before the last one is kept.
 
-    A `.prev.log` beside the log itself, which is what makes it free: the sweep
-    and the report both work from the directory listing and a name ending in
-    `.log`, so neither had to learn about this.
+    A `.prev.log` beside the log, which the sweep and the report already
+    handle as any `.log`.
     """
     stem = os.path.splitext(os.path.basename(launcher))[0]
     return os.path.join(LAUNCH_LOG_DIR, "%s.prev.log" % stem)
@@ -630,32 +361,19 @@ def previous_launch_log_path(launcher):
 def log_capture(launcher):
     """The shell that keeps what the emulator says, or "" if it cannot.
 
-    **Redirects the shell's own descriptors and then execs into them**, rather
-    than running the emulator as a child and reading its pipes. The process tree
-    is unchanged -- Steam's reaper still sees what it saw before, and Stop still
-    signals what it signalled -- which is the whole reason this is three lines of
-    redirection instead of a wrapper.
-
-    **Fails open, every branch.** A log that cannot be truncated, a directory
-    that cannot be made, a full disk: each leaves the redirect undone and the
-    game launches exactly as it did before. This runs in front of every game in
-    the library, and a game that will not start is a far worse failure than a
-    diagnostic that was not collected -- the same rule the launch gate above
-    follows for the same reason.
+    Redirects the shell's own output before the emulator is exec'd, so the
+    process tree Steam watches is unchanged. Fails open: if the log cannot be
+    written, the game launches without one.
     """
     log = launch_log_path(launcher)
-    # Joined with a plain newline, never `os.linesep`: this is a shell script for
-    # the Deck, and CRLF in it is `#!/bin/sh\r`, which fails to execute at all.
+    # "\n", never `os.linesep`: a CRLF shell script does not run.
     return "\n".join([
         "# What the emulator says, for the panel to show when a game dies on",
         "# startup. Truncated here, so this is always the last run.",
         "_dke_log=%s" % shlex.quote(log),
         "mkdir -p %s 2>/dev/null" % shlex.quote(LAUNCH_LOG_DIR),
-        # **The run before this one is kept, because the retry is what erases
-        # it.** A game that fails and is launched again straight away is the
-        # ordinary way a person meets a failure, and truncating on the way in
-        # meant the working run wrote over the only account of the broken one.
-        # Twice now that has left a failure with nothing to read.
+        # The previous run is kept: a failed game is usually retried at once,
+        # which would otherwise overwrite the only account of the failure.
         "_dke_prev=%s" % shlex.quote(previous_launch_log_path(launcher)),
         'if [ -s "$_dke_log" ]; then mv -f "$_dke_log" "$_dke_prev" 2>/dev/null;'
         " fi",
@@ -664,41 +382,22 @@ def log_capture(launcher):
     ])
 
 
-#: Where `motion_server` splices the emulator's own command line.
-#:
-#: The block needs that command twice -- once to `exec` when there is no server
-#: to wait for, once to run as a child when there is -- and building the block
-#: around an argv passed in would mean two places that must not disagree about
-#: what the game is.
+#: Where `motion_server` splices the emulator's command line, which its block
+#: needs twice: once to `exec`, once to run as a child.
 COMMAND_PLACEHOLDER = "@@COMMAND@@"
 
 
 def motion_server(binary):
     """The shell that runs a motion server for exactly as long as the game does.
 
-    The Deck's gyro reaches an emulator one of two ways. Through SDL, which
-    means handing over the physical pad and losing Steam Input for everything
-    that emulator runs -- what `deck_gyro.motion_env` costs. Or over a local
-    socket from a server reading the controller's HID frames directly, which
-    Steam neither notices nor minds. This is the second, so the pad binding and
-    the layout stay exactly as they were.
+    The gyro reaches the emulator over a local socket from a server reading
+    the controller directly, so Steam Input keeps the pad. The server lives
+    only as long as the game, so the sensor is not powered for others.
 
-    **The server is a child of the launcher, not a daemon.** It reads the
-    controller whenever it runs, so a permanent one would leave the Deck's
-    sensor powered for every game in the library including the ones with no
-    motion. Started here, it exists for one game and dies with it.
-
-    **And it is not backgrounded behind an `exec`.** Measured on the Deck rather
-    than assumed: Steam's `reaper` waits for every descendant, so a server still
-    alive when the emulator exits keeps the reaper alive too -- the game stays
-    "Running" in the library until somebody presses Stop, with nothing on screen
-    to stop. So the emulator is run as a child of this script and the trap is
-    what guarantees the server goes with it, whether the game exited on its own
-    or Steam signalled it.
-
-    **Failing to start it must not fail the game.** A missing or unrunnable
-    server costs motion; refusing to launch costs the game. The same rule the
-    launch gate and the log capture above follow, for the same reason.
+    The emulator runs as a child here, not after an `exec`, and a trap stops
+    the server with it: Steam's reaper waits for every descendant, so a
+    surviving server would leave the game "Running". A server that cannot
+    start costs motion, never the game.
     """
     return "\n".join([
         "# Motion, over a local socket rather than through SDL -- see",
@@ -729,12 +428,9 @@ def motion_server(binary):
 def stop_stray_helpers():
     """Kill helpers that outlived their game. Returns how many went.
 
-    A launcher stops the processes it started on every ending a script can see,
-    and on the one it cannot -- SIGKILL -- nothing runs at all. Both helpers
-    then cost something: a hotkey helper types into whatever is open next, and a
-    motion server holds the DSU port, so the next game has no gyro. Swept at
-    startup as well as before each launch, because the launch that would have
-    cleared it may never come.
+    A launcher killed with SIGKILL cannot stop its helpers: a hotkey helper
+    then types into whatever opens next, and a motion server holds its port.
+    Swept at startup too, as the next launch may never come.
     """
     killed = 0
     for name in (hotkeys.KEYBOARD_SERVER["name"],
@@ -757,13 +453,7 @@ def stop_stray_helpers():
 def read_launch_log(launcher, limit=8000, previous=False):
     """The tail of what this launcher's game last said, or "".
 
-    The tail rather than the whole file: what explains a failure is the last
-    thing said before it, and a verbose emulator's first eight thousand
-    characters are its own startup banner.
-
-    `previous` reads the run before that one. A flag rather than a stem ending
-    in `.prev`, because that reads back as the current log: the path is built by
-    replacing an extension, and `.prev` is an extension.
+    The tail, where a failure is explained. `previous` reads the run before.
     """
     path = (previous_launch_log_path(launcher) if previous
             else launch_log_path(launcher))
@@ -781,12 +471,8 @@ def _read_tail(path, limit):
     except OSError:
         return ""
 
-    # The seek lands mid-line, which is noise at the top of a report -- so the
-    # first partial line goes, *if there is a line to lose*. Dropping it
-    # unconditionally with `readline()` returned nothing at all for a log with
-    # no newline in its tail, which is not exotic: an emulator that redraws a
-    # progress line with carriage returns writes exactly that, and so does one
-    # that dies before finishing its first line.
+    # Drop the partial first line the seek landed in, but only if there is a
+    # newline: a log of carriage-return redraws has none.
     if size > limit and "\n" in tail:
         tail = tail.split("\n", 1)[1]
     return tail.strip()
@@ -795,8 +481,7 @@ def _read_tail(path, limit):
 def sweep_launch_logs():
     """Trim anything that grew past `LAUNCH_LOG_CAP`. Returns how many were cut.
 
-    At startup rather than as they are written: capping the redirect itself needs
-    a pipe, and a pipe whose reader goes away sends the emulator SIGPIPE.
+    At startup, as capping while writing would need a pipe that can SIGPIPE.
     """
     cut = 0
     try:
@@ -808,9 +493,7 @@ def sweep_launch_logs():
         try:
             if not os.path.isfile(path) or os.path.getsize(path) <= LAUNCH_LOG_CAP:
                 continue
-            # By path, not by name: a `.prev.log` stem read back as the
-            # current log, so the sweep trimmed the wrong file and left the
-            # oversized one exactly as it found it.
+            # By path, not name, so `.prev.log` files are trimmed themselves.
             tail = _read_tail(path, LAUNCH_LOG_CAP // 2)
             with open(path, "w", encoding="utf-8", newline="\n") as handle:
                 handle.write(tail)
@@ -836,16 +519,12 @@ def _digest(rom_path):
 def rom_digest(launcher):
     """The ROM half of a launcher's name, or "" if it does not have one.
 
-    A launcher is `<title>-<digest>.sh`, so the digest is what says which game
-    it runs and the slug is only what it was called at the time. Anything that
-    wants to know whether two launchers are the same game asks this rather than
-    comparing filenames -- renaming a game changes the slug and nothing else.
+    A launcher is `<title>-<digest>.sh`; the digest says which ROM it runs, so
+    compare this, not names, which change on rename.
     """
     stem = os.path.splitext(os.path.basename(launcher or ""))[0]
     tail = stem.rsplit("-", 1)[-1] if "-" in stem else ""
-    # Only a hex run of the right length. A game called "Sonic 3" would
-    # otherwise offer "3" as its digest and match every other game ending in a
-    # short word.
+    # Only hex of the right length: "Quest 3" must not offer "3".
     if len(tail) != DIGEST_LENGTH:
         return ""
     return tail.lower() if all(c in "0123456789abcdef" for c in tail.lower()) else ""
@@ -854,8 +533,7 @@ def rom_digest(launcher):
 def split_extra_args(extra_args):
     """Parse a free-text argument string the way a shell would.
 
-    Raises ValueError on unbalanced quotes, so a typo is reported when the game
-    is saved rather than silently producing a launcher that will not start.
+    Raises ValueError on unbalanced quotes, so a typo is caught on save.
     """
     text = (extra_args or "").strip()
     return shlex.split(text) if text else []
@@ -863,33 +541,12 @@ def split_extra_args(extra_args):
 
 
 # The gate that stops a second game starting, spliced into every launcher
-# between the environment preamble and the exec.
+# before the exec. Steam's own warning skips non-Steam shortcuts, and stopping
+# a launch from outside (CancelGameAction, CancelLaunch) does not work, so the
+# script decides. It fails open at every step: a missed warning beats a game
+# that will not start.
 #
-# **This is the only place left that can stop it.** Steam warns before launching
-# one game over another, but only for its own: the check is gated on
-# `app_type & 1` and a non-Steam shortcut is `1073741824`, so it never fires for
-# anything this plugin adds. Reaching that warning would mean replacing a
-# function inside Steam's running code. Stopping the launch from outside does
-# not work either, and both routes were tried on a real device --
-# `CancelGameAction` terminates the game about a second after it starts, and
-# `CancelLaunch` does not stop it at all, it only detaches Steam's tracking and
-# leaves the emulator running with no Stop button. Measured, not assumed.
-#
-# By the time any of that happens this script is already running. The emulator
-# is not: that is the next line. So the decision belongs here.
-#
-# **It fails open at every step.** No app id, no `pgrep`, an unwritable
-# directory -- all of them fall through to launching normally. A game that will
-# not start is a far worse failure than a warning that did not appear, and this
-# runs in front of every game in the library.
-# **Raw, and it has to be.** This is shell text: the backslash escapes in it
-# are for `tr` and `sed` to read, not for Python. Written unraw once, and
-# Python ate them before the shell ever saw them -- the NUL separator `tr`
-# splits /proc/cmdline on became an actual NUL byte in this file, and sed's
-# capture group became an invalid escape. The emitted script then found no app
-# id, fell through, and launched: the right way to fail, but with the gate
-# doing nothing whatsoever. The only complaint was a SyntaxWarning nobody was
-# reading.
+# A raw string: the backslashes are for `tr` and `sed`, not Python.
 _LAUNCH_GATE = r"""# Two games at once. See launchers.py -- this is the last point that can decide
 # not to start one, and it gets out of the way at the first sign of doubt.
 _dke_gate='{gate}'
@@ -919,51 +576,24 @@ fi
 """
 
 
-#: The most a launch will wait to be woken, in seconds.
-#:
-#: **A watchdog, not a schedule.** Nothing normally waits any of this: the
-#: plugin resumes the launch the moment it is done, and a stopped process costs
-#: nothing while it waits.
-#:
-#: Generous, because the thing it used to cut short was a person reading a
-#: dialog. Waiting is not the failure -- a game that never starts is -- and the
-#: case where nobody is coming is now answered by `cloud-on` going stale rather
-#: than by this number being small.
+#: The most a launch will wait to be woken, in seconds: a watchdog, generous
+#: because a person may be reading a dialog. A plugin that is gone is caught by
+#: `cloud-on` going stale instead.
 CLOUD_MAX_SECONDS = 600
 
-#: How often the plugin says it is alive by touching `cloud-on`, and how old
-#: that file may be before a launch stops believing it.
-#:
-#: **This is what tells "nobody has answered yet" from "nobody is there".** The
-#: two used to be one number and it had to be short, because a Deck with the
-#: backend
-#: reloading must still start its games -- so a dialog somebody was reading got
-#: thirty seconds and then the game ran anyway. A file with a recent timestamp
-#: on it answers the second question on its own, and leaves the first one to the
-#: person.
+#: How often the plugin touches `cloud-on` to say it is alive, and how old that
+#: file may get before a launch stops believing it. This tells "nobody has
+#: answered yet" from "nobody is there".
 CLOUD_ALIVE_SECONDS = 30
 CLOUD_STALE_SECONDS = 120
 
-#: Written while cloud saves have somewhere to go, and removed when they do not.
-#:
-#: The launcher's way of knowing whether waiting for anything is worth it,
-#: without asking the plugin -- which is the whole point: a launch must not
-#: depend on the service being up, and reading a file cannot.
+#: Present while cloud saves have somewhere to go: how a launcher knows, without
+#: the plugin being up, whether waiting could be worth it.
 CLOUD_ON_FILE = "cloud-on"
 
 #: The shell that waits for the panel to bring saves down before the game starts.
-#:
-#: **Why the waiting is here and the asking is not.** Checking a remote takes a
-#: network round trip, and doing that in the launcher would put it on the front
-#: of every launch of every game, whether or not there is anything to fetch --
-#: with Steam's runtime stripped, no rclone on the path, and nothing to show
-#: somebody while it happened. So the panel does the asking, in Steam's process,
-#: where it can also put a dialog on screen; this waits for the answer.
-#:
-#: **And it only waits when it has been told to.** `cloudwait` is written by the
-#: panel the moment it takes an interest in a launch. No file, no wait: a Deck
-#: with cloud saves off, a plugin that is not loaded, or a game the panel does
-#: not recognise all reach the emulator with nothing added to the launch at all.
+#: The panel does the fetching, where it can show a dialog; this only waits,
+#: and only when the panel has written `cloudwait` for this launch.
 _CLOUD_GATE = r"""# Saves coming down before the game opens them. See launchers.py.
 # **This script stops itself and waits to be woken.** Three versions negotiated
 # with the plugin over files -- announce, heartbeat, poll, give up after a
@@ -1032,22 +662,9 @@ fi
 """
 
 
-#: Written by the launcher at the last moment before the emulator runs.
-#:
-#: **Because "a game closed" is not "a game was played".** Steam counts an app
-#: as running from the moment it starts the script, so a launch the two-games
-#: gate refused, one declined at the save conflict, and one the preflight
-#: stopped all end exactly like a session -- and every one of them was
-#: uploading afterwards. In the conflict case that upload overwrote the other
-#: device's saves and rewrote the record, which is the thing the person had
-#: just declined; after two or three goes there was nothing left to decline.
-#:
-#: Only the script can answer this, because only the script knows whether it
-#: reached the emulator. It is the line before it does.
-#: `mkdir` here, not at the gates above: those create the directory only on the
-#: paths that refuse a launch, so an ordinary one arrived with nowhere to write
-#: and the marker was never written. `2>` before `>`, or the shell reports the
-#: failed redirection to the stderr it has not silenced yet.
+#: Written just before the emulator runs, so a refused launch is not mistaken
+#: for a session and its saves are not uploaded afterwards. Makes its own
+#: directory; `2>` before `>`, so a failed redirection stays quiet.
 RAN_MARKER = r"""# Past every gate: what happens after this is the game itself.
 if [ -n "$_dke_self" ]; then
   mkdir -p '{gate}' 2>/dev/null
@@ -1062,12 +679,7 @@ def ran_marker():
 
 
 def took_off(app_id):
-    """Whether that launch reached the emulator, consuming the answer.
-
-    Consumed like a bounce note and for the same reason: read once, so a
-    session that has been accounted for cannot be counted again by the next
-    thing that asks.
-    """
+    """Whether that launch reached the emulator, consuming the answer."""
     try:
         os.remove(_gate_file("ran", app_id))
         return True
@@ -1084,17 +696,9 @@ def launch_gate():
 def cloud_gate():
     """The wait for saves to come down, with this install's paths in it.
 
-    **Last of the three things that can end a launch, and that ordering is the
-    whole point of it being its own function.** The two-games gate and the
-    preflight both refuse outright, and both are a stat: waiting out a network
-    round trip and then refusing is a wait nobody got anything for, and bringing
-    a save down for a game that cannot start is worse than pointless.
-
-    It also cost a real bug. With this ahead of the preflight, a launch missing
-    its emulator left its note only after the saves had been fetched -- measured
-    at 4.5s on a Deck -- and the panel gives up waiting for that note after four
-    seconds. The dialog appeared or did not depending on how long the network
-    took, which from the outside looks like the check working intermittently.
+    Placed after the two-games gate and the preflight, which refuse at once:
+    there is no point fetching saves for a launch that will not happen, and the
+    panel expects their notes within four seconds.
     """
     # The wait counts in steps rather than seconds, so the numbers written into
     # the script are the seconds divided by the step.
@@ -1108,30 +712,12 @@ def _gate_file(kind, app_id):
     return os.path.join(LAUNCH_GATE_DIR, "%s-%d" % (kind, int(app_id)))
 
 
-#: What a game needs, checked before its emulator is started.
-#:
-#: **Because the alternative is the worst failure this plugin can produce.**
-#: Uninstall an emulator from Discover, or launch with the SD card holding the
-#: ROMs unmounted, and the shortcut still starts: the script runs, the emulator
-#: is not there, and the user is back at the library a second later with nothing
-#: on screen. The error lands in the launch log, which is exactly the file
-#: nobody reads. This is the same trade the launch gate above makes -- refuse,
-#: leave a note, let the panel say why -- and for the same reason: a game that
-#: cannot start loses nothing by not starting.
-#:
-#: **Refusing is only right because the launch was going to fail anyway.** The
-#: rule that a launch notice must never block a launch (see `emulators.
-#: launch_notices`) is about warnings on a game that would otherwise run.
-#:
-#: **Stats, never subprocesses.** This runs in front of every game in the
-#: library, so `flatpak info` -- the honest question -- is the wrong way to ask
-#: it; a deployed flatpak is a directory, and a directory is a stat. The probes
-#: are built at write time by `_presence_test` so the paths match what the
-#: backend itself reads.
-#:
-#: **Fails open at every step**, like the gate and the log capture. No app id
-#: means no note can be left, and a refusal nobody can explain is worse than a
-#: launch that fails loudly.
+#: What a game needs, checked before its emulator starts. A missing emulator or
+#: unmounted SD card would otherwise drop back to the library with nothing on
+#: screen; instead the launch is refused with a note the panel explains. Only
+#: launches that would fail anyway are refused. Stats, never subprocesses, as
+#: it runs before every game; fails open, as without an app id there is
+#: nowhere to leave a note.
 _LAUNCH_PREFLIGHT = r"""# What this game needs. See launchers.py -- a game whose emulator was
 # uninstalled, or whose ROM is on a card that did not mount, otherwise starts
 # and dies with nothing on screen to say why.
@@ -1149,11 +735,9 @@ fi
 def _presence_test(emulator, install, core_path):
     """The shell test for "the thing that runs this game is here", or "".
 
-    A flatpak is a deployed directory under one of two roots; an executable is a
-    file with the execute bit. For a libretro game the thing that goes missing is
-    the **core**, not RetroArch -- `install["exe"]` is often `/usr/bin/flatpak`,
-    which says nothing about whether RetroArch is installed, while a core is a
-    file this plugin downloaded and can check directly.
+    A flatpak is a deployed directory; an executable is a file with the
+    execute bit. For a libretro game it is the core that is checked, as
+    RetroArch's `exe` is often `/usr/bin/flatpak`.
     """
     if emulator:
         kind, target = emulator.get("kind"), (emulator.get("target") or "").strip()
@@ -1172,24 +756,12 @@ def _presence_test(emulator, install, core_path):
 def _presence_label(emulator, core_path):
     """What to call the thing that is missing, for the dialog to name.
 
-    **Baked in when the launcher is written rather than looked up when the
-    dialog opens.** The name is known now and may not be later: removing an
-    emulator can take its record with it, and a message that says "the
-    emulator" because it could no longer find out which one is the vaguer half
-    of the problem this feature exists to fix.
-
-    A libretro core is named without its filename furniture -- `snes9x` rather
-    than `snes9x_libretro.so` -- because the file name is not what anybody
-    calls it.
+    Baked in when the launcher is written, as removing an emulator can take its
+    record with it. A core is named without `_libretro.so`.
     """
     if emulator:
-        # **The catalog first, the installed record second.** A record's `name`
-        # is whatever it was registered under, and an emulator adopted with the
-        # link button carries its flatpak id there -- so this said
-        # "io.github.ryubing.Ryujinx is not installed any more", which is the
-        # package and not the thing anybody calls it. The catalog knows it as
-        # Ryujinx. The record is still the fallback, because a hand-registered
-        # emulator has no catalog entry and its own name is the right one.
+        # The catalog's name first: an adopted emulator's record may carry its
+        # flatpak id as its name. The record for hand-registered ones.
         entry = emulator_catalog.find(emulator.get("id") or "")
         return ((entry or {}).get("name") or emulator.get("name") or "").strip()
     if not core_path:
@@ -1197,12 +769,8 @@ def _presence_label(emulator, core_path):
 
     stem = os.path.basename(core_path)
 
-    # **Only a `.so` is a core.** `core_path` carries the emulator's own target
-    # for an emulator game -- `io.github.ryubing.Ryujinx` -- and a game whose
-    # emulator has no record in `emulators.json` arrives here with `emulator`
-    # empty and that id in hand. Treating it as a core produced "The
-    # io.github.ryubing.Ryujinx core is not installed", which is the package
-    # name twice over and the exact thing this was asked to stop saying.
+    # Only a `.so` is a core: an emulator game with no record arrives with the
+    # emulator's flatpak id in `core_path`.
     if stem.endswith(".so"):
         for suffix in ("_libretro.so", ".so"):
             if stem.endswith(suffix):
@@ -1225,17 +793,9 @@ def _presence_label(emulator, core_path):
     return ""
 
 
-#: Written by the launcher, not when the game is added.
-#:
-#: A program that takes its game from its own config has one config, and every
-#: game on it writes the same key. Written at add time, the second game added
-#: silently repointed the first game's shortcut: both launchers start the same
-#: program, and the program reads whatever that key last said. So the key is set
-#: on the way in, by the launcher that knows which game it is for.
-#:
-#: Failure is not fatal here. The program starts either way, and what it does
-#: with a config it could not have is its own business to report -- refusing the
-#: launch would turn a game that might still work into one that cannot.
+#: For a program that reads its game from its own config: the launcher sets the
+#: key on each launch, as every game on that program shares it. Not fatal if it
+#: fails; the program starts either way.
 _GAME_CONFIG = """python3 -c 'import json, os, sys
 path, keys = sys.argv[1], json.loads(sys.argv[2])
 try:
@@ -1257,8 +817,7 @@ with open(path, "w", encoding="utf-8") as handle:
 def game_config_setup(emulator, rom_path):
     """The shell that puts this game where the program will read it, or "".
 
-    Empty for everything that takes its game on the command line, which is every
-    emulator and most ports.
+    Empty for everything that takes its game on the command line.
     """
     if not emulator or not rom_path:
         return ""
@@ -1271,17 +830,9 @@ def game_config_setup(emulator, rom_path):
             .replace("{path}", shlex.quote(path)))
 
 
-#: Put the game where a program that reads its own directory will find it.
-#:
-#: Links rather than copies, because the game is already filed under `roms/` and
-#: a second copy of a 32MB cartridge -- or a 1.4GB disc -- is a second thing to
-#: keep in step. The link is remade every launch, so a game whose file moved is
-#: corrected by starting it.
-#:
-#: Every link in that directory goes first. The program looks for *a* game
-#: rather than a named one, so a link left by the last game played would still
-#: be sitting there beside this one. Only links: the build, its config and
-#: anything it generated are real files and are not touched.
+#: Put the game where a program that reads its own directory will find it: a
+#: link, remade every launch. Other links there go first, as the program takes
+#: whichever game it finds; real files are never touched.
 _GAME_BESIDE = """find {dir} -maxdepth 1 -type l -delete 2>/dev/null
 ln -sfn {rom} {dir}/{name} || echo "deckyemu: could not put the game beside the program" >&2
 cd {dir} || exit 1"""
@@ -1290,9 +841,7 @@ cd {dir} || exit 1"""
 def beside_link(emulator, rom_path):
     """Where a `game_beside` program expects this game, as (dir, name).
 
-    ("", "") for everything else. Split out because the launcher writes this
-    path and removal has to find the same one: two spellings of it would leave
-    a link nobody deletes.
+    ("", "") for everything else. Shared by the launcher and removal.
     """
     if not emulator or not rom_path:
         return "", ""
@@ -1313,15 +862,8 @@ def beside_link(emulator, rom_path):
 def forget_beside(emulator, rom_path):
     """Remove the link put beside a program for `rom_path`. True if one went.
 
-    **Removing the game leaves the link pointing at nothing otherwise.** The
-    launcher clears the directory's links on the way in, so the next launch
-    would tidy it -- but a port whose only game has just been removed has no
-    next launch, and the program started by hand then finds a broken link where
-    its game used to be.
-
-    Only a link, and only one pointing at this game: the build, its config and
-    anything it generated are real files, and a link to some other game is that
-    game's to clear.
+    Otherwise a removed port game would leave a broken link. Only a link
+    pointing at this game is removed.
     """
     directory, name = beside_link(emulator, rom_path)
     if not directory or not name:
@@ -1354,14 +896,9 @@ def game_beside_setup(emulator, rom_path):
 def first_run_argv(entry, rom_path):
     """The shell that hands a port its game once, to set itself up, or "".
 
-    A port that builds its own archive from the game asks for it on the command
-    line: Ship of Harkinian extracts and skips its own "no archive, build one?"
-    question entirely. But asked again on a later launch it has something to
-    say -- "that archive exists, extract again?" -- so the argument is passed
-    only while the file it creates is missing.
-
-    `set --` rather than a variable, because a game's path has spaces in it and
-    an unquoted expansion would arrive as several arguments.
+    For a port that builds its own archive from the game: the argument is
+    passed only while that archive is missing, as a later launch would ask to
+    extract again. `set --` keeps a path with spaces as one argument.
     """
     spec = (entry or {}).get("first_run") or {}
     args, unless = spec.get("args") or "", spec.get("unless") or []
@@ -1389,14 +926,9 @@ _PICKER_TOOL = "zenity"
 def picker_shim(entry, rom_path):
     """The shell that answers a port's file picker with the game, or "".
 
-    Some ports take no path and no argument: they ask, through a picker, which
-    is a separate program found on PATH. On a Deck that picker opens in
-    "Recently Used" whatever directory it was given, so the person is left
-    hunting for a file the plugin already knows.
-
-    So a zenity of our own goes first on PATH for this launch: a file selection
-    is answered with the game, and every other dialog -- the questions the port
-    asks, which are readable and worth reading -- is handed to the real one.
+    For ports that ask for their game through zenity's file picker: a zenity
+    of ours goes first on PATH, answers a file selection with the game, and
+    hands every other dialog to the real one.
     """
     if not (entry or {}).get("game_picker") or not rom_path:
         return ""
@@ -1436,34 +968,15 @@ def picker_shim(entry, rom_path):
 
 
 #: Where anything else can add environment to every launch.
-#:
-#: Under `$HOME` with the rest of what this plugin owns, so a SteamOS update
-#: leaves it alone.
 ENV_DIR = "deckyemu/env.d"
 
 
 def env_hook():
     """Shell that reads `~/deckyemu/env.d/*.sh` before the emulator starts.
 
-    **The seam another plugin can use without fighting this one for the
-    shortcut.** A Steam shortcut has one Exe and one launch options string.
-    This plugin owns the Exe -- it points at a generated script -- so anything
-    else wanting to set a variable for a game has only the launch options, and
-    two things wanting them is a conflict with no answer. A directory is not a
-    field: everything in it applies, and nothing has to know what else is
-    there.
-
-    Frame generation is the case that found it. `lsfg-vk` is switched on by
-    setting `LSFGVK_CONFIG` before the program runs, which meant editing the
-    launch options of a shortcut this plugin wrote. It works, and it only works
-    because nothing here rewrites that field.
-
-    Sourced rather than executed, because the point is the environment it
-    leaves behind. Read in sorted order so two files that set the same thing
-    settle it the same way every launch. Missing is the ordinary case and costs
-    a test; unreadable is skipped rather than fatal, and nothing here runs under
-    `set -e`, so a file with a mistake in it costs its own variables and not the
-    game.
+    How another tool (frame generation, say) can set variables for our games
+    without fighting over the shortcut's launch options. Sourced in sorted
+    order; a missing or broken file costs only its own variables.
     """
     return [
         "# Anything dropped in ~/%s is sourced here -- the seam another plugin" % ENV_DIR,
@@ -1476,18 +989,9 @@ def env_hook():
     ]
 
 
-#: Prefixes of the variables a Vulkan layer needs inside a flatpak sandbox.
-#:
-#: **By prefix, having started by name.** Naming them was the careful choice --
-#: a sandbox exists to be a smaller environment than the host -- and it lasted
-#: until the second layer. `lsfg-vk` uses `LSFGVK_CONFIG` and `LSFGVK_PROFILE`;
-#: MAKO, which succeeds it, uses `MAKO_PROFILE`, `MAKO_CONFIG` and a dozen
-#: tuning variables besides. Keeping a list of names means reading somebody
-#: else's release notes forever, and being wrong quietly in between: the
-#: failure is a game that simply does not get the layer, with nothing to see.
-#:
-#: The namespace is still the fence. These are prefixes a layer gave itself,
-#: not a wildcard, and a variable outside them does not cross.
+#: Prefixes of the variables a Vulkan layer needs inside a flatpak sandbox:
+#: each layer's own namespace, so new variables need no edit here, and nothing
+#: outside them crosses.
 LAYER_ENV_PREFIXES = ("LSFGVK_", "MAKO_")
 
 #: The off switches, which are not under either prefix.
@@ -1497,20 +1001,10 @@ LAYER_ENV_NAMES = ("DISABLE_LSFGVK", "DISABLE_MAKO")
 def forward_layer_env(argv, command):
     """(prelude lines, command) that carry a layer's environment into a sandbox.
 
-    **`flatpak run` does not pass the host's environment on.** Frame
-    generation is switched on per Steam shortcut by the plugin that owns it,
-    through launch options that set `LSFGVK_CONFIG` before this script runs.
-    That reaches an AppImage emulator and is dropped by a flatpak one, so its
-    answer for flatpaks is `flatpak override`, which is per application -- on
-    an emulator, every game it runs.
-
-    Forwarded as `--env=`, so the shortcut that asked is the one that gets it.
-
-    Built into `"$@"` rather than spliced in as text, because the exec line is
-    one line of quoted argv and a value with a space in it would otherwise
-    arrive as two arguments. Nothing is emitted for an emulator that is not a
-    flatpak, or when none of the variables is set, so every other launcher is
-    byte for byte what it was.
+    `flatpak run` drops the host's environment, so a layer switched on by a
+    shortcut's launch options would never reach a flatpak emulator. Forwarded
+    as `--env=` in `"$@"`, so values with spaces survive. Nothing is emitted for
+    other emulators.
     """
     if not argv or os.path.basename(argv[0]) != "flatpak":
         return [], command
@@ -1519,11 +1013,8 @@ def forward_layer_env(argv, command):
         "# environment, and `flatpak run` does not carry it in.",
         "set --",
     ]
-    # Read from the environment as it is, rather than from a list written
-    # here: `env` names what is actually set, and `case` keeps the match to
-    # the prefixes above. A value with a space or a quote in it survives
-    # because nothing is re-parsed -- the name is looked up again inside the
-    # shell rather than pasted through it.
+    # `env` lists what is set and `case` keeps the prefixes; values are read
+    # back by name in the shell, never re-parsed.
     lines.extend([
         'for _dke_var in $(env | sed -n "s/^\\([A-Za-z_][A-Za-z0-9_]*\\)=.*/\\1/p"); do',
         "  case \"$_dke_var\" in",
@@ -1547,9 +1038,7 @@ def forward_layer_env(argv, command):
 def preflight(rom_path, emulator, install, core_path, title_id=""):
     """The shell that refuses a launch whose pieces are missing, or "".
 
-    `title_id` means the emulator is handed an installed title rather than a
-    file -- Vita3K -- so there is no ROM path to test and testing one would
-    refuse every launch of a game that works.
+    With `title_id` (Vita3K) there is no ROM file to test.
     """
     tests = []
     if rom_path and not title_id:
@@ -1573,12 +1062,8 @@ def preflight(rom_path, emulator, install, core_path, title_id=""):
 def take_missing(app_id):
     """Which piece this game's launcher could not find: (kind, name).
 
-    `kind` is "rom", "emulator" or "", and `name` is what to call the emulator
-    that has gone -- written by the launcher, which knew it at the moment it was
-    generated. ("", "") when nothing was stopped.
-
-    Consumed like a bounce, and for the same reasons: read once so two askers
-    cannot both be told, and expiring rather than accumulating.
+    `kind` is "rom", "emulator" or ""; `name` is the missing emulator's name as
+    the launcher recorded it. Consumed by reading, and expires.
     """
     path = _gate_file("missing", app_id)
     try:
@@ -1595,36 +1080,23 @@ def take_missing(app_id):
     kind = lines[0].strip() if lines else ""
     if not fresh or kind not in ("rom", "emulator"):
         return "", ""
-    # Capped rather than trusted for length: it goes straight into a sentence on
-    # screen. The file is written by a script this plugin generated, so a wrong
-    # one is a bug here rather than hostile input -- and a cap keeps that bug
-    # from becoming a wall of text over the library.
+    # Capped, as it goes straight into a sentence on screen.
     return kind, (lines[1].strip()[:80] if len(lines) > 1 else "")
 
 
-#: How old a bounce note may be and still be answered.
-#:
-#: The panel asks for it a moment after the launch it belongs to, so anything
-#: older is from a launch nobody is waiting on any more -- a bounce while the
-#: plugin was reloading, or one written and never collected. Answering a stale
-#: one would put a dialog about a game on screen minutes after the user gave up
-#: on it.
+#: How old a bounce note may be and still be answered: older ones belong to a
+#: launch nobody is waiting on.
 BOUNCE_SECONDS = 30
 
-#: How old an approval may be and still let a launch past the two-games gate.
-#:
-#: The panel writes it and launches in the same breath, so this only has to
-#: cover Steam getting the script running. A launch that failed in between
-#: leaves the file behind, and without a limit that stale yes answers a question
-#: nobody asked -- the next launch over a running game, started silently.
+#: How old an approval may be and still let a launch past the two-games gate,
+#: so one left by a failed launch cannot wave the next one through.
 APPROVAL_SECONDS = 30
 
 
 def take_bounce(app_id):
     """What was running when this game's launcher refused, or "" if it did not.
 
-    Consumed: read once and deleted, so the same bounce cannot be reported to
-    two askers, and a note nobody collects expires instead of accumulating.
+    Consumed by reading; an uncollected note expires.
     """
     path = _gate_file("bounced", app_id)
     try:
@@ -1644,11 +1116,7 @@ def take_bounce(app_id):
 def set_cloud_wanted(on):
     """Say whether a launch should wait for the panel at all.
 
-    A file rather than a setting the launcher reads, because the launcher runs
-    with Steam's environment stripped and nothing of ours on its path. Present
-    means "there is somewhere for saves to go, so a panel will claim this
-    launch"; absent means every launch goes straight through, which is what a
-    Deck with cloud saves off must cost.
+    A file the launcher can test. Absent, every launch goes straight through.
     """
     path = os.path.join(LAUNCH_GATE_DIR, CLOUD_ON_FILE)
     try:
@@ -1671,10 +1139,8 @@ def set_cloud_wanted(on):
 def launches_waiting():
     """The app ids of launchers currently held, waiting for their saves.
 
-    Written by the launcher itself as its first act, which is what makes this
-    reliable: nothing has to hear about a launch from Steam in time to claim
-    it. The backend watches this directory instead -- see
-    `plugin_transfers._watch_launches`.
+    Each launcher writes its own file first thing, so nothing has to hear of
+    the launch from Steam in time; see `plugin_transfers._watch_launches`.
     """
     found = []
     try:
@@ -1690,24 +1156,14 @@ def launches_waiting():
     return found
 
 
-#: The one signal a stopped launch understands, by number.
-#:
-#: Not `signal.SIGCONT`, because `signal` is not on the
-#: list of stdlib modules proven to exist in a trimmed Python -- and one
-#: that is not there is not a degraded feature, it is the backend failing to
-#: import. The numbers are fixed by Linux on every architecture this runs on,
-#: and `os.kill` takes an int.
+#: SIGCONT by number: `signal` may be missing from the loader's trimmed Python.
 _SIGCONT = 18
 
 
 def say_alive():
     """Touch `cloud-on`, which is how a launch knows anyone is listening.
 
-    Called on a timer while the plugin runs. A launch reads the timestamp, not
-    just the name: the file existing says cloud saves are on, and it being
-    recent says there is something there to answer -- which is what lets a
-    dialog wait for a person rather than for a clock. See
-    `CLOUD_STALE_SECONDS`.
+    On a timer; a launch reads its age. See `CLOUD_STALE_SECONDS`.
     """
     path = os.path.join(LAUNCH_GATE_DIR, CLOUD_ON_FILE)
     try:
@@ -1720,8 +1176,7 @@ def say_alive():
 def _waiting(app_id):
     """The stopped launch for `app_id` as (pid, script), or (0, "").
 
-    Read back rather than remembered, because the thing that wrote it is a
-    shell script and the thing that reads it may have been restarted since.
+    Read back from the file the launcher wrote.
     """
     try:
         with open(_gate_file("launching", app_id), encoding="utf-8") as handle:
@@ -1736,15 +1191,8 @@ def _waiting(app_id):
 def _is_ours(pid, script):
     """Whether `pid` is still the launcher that wrote the file it came from.
 
-    **The one check that matters here.** A pid comes out of a file, and the two
-    things done with it are resuming and killing -- one of which is harmless
-    and one of which is not. A file left behind by a launch whose process has
-    since gone names a number the system is free to give to something else, and
-    this plugin has no business signalling that.
-
-    Checked against the script the file names rather than against the launcher
-    directory: same guarantee, and it does not quietly stop being true for a
-    launcher run from anywhere else -- which is how the suite runs it.
+    A pid from a stale file may now belong to another process, which must
+    never be signalled. Checked against the script the file names.
     """
     if not pid or not script:
         return False
@@ -1772,10 +1220,7 @@ def wake_launch(app_id):
 def forget_launch(app_id):
     """Remove the file a stopped launch left, whatever became of the process.
 
-    A launch that is woken clears its own file on the way past. A launch that
-    is *killed* never gets there, and a file nothing clears is a launch the
-    backend answers again on its next look -- which is the same conflict dialog,
-    over and over, for a game that is not going to start.
+    A killed launch never clears its own, and would be answered again.
     """
     try:
         os.remove(_gate_file("launching", app_id))
@@ -1786,9 +1231,7 @@ def forget_launch(app_id):
 def which_launch(app_id):
     """The pid currently waiting for `app_id`, or 0.
 
-    Public so a wait can tell *its own* launch from a later one: there is one
-    file per game, so relaunching replaces it, and a question still standing
-    over the previous launch has nobody to answer it.
+    So a wait can tell its own launch from a later one of the same game.
     """
     pid, script = _waiting(app_id)
     return pid if _is_ours(pid, script) else 0
@@ -1797,9 +1240,6 @@ def which_launch(app_id):
 def gone(app_id):
     """Whether the launch that wrote this file is no longer there.
 
-    A file whose process has died -- killed, crashed, or the Deck suspended
-    through it -- is not a launch waiting for anything, and answering it is
-    work done at nobody.
     """
     pid, script = _waiting(app_id)
     return not _is_ours(pid, script)
@@ -1808,17 +1248,9 @@ def gone(app_id):
 def refuse_launch(app_id):
     """End a stopped launch without starting the game.
 
-    For the one answer a save conflict has that neither copy settles. The
-    process is stopped and has not reached the emulator, so ending it here
-    costs nothing and starting cannot be undone.
-
-    **Asked to exit, not killed.** Steam is waiting on that process, and a
-    SIGKILL leaves it waiting -- the loading screen stays up and the launch
-    never finishes. A note plus a wake-up gets a clean `exit 0`, which is what
-    the two-games gate has always done and what Steam handles.
-
-    The note cannot be read too early, which is the whole reason this shape
-    works now: the process is stopped while it is being written.
+    For "do not start" at a save conflict. Asked to exit with a note and a
+    wake-up, not killed: Steam waits on that process, and a SIGKILL leaves its
+    loading screen up.
     """
     pid, script = _waiting(app_id)
     if not _is_ours(pid, script):
@@ -1863,15 +1295,9 @@ def write_launcher(
 ):
     """Write (or overwrite) the launcher for this game and return its path.
 
-    `emulator` selects a standalone emulator instead of RetroArch; the OSD
-    overrides and the menu shortcut are RetroArch-specific and do not apply to
-    it. There is no equivalent to reach for: a standalone emulator's own menu
-    binding is that emulator's business, and nothing here can set it.
-
-    `extra_args` is appended to the command line. Appended rather than inserted
-    because there is no position that suits every emulator: several templates end
-    in the ROM path (`-- {rom}`), where anything spliced in front of it would be
-    read as content instead of as a flag.
+    `emulator` selects a standalone emulator instead of RetroArch, to which the
+    OSD and menu settings do not apply. `extra_args` is appended, as some
+    templates end in `-- {rom}`, where anything before would be read as content.
     """
     if emulator:
         # `title_id` only matters to an emulator that starts installed titles
@@ -1892,10 +1318,8 @@ def write_launcher(
     command = " ".join(shlex.quote(arg) for arg in argv)
     forward, command = forward_layer_env(argv, command)
 
-    # Only an emulator that reads motion off a socket, and only once its server
-    # has been fetched. Every other launcher is written exactly as it was --
-    # the wrapper below costs the `exec` (see `motion_server`), and nothing that
-    # does not need it should pay that.
+    # Only for emulators that read motion off a socket, once the server is
+    # fetched: the wrapper costs the `exec` (see `motion_server`).
     entry = emulator_catalog.find((emulator or {}).get("id") or "") if emulator else {}
     server = emu_install.motion_server(entry) if emulator else ""
 
@@ -1966,46 +1390,26 @@ def write_launcher(
     return path
 
 
-#: The name of the one Steam shortcut that opens an emulator's own window.
-#:
-#: Here because this module writes the launcher it points at. One shortcut
-#: rather than one per emulator: gamescope composites nothing Steam did not
-#: launch, so a shortcut is the only way to reach an emulator's UI -- but it is
-#: a door used once to install firmware and never again, and N permanent library
-#: entries is a poor trade for that. It is repointed at whichever emulator is
-#: being opened, and hidden from the library, so this name only has to be
-#: findable in the rare case where hiding did not take.
+#: The name of the one hidden Steam shortcut that opens an emulator's own
+#: window: in Game Mode only a shortcut can, so it is repointed at whichever
+#: emulator is being opened.
 SETUP_SHORTCUT_TITLE = "DeckyEmu setup"
 
 
 def gui_launcher_path(emulator, title=""):
     """Where the launcher that opens `emulator`'s own interface lives.
 
-    Its own function because two very different things need to agree on it: the
-    writer below, and the library check, which has to recognise this script as
-    something in use rather than a leftover. It did not, so the one launcher the
-    plugin writes for itself was reported as a stray -- and deleting it, which
-    is what that finding offers, breaks the setup shortcut that runs it.
-
-    Derived rather than pattern-matched for the same reason. `open-<id>.sh` looks
-    like a rule a check could apply on its own, but a game called "Open Season"
-    produces `open-season-<digest>.sh` and an imported emulator may call itself
-    anything at all. Asking for the path of an emulator that actually exists has
-    neither problem, and a script left behind by an emulator since removed is
-    still correctly a stray.
+    Shared with the library check, which must not report it as a stray. Ask
+    this rather than matching `open-*.sh`, which a game called "Open Road"
+    would also match.
     """
     return os.path.join(
         LAUNCHER_DIR, "open-%s.sh" % _slug((emulator or {}).get("id") or title)
     )
 
 
-#: What runs the hotkey helper beside a port, and stops it with the game.
-#:
-#: The trap is the whole of it: Steam's reaper waits for every descendant, so a
-#: helper still alive when the game exits keeps the library entry on "Running"
-#: with nothing on screen to stop. The same rule `motion_server` follows.
-#:
-#: A missing helper costs the menu gesture, never the game.
+#: What runs the hotkey helper beside a port, and stops it with the game (as in
+#: `motion_server`). A missing helper costs the gesture, never the game.
 _HOTKEYS = """# The port's own menu, on the pad: hold Select, press Start.
 # See emulator_catalog/hotkeys.py. Dies with the game, never outlives it.
 _dke_keys={binary}
@@ -2024,9 +1428,7 @@ fi"""
 def hotkey_helper(entry, path=""):
     """The shell that puts a port's menu key on the pad, or "".
 
-    Empty for everything that declares no keys, and for a port whose helper has
-    not been fetched yet -- which is a launcher exactly as it was, so what is
-    missing is the gesture rather than the game.
+    Empty when the port declares no keys or its helper is not fetched yet.
     """
     bindings = hotkeys.bindings_for(entry)
     if not bindings:
@@ -2050,9 +1452,7 @@ def hotkey_helper(entry, path=""):
 def write_hotkey_config(entry_id, bindings, modifier=hotkeys.MODIFIER):
     """Write this port's hotkey config and return its path, or "".
 
-    In the runtime directory rather than beside the program: it is derived from
-    the entry, rewritten whenever a launcher is, and nothing of the user's is in
-    it.
+    In the runtime directory: derived, and rewritten with each launcher.
     """
     directory = os.path.join(appenv.DATA_DIR, "hotkeys")
     try:
@@ -2070,12 +1470,8 @@ def write_hotkey_config(entry_id, bindings, modifier=hotkeys.MODIFIER):
 def refresh_hotkey_configs():
     """Rewrite every port's hotkey config from the catalog.
 
-    The config is the only place a port's `menu_key` lands, and it is written
-    when a launcher is. So correcting one -- Starship's menu opens with F1, not
-    the Esc it was first given -- would reach only games added afterwards, while
-    the ones already in the library went on sending the wrong key. Rewriting the
-    file is enough: the launcher names it and the helper reads it at every
-    launch, so nothing on disk has to change.
+    So a corrected `menu_key` reaches games already added; the helper reads
+    the file at every launch.
     """
     for entry in emulator_catalog.CATALOG:
         bindings = hotkeys.bindings_for(entry)
@@ -2086,8 +1482,7 @@ def refresh_hotkey_configs():
 def _gui_working_dir(emulator):
     """`cd` into the program's own folder, for one that reads it, or "".
 
-    No game is linked in: this opens the interface, and the game belongs to a
-    launch. What the program finds beside it is its own -- which is the point.
+    No game is linked in: this opens the interface, not a game.
     """
     entry = emulator_catalog.find((emulator or {}).get("id") or "") or {}
     if not entry.get("game_beside"):
@@ -2099,17 +1494,9 @@ def _gui_working_dir(emulator):
 def write_gui_launcher(emulator, title, args=(), allow=(), errand=""):
     """Write (or overwrite) the launcher that opens an emulator's interface.
 
-    Named off the emulator rather than a ROM, so re-opening it rewrites the one
-    script instead of accumulating one per press.
-
-    That rewriting is what lets `args` work without a second Steam shortcut.
-    Sending the interface on an errand -- Ryujinx's `--install-firmware` -- only
-    needs the argument present on the run that was asked for, and the next press
-    of plain "open the emulator" writes the script back without it. One shortcut,
-    one script, no entry appearing and disappearing from the user's library.
-
-    `errand` is a line of explanation for whoever reads the script later, since
-    otherwise the two versions of it differ by one argument and no reason.
+    One script per emulator, rewritten on each open, so `args` (an errand like
+    Ryujinx's `--install-firmware`) apply to that run only. `errand` is a line
+    in the script saying why.
     """
     argv = emulators.gui_argv(emulator, args=args, allow=allow)
     os.makedirs(LAUNCHER_DIR, exist_ok=True)
@@ -2123,10 +1510,7 @@ def write_gui_launcher(emulator, title, args=(), allow=(), errand=""):
             "",
             sysenv.SHELL_PREAMBLE,
             "",
-            # A program that reads the directory it runs in has to open in its
-            # own folder, or its window comes up knowing nothing: no settings,
-            # and no archive it built from the user's game, because both are
-            # files beside the build. It would then offer to start again.
+            # Such a program finds its settings and archive in its own folder.
             _gui_working_dir(emulator),
             "exec %s" % " ".join(shlex.quote(arg) for arg in argv),
             "",
@@ -2152,18 +1536,8 @@ def remove_launcher(path):
     if not normalized.startswith(os.path.normpath(LAUNCHER_DIR) + os.sep):
         appenv.logger.warning("Refusing to delete outside launcher dir: %s", path)
         return False
-    # **The launch log is deliberately left behind.**
-    #
-    # It was briefly deleted here, on the grounds that a log whose launcher is
-    # gone can never be matched to a game again and is therefore litter. That
-    # argument is true and beside the point: *removing a game because it did not
-    # work* is the likeliest reason anybody removes one, and it is exactly the
-    # moment the log explaining why becomes the only evidence left. Deleting it
-    # there threw the answer away at the moment it was wanted.
-    #
-    # What it costs to keep is a few kilobytes per game ever removed, in a
-    # truncated file. `_last_launch` says when the game a log belongs to is no
-    # longer installed, which is the useful half of what the deletion was for.
+    # The launch log stays: a game is often removed because it failed, and its
+    # log is then the only account of why.
     try:
         os.remove(normalized)
         return True
