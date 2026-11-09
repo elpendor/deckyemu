@@ -377,21 +377,26 @@ py_modules/                 Backend logic. Plain Python, no third-party
   plugin_base.py            What every mixin may assume about the composed
                             Plugin -- declarations only, no implementations.
   plugin_accounts.py        Signing in to somebody else's service
+  plugin_artwork.py         Picking a game's artwork and icon by hand
   plugin_audit.py           Drift between records, launchers, ROMs and shortcuts
   plugin_collections.py     What system a game is, what shelf that makes, and the
                             repairs when the naming changes
   plugin_devreset.py        Development-only resets. Gated twice; never in a release
+  plugin_discs.py           Games on more than one disc, and their playlists
   plugin_emulators.py       Installing and registering emulators
   plugin_firmware.py        Putting BIOS files and keys where they are read
   plugin_library.py         The record of what was added, and taking things out
                             of it. clear_library deletes the games
   plugin_packages.py        Games that arrive as a .pkg
   plugin_probe.py           What a picked file is: what could run it, what to
-                            call it, and its artwork. main.py keeps the add
-                            flow it feeds
+                            call it, and its artwork. The add flow it feeds is
+                            in plugin_shortcuts
   plugin_retroarch.py       Installing RetroArch and its cores. Reading what is
                             already installed stays in main.py, with the state
                             it keeps
+  plugin_romfiles.py        Files kept beside a ROM: patches, updates and DLC
+  plugin_shortcuts.py       A game's launcher and record: adding, editing and
+                            rebuilding them
   plugin_startup.py         One-time migrations of data already on the device.
                             The sequence they run in stays in main.py's _main
   plugin_switching.py       Switching between the service and plugin builds;

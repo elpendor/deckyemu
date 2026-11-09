@@ -233,3 +233,32 @@ class PluginContext:
         to answer and the last one anybody thinks to include.
         """
         raise NotImplementedError
+
+    # --- used across the mixins split out of main.py ----------------------
+    def _romset_names(self, rom_path: str, romset: Any = None) -> Awaitable[Any]:
+        """A ROM set's full title and search hint (plugin_probe.py)."""
+        raise NotImplementedError
+
+    def _download_art(self, urls: dict) -> Awaitable[dict]:
+        """Fetch artwork by slot, as data URIs (plugin_probe.py)."""
+        raise NotImplementedError
+
+    def _recheck_emulator_setups(self) -> Awaitable[None]:
+        """Re-apply emulator settings an emulator rewrote (plugin_startup.py)."""
+        raise NotImplementedError
+
+    @staticmethod
+    def _system_for(core: Any, resolved: str = "", fallback: str = "") -> str:
+        """Which of a core's systems a game is (plugin_collections.py)."""
+        raise NotImplementedError
+
+    def _share_firmware(self, core_ids: list) -> Awaitable[Any]:
+        """Link firmware the given cores need (plugin_firmware.py)."""
+        raise NotImplementedError
+
+    def update_game(
+        self, app_id: int, title: str, core_id: str, rom_path: str = "",
+        options: Optional[dict] = None, system: str = "",
+    ) -> Awaitable[dict]:
+        """Change a tracked game (plugin_shortcuts.py)."""
+        raise NotImplementedError

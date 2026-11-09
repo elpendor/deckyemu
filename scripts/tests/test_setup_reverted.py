@@ -172,10 +172,11 @@ check("and a failure inside it never reaches the caller", _raised, False)
 # what breaks is somebody removing it. Both are named: `get_status` is every
 # panel open, `prepare_shortcut` is the last plugin code before a game exists to
 # be launched.
-_main = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
-    os.path.abspath(__file__)))), "main.py")
-with io.open(_main, "r", encoding="utf-8") as handle:
-    _source = handle.read()
+_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_source = ""
+for _file in ("main.py", os.path.join("py_modules", "plugin_shortcuts.py")):
+    with io.open(os.path.join(_root, _file), "r", encoding="utf-8") as handle:
+        _source += handle.read() + "\n"
 
 _NEXT_METHOD = "    async def "
 
