@@ -12,11 +12,12 @@ import { FaCog } from "react-icons/fa";
 
 import { start } from "../../src/index";
 import { MANAGE_ROUTE, openManagePage } from "../../src/ManagePage";
+import { HEADER_BUTTON, SwitchButton } from "../../src/SwitchPanel";
 import { keepDeckyRoutesWorking, type DeckyRouterHook } from "./repairRoutes";
 
 /**
- * The plugin's row in the Quick Access header: its name, and a way to the
- * settings page.
+ * The plugin's row in the Quick Access header: its name, the switch to the
+ * standalone version, and a way to the settings page.
  *
  * quickAccessMenuClasses.Title, not staticClasses.Title: the generic title
  * class carries its own padding and line height, which sat the name off-centre
@@ -32,21 +33,12 @@ function TitleView() {
       style={{ display: "flex", alignItems: "center", padding: 0, flex: "auto", boxShadow: "none" }}
     >
       <div style={{ marginRight: "auto" }}>DeckyEmu</div>
-      <DialogButton
-        style={{
-          marginLeft: "5px",
-          height: "28px",
-          width: "40px",
-          minWidth: 0,
-          padding: 0,
-          display: "flex",
-          justifyContent: "center",
-          alignItems: "center",
-        }}
-        onClick={() => openManagePage()}
-      >
-        <FaCog style={{ display: "block" }} />
-      </DialogButton>
+      <div style={{ display: "flex", gap: "6px", marginLeft: "5px" }}>
+        <SwitchButton />
+        <DialogButton style={HEADER_BUTTON} onClick={() => openManagePage()}>
+          <FaCog style={{ display: "block" }} />
+        </DialogButton>
+      </div>
     </div>
   );
 }
