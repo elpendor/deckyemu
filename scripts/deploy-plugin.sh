@@ -120,30 +120,31 @@ STAGE="$HOME/homebrew/.$PLUGIN_DIR.stage"
 
 [ -f "$STAGING" ] || { echo "error: $STAGING is missing -- re-run the upload"; exit 1; }
 
-# decky-loader installs differ: some root-own the plugins directory, some leave
-# it to the user. Only elevate when we actually have to.
-if mkdir -p "$TARGET" 2>/dev/null && [ -w "$TARGET" ]; then
-  SUDO=''
-else
-  echo '--> plugins directory is not user-writable; using sudo'
-  SUDO='sudo'
-fi
+# Whether every top-level entry of the payload already exists in the install
+# and is ours to write, with plugin.json unchanged. Then the install is updated
+# in place and needs no sudo: on this Deck the plugin's folder and plugin.json
+# are root's, and everything else in it is the user's.
+in_place_ok() {
+  [ -d "$TARGET" ] || return 1
+  for entry in "$STAGE"/* "$STAGE"/.[!.]*; do
+    [ -e "$entry" ] || continue
+    name="$(basename "$entry")"
+    if [ "$name" = plugin.json ]; then
+      cmp -s "$entry" "$TARGET/plugin.json" || return 1
+      continue
+    fi
+    [ -e "$TARGET/$name" ] && [ -w "$TARGET/$name" ] || return 1
+    if [ -d "$entry" ] && [ ! -d "$TARGET/$name" ]; then return 1; fi
+    if [ ! -d "$entry" ] && [ -d "$TARGET/$name" ]; then return 1; fi
+  done
+  [ ! -e "$TARGET/build.json" ] || [ -w "$TARGET/build.json" ]
+}
 
-$SUDO rm -rf "$STAGE"
-$SUDO mkdir -p "$STAGE"
-$SUDO tar xzf "$STAGING" -C "$STAGE"
-
-# Carry the build stamp across. It is CI's, not ours -- it is not in the
-# payload, and the swap below replaces the whole directory -- so without this
-# every deploy onto a released install silently deletes it and the Updates tab
-# loses which release it is looking at.
-#
-# Marked as deployed over, because after this the files beside it are not the
-# ones CI built. Carrying it unmarked made the install claim to be that release,
-# and the reset actions -- which exist for a development build and refuse on a
-# release -- switched themselves off on every Deck deployed to.
-if [ -f "$TARGET/build.json" ]; then
-  $SUDO cp -a "$TARGET/build.json" "$STAGE/build.json"
+mark_deployed() {
+  # Carry the build stamp across. It is CI's, not ours, and not in the payload,
+  # so without this a deploy onto a released install drops which release it is.
+  # Marked as deployed over: the files beside it are no longer the ones CI
+  # built, and the reset actions refuse on a release.
   $SUDO python3 -c 'import json, sys
 path = sys.argv[1]
 try:
@@ -154,26 +155,70 @@ except (OSError, ValueError):
 stamp["deployed"] = True
 with open(path, "w", encoding="utf-8") as handle:
     json.dump(stamp, handle, indent=2)
-' "$STAGE/build.json"
+' "$1"
+}
+
+rm -rf "$STAGE"
+mkdir -p "$STAGE"
+tar xzf "$STAGING" -C "$STAGE"
+
+if [ -d "$TARGET" ] && [ -w "$TARGET" ]; then
+  MODE=swap; SUDO=''
+elif in_place_ok; then
+  MODE=in-place; SUDO=''
+else
+  echo '--> the plugin folder needs root to change this time; using sudo'
+  MODE=swap; SUDO='sudo'
 fi
 
-$SUDO chown -R "$DECK_USER:$DECK_USER" "$STAGE"
-$SUDO chmod -R u=rwX,go=rX "$STAGE"
-
-# Same filesystem, so these are renames rather than copies.
-$SUDO rm -rf "$TARGET.old"
-if [ -d "$TARGET" ]; then $SUDO mv "$TARGET" "$TARGET.old"; fi
-$SUDO mv "$STAGE" "$TARGET"
-$SUDO rm -rf "$TARGET.old"
+if [ "$MODE" = in-place ]; then
+  # Entry by entry inside the existing folder. Decky reloads on each file event,
+  # which does not matter here: plugin_loader is restarted afterwards.
+  for entry in "$STAGE"/* "$STAGE"/.[!.]*; do
+    [ -e "$entry" ] || continue
+    name="$(basename "$entry")"
+    [ "$name" = plugin.json ] && continue
+    if [ -d "$entry" ]; then
+      find "$TARGET/$name" -mindepth 1 -delete
+      cp -a "$entry/." "$TARGET/$name/"
+    else
+      cat "$entry" > "$TARGET/$name"
+    fi
+  done
+  [ -f "$TARGET/build.json" ] && mark_deployed "$TARGET/build.json"
+  rm -rf "$STAGE"
+else
+  if [ -f "$TARGET/build.json" ]; then
+    cp "$TARGET/build.json" "$STAGE/build.json" 2>/dev/null || $SUDO cp -a "$TARGET/build.json" "$STAGE/build.json"
+    mark_deployed "$STAGE/build.json"
+  fi
+  $SUDO chown -R "$DECK_USER:$DECK_USER" "$STAGE"
+  $SUDO chmod -R u=rwX,go=rX "$STAGE"
+  # Same filesystem, so these are renames rather than copies.
+  $SUDO rm -rf "$TARGET.old"
+  if [ -d "$TARGET" ]; then $SUDO mv "$TARGET" "$TARGET.old"; fi
+  $SUDO mv "$STAGE" "$TARGET"
+  $SUDO rm -rf "$TARGET.old"
+fi
 rm -f "$STAGING"
 
 echo "--> installed $(du -sh "$TARGET" | cut -f1) at $TARGET"
+
+# Decky only picks up a new backend on a restart. Passwordless through one
+# sudoers rule for exactly this command (scripts/deck/dev-sudoers.sh).
+if sudo -n /usr/bin/systemctl restart plugin_loader 2>/dev/null; then
+  echo "--> restarted plugin_loader"
+else
+  echo "--> could not restart plugin_loader without a password. Once, on the Deck:"
+  echo "      sh ~/deckyemu-dev-sudoers.sh"
+fi
 EOF
 
 # In the home directory rather than /tmp, which does not survive a reboot -- it
 # was there once and vanished when the Deck restarted. The tarball stays in
 # /tmp, since every deploy sends a new one.
 ssh "${SSH_OPTS[@]}" "$REMOTE" "cat > ~/${PLUGIN_DIR}-unpack.sh && chmod +x ~/${PLUGIN_DIR}-unpack.sh" < "$UNPACK"
+ssh "${SSH_OPTS[@]}" "$REMOTE" "cat > ~/${PLUGIN_DIR}-dev-sudoers.sh" < scripts/deck/dev-sudoers.sh
 
 # Phase 2 may need to prompt for a sudo password, which wants a TTY. Where the
 # plugins directory is user-writable this finishes on its own; where it is not,
