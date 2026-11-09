@@ -105,7 +105,11 @@ export function ModalRoot({
     <Focusable className="dek-modal" onCancel={cancel} navRef={frame} ref={element} tabIndex={-1}>
       <div className="dek-modal-backdrop" ref={styled}
         onClick={bDisableBackgroundDismiss ? undefined : cancel} />
+      {/* A column, said outright: unset, Steam infers the flow from the CSS,
+          which lays this out as a flex row, so up and down could not move
+          between a list and the buttons under it. */}
       <Focusable
+        flow-children="column"
         {...rest}
         role="dialog"
         className={join(
