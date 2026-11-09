@@ -143,6 +143,29 @@ Frontend `console` calls are prefixed `[deckyemu]`, but nothing in Game Mode can
 see them. That's what the diagnostic report under *Diagnostics → Report a
 problem* is for.
 
+### Driving the UI from a computer
+
+`scripts/deck-ui.sh` runs `scripts/deck/ui_probe.py` on the Deck over SSH, so a
+UI bug can be reproduced and looked at without holding the Deck:
+
+```sh
+scripts/deck-ui.sh qam                          # open Quick Access on our tab
+scripts/deck-ui.sh nav /deckyemu/manage/library # open a settings page
+scripts/deck-ui.sh press right down down a      # press controller buttons
+scripts/deck-ui.sh walk 12                      # down, step by step, with focus
+scripts/deck-ui.sh capture "Big Picture" page   # screenshot into ./ui-shots
+```
+
+Presses go through Steam's own `FocusNavController`, the same path the pad
+takes, and `focus` and `walk` read focus from Steam's navigation tree, which
+can disagree with the DOM's. `walk` flags a control that ends up under the
+button bar. Use `capture` rather than `shot` while a game runs: gamescope's
+screenshot then holds only the game, not Steam's overlay. Run the script with
+no arguments for every command.
+
+A page already open keeps the code it was opened with: after a deploy, leave
+it and open it again before checking a change.
+
 ### Backend logic tests
 
 The riskiest logic — name cleanup and artwork matching — needs no Deck:

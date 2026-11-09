@@ -61,3 +61,6 @@ bin/
 
 # Generated from README.md at build time by scripts/readme_as_index.py.
 /docs/index.md
+
+# Screenshots fetched by scripts/deck-ui.sh
+ui-shots/
