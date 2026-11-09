@@ -285,7 +285,10 @@ py_modules/                 Backend logic. Plain Python, no third-party
                             and which system a file extension names, for the
                             cores that cover several
   installer.py              Install RetroArch (flatpak) and cores (buildbot)
-  launchers.py              One .sh per game; the RetroArch override files
+  launchers.py              One .sh per game
+  launch_gate.py            The notes launchers and the panel leave each other:
+                            the two-games gate, the preflight, the cloud wait
+  ra_overrides.py           The override file RetroArch reads at our launches
   cheevos.py                RetroAchievements login, and the per-launch config
   store.py                  settings / library / emulators / collections records
   gameicon.py               A game's icon on disk: the one SteamGridDB had, or

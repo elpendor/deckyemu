@@ -33,6 +33,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from harness import TMP, check, section, summary  # noqa: E402
 
+import launch_gate  # noqa: E402
 import launchers  # noqa: E402
 
 section("the gate is in every launcher, and only above the exec")
@@ -343,8 +344,9 @@ else:
     # script
     # wakes itself. Rebuilt with a short watchdog so the suite does not sit
     # through the real one, which is deliberately generous.
-    _was = launchers.CLOUD_MAX_SECONDS
-    launchers.CLOUD_MAX_SECONDS = 2
+    # Patched where `cloud_gate` reads it.
+    _was = launch_gate.CLOUD_MAX_SECONDS
+    launch_gate.CLOUD_MAX_SECONDS = 2
     try:
         _patient = os.path.join(TMP, "gate-patient.sh")
         with io.open(_patient, "w", encoding="utf-8", newline="\n") as _handle:
@@ -358,7 +360,7 @@ else:
               "starts anyway",
               ("LAUNCHED" in _said, 1.5 < _took < 8), (True, True))
     finally:
-        launchers.CLOUD_MAX_SECONDS = _was
+        launch_gate.CLOUD_MAX_SECONDS = _was
 
     # A pid comes out of a file and one of the two things done with it is a
     # kill. A file left by a launch whose process has gone names a number the
