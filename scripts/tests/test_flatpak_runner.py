@@ -30,7 +30,7 @@ from harness import REPO_ROOT, check, section  # noqa: E402  -- points appenv at
 sys.path.insert(0, REPO_ROOT)
 
 import appenv  # noqa: E402
-import emu_install  # noqa: E402
+import emu_flatpak  # noqa: E402
 import installer  # noqa: E402
 import main  # noqa: E402
 
@@ -77,9 +77,9 @@ _shared = _plugin_on_loop(_Shared)
 # A real argv, so what reaches the runner is the command that would really run.
 # Both sides build their own, from their own module's binary lookup.
 _real_binary = installer.flatpak_binary
-_real_emu_binary = emu_install.flatpak_binary
+_real_emu_binary = emu_flatpak.flatpak_binary
 installer.flatpak_binary = lambda: "/usr/bin/flatpak"
-emu_install.flatpak_binary = lambda: "/usr/bin/flatpak"
+emu_flatpak.flatpak_binary = lambda: "/usr/bin/flatpak"
 try:
     _out = _run(_shared.uninstall_retroarch(False))
     check("removing RetroArch reaches the shared runner", len(seen), 1)
@@ -91,7 +91,7 @@ try:
     check("with the id it was asked about", seen[1][-1], "org.example.Nothing")
 finally:
     installer.flatpak_binary = _real_binary
-    emu_install.flatpak_binary = _real_emu_binary
+    emu_flatpak.flatpak_binary = _real_emu_binary
 
 
 section("and the runner carries what flatpak needs to work at all")

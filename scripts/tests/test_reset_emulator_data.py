@@ -31,6 +31,7 @@ sys.path.insert(0, REPO_ROOT)
 
 import appenv  # noqa: E402
 import devreset  # noqa: E402
+import emu_flatpak  # noqa: E402
 import emu_install  # noqa: E402
 import emulator_catalog  # noqa: E402
 import emulators  # noqa: E402
@@ -108,7 +109,6 @@ _real = {
     "flatpak_scope": emu_install.flatpak_scope,
     "installed_appimage": emu_install.installed_appimage,
     "remove_appimage": emu_install.remove_appimage,
-    "flatpak_binary": emu_install.flatpak_binary,
     "remove": emulators.remove,
 }
 
@@ -127,7 +127,8 @@ emu_install.installed_appimage = lambda entry_id: (
 # `keep` is what a removal leaves behind for a port; a reset asks for
 # everything to go, so it passes none and the stub only has to accept it.
 emu_install.remove_appimage = lambda entry_id, keep=(): (True, "")
-emu_install.flatpak_binary = lambda: "/usr/bin/flatpak"
+_real_binary = emu_flatpak.flatpak_binary
+emu_flatpak.flatpak_binary = lambda: "/usr/bin/flatpak"
 emulators.remove = lambda entry_id: None
 
 section("uninstalling every emulator deletes what those emulators owned")
@@ -141,6 +142,7 @@ try:
 finally:
     for name, value in _real.items():
         setattr(emu_install if name != "remove" else emulators, name, value)
+    emu_flatpak.flatpak_binary = _real_binary
 
 check("the reset runs", result.get("ok"), True)
 check("and reports what came off", REMOVED_FLATPAK["name"] in result.get("removed", []), True)

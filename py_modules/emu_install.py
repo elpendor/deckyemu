@@ -1,24 +1,17 @@
 """Installing a catalog emulator, through whichever channel it publishes on.
 
-Flatpak wherever Flathub carries the emulator: `--user` needs no password, and
-updating, rolling back and pinning are flatpak's own questions to answer.
-Release AppImages are the fallback for emulators with no flatpak, since an
-AppImage is a file this plugin then owns forever.
-
-Release asset patterns must be anchored: assets carry aarch64 builds beside
-x86_64 ones, and the wrong one fails at exec time with no useful error.
+Flatpak wherever Flathub carries the emulator (emu_flatpak.py). Release
+AppImages are the fallback for emulators with no flatpak, since an AppImage is
+a file this plugin then owns forever: found by emu_releases.py, unpacked by
+emu_archives.py, and installed, recorded and removed here, along with the
+helper tools some features fetch.
 """
 
-import hashlib
 import json
 import os
 import re
 import shutil
-import subprocess
 import time
-import tarfile
-import threading
-import zipfile
 from urllib.parse import unquote
 
 import appenv
@@ -30,9 +23,83 @@ import emu_patch
 import emulator_catalog
 import hardware
 import net
-import sysenv
+from emu_archives import (  # noqa: F401 -- re-exported; see emu_archives.py
+    _common_prefix,
+    _extract_member,
+    _nothing_matched,
+    _replace,
+    _safe_target,
+    _unpack_release,
+    _unpack_tarball,
+)
+from emu_flatpak import (  # noqa: F401 -- re-exported; see emu_flatpak.py
+    _APP_ID_RE,
+    _clean_value,
+    _COMMIT_RE,
+    _DETAIL_KEYS,
+    FLATHUB_REPO,
+    flatpak_binary,
+    flatpak_build_details,
+    _flatpak_changed,
+    flatpak_downgrade_argv,
+    flatpak_files_dir,
+    flatpak_held,
+    flatpak_history,
+    flatpak_hold,
+    flatpak_hold_argv,
+    flatpak_install_steps,
+    flatpak_installed,
+    flatpak_installed_commit,
+    _flatpak_lines,
+    flatpak_scope,
+    flatpak_uninstall_argv,
+    flatpak_update_argv,
+    flatpak_updates,
+    _NOTHING_INSTALLED,
+    nothing_to_uninstall,
+    _parse_commit,
+    _parse_fields,
+    _parse_history,
+    _parse_ids,
+    remove_flatpak_husk,
+    seed_bundled_files,
+    _UPDATES_CACHE,
+    _UPDATES_LOCK,
+    UPDATES_TTL,
+    _valid_app_id,
+    valid_commit,
+)
+from emu_releases import (  # noqa: F401 -- re-exported; see emu_releases.py
+    build_size,
+    _clip,
+    _digest_matches,
+    _DIGEST_RE,
+    feed_history,
+    FEED_HISTORY_LIMIT,
+    _fnv1a64,
+    _FNV_MASK,
+    _FNV_OFFSET,
+    _FNV_PRIME,
+    _FNV_RE,
+    GITHUB_API,
+    GITHUB_LATEST_PAGE,
+    GITHUB_RELEASES,
+    _HOST_RE,
+    MAX_FEED_BYTES,
+    _merged,
+    _resolve_asset,
+    resolve_feed_build,
+    resolve_github_asset,
+    resolve_release_asset,
+    resolve_release_list,
+    SELF_HOSTED_API,
+    SELF_HOSTED_RELEASES,
+    _TAG_IN_URL,
+    _TAG_RE,
+    valid_tag,
+    _versions_named,
+)
 
-FLATHUB_REPO = "https://flathub.org/repo/flathub.flatpakrepo"
 
 # Well above any emulator AppImage, low enough to refuse a redirect to
 # something unexpected.
@@ -52,357 +119,8 @@ def firmware_dir():
     return sysenv.user_dir("firmware")
 
 
-# ------------------------------------------------------------------- flatpak
-
-
-def flatpak_binary():
-    return shutil.which("flatpak") or ""
-
-
-def flatpak_install_steps(app_id):
-    """Commands that install `app_id` for the current user.
-
-    The remote is added first, since a fresh Deck has none. `-y` without
-    `--noninteractive`, because `flatpak_progress` reads the percentages.
-    """
-    flatpak = flatpak_binary()
-    if not flatpak or not _valid_app_id(app_id):
-        return []
-    return [
-        [flatpak, "remote-add", "--if-not-exists", "--user", "flathub", FLATHUB_REPO],
-        [flatpak, "install", "--user", "-y", "flathub", app_id],
-    ]
-
-
-def flatpak_files_dir(app_id):
-    """The deployed `files/` tree of an installed flatpak, or "".
-
-    Follows `current/active`, so it is the build installed right now.
-    """
-    if not _valid_app_id(app_id):
-        return ""
-    for root in sysenv.flatpak_roots():
-        if not sysenv.flatpak_deployed(root, app_id):
-            continue
-        files = os.path.join(root, "app", app_id, "current", "active", "files")
-        if os.path.isdir(files):
-            return files
-    return ""
-
-
-def seed_bundled_files(app_id, seed):
-    """Copy files a flatpak ships into the place its application looks for them.
-
-    Supermodel's Flathub build installs `Assets` under `/app/bin` but looks for
-    them in its data directory, and exits on launch without the crosshair
-    bitmaps; no flag points it elsewhere.
-
-    Copies only missing files, so a user's replacement stays, and only regular
-    files directly inside the source directory. Returns (paths copied, error).
-    """
-    if not seed:
-        return [], ""
-    files = flatpak_files_dir(app_id)
-    if not files:
-        return [], "%s is not installed" % app_id
-
-    copied = []
-    for source, destination in sorted(seed.items()):
-        origin = os.path.join(files, *source.split("/"))
-        target = os.path.join(sysenv.user_home(), *destination.split("/"))
-        if not os.path.isdir(origin):
-            # The package moved its data; the install is fine otherwise, and
-            # upstream may have fixed it.
-            appenv.logger.warning(
-                "%s ships no %s to seed from", app_id, source)
-            continue
-        try:
-            os.makedirs(target, exist_ok=True)
-            for name in sorted(os.listdir(origin)):
-                one = os.path.join(origin, name)
-                if not os.path.isfile(one):
-                    continue
-                landing = os.path.join(target, name)
-                if os.path.exists(landing):
-                    continue
-                shutil.copyfile(one, landing)
-                copied.append(landing)
-        except OSError as error:
-            return copied, "could not place %s: %s" % (source, error)
-
-    if copied:
-        appenv.logger.info("Seeded %d file(s) %s ships but does not find",
-                          len(copied), app_id)
-    return copied, ""
-
-
-def flatpak_uninstall_argv(app_id, delete_data=False):
-    """Remove a user-scope flatpak.
-
-    Data is kept unless asked for. `--delete-data` removes `~/.var/app/<id>`
-    whole, saves included, which is the only way back to never-installed.
-    """
-    flatpak = flatpak_binary()
-    if not flatpak or not _valid_app_id(app_id):
-        return []
-    argv = [flatpak, "uninstall", "--user", "-y", "--noninteractive"]
-    if delete_data:
-        argv.append("--delete-data")
-    argv.append(app_id)
-    return argv
-
-
-_APP_ID_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]*(\.[A-Za-z][A-Za-z0-9_-]*)+$")
-
-
-def _valid_app_id(app_id):
-    return bool(_APP_ID_RE.match(app_id or ""))
-
-
-#: An OSTree commit. Checked before a command line, since it comes from the
-#: frontend.
-_COMMIT_RE = re.compile(r"^[0-9a-f]{64}$")
-
-
-def valid_commit(commit):
-    return bool(_COMMIT_RE.match(commit or ""))
-
-
-def flatpak_update_argv(app_id):
-    """Update one user-scope flatpak to the newest build on its remote."""
-    flatpak = flatpak_binary()
-    if not flatpak or not _valid_app_id(app_id):
-        return []
-    return [flatpak, "update", "--user", "-y", "--noninteractive", app_id]
-
-
-def flatpak_downgrade_argv(app_id, commit):
-    """Deploy one specific past build with `flatpak update --commit=`.
-
-    Refuses anything but a bare hash.
-    """
-    flatpak = flatpak_binary()
-    if not flatpak or not _valid_app_id(app_id) or not valid_commit(commit):
-        return []
-    return [
-        flatpak, "update", "--user", "-y", "--noninteractive",
-        "--commit=%s" % commit, app_id,
-    ]
-
-
-def flatpak_hold_argv(app_id, held):
-    """Pin an app at its current build, or release it.
-
-    Without a mask, the next update from anywhere silently undoes a downgrade.
-    """
-    flatpak = flatpak_binary()
-    if not flatpak or not _valid_app_id(app_id):
-        return []
-    if held:
-        return [flatpak, "mask", "--user", app_id]
-    return [flatpak, "mask", "--user", "--remove", app_id]
-
-
-def _flatpak_lines(args, timeout=60):
-    """Run a read-only flatpak query and return its stdout lines.
-
-    Empty means "could not tell", which callers must not read as "nothing found".
-    """
-    flatpak = flatpak_binary()
-    if not flatpak:
-        return []
-    try:
-        done = subprocess.run(
-            [flatpak] + list(args),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            env=sysenv.clean_env(),
-            timeout=timeout,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return []
-    if done.returncode != 0:
-        return []
-    return done.stdout.decode("utf-8", errors="replace").splitlines()
-
-
 # Parsers are kept apart from the commands so tests can feed them flatpak's real
 # output.
-
-
-def _parse_ids(lines):
-    """App ids out of a one-per-line listing."""
-    found = set()
-    for line in lines:
-        app_id = line.strip().split("\t")[0].strip()
-        if _valid_app_id(app_id):
-            found.add(app_id)
-    return found
-
-
-#: Fields worth reading out of `remote-info` for one build. `download` matters
-#: most: switching build re-fetches the whole app.
-_DETAIL_KEYS = ("version", "license", "download", "installed", "subject", "date",
-                "commit", "parent")
-
-
-def _clean_value(value):
-    """One field's value, made safe to display.
-
-    Sizes carry a narrow no-break space before the unit, printed as `?` without
-    a UTF-8 locale, as here. Both become a plain space.
-    """
-    value = re.sub(r"(?<=\d)(\?|[^\x20-\x7e])(?=[A-Za-z])", " ", value)
-    value = re.sub(r"[^\x20-\x7e]", "", value)
-    return re.sub(r"\s+", " ", value).strip()
-
-
-def _parse_fields(lines):
-    """`remote-info`'s labelled lines as a dict, for the fields worth showing.
-
-    First occurrence wins.
-    """
-    found = {}
-    for line in lines:
-        label, sep, value = line.partition(":")
-        if not sep:
-            continue
-        key = label.strip().lower()
-        if key in _DETAIL_KEYS and key not in found:
-            found[key] = _clean_value(value)
-    return found
-
-
-def flatpak_build_details(app_id, commit):
-    """Everything flatpak knows about one build. Empty when it cannot be read.
-
-    Separate from `flatpak_history` because it costs a call per build.
-    """
-    if not _valid_app_id(app_id) or not valid_commit(commit):
-        return {}
-    return _parse_fields(
-        _flatpak_lines(
-            ["remote-info", "--user", "flathub", app_id, "--commit=%s" % commit],
-            timeout=90,
-        )
-    )
-
-
-def _parse_commit(lines):
-    """The `Commit:` value out of `flatpak info`, or ''."""
-    for line in lines:
-        label, _, value = line.partition(":")
-        if label.strip().lower() == "commit":
-            candidate = value.strip()
-            # `--commit=` refuses a truncated hash.
-            return candidate if valid_commit(candidate) else ""
-    return ""
-
-
-def _parse_history(lines, limit=12):
-    """`{commit, date, subject}` per build out of `remote-info --log`."""
-    builds = []
-    current = {}
-    for line in lines:
-        label, sep, value = line.partition(":")
-        if not sep:
-            continue
-        key = label.strip().lower()
-        value = value.strip()
-        if key == "commit":
-            # Every Commit line starts a record; the first is the newest build.
-            if current.get("commit"):
-                builds.append(current)
-            current = {"commit": value if valid_commit(value) else "", "date": "", "subject": ""}
-        elif key in ("date", "subject") and current:
-            current[key] = value
-    if current.get("commit"):
-        builds.append(current)
-
-    return [build for build in builds if build["commit"]][:limit]
-
-
-def flatpak_hold(app_id, held):
-    """Pin `app_id` at its current build, or release it. Returns (ok, message).
-
-    Waited for, not streamed, since masking is instant. A failure is reported.
-    """
-    argv = flatpak_hold_argv(app_id, held)
-    if not argv:
-        return False, "flatpak is not available on this system."
-    try:
-        done = subprocess.run(
-            argv,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            env=sysenv.clean_env(),
-            timeout=60,
-        )
-    except (OSError, subprocess.SubprocessError) as error:
-        return False, "Could not run flatpak: %s" % error
-
-    text = done.stdout.decode("utf-8", errors="replace").strip()
-    for line in text.splitlines():
-        appenv.logger.info("flatpak: %s", line)
-    if done.returncode != 0:
-        lines = [line for line in text.splitlines() if line.strip()]
-        return False, lines[-1] if lines else "flatpak exited with %d" % done.returncode
-    return True, ""
-
-
-def flatpak_updates():
-    """App ids with a newer build waiting, as a set.
-
-    One command for all apps, since each flatpak call costs about two seconds.
-    flatpak compares commits, not versions: an update can carry the same
-    `Version:` as the installed build. Runtimes are included; callers intersect
-    with the ids they know.
-    """
-    cached = _UPDATES_CACHE.get("answer")
-    # Already being asked: answer from the cache rather than hold a thread.
-    if not _UPDATES_LOCK.acquire(blocking=False):
-        return set(cached or ())
-    try:
-        marker = _flatpak_changed()
-        if (cached is not None and _UPDATES_CACHE.get("marker") == marker
-                and time.monotonic() - _UPDATES_CACHE["at"] < UPDATES_TTL):
-            return set(cached)
-        answer = _parse_ids(
-            _flatpak_lines(
-                ["remote-ls", "--user", "--updates", "flathub", "--columns=application"]
-            )
-        )
-        _UPDATES_CACHE.update(answer=answer, marker=marker, at=time.monotonic())
-        return set(answer)
-    finally:
-        _UPDATES_LOCK.release()
-
-
-# One `remote-ls` at a time: on a cold cache it takes a minute, and retries
-# once filled every executor thread.
-UPDATES_TTL = 600
-_UPDATES_LOCK = threading.Lock()
-_UPDATES_CACHE: dict = {}
-
-
-def _flatpak_changed():
-    """Flatpak touches this on every install, update and removal."""
-    try:
-        return os.stat(os.path.join(sysenv.user_home(), ".local", "share", "flatpak", ".changed")).st_mtime_ns
-    except OSError:
-        return None
-
-
-def flatpak_held():
-    """App ids pinned against updates, as a set."""
-    return _parse_ids(_flatpak_lines(["mask", "--user"]))
-
-
-def flatpak_installed_commit(app_id):
-    """The commit currently deployed for `app_id`, or ''."""
-    if not _valid_app_id(app_id):
-        return ""
-    return _parse_commit(_flatpak_lines(["info", "--user", app_id]))
 
 
 def installed_build(entry):
@@ -424,196 +142,6 @@ def installed_build(entry):
     return str(read_build_record(entry.get("id") or "").get("tag") or "")
 
 
-def flatpak_history(app_id, limit=12):
-    """Past builds available on the remote, newest first.
-
-    From the remote, so it includes builds this device never had. Date and
-    subject are what the user chooses by.
-    """
-    if not _valid_app_id(app_id):
-        return []
-    return _parse_history(
-        _flatpak_lines(["remote-info", "--user", "--log", "flathub", app_id], timeout=90),
-        limit=limit,
-    )
-
-
-def flatpak_installed(app_id):
-    """Whether `app_id` is installed for this user.
-
-    Read off the filesystem, since it runs for every entry when the panel opens.
-    Neither `.var/app/<id>` (kept data) nor a bare deploy directory (a failed
-    operation) counts.
-    """
-    if not _valid_app_id(app_id):
-        return False
-    return any(sysenv.flatpak_deployed(root, app_id) for root in sysenv.flatpak_roots())
-
-
-def flatpak_scope(app_id):
-    """'user', 'system' or '' -- which install we are looking at.
-
-    A system install needs root to remove, so the UI explains instead.
-    """
-    if not _valid_app_id(app_id):
-        return ""
-    system_root, user_root = sysenv.flatpak_roots()
-    if sysenv.flatpak_deployed(user_root, app_id):
-        return "user"
-    if sysenv.flatpak_deployed(system_root, app_id):
-        return "system"
-    return ""
-
-
-#: What flatpak says when asked to remove something it does not have. The exit
-#: code is 1 either way, and nothing to remove is the goal already met.
-_NOTHING_INSTALLED = re.compile(r"no installed refs? found", re.I)
-
-
-def nothing_to_uninstall(error):
-    """Whether a failed `flatpak uninstall` failed only by having no work."""
-    return bool(_NOTHING_INSTALLED.search(error or ""))
-
-
-def remove_flatpak_husk(app_id):
-    """Delete a deploy directory flatpak has disowned. Returns bytes freed.
-
-    A failed operation can leave commit trees with no `current` or `active`;
-    flatpak then neither runs nor removes them. Safe because nothing is
-    deployed: a real install, even mid-download, is left alone.
-    """
-    if not _valid_app_id(app_id):
-        return 0
-    freed = 0
-    # User installation only; a system one belongs to root.
-    _system, user_root = sysenv.flatpak_roots()
-    if sysenv.flatpak_deployed(user_root, app_id):
-        return 0
-    path = os.path.join(user_root, "app", app_id)
-    if not os.path.isdir(path):
-        return 0
-    freed = sysenv.directory_bytes(path)
-    try:
-        shutil.rmtree(path)
-    except OSError as error:
-        appenv.logger.warning("Could not remove the leftover %s: %s", path, error)
-        return 0
-    appenv.logger.info("Removed the leftover deploy directory %s (%d bytes)", path, freed)
-    return freed
-
-
-# -------------------------------------------------------------------- github
-
-GITHUB_API = "https://api.github.com/repos/%s/releases/latest"
-
-#: The same question asked of the website, which redirects to
-#: `/releases/tag/<tag>`. Off the API's hourly budget, and excludes
-#: pre-releases as `latest` does.
-GITHUB_LATEST_PAGE = "https://github.com/%s/releases/latest"
-
-#: What that redirect lands on. No releases lands on `/releases`, which
-#: this does not match.
-_TAG_IN_URL = re.compile(r"/releases/tag/([^/?#]+)")
-
-
-#: Same call against a self-hosted forge, which answers the same shape.
-SELF_HOSTED_API = "https://%s/api/v1/repos/%s/releases/latest"
-
-#: A hostname, not a URL, so an entry cannot name a path or plain HTTP.
-_HOST_RE = re.compile(
-    r"^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?"
-    r"(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+$"
-)
-
-
-#: A feed is a few hundred bytes; anything this large is not one.
-MAX_FEED_BYTES = 64 * 1024
-
-
-def resolve_feed_build(feed_url, want):
-    """The build `want` names in a publisher's own update feed. (asset, error).
-
-    For a project with no releases API: BigPEmu's updater reads a plain-text
-    feed with one line per platform, giving the download, an unused patch
-    installer, then the file's 64-bit FNV-1a:
-
-        BUILD_INFO 1
-        VERSION 1.221
-        Linux64 "http://.../BigPEmu_Linux64_v1221.tar.gz" "" C1B241BBFA5135CB ...
-
-    The scheme is forced to https; the same files serve over TLS.
-    """
-    if not net.is_web_url(feed_url):
-        return None, "That is not a usable address for an update feed."
-    payload, _content_type = net.get_bytes(feed_url, max_bytes=MAX_FEED_BYTES)
-    if not payload:
-        return None, "The project's update feed could not be read."
-    text = payload.decode("utf-8", "replace")
-
-    version = ""
-    for line in text.splitlines():
-        if line.startswith("VERSION "):
-            version = line.split(None, 1)[1].strip()
-            break
-    if not version:
-        return None, "The project's update feed named no version."
-
-    for line in text.splitlines():
-        if not line.startswith(want + " "):
-            continue
-        quoted = re.findall(r'"([^"]*)"', line)
-        if not quoted or not quoted[0]:
-            return None, "The update feed lists %s with no download." % want
-        url = re.sub(r"^http://", "https://", quoted[0].strip())
-        if not net.is_web_url(url):
-            return None, "The update feed's download address is not usable."
-        digest = ""
-        after = line.split('"')[-1].split()
-        if after and re.match(r"^[0-9A-Fa-f]{16}$", after[0]):
-            digest = "fnv1a64:" + after[0].lower()
-        return {
-            "name": url.rsplit("/", 1)[-1],
-            "url": url,
-            "digest": digest,
-            "tag": version,
-        }, ""
-    return None, "The project publishes no %s build." % want
-
-
-#: How many past builds a feed-installed emulator offers, as for releases.
-FEED_HISTORY_LIMIT = 12
-
-
-def _versions_named(notes_text):
-    """Every version heading in a set of release notes, in the order written."""
-    found = []
-    for line in (notes_text or "").splitlines():
-        match = re.match(r"^Version\s+([0-9][0-9.]*)\s*$", line)
-        if match and match.group(1) not in found:
-            found.append(match.group(1))
-    return found
-
-
-def _clip(text, limit):
-    """`text` no longer than `limit`, cut at a word and marked as cut.
-
-    A bare slice ends mid-word and looks like a rendering fault.
-    """
-    if len(text) <= limit:
-        return text
-    return text[:limit].rsplit(" ", 1)[0].rstrip(" ,;:.") + "..."
-
-
-def _merged(known, *more):
-    """One list of versions, in the order they were first met, without repeats."""
-    out = [version for version in (known or ()) if version]
-    for group in more:
-        for version in group or ():
-            if version and version not in out:
-                out.append(version)
-    return out
-
-
 def remember_versions(entry, notes_text, extra=()):
     """Every version this device has ever seen of `entry`, merged and stored.
 
@@ -627,76 +155,6 @@ def remember_versions(entry, notes_text, extra=()):
         write_build_record(entry["id"], record.get("tag", ""),
                            record.get("asset", ""), known)
     return known
-
-
-def feed_history(entry, notes_text, probe=None, remembered=(), newest=None):
-    """Past builds of a feed-installed emulator, newest first. (builds, error).
-
-    The list is the `Version x.y` headings in the `ReadMe.txt` shipped beside
-    the binary, the only enumeration that exists. An old build's address is
-    the version without dots, an undocumented convention; it is only applied
-    to versions the notes name, and `probe` confirms each file exists.
-
-    The feed gives a checksum for the current release only; `newest` is that
-    release, so its row uses the stated address and checksum.
-    """
-    source = entry.get("source") or {}
-    pattern = source.get("build_name") or ""
-    if not pattern:
-        return [], ""
-
-    # A heading and the lines under it, until the next: that release's notes.
-    seen = list(remembered or ())
-    notes = {}
-    current = ""
-    for line in (notes_text or "").splitlines():
-        found = re.match(r"^Version\s+([0-9][0-9.]*)\s*$", line)
-        if found:
-            current = found.group(1)
-            if current not in seen:
-                seen.append(current)
-            notes.setdefault(current, [])
-            continue
-        if current and line.strip():
-            notes[current].append(line.strip().lstrip("- ").strip())
-    if not seen:
-        return [], "No release notes came with this build, so its past builds are not listed."
-
-    # Newest first. The part after the dot is read as a fraction, so 1.221
-    # sits above 1.22, which sits above 1.19.
-    def _order(version):
-        head, _, tail = version.partition(".")
-        try:
-            return (int(head), float("0." + tail) if tail else 0.0)
-        except ValueError:
-            return (0, 0.0)
-
-    seen.sort(key=_order, reverse=True)
-
-    builds = []
-    for version in seen[:FEED_HISTORY_LIMIT]:
-        # The current release's address and checksum come from the feed.
-        stated = newest if newest and newest.get("tag") == version else None
-        url = (stated["url"] if stated
-               else pattern.replace("{version}", version.replace(".", "")))
-        # One request says both whether it is still published and its size.
-        size = probe(url) if probe else 0
-        if not size:
-            continue
-        builds.append({
-            "tag": version,
-            "name": url.rsplit("/", 1)[-1],
-            "url": url,
-            "size": size,
-            "digest": stated["digest"] if stated else "",
-            "published": "",
-            "prerelease": False,
-            # Capped; the first lines say what the release was for.
-            "notes": _clip(" ".join(notes.get(version, ())[:6]), 600),
-        })
-    if not builds:
-        return [], "None of the past builds named in the release notes are still published."
-    return builds, ""
 
 
 def read_build_notes(entry):
@@ -714,212 +172,6 @@ def read_build_notes(entry):
             return handle.read(512 * 1024)
     except OSError:
         return ""
-
-
-def build_size(url):
-    """How big a past build is, or 0 if it is no longer published.
-
-    Separate so `feed_history` can be tested with a fake probe. Zero means
-    gone or unreadable, and either way the build is not offered.
-    """
-    return net.head_size(url)
-
-
-def resolve_release_asset(repo, pattern, host="", failure=None):
-    """Newest release asset matching `pattern`, from GitHub or a self-hosted forge.
-
-    `host` empty means GitHub; otherwise a host running the same releases
-    API. No token is sent: the plugin's own is scoped to this project.
-    """
-    if not re.match(r"^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$", repo or ""):
-        return None, "Not a valid repository name."
-    if host and not _HOST_RE.match(host):
-        return None, "Not a valid host name."
-    api = SELF_HOSTED_API % (host, repo) if host else GITHUB_API % repo
-    return _resolve_asset(api, pattern, "%s on %s" % (repo, host) if host else repo,
-                          failure=failure)
-
-
-#: Releases rather than only the newest one, for choosing a build to go back to.
-GITHUB_RELEASES = "https://api.github.com/repos/%s/releases"
-SELF_HOSTED_RELEASES = "https://%s/api/v1/repos/%s/releases"
-
-#: A release tag. Permissive on shape, strict on characters, since it comes
-#: from the frontend.
-_TAG_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$")
-
-
-def valid_tag(tag):
-    return bool(_TAG_RE.match(tag or ""))
-
-
-def resolve_release_list(repo, pattern, host="", limit=30):
-    """Recent releases carrying an asset that matches, newest first.
-
-    Returns (builds, error). Each build is {tag, name, url, size, published}.
-
-    Releases with no matching asset, such as aarch64-only ones, are skipped.
-    """
-    if not re.match(r"^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$", repo or ""):
-        return [], "Not a valid repository name."
-    if host and not _HOST_RE.match(host):
-        return [], "Not a valid host name."
-
-    api = SELF_HOSTED_RELEASES % (host, repo) if host else GITHUB_RELEASES % repo
-    if not host:
-        # GitHub's default of 30 can be two weeks for a project that tags
-        # every build.
-        api += "?per_page=100"
-    label = "%s on %s" % (repo, host) if host else repo
-    failure = {}
-    payload = net.get_json(api, failure=failure)
-    if not isinstance(payload, list):
-        # Name the real failure; see `_resolve_asset`.
-        return [], (
-            net.failure_message(failure, "the builds of %s" % label)
-            or "No releases came back for %s. The project may have moved off "
-               "GitHub." % label
-        )
-
-    try:
-        matcher = re.compile(pattern)
-    except re.error as error:
-        return [], "Bad asset pattern: %s" % error
-
-    builds = []
-    for release in payload:
-        if not isinstance(release, dict) or release.get("draft"):
-            continue
-        tag = release.get("tag_name") or ""
-        if not valid_tag(tag):
-            continue
-        for asset in release.get("assets") or []:
-            name = asset.get("name") or ""
-            url = asset.get("browser_download_url")
-            if not url or not matcher.match(name):
-                continue
-            builds.append({
-                "tag": tag,
-                "name": name,
-                "url": url,
-                "size": asset.get("size") or 0,
-                "digest": asset.get("digest") or "",
-                "published": (release.get("published_at") or "")[:10],
-                "prerelease": bool(release.get("prerelease")),
-            })
-            break
-        if len(builds) >= limit:
-            break
-    if not builds:
-        return [], "No release of %s carries a download this device can use." % label
-    return builds, ""
-
-
-def resolve_github_asset(repo, pattern):
-    """`resolve_release_asset` against GitHub. Kept for the bundled entries."""
-    return resolve_release_asset(repo, pattern)
-
-
-def _resolve_asset(api_url, pattern, label, failure=None):
-    # The caller may want the details: a rate limit says when it lifts.
-    failure = {} if failure is None else failure
-    payload = net.get_json(api_url, failure=failure)
-    if payload is None:
-        # Name the real failure: a rate limit once read as the project having
-        # moved. 451 (taken-down repositories) falls to the generic line.
-        return None, (
-            net.failure_message(failure, "the latest release of %s" % label)
-            or "No release came back for %s. The project may have moved off "
-               "GitHub." % label
-        )
-    if not isinstance(payload, dict) or payload.get("message"):
-        return None, payload.get("message", "Unexpected reply from %s." % label) if isinstance(
-            payload, dict
-        ) else "Unexpected reply from %s." % label
-
-    try:
-        matcher = re.compile(pattern)
-    except re.error as error:
-        return None, "Bad asset pattern: %s" % error
-
-    for asset in payload.get("assets") or []:
-        name = asset.get("name") or ""
-        if not matcher.match(name):
-            continue
-        url = asset.get("browser_download_url")
-        if not url:
-            continue
-        return (
-            {
-                "name": name,
-                "url": url,
-                "tag": payload.get("tag_name") or "",
-                "size": asset.get("size") or 0,
-                "digest": asset.get("digest") or "",
-            },
-            "",
-        )
-
-    return None, "No download in the latest release of %s matched what was expected." % label
-
-
-#: How GitHub states an asset's checksum, e.g. "sha256:5c73...".
-_DIGEST_RE = re.compile(r"^sha256:([0-9a-f]{64})$", re.IGNORECASE)
-
-#: BigPEmu's feed states a 64-bit FNV-1a of each build and nothing else;
-#: checked against a published value.
-_FNV_RE = re.compile(r"^fnv1a64:([0-9a-f]{16})$", re.IGNORECASE)
-_FNV_PRIME = 1099511628211
-_FNV_OFFSET = 14695981039346656037
-_FNV_MASK = (1 << 64) - 1
-
-
-def _fnv1a64(path):
-    """The 64-bit FNV-1a of a file, as lowercase hex. "" if it cannot be read."""
-    value = _FNV_OFFSET
-    try:
-        with open(path, "rb") as handle:
-            for block in iter(lambda: handle.read(1024 * 1024), b""):
-                for byte in block:
-                    value = ((value ^ byte) * _FNV_PRIME) & _FNV_MASK
-    except OSError:
-        return ""
-    return "%016x" % value
-
-
-def _digest_matches(path, digest):
-    """Whether the file at `path` is what the release said it would be. (ok, error).
-
-    Integrity, not authenticity: the checksum comes in the same reply as the
-    URL. It catches a truncated or stale download. An asset with no digest
-    passes, since many sources publish none.
-    """
-    weak = _FNV_RE.match((digest or "").strip())
-    if weak:
-        wanted = weak.group(1).lower()
-        got = _fnv1a64(path)
-        if not got:
-            return False, "Could not read the download."
-    else:
-        stated = _DIGEST_RE.match((digest or "").strip())
-        if not stated:
-            return True, ""
-        wanted = stated.group(1).lower()
-        reader = hashlib.sha256()
-        try:
-            with open(path, "rb") as handle:
-                for block in iter(lambda: handle.read(1024 * 1024), b""):
-                    reader.update(block)
-        except OSError as error:
-            return False, "Could not read the download: %s" % error
-        got = reader.hexdigest()
-    if got != wanted:
-        appenv.logger.warning("Digest mismatch for %s: wanted %s, got %s",
-                             path, wanted, got)
-        return False, ("The download does not match the checksum the release "
-                       "published, so it arrived damaged or altered. Nothing "
-                       "was installed.")
-    return True, ""
 
 
 def install_appimage(entry, asset, on_progress=None):
@@ -1059,192 +311,6 @@ def installed_tool(name):
     except OSError:
         pass
     return ""
-
-
-def _nothing_matched(pattern, names):
-    """The error for an `extract` pattern that named no member of the archive.
-
-    Lists what the archive holds, since patterns and releases drift, often
-    only in letter case.
-    """
-    listed = ", ".join(sorted(names)[:8]) or "nothing"
-    if len(names) > 8:
-        listed += ", ..."
-    return "Nothing in the download is named like %s. It holds: %s." % (pattern, listed)
-
-
-def _replace(target):
-    """Take a file out of the way so the new one can be written over it.
-
-    An archive can ship read-only files, and `open(..., "wb")` cannot reopen
-    one, so a second build failed over the first. Removed, not chmod-ed, so
-    the new file inherits nothing.
-    """
-    try:
-        os.remove(target)
-    except FileNotFoundError:
-        pass
-    except OSError as error:
-        appenv.logger.warning("Could not replace %s: %s", target, error)
-
-
-def _safe_target(destination, name):
-    """Where `name` lands under `destination`, or "" if it tries to leave it.
-
-    Archives come off the network, so an absolute or `..` member is refused,
-    and the resolved path is checked against the destination.
-    """
-    relative = os.path.normpath(name).replace("\\", "/")
-    if relative.startswith("/") or relative.split("/")[0] == "..":
-        return ""
-    target = os.path.join(destination, *relative.split("/"))
-    root = os.path.realpath(destination)
-    if os.path.commonpath([root, os.path.realpath(os.path.dirname(target))]) != root:
-        return ""
-    return target
-
-
-def _common_prefix(names):
-    """The single folder every member sits in, or "".
-
-    Stripped so a tarball's top folder does not nest inside ours. Only when
-    every member shares it.
-    """
-    first = ""
-    for name in names:
-        head = name.replace("\\", "/").split("/")[0]
-        if "/" not in name.replace("\\", "/"):
-            return ""
-        if first and head != first:
-            return ""
-        first = head
-    return first
-
-
-def _unpack_tarball(archive, destination, pattern):
-    """`_unpack_release` for a .tar.gz. Same contract, same refusals.
-
-    Only regular files come out, so links and devices are never written.
-    `filter="data"` needs Python 3.12; the runtime was 3.11.
-    """
-    try:
-        matcher = re.compile(pattern)
-    except re.error as error:
-        return "", "Bad extract pattern: %s" % error
-
-    found = ""
-    seen = []
-    try:
-        with tarfile.open(archive, "r:*") as bundle:
-            members = [m for m in bundle.getmembers() if m.isfile()]
-            strip = _common_prefix([m.name for m in members])
-            for member in members:
-                name = member.name
-                if strip:
-                    name = name.replace("\\", "/")[len(strip) + 1:]
-                    if not name:
-                        continue
-                target = _safe_target(destination, name)
-                if not target:
-                    return "", "The download holds a path that leaves its own folder."
-                os.makedirs(os.path.dirname(target), exist_ok=True)
-                _replace(target)
-                source = bundle.extractfile(member)
-                if source is None:
-                    continue
-                with source, open(target, "wb") as handle:
-                    shutil.copyfileobj(source, handle)
-                # The recorded mode carries the execute bit.
-                if member.mode:
-                    os.chmod(target, member.mode & 0o777)
-                seen.append(os.path.basename(target))
-                if matcher.match(os.path.basename(target)):
-                    found = target
-    except (OSError, tarfile.TarError, ValueError) as error:
-        return "", "Could not unpack the download: %s" % error
-    if not found:
-        return "", _nothing_matched(pattern, seen)
-    return found, ""
-
-
-def _unpack_release(archive, destination, pattern):
-    """Unpack a whole archive, and return the member `pattern` names. (path, error).
-
-    Members keep their relative paths, so each is checked for escaping.
-    """
-    if tarfile.is_tarfile(archive):
-        return _unpack_tarball(archive, destination, pattern)
-    try:
-        matcher = re.compile(pattern)
-    except re.error as error:
-        return "", "Bad extract pattern: %s" % error
-
-    found = ""
-    seen = []
-    try:
-        with zipfile.ZipFile(archive) as bundle:
-            for info in bundle.infolist():
-                name = info.filename
-                if info.is_dir() or not name:
-                    continue
-                relative = os.path.normpath(name).replace("\\", "/")
-                if relative.startswith("/") or relative.split("/")[0] == "..":
-                    return "", "The download holds a path that leaves its own folder."
-                target = os.path.join(destination, *relative.split("/"))
-                os.makedirs(os.path.dirname(target), exist_ok=True)
-                # A read-only file from the last build cannot be written over.
-                _replace(target)
-                with bundle.open(info) as source, open(target, "wb") as handle:
-                    shutil.copyfileobj(source, handle)
-                # Keep the recorded mode.
-                mode = info.external_attr >> 16
-                if mode:
-                    os.chmod(target, mode & 0o777)
-                seen.append(os.path.basename(relative))
-                if matcher.match(os.path.basename(relative)):
-                    found = target
-    except (OSError, zipfile.BadZipFile, ValueError) as error:
-        return "", "Could not unpack the download: %s" % error
-    if not found:
-        return "", _nothing_matched(pattern, seen)
-    return found, ""
-
-
-def _extract_member(archive, destination, pattern):
-    """Pull one file out of a downloaded zip by basename. Returns (path, error).
-
-    Written by basename, never the archive's path. Exactly one must match;
-    two means the pattern is ambiguous.
-    """
-    try:
-        matcher = re.compile(pattern)
-    except re.error as error:
-        return "", "Bad extract pattern: %s" % error
-
-    found = []
-    seen = []
-    try:
-        with zipfile.ZipFile(archive) as bundle:
-            for info in bundle.infolist():
-                name = os.path.basename(info.filename)
-                if info.is_dir() or not name:
-                    continue
-                seen.append(name)
-                if not matcher.match(name):
-                    continue
-                found.append(info)
-        if len(found) != 1:
-            return "", (_nothing_matched(pattern, seen)
-                        if not found else
-                        "The download contained %d files matching %r; expected "
-                        "one." % (len(found), pattern))
-        target = os.path.join(destination, os.path.basename(found[0].filename))
-        with zipfile.ZipFile(archive) as bundle:
-            with bundle.open(found[0]) as source, open(target, "wb") as handle:
-                shutil.copyfileobj(source, handle)
-    except (OSError, zipfile.BadZipFile, ValueError) as error:
-        return "", "Could not unpack the download: %s" % error
-    return target, ""
 
 
 def install_tool(name, asset, on_progress=None, extract=""):

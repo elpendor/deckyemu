@@ -353,6 +353,10 @@ py_modules/                 Backend logic. Plain Python, no third-party
                             adding one; imported.py loads user-supplied
                             definitions, which are validated far more strictly.
   emu_install.py            Install a catalog emulator (flatpak, GitHub AppImage)
+  emu_flatpak.py            Install, update, roll back and pin from Flathub
+  emu_releases.py           An emulator's builds: release APIs, publisher feeds,
+                            checksums
+  emu_archives.py           Unpack a downloaded archive, refusing escapes
   emu_config.py             Recommended settings written into the emulator's own
                             config, and the rule for when that is allowed
   emu_firmware.py           Match a BIOS or key file by name and put it where the

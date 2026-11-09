@@ -28,6 +28,7 @@ from harness import REPO_ROOT, TMP, check, section, summary  # noqa: E402  -- in
 
 sys.path.insert(0, REPO_ROOT)
 
+import emu_flatpak  # noqa: E402
 import emu_install  # noqa: E402
 import main  # noqa: E402
 import sysenv  # noqa: E402
@@ -177,8 +178,8 @@ def _plugin(reply):
     return plugin
 
 
-_real_binary = emu_install.flatpak_binary
-emu_install.flatpak_binary = lambda: "/usr/bin/flatpak"
+_real_binary = emu_flatpak.flatpak_binary
+emu_flatpak.flatpak_binary = lambda: "/usr/bin/flatpak"
 try:
     # The stuck state end to end: flatpak has no ref, the deploy directory is
     # still there, and the user presses Remove.
@@ -206,7 +207,7 @@ try:
     check("and nothing deleted behind it",
           os.path.isdir(os.path.join(_user_root, "app", APP)), True)
 finally:
-    emu_install.flatpak_binary = _real_binary
+    emu_flatpak.flatpak_binary = _real_binary
     # The scratch home is shared with every file after this one, and a flatpak
     # that never existed sitting in it is somebody else's confusing failure.
     _clear(APP, _user_root)
