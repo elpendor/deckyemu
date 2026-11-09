@@ -62,7 +62,8 @@ PAGE = """<!doctype html>
  .actions { display:flex; flex-direction:column; gap:10px; }
  button { font-size:20px; padding:14px 22px; border:0; border-radius:4px; text-align:left;
           background:#3d4450; color:#fff; overflow-wrap:anywhere; }
- button:focus, button:hover { background:#1a9fff; }
+ button:focus, button:hover, .pad { background:#1a9fff; }
+ summary.pad { outline:2px solid #1a9fff; outline-offset:4px; }
  button small { display:block; font-size:15px; opacity:.7; margin-top:2px; }
  #result { margin:6px 2px; font-weight:bold; }
  details { margin-top:24px; } summary { font-size:18px; cursor:pointer; opacity:.8; }
@@ -95,6 +96,38 @@ async function act(what) {
     if (j.ok && what !== "update" && what !== "take_over") setTimeout(() => location.reload(), 4000);
   } catch (e) { out.textContent = "DeckyEmu is restarting. Refresh in a few seconds."; }
 }
+
+// The controller, forwarded by the service (rescue_pad.py) as Steam's button
+// numbers: 0 A, 20 up, 21 down, 22 left, 23 right.
+let at = 0;
+function pad(button) {
+  // Only while showing: a page left open behind the library must not act.
+  if (document.visibilityState !== "visible") return false;
+  const items = [...document.querySelectorAll(".actions button, summary")];
+  if (!items.length) return false;
+  if (button === 0) { items[Math.min(at, items.length - 1)].click(); return true; }
+  if (button === 20 || button === 22) at = Math.max(0, at - 1);
+  else if (button === 21 || button === 23) at = Math.min(items.length - 1, at + 1);
+  else return false;
+  mark(items);
+  return true;
+}
+function mark(items) {
+  items.forEach((item, i) => item.classList.toggle("pad", i === at));
+  items[at].scrollIntoView({ block: "nearest" });
+}
+mark([...document.querySelectorAll(".actions button, summary")]);
+
+// The status card, kept current: a restart finishes loading the panel a few
+// seconds after the page has reloaded into it.
+setInterval(async () => {
+  if (document.visibilityState !== "visible") return;
+  try {
+    const r = await fetch(location.pathname);
+    const fresh = new DOMParser().parseFromString(await r.text(), "text/html").querySelector(".card");
+    if (fresh) document.querySelector(".card").innerHTML = fresh.innerHTML;
+  } catch (e) {}
+}, 3000);
 </script></body></html>"""
 
 #: The mark beside a check, by its state.

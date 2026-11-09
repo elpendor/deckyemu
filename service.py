@@ -104,6 +104,7 @@ class Service:
         import injector
         import main
         import rescue
+        import rescue_pad
         import selfupdate
 
         self.selfupdate = selfupdate
@@ -125,6 +126,7 @@ class Service:
             "restart": self.rescue_restart,
             "take_over": self.rescue_take_over,
         })
+        self.pad = rescue_pad.PadBridge(lambda: self.rescue.url)
         self.standby = self._tile_standby()
         steam_dir = os.path.join(appenv.USER_HOME, ".local", "share", "Steam")
         if os.path.isdir(steam_dir) and cdp.ensure_enabled(steam_dir):
@@ -321,6 +323,7 @@ class Service:
             else:
                 self.injector.start()
             self.rescue.start()
+            self.pad.start()
             try:
                 await self.plugin._main()
             except Exception:  # noqa: BLE001 - the panel and the rescue page stay up to say so
@@ -330,6 +333,7 @@ class Service:
             await stopping.wait()
             appenv.logger.info("Stopping")
             self.injector.stop()
+            self.pad.stop()
             self.rescue.stop()
             try:
                 await asyncio.wait_for(self.plugin._unload(), 30)
