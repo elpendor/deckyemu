@@ -469,19 +469,67 @@ export function LibraryPanel({ onRefresh }: Props) {
         </PanelSectionRow>
       </PanelSection>
 
-      {/* Its own group, because it is its own subject. These two are a pair --
-          one makes the file, the other reads it back -- and neither is about
-          the games in Steam, which is what the section above is. Between them
-          and the button that deletes everything, so somebody reading down the
-          tab meets the way to keep their saves before the way to lose them. */}
+      {/* Where saves go first, since the rows under it depend on it; then
+          the actions; then the automatic copies. */}
       <PanelSection title="Save data">
+        <PanelSectionRow>
+          <ButtonItem
+            label="Cloud storage"
+            onClick={() => openModal(<CloudSetupModal />)}
+            description={
+              cloudRemote
+                ? `Saves go to ${cloudRemote}.`
+                : "Not set up. Copies saves to Dropbox, WebDAV, SFTP or S3, set up from a phone or PC."
+            }
+          >
+            {cloudRemote ? "Change" : "Set up"}
+          </ButtonItem>
+        </PanelSectionRow>
+
+        {/* What is waiting, or when the last copy went: the answer to "is
+            this working?", beside the button that fixes it. */}
+        {cloudRemote && (
+          <PanelSectionRow>
+            <ButtonItem
+              layout="below"
+              disabled={Boolean(copying)}
+              description={
+                waiting.length > 0
+                  ? `${namesOf(waiting)} ${waiting.length === 1 ? "has" : "have"} saves not copied yet.`
+                  : lastSync
+                    ? `Everything is copied. Last copied ${ago(lastSync)}.`
+                    : "Nothing has been copied yet."
+              }
+              onClick={() => {
+                void cloudBackupNow(waiting.length > 0 ? waiting.map((one) => one.id) : null)
+                  .then((result) => {
+                    if (!result.ok) {
+                      toaster.toast({ title: "Could not copy the saves", body: result.error ?? "" });
+                    }
+                  })
+                  .catch((error) => logError("could not start the copy", error));
+              }}
+            >
+              {copying ? "Copying..." : "Copy saves now"}
+            </ButtonItem>
+          </PanelSectionRow>
+        )}
+
+        {cloudRemote && copying && (
+          <PanelSectionRow>
+            <div style={{ paddingBottom: "8px" }}>
+              <ProgressBar fraction={percent < 0 ? -1 : percent / 100} />
+            </div>
+          </PanelSectionRow>
+        )}
+
         <PanelSectionRow>
           <ButtonItem
             layout="below"
             onClick={() => openModal(<SaveBackupModal />)}
-            description="Collects the save data of every emulator on this Deck into one file and offers it to a phone or PC on this network. Nothing here is changed or removed."
+            description="To a phone or PC on this network, or to your cloud storage. Nothing here is changed."
           >
-            Back up save data
+            Back up saves
           </ButtonItem>
         </PanelSectionRow>
 
@@ -489,51 +537,16 @@ export function LibraryPanel({ onRefresh }: Props) {
           <ButtonItem
             layout="below"
             onClick={() => openModal(<RestoreSavesModal />)}
-            description="Puts saves back from a backup you have sent to this Deck. Nothing already here is overwritten unless you ask for it."
+            description="From your cloud storage or a backup on this Deck. Nothing here is overwritten unless you ask."
           >
-            Restore save data
+            Restore saves
           </ButtonItem>
         </PanelSectionRow>
 
-        {/* Third rather than first: the two above work on their own and this
-            one asks for an account somewhere else. Somebody reading down the
-            section meets the thing that needs nothing before the thing that
-            needs an account somewhere. */}
-        <PanelSectionRow>
-          <ButtonItem
-            layout="below"
-            onClick={() => openModal(<CloudSetupModal />)}
-            description={
-              /* Set up or not is the whole of what somebody wants to know here,
-                 and the row is the only place it can be said without opening
-                 anything. The name, never a credential — rclone holds those. */
-              cloudRemote
-                ? `Saves go to ${cloudRemote}. Press to switch accounts, add another, or sign out.`
-                : "Chooses where saves get copied to — Dropbox, a WebDAV server, an SFTP box or an S3 bucket. Set up from a phone or PC, because it means signing in or typing an address."
-            }
-          >
-            {cloudRemote ? "Change where saves go" : "Set up cloud storage"}
-          </ButtonItem>
-        </PanelSectionRow>
-
-        {/* Under the row that says where things go, because it is about that
-            row. Offered only once there is somewhere to put things: a switch
-            governing a destination nobody has chosen is a switch about nothing.
-
-            On the panel rather than in the dialog above. That dialog is a
-            thing somebody opens to sign in and then dismisses; a setting kept
-            behind one is a setting nobody finds a second time. It is also
-            where the answer to "is this actually working?" belongs, and that
-            answer is the date. */}
+        {/* Two switches, not one: the check before a game makes every launch
+            wait on the network, which is a different thing to want off. */}
         {cloudRemote && (
           <PanelSectionRow>
-            {/* Before the one below, because it happens first and because the
-                two are a pair: this brings saves down when you start, that puts
-                them up when you stop, and a second device needs both. Its own
-                switch rather than one for "cloud saves" as a whole -- this is
-                the half that costs a launch a moment, waiting on a provider
-                before the game opens its saves, and that is a different thing
-                to want off. */}
             <ToggleField
               label="Check for newer saves when a game starts"
               description="Brings down saves this Deck does not have, and asks which to use when both sides changed. Off means a game starts straight away and uses whatever is here."
@@ -556,18 +569,10 @@ export function LibraryPanel({ onRefresh }: Props) {
           <PanelSectionRow>
             <ToggleField
               label="Copy saves when a game closes"
-              description={
-                copying
-                  ? "Copying saves now."
-                  : lastSync
-                    ? `Only the saves that changed, for the emulator you were playing. Last copied ${ago(lastSync)}.`
-                    : "Only the saves that changed, for the emulator you were playing. Nothing has been copied yet."
-              }
+              description="Only the saves that changed, for the emulator you were playing."
               checked={afterPlay}
               onChange={(on) => {
-                // The switch moves at once and the date is re-read after, so a
-                // failed write shows as the switch going back rather than as a
-                // panel that disagrees with the Deck.
+                // Moves at once; a failed write shows as the switch going back.
                 setAfterPlay(on);
                 void setSettings({ cloud_after_play: on })
                   .then(() => cloudStatus(false))
@@ -581,55 +586,6 @@ export function LibraryPanel({ onRefresh }: Props) {
                   });
               }}
             />
-          </PanelSectionRow>
-        )}
-
-        {/* **Last, and a button rather than a sentence.** A copy after a game
-            covers the emulator that was played and nothing retries the others,
-            so one that failed offline waits for the next game of *that*
-            emulator -- which may be never. Told as a static line between the
-            two switches it read as a footnote to them; at the end of the
-            section, focusable, it is the one thing here that is asking to be
-            pressed. The same shape the panel's library nudge uses, for the same
-            reason: a problem nobody can see, with the cure one press away. */}
-        {cloudRemote && waiting.length > 0 && (
-          <PanelSectionRow>
-            <ButtonItem
-              layout="below"
-              label="Saves not copied yet"
-              description={`${namesOf(waiting)} ${
-                waiting.length === 1 ? "has" : "have"
-              } saves newer than your storage.`}
-              disabled={Boolean(copying)}
-              onClick={() => {
-                // The emulators named, not everything: the row is about these,
-                // and a button that quietly does more than it says is worse
-                // than one that makes you press it twice.
-                void cloudBackupNow(waiting.map((one) => one.id))
-                  .then((result) => {
-                    if (!result.ok) {
-                      toaster.toast({
-                        title: "Could not copy the saves",
-                        body: result.error ?? "",
-                      });
-                    }
-                  })
-                  .catch((error) => logError("could not start the copy", error));
-              }}
-            >
-              {copying ? "Copying..." : "Copy them now"}
-            </ButtonItem>
-          </PanelSectionRow>
-        )}
-
-        {/* Under the button that starts it, and shown for any copy rather than
-            only this one's: while saves are moving, that is what this row is
-            about, whichever screen or game set it going. */}
-        {cloudRemote && waiting.length > 0 && copying && (
-          <PanelSectionRow>
-            <div style={{ paddingBottom: "8px" }}>
-              <ProgressBar fraction={percent < 0 ? -1 : percent / 100} />
-            </div>
           </PanelSectionRow>
         )}
       </PanelSection>

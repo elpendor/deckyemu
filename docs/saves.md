@@ -7,7 +7,7 @@ Back to [the README](https://github.com/elpendor/deckyemu#readme).
 
 ## Backing up save data
 
-Press **Back up save data** on the Library tab. It gathers the saves of every
+Press **Back up saves** under **Save data** on the Library tab. It gathers the saves of every
 emulator on your Deck into one file and hands it to your phone or PC over your
 network — the same QR code and six-digit code that [send files the other
 way](transfers.md#sending-files-from-another-device).
@@ -40,8 +40,8 @@ folder if you want them carried.
 
 ## Setting up cloud storage
 
-Press **Set up cloud storage** under **Save data** to pick somewhere off your
-Deck for saves to go. The storage is yours and so is the account — your Deck
+Press **Set up** beside **Cloud storage**, the first row under **Save data**, to
+pick somewhere off your Deck for saves to go. The storage is yours and so is the account — your Deck
 just writes down how to reach it, and your password stays on the device.
 
 You fill the form in from your phone or PC, using the same QR code and six
@@ -94,8 +94,8 @@ page and on your Deck.
 
 ### Managing your storages
 
-Once one is set up, the row reads **Change where saves go** and names the
-service — "Saves go to Dropbox". Open it and you'll see every storage on this
+Once one is set up, the row names the service — "Saves go to Dropbox" — and its
+button reads **Change**. Open it and you'll see every storage on this
 Deck, with **In use** next to the one saves go to.
 
 - **Pick another** to switch.
@@ -109,14 +109,14 @@ Deck, with **In use** next to the one saves go to.
   switch for it.
 
 Got two accounts on the same service? They're numbered, here and in **Restore
-save data**, so the storage you copy to and the storage you restore from are
+saves**, so the storage you copy to and the storage you restore from are
 named the same way.
 
 Setting this up copies nothing. It only records where saves would go.
 
 ## Sending saves to the cloud
 
-This happens from **Back up save data** too, because it's the same decision —
+This happens from **Back up saves** too, because it's the same decision —
 which emulators, and where to.
 
 Tick what you want and you get two destinations:
@@ -144,7 +144,7 @@ press copy, the cloud now holds the old one.
 Whatever a copy replaced is kept, in both directions — so taking the cloud's
 copies keeps yours too.
 
-Look under **Restore save data** for a row reading *Dropbox — earlier copies
+Look under **Restore saves** for a row reading *Dropbox — earlier copies
 (3)*. Each one tells you which saves it holds and when they were set aside:
 *RetroArch — 3 Sep, 22:10*. Pick one and you see what's in it before anything
 gets put back.
@@ -173,16 +173,15 @@ Drive game sends a few kilobytes.
 
 Nothing to press, no dialog.
 
-Want to check it's working? The switch under **Change where saves go** — *Copy
-saves when a game closes* — tells you when saves last went up, and reads
-*Copying saves now* while one is running. Turn it off if you're on a hotspot and
-would rather choose when to spend the connection.
+Want to check it's working? **Copy saves now** says when saves last went up, and
+reads *Copying...* while a copy is running. Turn off *Copy saves when a game
+closes* if you're on a hotspot and would rather choose when to spend the
+connection.
 
 ### Some of my saves haven't been copied
 
-The last row of **Save data** says so: *Saves not copied yet: RetroArch and
-DuckStation have saves newer than your storage*. Press **Copy them now** and
-they go up there and then.
+**Copy saves now** says so: *RetroArch and DuckStation have saves not copied
+yet*. Press it and they go up there and then.
 
 Worth using, because the copy after a game only covers the emulator you were
 playing. One that failed while you were offline would otherwise sit there until
@@ -277,7 +276,7 @@ close or **Copy now**.
 
 ## Restoring from the cloud
 
-Press **Restore save data** and you'll see your signed-in storages listed next
+Press **Restore saves** and you'll see your signed-in storages listed next
 to the backup files on your Deck, because from that screen they're the same
 thing. The one saves are copied to comes first, marked **In use**.
 
@@ -310,7 +309,7 @@ away from being undone. **Replace without keeping** is the other button.
 
 ## Restoring a backup
 
-Press **Restore save data** under **Save data** on the Library tab, right next to
+Press **Restore saves** under **Save data** on the Library tab, right next to
 the button that made the backup.
 
 No backup on your Deck yet? Press **Send a backup to this Deck** in that dialog.

@@ -240,7 +240,7 @@ export function SaveBackupModal({ closeModal }: Props) {
         gets the remainder, whatever that turns out to be.
       */}
         <div style={{ fontSize: "20px", fontWeight: 600, marginBottom: "4px" }}>
-          Back up save data
+          Back up saves
         </div>
         {/* One line, and only the part the buttons cannot say. Where the
             saves go is written on the two buttons at the bottom; what was left

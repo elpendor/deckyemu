@@ -146,7 +146,7 @@ function Conflict(
           the versions the storage does not have. */}
       <div style={{ ...MUTED, marginTop: "12px" }}>
         Neither answer loses anything. Whichever copies get replaced are kept in
-        your storage, and <b>Restore save data</b> lists them by date.
+        your storage, and <b>Restore saves</b> lists them by date.
       </div>
     </ModalRoot>
   );

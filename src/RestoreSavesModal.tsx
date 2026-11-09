@@ -603,7 +603,7 @@ export function RestoreSavesModal({ closeModal }: Props) {
           expecting={[
             {
               label: "DeckyEmu save backup",
-              expects: "The .zip made by Back up save data, sent from wherever you kept it.",
+              expects: "The .zip made by Back up saves, sent from wherever you kept it.",
             },
           ]}
         />,
@@ -653,7 +653,7 @@ export function RestoreSavesModal({ closeModal }: Props) {
           opened it -- so without this the trash button is grey. */}
       <style>{DANGER_CSS}</style>
       <div style={{ fontSize: "18px", fontWeight: 600, marginBottom: "8px" }}>
-        Restore save data
+        Restore saves
       </div>
 
       {/* Sized and centred, as every other dialog here sizes it. Left bare it
@@ -671,7 +671,7 @@ export function RestoreSavesModal({ closeModal }: Props) {
       {files?.length === 0 && accounts.length === 0 && (
         <Field
           label="Nothing waiting"
-          description="A backup is the .zip made by Back up save data. Send one with the button below and it appears here."
+          description="A backup is the .zip made by Back up saves. Send one with the button below and it appears here."
         />
       )}
 
