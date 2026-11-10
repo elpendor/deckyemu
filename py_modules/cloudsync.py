@@ -1682,3 +1682,41 @@ def pull_steps(remote, ids=None, replace=False, stamp="", known=None):
                 return [], "The cloud transfer tool is missing."
             steps.append({"id": source["id"], "name": source["name"], "argv": command})
     return steps, ""
+
+
+# ------------------------------------------------------------- speed test
+
+#: What a speed test sends: the shape real saves have (see `_FILES_AT_ONCE`).
+SPEED_FILES = 60
+SPEED_FILE_BYTES = 50 * 1024
+
+#: Where on the storage the test writes, removed again after.
+SPEED_FOLDER = "DeckyEmu/.speed-test"
+
+
+def speed_test(remote, scratch):
+    """Time a copy of `SPEED_FILES` small files to `remote`, then the same copy
+    again with nothing changed, the way every later copy of saves goes.
+
+    Same flags as a real copy, so the numbers are what a copy of saves costs
+    there. Returns {ok, upload, check} in seconds, or {ok: False, error}.
+    """
+    shutil.rmtree(scratch, ignore_errors=True)
+    os.makedirs(scratch)
+    for index in range(SPEED_FILES):
+        with open(os.path.join(scratch, "file%02d.bin" % index), "wb") as handle:
+            handle.write(os.urandom(SPEED_FILE_BYTES))
+    target = "%s:%s" % (remote, SPEED_FOLDER)
+    args = ["copy", scratch, target] + _FILES_AT_ONCE + _by_content(remote)
+    timed = []
+    try:
+        for _ in range(2):
+            started = time.monotonic()
+            ok, output = cloudsave.rclone(args, TRANSFER_SECONDS)
+            if not ok:
+                return {"ok": False, "error": output}
+            timed.append(time.monotonic() - started)
+    finally:
+        cloudsave.rclone(["purge", target], LIST_SECONDS)
+        shutil.rmtree(scratch, ignore_errors=True)
+    return {"ok": True, "upload": timed[0], "check": timed[1]}

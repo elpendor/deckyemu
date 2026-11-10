@@ -943,3 +943,19 @@ export const startFullBackupNetwork = callable<
   { ok: boolean; error?: string } & Partial<FileServerStatus>
 >("start_full_backup_network");
 export const endFullBackupNetwork = callable<[], { ok: boolean }>("end_full_backup_network");
+/** One storage's speed, scaled to this Deck's saves, in seconds. */
+export interface CloudSpeed {
+  name: string;
+  label: string;
+  ok: boolean;
+  error: string;
+  /** A copy with nothing changed: every copy after the first. */
+  check: number;
+  /** The first copy, sending everything. */
+  upload: number;
+}
+/** Time every signed-in storage; reports each on `cloud_speed_progress`. */
+export const cloudSpeedTest = callable<
+  [],
+  { ok: boolean; error?: string; files?: number; results?: CloudSpeed[] }
+>("cloud_speed_test");

@@ -1948,3 +1948,36 @@ class Transfers(plugin_base.PluginContext):
         cancelled = await self._run(fileserver.cancel, upload_id or None)
         status = await self._run(fileserver.status)
         return {"ok": True, "cancelled": cancelled, **status}
+
+    async def cloud_speed_test(self):
+        """Time every signed-in storage the same way, one after another, and
+        say how long a copy of this Deck's saves would take on each. Reports
+        each storage on `cloud_speed_progress` as it starts."""
+        if self._copying:
+            return {"ok": False, "error": "Saves are being copied. Try again when that ends."}
+        names = await self._run(cloudsave.remotes)
+        kinds = await self._run(cloudsave.remote_kinds)
+        sources = await self._run(savedata.sources)
+        files = sum(source["files"] for source in sources)
+        scratch = os.path.join(appenv.DATA_DIR, "speed-test")
+        results = []
+        self._copying = "test"
+        try:
+            for name in names:
+                await appenv.emit("cloud_speed_progress", name)
+                timed = await self._run(cloudsync.speed_test, name, scratch)
+                share = files / cloudsync.SPEED_FILES
+                results.append({
+                    "name": name,
+                    "label": await self._run(cloudsave.label_for, kinds.get(name, "")),
+                    "ok": timed["ok"],
+                    "error": timed.get("error", ""),
+                    # Scaled to this Deck's saves: every later copy checks
+                    # them all, and the first uploads them all.
+                    "check": timed.get("check", 0) * share,
+                    "upload": timed.get("upload", 0) * share,
+                })
+        finally:
+            self._copying = ""
+        appenv.logger.info("Cloud speed test for %d file(s) of saves: %s", files, results)
+        return {"ok": True, "files": files, "results": results}

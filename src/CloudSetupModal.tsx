@@ -4,12 +4,14 @@ import { FaTrash } from "react-icons/fa";
 
 import {
   chooseCloudRemote,
+  cloudSpeedTest,
   cloudStatus,
   endCloudSetup,
   forgetCloudRemote,
   setSettings,
   startCloudSetup,
   type CloudRemote,
+  type CloudSpeed,
   type CloudState,
   type FileServerStatus,
 } from "./backend";
@@ -20,6 +22,7 @@ import { ICON_BUTTON, ICON_BUTTON_WIDE } from "./iconButton";
 import { logError } from "./logError";
 import { openModal } from "./modalStack";
 import { ScrollList } from "./ScrollList";
+import { addEventListener, removeEventListener } from "./host";
 
 /** Whatever happens next happens on the phone, so this end has to watch for it. */
 const POLL_MS = 2000;
@@ -115,7 +118,16 @@ interface Props {
   closeModal?: () => void;
 }
 
+/** "~40 s" or "~4 min", for a speed test's estimate. */
+function roughly(seconds: number): string {
+  if (seconds < 60) return `~${Math.max(1, Math.round(seconds))} s`;
+  return `~${Math.round(seconds / 60)} min`;
+}
+
 export function CloudSetupModal({ closeModal }: Props) {
+  // Speed test results by storage name, and the storage being tested.
+  const [speeds, setSpeeds] = useState<Record<string, CloudSpeed>>({});
+  const [testing, setTesting] = useState<string | null>(null);
   const [status, setStatus] = useState<Partial<FileServerStatus> | null>(null);
   const [error, setError] = useState("");
   const [cloud, setCloud] = useState<CloudState | null>(null);
@@ -151,6 +163,26 @@ export function CloudSetupModal({ closeModal }: Props) {
    * arrives and says one was not wanted.
    */
   const remotes = cloud?.remotes ?? [];
+
+  /** Every storage, one after another, so none competes for the network. */
+  const testSpeed = async () => {
+    setSpeeds({});
+    setTesting("");
+    const listener = addEventListener<[name: string]>("cloud_speed_progress", (name) =>
+      setTesting(name),
+    );
+    try {
+      const result = await cloudSpeedTest();
+      if (!result.ok) setError(result.error ?? "The test could not run.");
+      setSpeeds(Object.fromEntries((result.results ?? []).map((one) => [one.name, one])));
+    } catch (testError) {
+      logError("could not test cloud speed", testError);
+      setError("The test could not run.");
+    } finally {
+      removeEventListener("cloud_speed_progress", listener);
+      setTesting(null);
+    }
+  };
   const showingCode = cloud !== null && (adding || remotes.length === 0);
 
   useEffect(() => {
@@ -522,6 +554,15 @@ export function CloudSetupModal({ closeModal }: Props) {
                           ? `${gigabytes(cloud.space.free)} free`
                           : "",
                       ].filter(Boolean);
+                const speed = speeds[one.name];
+                const timing =
+                  testing === one.name
+                    ? "Testing..."
+                    : speed
+                      ? speed.ok
+                        ? `Copying your saves: ${roughly(speed.check)}, ${roughly(speed.upload)} the first time`
+                        : `Test failed: ${speed.error}`
+                      : "";
                 return (
                   <Focusable
                     key={one.name}
@@ -538,6 +579,7 @@ export function CloudSetupModal({ closeModal }: Props) {
                         {chosen && <span style={MUTED}> — In use</span>}
                       </div>
                       {under.length > 0 && <div style={MUTED}>{under.join(" · ")}</div>}
+                      {timing && <div style={MUTED}>{timing}</div>}
                     </div>
 
                     {/* Nothing to press on the row that is already chosen: the
@@ -545,7 +587,7 @@ export function CloudSetupModal({ closeModal }: Props) {
                         worse than no button. */}
                     {!chosen && (
                       <DialogButton
-                        disabled={Boolean(switching)}
+                        disabled={Boolean(switching) || testing !== null}
                         onClick={() => {
                           picking.current = true;
                           setSwitching(one.name);
@@ -566,7 +608,11 @@ export function CloudSetupModal({ closeModal }: Props) {
                     )}
 
                     <div className={DANGER_CLASS}>
-                      <DialogButton onClick={() => confirmForget(one)} style={ICON_BUTTON}>
+                      <DialogButton
+                        disabled={testing !== null}
+                        onClick={() => confirmForget(one)}
+                        style={ICON_BUTTON}
+                      >
                         <FaTrash />
                       </DialogButton>
                     </div>
@@ -606,10 +652,20 @@ export function CloudSetupModal({ closeModal }: Props) {
         <Focusable style={{ display: "flex", gap: "8px", flex: "none" }}>
           {remotes.length > 0 && !adding && (
             <DialogButton
+              disabled={testing !== null}
               onClick={() => setAdding(true)}
               style={{ flex: 1, minWidth: "auto" }}
             >
               Add another
+            </DialogButton>
+          )}
+          {remotes.length > 0 && !adding && (
+            <DialogButton
+              disabled={testing !== null}
+              onClick={() => void testSpeed()}
+              style={{ flex: 1, minWidth: "auto" }}
+            >
+              {testing !== null ? "Testing..." : "Test speed"}
             </DialogButton>
           )}
           {adding && remotes.length > 0 && (
