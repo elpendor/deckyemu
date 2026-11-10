@@ -125,3 +125,26 @@ with tempfile.TemporaryDirectory() as folder:
         folder, ["Zed (Disc 1).cue", "Zed (Disc 2).cue"])
     check("a disc that is not in the folder is refused",
           "not in this folder" in error, True)
+
+
+section("what the launcher runs for a set")
+
+import launchers  # noqa: E402
+
+with tempfile.TemporaryDirectory() as folder:
+    disc(folder, "Zed (Disc 1).cue")
+    disc(folder, "Zed (Disc 2).cue")
+    playlist, _ = discset.write_playlist(folder, ["Zed (Disc 1).cue", "Zed (Disc 2).cue"])
+    check("an emulator that reads playlists runs the playlist",
+          launchers.launch_target({"extensions": ["cue", "m3u"]}, playlist), playlist)
+    # PCSX2: every rebuild used to hand it the .m3u, which it can't open.
+    check("one that can't runs the first disc, on every rewrite",
+          launchers.launch_target({"extensions": ["iso", "chd", "cue"]}, playlist),
+          os.path.join(folder, "Zed (Disc 1).cue"))
+    check("a single file is run as it is",
+          launchers.launch_target({"extensions": ["cue"]},
+                                  os.path.join(folder, "Zed (Disc 2).cue")),
+          os.path.join(folder, "Zed (Disc 2).cue"))
+    os.remove(os.path.join(folder, "Zed (Disc 1).cue"))
+    check("and a missing first disc falls back to the playlist",
+          launchers.launch_target({"extensions": ["cue"]}, playlist), playlist)

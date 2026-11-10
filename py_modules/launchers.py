@@ -24,6 +24,7 @@ import emulator_catalog
 from emulator_catalog import hotkeys
 import emulators
 import ra_detect
+import romshelf
 import sysenv
 from ra_overrides import (  # noqa: F401 -- re-exported; see ra_overrides.py
     AUTOCONFIG_DIR,
@@ -137,7 +138,8 @@ LAUNCH_LOG_CAP = 2 * 1024 * 1024
 #  41  a port's window carries a class a compositor rule can match
 #  42  withdrawn: unsetting WAYLAND_DISPLAY broke gamescope's Vulkan layer
 #  43  past the withdrawal, so a device holding 42 rewrites its launchers
-FORMAT_VERSION = 43
+#  44  a playlist an emulator can't read launches its first disc on rebuild
+FORMAT_VERSION = 44
 
 
 def _slug(title):
@@ -324,6 +326,25 @@ def sweep_launch_logs():
     if cut:
         appenv.logger.info("Trimmed %d oversized launch log(s)", cut)
     return cut
+
+
+def launch_target(core, rom_path):
+    """What a launcher runs for `rom_path`.
+
+    The playlist itself, unless the emulator can't read one (PCSX2): then its
+    first disc, and the emulator's own menu swaps the rest. Every launcher
+    writer goes through this, so a rebuild can't lose it.
+    """
+    if not rom_path.lower().endswith(".m3u"):
+        return rom_path
+    if "m3u" in [ext.lower() for ext in (core or {}).get("extensions") or []]:
+        return rom_path
+    named = romshelf.named_by(rom_path)
+    if named:
+        first = os.path.join(os.path.dirname(rom_path), named[0])
+        if os.path.isfile(first):
+            return first
+    return rom_path
 
 
 def launcher_path(title, rom_path):

@@ -487,7 +487,8 @@ class Audit(plugin_base.PluginContext):
                     self._install,
                     title,
                     core["path"],
-                    rom,
+                    # PCSX2 can't read a playlist; see `launch_target`.
+                    launchers.launch_target(core, rom),
                     launch["hide_osd"],
                     # Per game, like the options beside it: a rebuild that used
                     # the emulator's own setting would quietly overwrite every

@@ -158,7 +158,7 @@ class Shortcuts(plugin_base.PluginContext):
 
         # After filing, so it names the disc where it now is. Falls back to the
         # playlist, which at least exists, rather than a missing file.
-        launch_path = rom_path
+        launch_path = await self._run(launchers.launch_target, core, rom_path)
         if launch_name:
             candidate = os.path.join(os.path.dirname(rom_path), os.path.basename(launch_name))
             if await self._run(os.path.isfile, candidate):
@@ -357,7 +357,7 @@ class Shortcuts(plugin_base.PluginContext):
                 self._install,
                 clean_title,
                 core["path"],
-                rom_path,
+                await self._run(launchers.launch_target, core, rom_path),
                 launch["hide_osd"],
                 # Resolved for this game: a shortcut may run with motion on
                 # while the rest of that emulator's games do not.
@@ -465,6 +465,7 @@ class Shortcuts(plugin_base.PluginContext):
                     "core_id": core_id,
                     "core_path": core["path"] if core else entry.get("core_path", ""),
                     "rom_path": entry.get("rom_path", ""),
+                    "core": core,
                     # Per game, as in `prepare_shortcut`: it keeps each game's
                     # workarounds and picks which binary runs.
                     "emulator": emulators.for_game(
@@ -513,7 +514,7 @@ class Shortcuts(plugin_base.PluginContext):
                     install,
                     job["title"],
                     job["core_path"],
-                    job["rom_path"],
+                    launchers.launch_target(job.get("core"), job["rom_path"]),
                     job["hide_osd"],
                     job["emulator"],
                     job["fullscreen"],
