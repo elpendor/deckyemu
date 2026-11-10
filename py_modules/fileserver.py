@@ -462,6 +462,50 @@ class _Handler(httpshim.BASE):
             with _state_lock:
                 _downloading -= 1
 
+    def _write_all(self, data):
+        """All of `data`: `wfile` is unbuffered, and one write over wifi can
+        send only part of a large block."""
+        view = memoryview(data)
+        while view:
+            sent = self.wfile.write(view)
+            if not sent:
+                raise OSError("connection closed")
+            view = view[sent:]
+
+    def _produce(self, producer, name):
+        """Send a file made while it downloads, chunked.
+
+        Chunked rather than read-until-close: the size is not known up front,
+        and a download cut short then shows as failed in the browser instead
+        of as a finished, broken file. The last chunk goes only on success.
+        """
+        self.send_response(200)
+        self.send_header("Content-Type", "application/zip")
+        self.send_header("Transfer-Encoding", "chunked")
+        self.send_header("Connection", "close")
+        self.send_header(
+            "Content-Disposition",
+            'attachment; filename="%s"' % safe_name(name).replace('"', ""),
+        )
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+
+        def send(data):
+            if data:
+                self._write_all(b"%x\r\n%s\r\n" % (len(data), data))
+
+        global _downloading
+        with _state_lock:
+            _downloading += 1
+        try:
+            if producer(send):
+                self._write_all(b"0\r\n\r\n")
+        except OSError as error:
+            appenv.logger.debug("Download stopped early: %s", error)
+        finally:
+            with _state_lock:
+                _downloading -= 1
+
     def _stream(self, handle, size, name):
         with handle:
             self.send_response(200)
@@ -481,7 +525,7 @@ class _Handler(httpshim.BASE):
                     chunk = handle.read(_CHUNK)
                     if not chunk:
                         break
-                    self.wfile.write(chunk)
+                    self._write_all(chunk)
             except OSError as error:
                 appenv.logger.debug("Download stopped early: %s", error)
 
@@ -567,7 +611,7 @@ class _Handler(httpshim.BASE):
                     200,
                     fileserver_page.download_page(
                         offered["name"], offered.get("bytes", 0), _token,
-                        offered.get("emulators") or [],
+                        offered.get("emulators") or [], offered.get("heading") or "",
                     ),
                     "text/html; charset=utf-8",
                 )
@@ -635,7 +679,10 @@ class _Handler(httpshim.BASE):
             if not offered:
                 self._deny()
                 return
-            self._send_file(offered["path"], offered["name"])
+            if offered.get("producer"):
+                self._produce(offered["producer"], offered["name"])
+            else:
+                self._send_file(offered["path"], offered["name"])
         elif rest == ["report"]:
             with _state_lock:
                 report = _report
@@ -1361,8 +1408,12 @@ def set_arrival_handler(handler):
         _on_arrival = handler
 
 
-def offer_download(path="", name="", size=0, emulators=()):
+def offer_download(path="", name="", size=0, emulators=(), producer=None, heading=""):
     """Make a staged file downloadable at `/<token>/download`. No path withdraws it.
+
+    `producer` instead of a path makes the file as it is downloaded:
+    `producer(send)` writes it through `send` and returns whether it finished.
+    `heading` names it on the page (a save backup by default).
 
     The file is not copied or held open -- what is kept is where it is, so
     withdrawing costs nothing and the caller stays free to delete it. Deleting it
@@ -1374,11 +1425,12 @@ def offer_download(path="", name="", size=0, emulators=()):
     with _state_lock:
         _download = (
             {"path": path, "name": name or os.path.basename(path),
-             "bytes": size, "emulators": list(emulators)}
-            if path
+             "bytes": size, "emulators": list(emulators),
+             "producer": producer, "heading": heading}
+            if path or producer
             else {}
         )
-    return bool(path)
+    return bool(_download)
 
 
 def offer_cloud_setup(backends=None, handler=None, logins=None, login_handler=None):

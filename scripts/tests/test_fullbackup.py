@@ -243,6 +243,56 @@ try:
         fullbackup.shutil.disk_usage = _real_usage
     check("a drive without room says so before writing",
           (_full["ok"], "Not enough room" in _full["error"]), (False, True))
+
+    section("to a phone or PC: made while it downloads")
+    import fileserver
+    import urllib.request
+
+    os.makedirs(os.path.join(TMP, "net-inbox"), exist_ok=True)
+    _served = fileserver.start(os.path.join(TMP, "net-inbox"), uploads=False)
+    if _served.get("error"):
+        print("SKIP file server (%s)" % _served["error"])
+    else:
+        try:
+            _outcome = []
+
+            def _producer(send):
+                result = fullbackup.stream(send, fullbackup.PARTS)
+                _outcome.append(result)
+                return result["ok"]
+
+            fileserver.offer_download(
+                name="DeckyEmu-backup-x.zip", size=1, producer=_producer,
+                emulators=["ROMs"], heading="DeckyEmu backup")
+            _url = "http://127.0.0.1:%d/%s/" % (_served["port"], fileserver.current_token())
+            with urllib.request.urlopen(_url, timeout=5) as _page:
+                check("the page names it", b"<h1>DeckyEmu backup</h1>" in _page.read(), True)
+            with urllib.request.urlopen(_url + "download", timeout=30) as _response:
+                _got = _response.read()
+                _chunked = _response.headers.get("Transfer-Encoding")
+            check("sent in chunks, so a cut-off download shows as failed", _chunked, "chunked")
+            with zipfile.ZipFile(io.BytesIO(_got)) as _bundle:
+                check("a whole, readable zip", _bundle.testzip(), None)
+                check("holding the backup", _bundle.read("roms/snes/Made Up Quest.sfc"), b"rom")
+            check("and the backup says it finished", _outcome[-1]["ok"], True)
+
+            def _broken(_data):
+                raise OSError("connection reset")
+
+            check("a download cut off is reported, not finished",
+                  fullbackup.stream(_broken, ["roms"])["ok"], False)
+        finally:
+            fileserver.offer_download("")
+            fileserver.stop()
+
+    section("a backup sent to this Deck")
+    _sent = os.path.join(fullbackup.arrivals(), "DeckyEmu-backup-sent.zip")
+    with open(_sent, "wb") as _handle:
+        fullbackup.stream(_handle.write, ["settings"])
+    with open(os.path.join(fullbackup.arrivals(), "deckyemu-saves-1.zip"), "wb") as _handle:
+        _handle.write(b"not ours")
+    check("is offered to restore, and nothing else there is",
+          [one["name"] for one in fullbackup.on_deck()], ["DeckyEmu-backup-sent.zip"])
 finally:
     savedata._all_sources = _real_sources
     fullbackup.MEDIA, fullbackup._mounted = _real_media, _real_mounted

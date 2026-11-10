@@ -874,7 +874,15 @@ export interface BackupDrive {
 }
 export const fullBackupDrives = callable<
   [],
-  { ok: boolean; drives: BackupDrive[]; unreadable?: { name: string; size: number }[] }
+  {
+    ok: boolean;
+    drives: BackupDrive[];
+    unreadable?: { name: string; size: number }[];
+    /** Backups sent to this Deck over the network. */
+    on_deck?: { path: string; name: string; bytes: number }[];
+    /** Where a backup sent to this Deck lands. */
+    arrivals?: string;
+  }
 >(
   "full_backup_drives",
 );
@@ -928,3 +936,10 @@ export const rebuildLaunchers = callable<
   { ok: boolean; rebuilt?: number; skipped?: string[] }
 >("rebuild_launchers");
 export const fullRestoreFinished = callable<[], { ok: boolean }>("full_restore_finished");
+/** Offer a backup as a download to a phone or PC; each download ends on
+ * `full_backup_done`. */
+export const startFullBackupNetwork = callable<
+  [include: string[]],
+  { ok: boolean; error?: string } & Partial<FileServerStatus>
+>("start_full_backup_network");
+export const endFullBackupNetwork = callable<[], { ok: boolean }>("end_full_backup_network");

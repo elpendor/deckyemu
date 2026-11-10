@@ -99,6 +99,8 @@ interface Props {
    * renaming and sending again.
    */
   expecting?: Array<{ label: string; expects: string }>;
+  /** What an arrived backup's Restore opens; restoring saves by default. */
+  onRestore?: () => void;
   /**
    * Which requirement an arriving file should be installed into.
    *
@@ -295,6 +297,7 @@ export function TransferModal({
   onClosed,
   expecting = [],
   installInto,
+  onRestore,
 }: Props) {
   const [status, setStatus] = useState<FileServerStatus | null>(null);
   const [busy, setBusy] = useState(false);
@@ -1347,7 +1350,7 @@ export function TransferModal({
                         // would put the transfer list back over the restore
                         // screen afterwards -- see modalStack.
                         closeModal?.();
-                        openRestoreSaves();
+                        (onRestore ?? openRestoreSaves)();
                       }}
                       style={ICON_BUTTON_WIDE}
                     >

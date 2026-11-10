@@ -510,6 +510,24 @@ def write(destination, include, progress=None, split=False):
     include = [part for part in include if part in PARTS]
     if not include:
         return {"ok": False, "error": "Nothing was chosen."}
+    entries, total = _entries(include)
+    folder = os.path.dirname(destination)
+    free = shutil.disk_usage(folder).free
+    if total + _MARGIN > free:
+        return {"ok": False, "error": "Not enough room: needs %.1f GB, %.1f GB free."
+                % (total / 1e9, free / 1e9)}
+
+    out = _Pieces(destination, PIECE if split else 0, _mover(total, progress))
+    result = _fill(out, include, entries, total, progress)
+    if result.get("ok"):
+        appenv.logger.info("Backup written to %s: %d file(s), %d bytes, %d skipped",
+                           destination, result["files"], total, result["skipped"])
+        result["names"] = [os.path.basename(n) for n in out.names]
+    return result
+
+
+def _entries(include):
+    """(files to carry, their total size) for the parts asked for."""
     entries = [entry for files in plan(include).values() for entry in files]
     total = 0
     for path, _ in entries:
@@ -517,12 +535,11 @@ def write(destination, include, progress=None, split=False):
             total += os.path.getsize(path)
         except OSError:
             pass
-    folder = os.path.dirname(destination)
-    free = shutil.disk_usage(folder).free
-    if total + _MARGIN > free:
-        return {"ok": False, "error": "Not enough room: needs %.1f GB, %.1f GB free."
-                % (total / 1e9, free / 1e9)}
+    return entries, total
 
+
+def _mover(total, progress):
+    """A callback counting bytes written, reporting speed and time left."""
     done = [0]
     started = time.monotonic()
     said = [0.0]
@@ -539,8 +556,12 @@ def write(destination, include, progress=None, split=False):
             rate / 1e6, "about %d min" % (left // 60 + 1) if left >= 60 else "under a minute"),
             min(99, done[0] * 100 // max(total, 1)))
 
+    return moved
+
+
+def _fill(out, include, entries, total, progress):
+    """Write the zip into `out` (_Pieces or _Sink). Returns what happened."""
     _cancel.clear()
-    out = _Pieces(destination, PIECE if split else 0, moved)
     skipped = 0
     try:
         with zipfile.ZipFile(out, "w", zipfile.ZIP_STORED, allowZip64=True) as bundle:
@@ -563,10 +584,7 @@ def write(destination, include, progress=None, split=False):
         return {"ok": False, "error": "The backup could not be written: %s" % error}
     if progress:
         progress("Done", 100)
-    appenv.logger.info("Backup written to %s: %d file(s), %d bytes, %d skipped",
-                       destination, len(entries) - skipped, total, skipped)
-    return {"ok": True, "names": [os.path.basename(n) for n in out.names],
-            "files": len(entries) - skipped, "bytes": total, "skipped": skipped}
+    return {"ok": True, "files": len(entries) - skipped, "bytes": total, "skipped": skipped}
 
 
 def backup(drive, include, progress=None, replace_first=False):
@@ -904,3 +922,89 @@ def rekey_game(old, new):
 def forget_restored_art():
     """Drop the artwork a restore kept, once the games are back in Steam."""
     shutil.rmtree(ART_DIR, ignore_errors=True)
+
+
+# ------------------------------------------------------- over the network
+
+
+class _Sink(io.RawIOBase):
+    """A zip written straight into `send` (a download), counting as it goes."""
+
+    def __init__(self, send, moved):
+        super().__init__()
+        self.send, self.moved, self.pos = send, moved, 0
+
+    def writable(self):
+        return True
+
+    def tell(self):
+        return self.pos
+
+    def write(self, data):
+        if _cancel.is_set():
+            raise Cancelled()
+        self.send(bytes(data))
+        self.pos += len(data)
+        self.moved(len(data))
+        return len(data)
+
+    def finish(self):
+        pass
+
+    def abandon(self):
+        pass
+
+
+def default_name():
+    return time.strftime(PREFIX + "%Y%m%d-%H%M%S.zip")
+
+
+def measure(include):
+    """(files, bytes) a backup of these parts would carry."""
+    entries, total = _entries([part for part in include if part in PARTS])
+    return len(entries), total
+
+
+def stream(send, include, progress=None):
+    """Write a backup as one zip into `send`, nothing staged on the Deck.
+    A download cut off raises OSError from `send`; reported as an error."""
+    include = [part for part in include if part in PARTS]
+    if not include:
+        return {"ok": False, "error": "Nothing was chosen."}
+    entries, total = _entries(include)
+    result = _fill(_Sink(send, _mover(total, progress)), include, entries, total, progress)
+    if result.get("ok"):
+        appenv.logger.info("Backup sent over the network: %d file(s), %d bytes, %d skipped",
+                           result["files"], total, result["skipped"])
+    elif not result.get("cancelled"):
+        result["error"] = "The download stopped before the end. Try again."
+    return result
+
+
+def arrivals():
+    """Where a backup sent to this Deck lands: `~/deckyemu/backups`."""
+    import savedata
+
+    return savedata.arrivals_dir()
+
+
+def on_deck():
+    """Full backups sent to this Deck, newest first: [{path, name, bytes}]."""
+    folder = arrivals()
+    found = []
+    try:
+        names = sorted(os.listdir(folder), reverse=True)
+    except OSError:
+        return found
+    for name in names:
+        path = os.path.join(folder, name)
+        if not name.lower().endswith(".zip") or not os.path.isfile(path):
+            continue
+        try:
+            with zipfile.ZipFile(path) as bundle:
+                if not _manifest(bundle):
+                    continue
+            found.append({"path": path, "name": name, "bytes": os.path.getsize(path)})
+        except (OSError, zipfile.BadZipFile, ValueError):
+            continue
+    return found

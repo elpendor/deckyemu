@@ -597,7 +597,7 @@ export function LibraryPanel({ onRefresh }: Props) {
           <ButtonItem
             layout="below"
             onClick={() => openModal(<FullBackupModal />)}
-            description="ROMs, saves, emulators and settings, to an SD card or USB drive."
+            description="ROMs, saves, emulators and settings, to an SD card, USB drive, phone or PC."
           >
             Back up DeckyEmu
           </ButtonItem>
@@ -606,7 +606,7 @@ export function LibraryPanel({ onRefresh }: Props) {
           <ButtonItem
             layout="below"
             onClick={() => openModal(<RestoreEverythingModal />)}
-            description="From a backup on an SD card or USB drive."
+            description="From a backup on an SD card, USB drive, phone or PC."
           >
             Restore DeckyEmu
           </ButtonItem>

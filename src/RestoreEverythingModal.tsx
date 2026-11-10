@@ -14,6 +14,7 @@ import {
   installEmulator,
   installRetroArch,
   rebuildLaunchers,
+  startFileServer,
   startFullRestore,
   type BackupDrive,
   type RestoreTodo,
@@ -21,9 +22,10 @@ import {
 import { openModal } from "./modalStack";
 import { createOrReuseShortcut } from "./reuseShortcut";
 import { addToCollection, applyArtwork, setShortcutIcon, shortcutExists } from "./steam";
-import { ProgressBar } from "./TransferModal";
+import { ProgressBar, TransferModal, humanSize } from "./TransferModal";
 import { logError } from "./logError";
 import { keepAwake } from "./keepAwake";
+import { BackupPlaces, NETWORK } from "./BackupPlaces";
 
 /** Steam's sleep blocker for the restore under way, through its last step. */
 let awake = () => {};
@@ -123,10 +125,14 @@ async function finish(todo: RestoreTodo, say: (text: string) => void): Promise<s
 }
 
 /**
- * Restore a full backup from an SD card or USB drive (see fullbackup.py).
+ * Restore a full backup from an SD card or USB drive, or one sent from a
+ * phone or PC (see fullbackup.py).
  */
 export function RestoreEverythingModal({ closeModal }: { closeModal?: () => void }) {
   const [drives, setDrives] = useState<BackupDrive[] | null>(null);
+  const [onDeck, setOnDeck] = useState<{ path: string; name: string; bytes: number }[]>([]);
+  const [arrivals, setArrivals] = useState("");
+  const [place, setPlace] = useState("");
   const [unreadable, setUnreadable] = useState(0);
   const [running, setRunning] = useState(false);
   const [status, setStatus] = useState({ text: "", percent: 0 });
@@ -136,6 +142,18 @@ export function RestoreEverythingModal({ closeModal }: { closeModal?: () => void
       .then((result) => {
         setDrives(result.drives);
         setUnreadable(result.unreadable?.length ?? 0);
+        setOnDeck(result.on_deck ?? []);
+        setArrivals(result.arrivals ?? "");
+        // Where a backup is: a drive holding one, else one sent over, else
+        // the first drive, else Phone or PC.
+        setPlace((current) => {
+          const paths = result.drives.map((drive) => drive.path);
+          if (current === NETWORK || paths.includes(current)) return current;
+          const holding = result.drives.find((drive) => drive.backups.length > 0);
+          if (holding) return holding.path;
+          if ((result.on_deck ?? []).length > 0) return NETWORK;
+          return paths[0] ?? NETWORK;
+        });
       })
       .catch((error) => logError("could not list drives", error));
   }, []);
@@ -182,9 +200,36 @@ export function RestoreEverythingModal({ closeModal }: { closeModal?: () => void
     };
   }, [closeModal]);
 
-  const backups = (drives ?? []).flatMap((drive) =>
-    drive.backups.map((name) => ({ drive, name, path: `${drive.path}/${name}` })),
-  );
+  const network = place === NETWORK;
+  const drive = (drives ?? []).find((one) => one.path === place);
+  const backups = network
+    ? onDeck.map((one) => ({ name: one.name, path: one.path, label: `${when(one.name)} · ${humanSize(one.bytes)}` }))
+    : (drive?.backups ?? []).map((name) => ({ name, path: `${drive!.path}/${name}`, label: when(name) }));
+
+  // From a phone or PC: received into the backups folder, then restored here.
+  const sendOne = () => {
+    closeModal?.();
+    void (async () => {
+      try {
+        const started = await startFileServer(arrivals);
+        if (!started.ok) logError("could not start receiving a backup", started.error);
+      } catch (error) {
+        logError("could not start receiving a backup", error);
+      }
+      openModal(
+        <TransferModal
+          purpose="backup"
+          expecting={[
+            {
+              label: "DeckyEmu backup",
+              expects: "The DeckyEmu-backup .zip made by Back up DeckyEmu.",
+            },
+          ]}
+          onRestore={() => openModal(<RestoreEverythingModal />)}
+        />,
+      );
+    })();
+  };
 
   const restore = (path: string) =>
     openModal(
@@ -234,22 +279,38 @@ export function RestoreEverythingModal({ closeModal }: { closeModal?: () => void
         Restore DeckyEmu
       </div>
 
-      {drives !== null && backups.length === 0 && (
-        <div style={{ padding: "12px 0" }}>
-          {unreadable
-            ? "Can't read this drive. Format it in Settings → Storage, or use another."
-            : "Insert the SD card or USB drive with your backup."}
+      {drives !== null && !running && (
+        <BackupPlaces drives={drives} chosen={place} onChoose={setPlace} />
+      )}
+
+      {drives !== null && drives.length === 0 && unreadable > 0 && (
+        <div style={{ padding: "4px 0 8px", fontSize: "13px" }}>
+          Can't read the drive. Format it in Settings → Storage, or use another.
         </div>
       )}
 
       {!running &&
-        backups.map((one) => (
+        backups.map((one, index) => (
           <Focusable key={one.path} style={{ marginBottom: "8px" }}>
-            <DialogButton onClick={() => restore(one.path)}>
-              {`${when(one.name)} · ${one.drive.label}`}
+            <DialogButton autoFocus={index === 0} onClick={() => restore(one.path)}>
+              {one.label}
             </DialogButton>
           </Focusable>
         ))}
+
+      {drives !== null && !running && !network && backups.length === 0 && (
+        <div style={{ padding: "8px 0", fontSize: "13px", opacity: 0.8 }}>
+          No backup on this drive.
+        </div>
+      )}
+
+      {drives !== null && !running && network && (
+        <Focusable style={{ marginBottom: "8px" }}>
+          <DialogButton autoFocus={backups.length === 0 && drives.length === 0} onClick={sendOne}>
+            Send a backup to this Deck
+          </DialogButton>
+        </Focusable>
+      )}
 
       {running && (
         <div style={{ margin: "8px 0" }}>
@@ -259,7 +320,7 @@ export function RestoreEverythingModal({ closeModal }: { closeModal?: () => void
       )}
 
       <Focusable flow-children="row" style={{ display: "flex", gap: "8px", marginTop: "12px" }}>
-        {!running && backups.length === 0 && <DialogButton onClick={load}>Look again</DialogButton>}
+        {!running && drives?.length === 0 && <DialogButton onClick={load}>Look for drives</DialogButton>}
         {running ? (
           <DialogButton onClick={() => void cancelFullBackup()}>Cancel</DialogButton>
         ) : (

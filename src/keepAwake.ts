@@ -12,12 +12,14 @@ type Store = { BlockSuspendAction?: () => () => void };
  * Module-level rather than in a dialog, so closing the dialog mid-copy does
  * not let the Deck sleep.
  */
-export function keepAwakeUntil(event: string): void {
+export function keepAwakeUntil(event: string): () => void {
   const release = keepAwake();
-  const listener = addEventListener(event, () => {
+  const stop = () => {
     removeEventListener(event, listener);
     release();
-  });
+  };
+  const listener = addEventListener(event, stop);
+  return stop;
 }
 
 /** Keep Steam awake until the returned function is called (once is enough). */

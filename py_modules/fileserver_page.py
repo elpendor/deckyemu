@@ -676,7 +676,7 @@ _BOOKMARK_HINT = """  <p class="keep" id="keep"></p>
 </script>"""
 
 
-def download_page(name, size, token, emulators):
+def download_page(name, size, token, emulators, heading=""):
     """The page a save backup is collected from.
 
     One link and the facts needed to trust it: what the file is called, how big
@@ -690,6 +690,13 @@ def download_page(name, size, token, emulators):
     `Content-Disposition` header the server sets is the one thing both agree on.
     """
     listed = ", ".join(emulators) if emulators else "no emulators"
+    if heading:
+        # A full backup: the list is what it holds, not where it came from.
+        size_line = "%s: %s" % (human_size(size), ", ".join(emulators))
+        keep = "Keep it somewhere that is not the Deck. To restore, send it back with Restore DeckyEmu."
+    else:
+        size_line = "%s, from %s" % (human_size(size), listed)
+        keep = "Keep it somewhere that is not the Deck. Restoring it later is the whole reason it exists."
     return """<!doctype html>
 <html><head>
 <meta charset="utf-8">
@@ -708,16 +715,18 @@ def download_page(name, size, token, emulators):
   a.get:hover { border-color: var(--accent); background: var(--accent-soft); }
 </style>
 </head><body><main>
-<h1>Save backup</h1>
+<h1>%(heading)s</h1>
 <p class="file">%(name)s</p>
-<p class="from">%(size)s, from %(listed)s</p>
+<p class="from">%(size_line)s</p>
 <p><a class="get" href="/%(token)s/download">Download</a></p>
-<p class="from">Keep it somewhere that is not the Deck. Restoring it later is the
-whole reason it exists.</p>
+<p class="from">%(keep)s</p>
 </main></body></html>""" % {
         "name": html.escape(name),
         "size": human_size(size),
         "listed": html.escape(listed),
+        "heading": html.escape(heading or "Save backup"),
+        "size_line": html.escape(size_line),
+        "keep": html.escape(keep),
         "token": token,
         "style": _STYLE,
         "icon": _FAVICON,

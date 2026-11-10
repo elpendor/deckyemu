@@ -1,14 +1,14 @@
 # Backing up everything
 
-How to put all of DeckyEmu on an SD card or USB drive, and bring it back after
-a reset or on another Deck.
+How to put all of DeckyEmu on an SD card, a USB drive, or a phone or PC, and
+bring it back after a reset or on another Deck.
 
 Back to [the README](https://github.com/elpendor/deckyemu#readme).
 
 ## Backing up
 
-Insert an SD card or USB drive, then press **Back up DeckyEmu** under **Backup
-and restore** on the Library tab.
+Press **Back up DeckyEmu** under **Backup and restore** on the Library tab, and
+pick where it goes: a connected SD card or USB drive, or **Phone or PC**.
 
 Everything starts ticked: ROMs, saves, emulators, BIOS and firmware, settings
 and games, and cloud sign-ins. Untick what you don't want. Emulators you leave
@@ -23,6 +23,12 @@ Your Deck stays awake while it copies. When it's done, it says **You can remove
 the drive** once the drive is safe to pull. A USB drive is unmounted for you; an
 SD card stays in, since it may hold your Steam games.
 
+**Phone or PC** shows a QR code and a six-digit code, the same as [sending
+files](transfers.md#sending-files-from-another-device). Open it on the phone or
+PC and press Download. The zip is made as it downloads, so the Deck needs no
+free space for it, and it stays awake until the download ends. Leave the dialog
+open while it downloads.
+
 A drive keeps one DeckyEmu backup. The old one is deleted once the new one is
 complete, so a backup that fails or that you cancel leaves the old one in place.
 If the drive has no room for both, you're asked before the old one goes. Nothing
@@ -32,6 +38,11 @@ else on the drive is touched.
 
 Insert the drive with your backup, then press **Restore DeckyEmu** under
 **Backup and restore** and pick the backup by its date.
+
+A backup on a phone or PC goes back with **Send a backup to this Deck** in the
+same dialog. Send the zip, then press **Restore** beside it. The Deck needs room
+for the zip and for what it holds while it restores; the zip is deleted once
+the restore is done.
 
 It replaces DeckyEmu's settings and games on this Deck with the backup's. Then
 it finishes the job itself: it installs RetroArch, its cores and your emulators
