@@ -181,11 +181,14 @@ export function watchPlaying(): () => void {
     [name: string, percent: number, phase: string, kind: string]
   >(
     "cloud_sync_progress",
-    (_name, _percent, _phase, kind) => {
+    (_name, percent, _phase, kind) => {
       // The copy that follows the game you just quit runs into the launch of
       // the next one, and opening "bringing your saves down" over a launch that
       // is copying nothing is worse than showing nothing at all.
       if (kind !== "launch") return;
+      // 100 is sent after the copy has ended, the game a moment from starting.
+      // A small save sends nothing else, and a dialog opened then outlived it.
+      if (percent >= 100) return;
       if (waiting === null || close) return;
       const appId = waiting;
       close = showCloudFetch(named, () => {
