@@ -449,6 +449,8 @@ export interface PluginSettings {
    * the Updates tab are both places you went to look.
    */
   show_update_dot: boolean;
+  /** The switch button's one-time dot was pressed away. */
+  standalone_offer_answered?: boolean;
   /**
    * One tab per system in the added-games list, instead of one scrolling list
    * of headed groups.

@@ -2,7 +2,14 @@ import { useEffect, useState } from "react";
 import { FaExchangeAlt } from "react-icons/fa";
 import { ButtonItem, ConfirmModal, DialogButton, PanelSectionRow } from "./steamui";
 
-import { switchBuild, switchOffer, takeOver, type SwitchOffer } from "./backend";
+import {
+  getSettings,
+  setSettings,
+  switchBuild,
+  switchOffer,
+  takeOver,
+  type SwitchOffer,
+} from "./backend";
 import { openModal } from "./modalStack";
 import { restartSteam } from "./restartSteam";
 
@@ -68,19 +75,9 @@ export function onSwitched(listener: () => void): () => void {
  * in the tab's header, beside the cog. Renders nothing until the backend has
  * found one.
  */
-export function SwitchButton() {
-  const [offer, setOffer] = useState<SwitchOffer | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    switchOffer()
-      .then((found) => setOffer(found.available && found.to ? found : null))
-      .catch((error) => console.error("[deckyemu] could not look for the other version", error));
-  }, []);
-
-  if (!offer?.to) return null;
-  const to = NAMES[offer.to];
-
+/** The confirmation both ways in share; `setBusy` tracks the switch itself. */
+function confirmSwitch(offer: SwitchOffer, setBusy: (busy: boolean) => void) {
+  const to = NAMES[offer.to!];
   const run = async () => {
     setBusy(true);
     try {
@@ -97,26 +94,76 @@ export function SwitchButton() {
       setBusy(false);
     }
   };
+  openModal(
+    <ConfirmModal
+      strTitle={`Switch to the ${to}?`}
+      strDescription={
+        description(offer) +
+        (offer.installed ? "" : ` DeckyEmu ${offer.version} is downloaded and installed first.`)
+      }
+      strOKButtonText="Switch"
+      onOK={() => void run()}
+    />,
+  );
+}
+
+function useSwitchOffer(): SwitchOffer | null {
+  const [offer, setOffer] = useState<SwitchOffer | null>(null);
+  useEffect(() => {
+    switchOffer()
+      .then((found) => setOffer(found.available && found.to ? found : null))
+      .catch((error) => console.error("[deckyemu] could not look for the other version", error));
+  }, []);
+  return offer;
+}
+
+/**
+ * The header button. In the plugin build, until first pressed, a dot on it
+ * says the standalone version exists: the one-time hint, saved either way.
+ */
+export function SwitchButton() {
+  const offer = useSwitchOffer();
+  const [busy, setBusy] = useState(false);
+  const [hinted, setHinted] = useState(false);
+
+  useEffect(() => {
+    getSettings()
+      .then((settings) => setHinted(!settings.standalone_offer_answered))
+      .catch((error) => console.error("[deckyemu] could not read settings", error));
+  }, []);
+
+  if (!offer?.to) return null;
+  const dot = hinted && offer.to === "service";
 
   return (
     <DialogButton
-      style={HEADER_BUTTON}
+      style={{ ...HEADER_BUTTON, position: "relative" }}
       disabled={busy}
-      onClick={() =>
-        openModal(
-          <ConfirmModal
-            strTitle={`Switch to the ${to}?`}
-            strDescription={
-              description(offer) +
-              (offer.installed ? "" : ` DeckyEmu ${offer.version} is downloaded and installed first.`)
-            }
-            strOKButtonText="Switch"
-            onOK={() => void run()}
-          />,
-        )
-      }
+      onClick={() => {
+        if (dot) {
+          setHinted(false);
+          void setSettings({ standalone_offer_answered: true }).catch((error) =>
+            console.error("[deckyemu] could not save the hint", error),
+          );
+        }
+        confirmSwitch(offer, setBusy);
+      }}
     >
       <FaExchangeAlt style={{ display: "block" }} />
+      {dot && (
+        <div
+          style={{
+            position: "absolute",
+            top: "3px",
+            right: "3px",
+            // As the update dot, so all of DeckyEmu's dots look the same.
+            height: "10px",
+            width: "10px",
+            background: "orange",
+            borderRadius: "50%",
+          }}
+        />
+      )}
     </DialogButton>
   );
 }

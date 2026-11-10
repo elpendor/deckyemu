@@ -195,6 +195,9 @@ DEFAULT_SETTINGS = {
     # already said "do not tell me about plugin updates" would be told anyway.
     # This is the only way to answer them.
     "show_update_dot": True,
+    # The dot on the plugin's switch button, pointing at the standalone
+    # version: True once the button is pressed, so it never shows again.
+    "standalone_offer_answered": False,
     # Which layout the added-games list uses. Off is the grouped list: every
     # system under a heading in one scroll, so what you own is visible on the
     # way past. On is one tab per system, which L1 and R1 page -- fewer presses
