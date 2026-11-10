@@ -1,5 +1,5 @@
 import { Focusable } from "./steamui";
-import type { CSSProperties, ReactNode } from "react";
+import type { CSSProperties, FocusEvent, ReactNode } from "react";
 
 import {
   SCROLLER_CLASS,
@@ -10,6 +10,23 @@ import {
 } from "./dialogStyle";
 
 const noop = () => {};
+
+/**
+ * Focus scrolls only its own control into view, so a heading above the first
+ * button (or text below the last) stayed clipped. At either end, show the end.
+ */
+function showEnds(event: FocusEvent<HTMLElement>) {
+  const list = event.currentTarget;
+  // Innermost only: a wrapper holding several stops is not the first one.
+  const all = [...list.querySelectorAll("button, .Focusable")];
+  const stops = all.filter((stop) => !all.some((other) => other !== stop && stop.contains(other)));
+  const target = event.target as Element;
+  const top = stops.length > 0 && stops[0].contains(target);
+  const bottom = stops.length > 0 && stops[stops.length - 1].contains(target);
+  if (!top && !bottom) return;
+  // After Steam's own scroll into view, which would otherwise win.
+  setTimeout(() => list.scrollTo({ top: top ? 0 : list.scrollHeight }), 0);
+}
 
 /**
  * A bounded list that scrolls, and says that it does.
@@ -53,6 +70,7 @@ export function ScrollList({
     <>
       <style>{SCROLLER_CSS + SCROLLER_ROW_CSS}</style>
       <Focusable
+        onFocus={showEnds}
         className={className ? `${SCROLLER_CLASS} ${className}` : SCROLLER_CLASS}
         style={{
           display: "flex",

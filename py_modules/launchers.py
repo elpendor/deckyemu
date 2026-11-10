@@ -614,8 +614,11 @@ def write_launcher(
     menu_combo="off",
     cheevos_settings=None,
     title_id="",
+    path=None,
 ):
     """Write (or overwrite) the launcher for this game and return its path.
+
+    `path` keeps a game's existing script, whose name can predate its ROM path.
 
     `emulator` selects a standalone emulator instead of RetroArch, to which the
     OSD and menu settings do not apply. `extra_args` is appended, as some
@@ -636,7 +639,7 @@ def write_launcher(
     extra = split_extra_args(extra_args)
     argv = list(argv) + extra
 
-    path = launcher_path(title, rom_path)
+    path = path or launcher_path(title, rom_path)
     command = " ".join(shlex.quote(arg) for arg in argv)
     forward, command = forward_layer_env(argv, command)
 
@@ -648,7 +651,7 @@ def write_launcher(
     # A port whose menu opens with a key, and the helper that puts that key on
     # the pad. Same shape as the motion server and for the same reasons: a child
     # of this script, not a daemon, and never left behind.
-    keys = hotkey_helper(entry, path=launcher_path(title, rom_path))
+    keys = hotkey_helper(entry, path=path)
 
     # Passed to the program when the block above decided to, and empty
     # otherwise, so an ordinary launch is the command line it always was.

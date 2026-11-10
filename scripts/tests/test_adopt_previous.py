@@ -168,6 +168,23 @@ check("the core path is this install's, not the old one's",
       _entry["core_path"], _CORE["path"])
 
 
+section("our own settings, reached through a link, are not a previous install")
+_link = os.path.join(appenv.PREVIOUS_ROOT, "settings", "linked-to-ours")
+try:
+    os.symlink(appenv.SETTINGS_DIR, _link, target_is_directory=True)
+except (OSError, NotImplementedError):
+    print("SKIP symlinks cannot be created on this host")
+else:
+    try:
+        _linked = os.path.join(_link, "library.json")
+        check("not offered for adoption",
+              [item for item in run(plugin._run(plugin._find_previous_installs))
+               if os.path.dirname(item["path"]) == _link], [])
+        check("and never discarded",
+              run(plugin.discard_previous_install(_linked))["ok"], False)
+    finally:
+        os.unlink(_link) if os.path.islink(_link) else os.rmdir(_link)
+
 store.clear_library()
 plugin.loop.close()
 

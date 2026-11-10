@@ -391,12 +391,13 @@ class Audit(plugin_base.PluginContext):
         old launcher scripts remain on disk, but nothing manages them any more.
         """
         found = []
-        ours = os.path.normpath(appenv.SETTINGS_DIR)
+        # Real paths: the old settings folder can be a link to ours.
+        ours = os.path.realpath(appenv.SETTINGS_DIR)
 
         for path in findfiles.under_each(
             os.path.join(appenv.PREVIOUS_ROOT, "settings"), "library.json"
         ):
-            if os.path.normpath(os.path.dirname(path)) == ours:
+            if os.path.realpath(os.path.dirname(path)) == ours:
                 continue
             try:
                 with open(path, "r", encoding="utf-8") as handle:
@@ -553,14 +554,14 @@ class Audit(plugin_base.PluginContext):
         """
         target = os.path.normpath(path or "")
         settings_root = os.path.normpath(os.path.join(appenv.PREVIOUS_ROOT, "settings"))
-        ours = os.path.normpath(appenv.SETTINGS_DIR)
+        ours = os.path.realpath(appenv.SETTINGS_DIR)
 
         # Most specific first, so the message names the real objection: our own
         # registry lives inside the settings folder too, and reporting it as "out
         # of bounds" would be both wrong and confusing.
         if os.path.basename(target) != "library.json":
             return {"ok": False, "error": "That is not a registry file."}
-        if os.path.normpath(os.path.dirname(target)) == ours:
+        if os.path.realpath(os.path.dirname(target)) == ours:
             return {"ok": False, "error": "That is this install's own registry."}
         if not target.startswith(settings_root + os.sep):
             return {"ok": False, "error": "Refusing to delete outside the settings folder."}

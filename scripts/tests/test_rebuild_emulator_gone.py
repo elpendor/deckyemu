@@ -110,6 +110,17 @@ plugin._emulators = [_EMULATOR]
 _back = run(plugin.rebuild_launchers())
 check("the skip is not sticky", (_back["rebuilt"], _back["skipped"]), (1, []))
 
+section("a game whose script is named after an earlier ROM path")
+
+_older = launchers.launcher_path("Standalone Game", _ROM + ".before")
+store.remember_games({801: dict(store.get_library()["801"], launcher_path=_older)})
+run(plugin.rebuild_launchers())
+check("is rebuilt into the script its shortcut runs", os.path.isfile(_older), True)
+_outside = os.path.join(os.path.dirname(_ROM), "elsewhere.sh")
+store.remember_games({801: dict(store.get_library()["801"], launcher_path=_outside)})
+run(plugin.rebuild_launchers())
+check("but never written outside the launcher folder", os.path.exists(_outside), False)
+
 store.clear_library()
 plugin.loop.close()
 

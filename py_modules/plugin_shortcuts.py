@@ -23,6 +23,14 @@ import store
 import vita_games
 
 
+def _own_launcher(path):
+    """`path` if it is a script in our launcher folder, else ""."""
+    if not path or not path.endswith(".sh"):
+        return ""
+    folder = os.path.realpath(launchers.LAUNCHER_DIR)
+    return path if os.path.realpath(os.path.dirname(path)) == folder else ""
+
+
 def _title_id_for(rom_path):
     """The title id a launcher needs, or "" for a game that launches by path.
 
@@ -465,6 +473,8 @@ class Shortcuts(plugin_base.PluginContext):
                     "fullscreen": launch["fullscreen"],
                     "extra_args": launch["extra_args"],
                     "title_id": _title_id_for(entry.get("rom_path", "")),
+                    # The script the Steam shortcut runs, if it is one of ours.
+                    "path": _own_launcher(entry.get("launcher_path", "")),
                 }
             )
 
@@ -511,6 +521,7 @@ class Shortcuts(plugin_base.PluginContext):
                     menu_combo,
                     settings,
                     job.get("title_id", ""),
+                    job.get("path") or None,
                 )
                 rebuilt += 1
             except OSError as error:
