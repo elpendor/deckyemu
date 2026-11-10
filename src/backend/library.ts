@@ -959,3 +959,26 @@ export const cloudSpeedTest = callable<
   [],
   { ok: boolean; error?: string; files?: number; results?: CloudSpeed[] }
 >("cloud_speed_test");
+/** A game the compressor can shrink, as `romcompress.plan` describes it. */
+export interface CompressGame {
+  app_id: number;
+  title: string;
+  system: string;
+  /** The shelf name the library shows for it. */
+  platform: string;
+  bytes: number;
+  /** The extension it ends up with: chd, rvz, zcci, zip... */
+  format: string;
+}
+/** The games that can be compressed, and those that can't with the reason. */
+export const compressPlan = callable<
+  [],
+  { ok: boolean; games: CompressGame[]; skipped: { title: string; reason: string }[] }
+>("compress_plan");
+/** Compress these games. Reports on `compress_progress`, ends on
+ * `compress_done`. */
+export const startCompress = callable<[appIds: number[]], { ok: boolean; error?: string }>(
+  "start_compress",
+);
+/** Stop after the game being compressed, which is left as it was. */
+export const cancelCompress = callable<[], { ok: boolean }>("cancel_compress");

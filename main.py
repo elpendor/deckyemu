@@ -20,6 +20,7 @@ import plugin_accounts
 import plugin_artwork
 import plugin_audit
 import plugin_collections
+import plugin_compress
 import plugin_devreset
 import plugin_discs
 import plugin_emulators
@@ -222,6 +223,7 @@ class Plugin(
     plugin_artwork.Artwork,
     plugin_audit.Audit,
     plugin_collections.Collections,
+    plugin_compress.Compress,
     plugin_devreset.DevReset,
     plugin_discs.Discs,
     plugin_emulators.Emulators,

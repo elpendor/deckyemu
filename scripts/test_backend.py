@@ -7058,7 +7058,7 @@ check("and the row names every emulator that wants it",
 check(
     "the PS4 extractor is the same kind of thing and gets a row too",
     [t["name"] for t in _tools],
-    ["rclone", "gyro-dsu", "ps4-pkg-extractor"],
+    ["rclone", "chdman", "gyro-dsu", "ps4-pkg-extractor"],
 )
 check(
     "a tool the plugin fetches for itself is listed beside the emulators' own, "
@@ -7081,14 +7081,14 @@ _report = emu_install.tools_report(["ryujinx"])
 check(
     "a tool nothing installed wants is not reported as missing, just unwanted",
     {t["name"]: t["wanted"] for t in _report},
-    {"rclone": False, "gyro-dsu": True, "ps4-pkg-extractor": False},
+    {"rclone": False, "chdman": False, "gyro-dsu": True, "ps4-pkg-extractor": False},
 )
 check(
     "and a feature's tool is wanted by the setting being on, never by an "
     "install -- nobody is asked to fetch a binary to unlock a switch",
     {t["name"]: t["wanted"]
      for t in emu_install.tools_report([], ["cloud_saves"])},
-    {"rclone": True, "gyro-dsu": False, "ps4-pkg-extractor": False},
+    {"rclone": True, "chdman": False, "gyro-dsu": False, "ps4-pkg-extractor": False},
 )
 check("and every entry's spec is findable by name",
       bool(emulator_catalog.tool_spec("gyro-dsu")), True)

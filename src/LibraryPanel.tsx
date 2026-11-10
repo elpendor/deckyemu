@@ -35,6 +35,7 @@ import { CloudSetupModal } from "./CloudSetupModal";
 import { SaveBackupModal } from "./SaveBackupModal";
 import { RestoreSavesModal } from "./RestoreSavesModal";
 import { FullBackupModal } from "./FullBackupModal";
+import { CompressModal } from "./CompressModal";
 import { RestoreEverythingModal } from "./RestoreEverythingModal";
 import { callWithRetry } from "./timeout";
 import { humanSize } from "./TransferModal";
@@ -590,6 +591,18 @@ export function LibraryPanel({ onRefresh }: Props) {
             />
           </PanelSectionRow>
         )}
+      </PanelSection>
+
+      <PanelSection title="Storage">
+        <PanelSectionRow>
+          <ButtonItem
+            layout="below"
+            onClick={() => openModal(<CompressModal />)}
+            description="Shrink disc images and ROMs into files their emulators read directly."
+          >
+            Compress games
+          </ButtonItem>
+        </PanelSectionRow>
       </PanelSection>
 
       <PanelSection title="Backup and restore">

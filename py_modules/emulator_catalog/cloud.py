@@ -34,9 +34,21 @@ RCLONE = {
             "backup or a restore is happening, and talks to nothing else."),
 }
 
+#: MAME's chdman, for compressing disc games. SteamOS has none, so CI builds
+#: it and attaches it to every DeckyEmu release (`ci.yml`). Fetched the first
+#: time a disc game is compressed; no feature switch, so never "missing".
+CHDMAN = {
+    "name": "chdman",
+    "label": "Disc compressor",
+    "repo": "elpendor/deckyemu",
+    "asset": r"^chdman-linux-x86_64$",
+    "needed_by": ["Compress games"],
+    "why": "Turns disc images into CHD files, which take less space and play the same.",
+}
+
 #: Tools this plugin fetches for itself. One row each, same shape as the specs
 #: an emulator declares, plus `feature`: the setting whose being on is what
 #: makes the tool wanted. Without that a row for a switched-off feature would
 #: read as a missing piece and invent a chore -- the rule the firmware list and
 #: `tools_report` already follow.
-PLUGIN_TOOLS = (RCLONE,)
+PLUGIN_TOOLS = (RCLONE, CHDMAN)

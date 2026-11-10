@@ -389,6 +389,44 @@ jobs:
       # at its root; each build only looks for its own file. install.sh also
       # goes up on its own, for a first install to fetch by a fixed URL.
 
+      # MAME's chdman for the ROM compressor; SteamOS doesn't ship it. Attached
+      # to every release so the tool downloader finds it on the latest one.
+      # Cached by MAME tag: only bumping the tag rebuilds it (~30 min).
+      - name: Restore chdman
+        if: inputs.publish
+        id: chdman
+        uses: actions/cache@v4
+        with:
+          path: chdman-linux-x86_64
+          key: chdman-mame0289-${{ runner.os }}
+
+      - name: Build chdman
+        if: inputs.publish && steps.chdman.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update >/dev/null
+          sudo apt-get install -y --no-install-recommends libsdl2-dev libsdl2-ttf-dev libfontconfig-dev >/dev/null
+          git clone -q --depth 1 --branch mame0289 https://github.com/mamedev/mame.git "$RUNNER_TEMP/mame"
+          make -C "$RUNNER_TEMP/mame" -j"$(nproc)" TOOLS=1 EMULATOR=0 \
+            NO_USE_PORTAUDIO=1 NO_USE_PULSEAUDIO=1 NO_USE_MIDI=1 NO_X11=1 NO_OPENGL=1 \
+            USE_QTDEBUG=0 STRIP_SYMBOLS=1 LDOPTS="-static-libstdc++ -static-libgcc" >/dev/null
+          cp "$RUNNER_TEMP/mame/chdman" chdman-linux-x86_64
+
+      # Only glibc and SDL2 may stay dynamic (SteamOS lacks libutf8proc, for
+      # one), and a round trip must give back the same bytes.
+      - name: Check chdman
+        if: inputs.publish
+        run: |
+          readelf -d chdman-linux-x86_64 | grep NEEDED
+          if readelf -d chdman-linux-x86_64 | grep NEEDED \
+              | grep -v -E '\[(libSDL2-2\.0\.so\.0|libm\.so\.6|libc\.so\.6|ld-linux-x86-64\.so\.2)\]'; then
+            echo "chdman links a library SteamOS may not have"; exit 1
+          fi
+          head -c 51200000 /dev/urandom > "$RUNNER_TEMP/disc.iso"
+          ./chdman-linux-x86_64 createdvd -i "$RUNNER_TEMP/disc.iso" -o "$RUNNER_TEMP/disc.chd" -c zstd
+          ./chdman-linux-x86_64 verify -i "$RUNNER_TEMP/disc.chd"
+          ./chdman-linux-x86_64 extractdvd -i "$RUNNER_TEMP/disc.chd" -o "$RUNNER_TEMP/back.iso"
+          cmp "$RUNNER_TEMP/disc.iso" "$RUNNER_TEMP/back.iso"
+
       - name: Package
         if: inputs.publish
         run: |
@@ -415,7 +453,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "v${{ steps.meta.outputs.version }}" deckyemu-service.tar.gz deckyemu.zip install.sh \
+          gh release create "v${{ steps.meta.outputs.version }}" deckyemu-service.tar.gz deckyemu.zip install.sh chdman-linux-x86_64 \
             --repo "$GITHUB_REPOSITORY" \
             --target "${{ steps.commit.outputs.sha }}" \
             --title "v${{ steps.meta.outputs.version }}" \
