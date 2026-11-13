@@ -78,6 +78,20 @@ _write(LOCK, ["not", "a", "lock"])
 check("as does one that cannot be read", claim.take(), None)
 claim.release()
 
+# Each racer takes at the same instant, then stays alive so its lock is live.
+_held_by(other.pid)
+_racer = ("import sys, time; sys.path.insert(0, %r); import claim; "
+          "time.sleep(max(0, %%f - time.time())); "
+          "print(claim.take() is None, flush=True); time.sleep(3)"
+          % os.path.dirname(claim.__file__))
+_at = __import__("time").time() + 1.5
+_racers = [subprocess.Popen([sys.executable, "-c", _racer % _at], stdout=subprocess.PIPE, text=True)
+           for _ in range(6)]
+_won = [r.communicate()[0].strip() for r in _racers].count("True")
+check("of builds clearing a stale lock together, one takes it", _won, 1)
+if os.path.exists(LOCK):
+    os.remove(LOCK)
+
 
 section("the format stamp")
 

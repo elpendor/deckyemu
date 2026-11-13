@@ -16,7 +16,7 @@ try:
 except ImportError:
     decky = None  # type: ignore[assignment]
 
-BUILD = "The DeckyEmu plugin"
+BUILD = "The plugin version"
 """How another build names this one when this one holds the state."""
 
 KIND = "plugin"

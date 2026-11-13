@@ -24,6 +24,10 @@ UNIT = "deckyemu.service"
 #: is in use; it then stays up to serve the tile's page (service.py).
 STANDBY = False
 
+#: Called once the backend starts as the build in use; the service ends its
+#: standby on it.
+ON_STARTED = None
+
 
 def _restart_soon(delay=2.0):
     """Ask the service to stop, after the reply has had time to reach the panel.
@@ -67,6 +71,8 @@ class BuildHost(plugin_base.PluginContext):
 
     async def _host_started(self):
         """Once `_main` has run its startup steps."""
+        if ON_STARTED:
+            ON_STARTED()
 
     async def _host_stopping(self):
         """Early in `_unload`."""

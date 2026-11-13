@@ -31,7 +31,7 @@ function wire(): Wire & Record<string, unknown> {
 /** Call `method` on the service with `args`; resolves with what it returned. */
 export function call<Return = unknown>(method: string, ...args: unknown[]): Promise<Return> {
   const send = (window as unknown as { __deckyemuHost?: (payload: string) => void }).__deckyemuHost;
-  if (!send) return Promise.reject(new Error("The DeckyEmu service is not connected."));
+  if (!send) return Promise.reject(new Error("DeckyEmu is not connected."));
   const id = ++next;
   return new Promise<Return>((resolve, reject) => {
     pending.set(id, { resolve: resolve as (value: unknown) => void, reject });
@@ -88,7 +88,7 @@ export function connect(): void {
   w.reconnected = () => {
     for (const [id, waiting] of pending) {
       pending.delete(id);
-      waiting.reject(new Error("The DeckyEmu service restarted before it answered."));
+      waiting.reject(new Error("DeckyEmu restarted before it answered."));
     }
   };
 }

@@ -22,6 +22,7 @@ missed is reported, not forced.
 """
 
 import json
+import http.client
 import os
 import threading
 import time
@@ -62,6 +63,9 @@ class Injector:
         self._page = None
         self._lock = threading.Lock()
         self._stop = threading.Event()
+        # Counts asks to load the bundle; one that comes mid-load loads again.
+        self._bundle_lock = threading.Lock()
+        self._bundle_asked = 0
         self.state = {
             "steam": "not running",
             "page": None,
@@ -110,7 +114,8 @@ class Injector:
         while not self._stop.is_set():
             try:
                 target = cdp.ui_page(cdp.targets())
-            except (OSError, ValueError):
+            # HTTPException: Steam exiting mid-reply cuts the listing short.
+            except (OSError, ValueError, http.client.HTTPException):
                 target = None
                 self.state["steam"] = "not running"
             # A new page is attached at once: its boot is the race to win. The
@@ -219,19 +224,29 @@ class Injector:
         return False
 
     def _load_bundle_soon(self, page, loading):
-        if loading.is_set():
-            return
-        loading.set()
+        with self._bundle_lock:
+            self._bundle_asked += 1
+            if loading.is_set():
+                return
+            loading.set()
 
         def load():
-            try:
-                self._load_bundle(page)
-            finally:
-                loading.clear()
+            while True:
+                with self._bundle_lock:
+                    seen = self._bundle_asked
+                try:
+                    self._load_bundle(page, lambda: self._bundle_asked != seen)
+                except Exception:  # noqa: BLE001 - `loading` must be cleared
+                    appenv.logger.exception("Loading the panel failed")
+                with self._bundle_lock:
+                    # Steam reloaded its UI meanwhile: load into the new page.
+                    if self._bundle_asked == seen or page.closed.is_set():
+                        loading.clear()
+                        return
 
         threading.Thread(target=load, name="bundle", daemon=True).start()
 
-    def _load_bundle(self, page):
+    def _load_bundle(self, page, stale=lambda: False):
         deadline = time.time() + RENDER_WAIT_SECONDS
         late = False
         while not page.closed.is_set():
@@ -259,6 +274,10 @@ class Injector:
         while not self._ready.wait(0.5):
             if page.closed.is_set():
                 return
+        if stale():
+            # The document that rendered is gone; the caller starts over.
+            self.state["rendered"] = False
+            return
         try:
             bundle = self._read("deckyemu.js")
             page.evaluate("window.__deckyemu.service=%s;true" % _js({"version": appenv.VERSION}))

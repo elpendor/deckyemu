@@ -86,13 +86,13 @@ try:
 
     standby = rescue.Rescue(lambda: {
         "version": "test", "standby": True,
-        "checks": [("In use", "The DeckyEmu plugin 1.0", "warn"), ("This version", "off", "warn")],
+        "checks": [("In use", "Plugin version 1.0", "warn"), ("This version", "off", "warn")],
     }, {})
     shown = standby._page()
     check("it offers switching back", "act('take_over')" in shown, True)
     check("and none of the repairs, which act on a version that is off",
           [a for a in ("restart", "update", "rollback") if "act('%s')" % a in shown], [])
-    check("and says which build is in use", "The DeckyEmu plugin 1.0" in shown, True)
+    check("and says which build is in use", "Plugin version 1.0" in shown, True)
     normal = rescue.Rescue(lambda: {"version": "test", "previous": "v0"}, {})._page()
     check("the usual page still has its repairs",
           [a for a in ("restart", "update", "rollback", "take_over") if "act('%s')" % a in normal],

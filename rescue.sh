@@ -13,9 +13,17 @@ answering() {
     [ -s "$URL_FILE" ] && curl -fsS -m 2 "$(cat "$URL_FILE")/ping" >/dev/null 2>&1
 }
 
+main_pid() {
+    systemctl --user show -p MainPID --value deckyemu.service 2>/dev/null
+}
+
+# Up to a minute while the same process lives: a cold start loads the whole
+# backend before the page answers. A new process means it died, so give up.
 wait_for_service() {
-    for _ in 1 2 3 4 5 6 7 8 9 10; do
+    started=$(main_pid)
+    for _ in $(seq 60); do
         answering && return 0
+        [ "$started" != 0 ] && [ "$(main_pid)" = "$started" ] || return 1
         sleep 1
     done
     return 1

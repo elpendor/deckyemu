@@ -202,7 +202,7 @@ try:
     def _installed(folder):
         # What the service's installer does, as far as the plugin can see.
         builds._write(builds._record_path("service"), {
-            "build": "The DeckyEmu service", "version": "0.21.0", "app_dir": appenv.ROOT})
+            "build": "The standalone version", "version": "0.21.0", "app_dir": appenv.ROOT})
         builds.use("service")
         return True, "installed"
 
@@ -211,7 +211,7 @@ try:
     check("it reports the version it switched to", result, {"ok": True, "version": "0.21.0"})
     check("after stopping the plugin", _calls, ["unload"])
     check("which stays off, and says for which", _plugin._blocked,
-          {"reason": "switched", "kind": "service", "build": "The DeckyEmu service", "version": "0.21.0"})
+          {"reason": "switched", "kind": "service", "build": "The standalone version", "version": "0.21.0"})
     check("and the unpacked release is cleaned up",
           os.path.exists(os.path.join(appenv.DATA_DIR, "service-switch")), False)
 

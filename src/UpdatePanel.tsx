@@ -271,9 +271,9 @@ export function UpdatePanel({
     if (!release) return;
     setInstalling(true);
     try {
-      // Fewer attempts than a plain read: this downloads the release, so a retry
-      // costs a repeated transfer rather than a repeated question.
-      const staged = await callWithRetry(() => stageUpdate(), { attempts: 3 });
+      // One long attempt: this downloads the release, and a retry while it
+      // still runs only meets "already being installed".
+      const staged = await callWithRetry(() => stageUpdate(), { attempts: 1, ms: 10 * 60_000 });
       if (!staged.ok) {
         toaster.toast({
           title: "Could not prepare the update",

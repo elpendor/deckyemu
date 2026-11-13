@@ -12,7 +12,7 @@ import os
 
 NAME = "DeckyEmu"
 
-BUILD = "The DeckyEmu service"
+BUILD = "The standalone version"
 """How another build names this one when this one holds the state."""
 
 KIND = "service"

@@ -12,6 +12,11 @@ told apart by its process start time, so a reused pid does not keep it held.
 import json
 import os
 
+try:
+    import fcntl
+except ImportError:  # Windows, where only the tests run
+    fcntl = None  # type: ignore[assignment]
+
 import appenv
 import builds
 
@@ -85,25 +90,23 @@ def take():
         "build": appenv.BUILD,
         "version": appenv.VERSION,
     }
-    for _ in range(3):
-        try:
-            fd = os.open(_path(LOCK), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
-        except FileExistsError:
-            holder = _read(_path(LOCK))
-            if _alive(holder):
-                return {"build": str(holder.get("build") or "Another DeckyEmu"),
-                        "version": str(holder.get("version") or "")}
+    # Every taker reads and replaces the lock under this guard, so two builds
+    # starting together cannot both clear a stale lock and both take it.
+    with open(_path(LOCK + ".guard"), "a", encoding="utf-8") as guard:
+        if fcntl:
+            fcntl.flock(guard, fcntl.LOCK_EX)
+        holder = _read(_path(LOCK))
+        if _alive(holder):
+            return {"build": str(holder.get("build") or "Another DeckyEmu"),
+                    "version": str(holder.get("version") or "")}
+        if os.path.exists(_path(LOCK)):
             appenv.logger.info("Lock: %s left by %s, which is gone", LOCK, holder or "nobody")
-            try:
-                os.remove(_path(LOCK))
-            except FileNotFoundError:
-                pass
-            continue
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
+        # Replaced whole, so `held()` never reads a half-written lock.
+        temp = _path(LOCK + ".tmp")
+        with open(temp, "w", encoding="utf-8") as f:
             json.dump(me, f)
+        os.replace(temp, _path(LOCK))
         return None
-    # Lost every race for it: somebody else is starting at this very moment.
-    return {"build": "Another DeckyEmu", "version": ""}
 
 
 def release():

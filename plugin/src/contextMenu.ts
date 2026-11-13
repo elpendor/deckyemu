@@ -208,6 +208,8 @@ export function patchGameContextMenu(
 
   let inner: Patch | undefined;
   let outer: Patch | undefined;
+  // On Steam's menu class, which outlives this plugin: removed with the rest.
+  const onClass: Patch[] = [];
 
   /**
    * `hint` is only a hint, and re-resolving is the whole of this.
@@ -251,18 +253,18 @@ export function patchGameContextMenu(
           if (!inner) {
             inner = afterPatch(component, "type", (_a: any[], ret: any) => {
               const prototype = ret?.type?.prototype;
-              if (!prototype) return ret;
+              if (!prototype || onClass.length) return ret;
 
               // The first render of the menu itself.
-              afterPatch(prototype, "render", (_b: any[], menuRet: any) => {
+              onClass.push(afterPatch(prototype, "render", (_b: any[], menuRet: any) => {
                 const items = menuRet?.props?.children?.[0];
                 apply(items, appId);
                 return menuRet;
-              });
+              }));
 
               // And again when Steam refreshes the overview behind it, which
               // re-renders the menu without going back through the above.
-              afterPatch(
+              onClass.push(afterPatch(
                 prototype,
                 "shouldComponentUpdate",
                 (args: any[], shouldUpdate: boolean) => {
@@ -270,7 +272,7 @@ export function patchGameContextMenu(
                   if (shouldUpdate === true) apply(nextProps?.children, appId);
                   return shouldUpdate;
                 },
-              );
+              ));
               return ret;
             });
           } else {
@@ -290,6 +292,7 @@ export function patchGameContextMenu(
     try {
       outer?.unpatch();
       inner?.unpatch();
+      for (const patch of onClass) patch.unpatch();
     } catch (error) {
       console.error("[deckyemu] could not remove the context menu patch", error);
     }

@@ -8,9 +8,9 @@ describe("the panel when the backend stays off", () => {
   });
 
   it("names the build that holds the state, as it names itself", () => {
-    const screen = blockScreen({ reason: "running", build: "The DeckyEmu service", version: "0.20.0" });
+    const screen = blockScreen({ reason: "running", build: "The standalone version", version: "0.20.0" });
     expect(screen?.title).toBe("DeckyEmu is already running");
-    expect(screen?.body).toMatch(/^The DeckyEmu service 0\.20\.0 is running/);
+    expect(screen?.body).toMatch(/^The standalone version 0\.20\.0 is running/);
   });
 
   it("still reads as a sentence when the holder said nothing of itself", () => {

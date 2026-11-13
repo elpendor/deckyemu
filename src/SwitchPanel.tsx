@@ -15,23 +15,6 @@ import { restartSteam } from "./restartSteam";
 
 const NAMES = { service: "standalone version", plugin: "plugin version" } as const;
 
-/** Each build has its own tab, patched in as Steam loads, so a switch shows
- * the other one's only after a restart. Asked now, to save looking for it. */
-function switched(version: string | undefined, to: string) {
-  openModal(
-    <ConfirmModal
-      strTitle="Switched"
-      strDescription={
-        `DeckyEmu ${version ?? ""} is in use now, as the ${to}, with the same games and settings. ` +
-        "Restart Steam to see its tab."
-      }
-      strOKButtonText="Restart Steam"
-      strCancelButtonText="Later"
-      onOK={restartSteam}
-    />,
-  );
-}
-
 function notSwitched(error: string | undefined) {
   openModal(
     <ConfirmModal
@@ -84,7 +67,9 @@ function confirmSwitch(offer: SwitchOffer, setBusy: (busy: boolean) => void) {
       const result = await switchBuild();
       if (result.ok) {
         window.dispatchEvent(new Event(SWITCHED));
-        switched(result.version ?? offer.version, to);
+        // Each build patches its own tab in as Steam loads, so the other one
+        // shows only after a restart: part of the switch, not a second ask.
+        restartSteam();
       } else {
         notSwitched(result.error);
       }
@@ -99,9 +84,10 @@ function confirmSwitch(offer: SwitchOffer, setBusy: (busy: boolean) => void) {
       strTitle={`Switch to the ${to}?`}
       strDescription={
         description(offer) +
-        (offer.installed ? "" : ` DeckyEmu ${offer.version} is downloaded and installed first.`)
+        (offer.installed ? "" : ` DeckyEmu ${offer.version} is downloaded and installed first.`) +
+        " Steam restarts to show it."
       }
-      strOKButtonText="Switch"
+      strOKButtonText="Switch and restart"
       onOK={() => void run()}
     />,
   );

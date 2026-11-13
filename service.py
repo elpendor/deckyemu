@@ -128,6 +128,7 @@ class Service:
         })
         self.pad = rescue_pad.PadBridge(lambda: self.rescue.url)
         self.standby = self._tile_standby()
+        self._standby_timer = None
         steam_dir = os.path.join(appenv.USER_HOME, ".local", "share", "Steam")
         if os.path.isdir(steam_dir) and cdp.ensure_enabled(steam_dir):
             appenv.logger.warning("Turned on Steam's debugging port; it takes effect when Steam next starts")
@@ -147,6 +148,10 @@ class Service:
             return
 
         async def run():
+            if method.startswith("host.") and not inspect.iscoroutinefunction(target):
+                # They read folders and files; off the loop, so a slow drive
+                # holds up only this call.
+                return await self.loop.run_in_executor(None, lambda: target(*args))
             result = target(*args)
             if inspect.isawaitable(result):
                 result = await result
@@ -200,7 +205,9 @@ class Service:
     def rescue_status(self):
         if self.standby:
             blocked = getattr(self.plugin, "_blocked", None) or {}
-            using = "%s %s" % (blocked.get("build") or "The other version", blocked.get("version") or "")
+            name = {"plugin": "Plugin version", "service": "Standalone version"}.get(
+                blocked.get("kind"), "The other version")
+            using = "%s %s" % (name, blocked.get("version") or "")
             return {"version": appenv.VERSION, "standby": True,
                     "checks": [("In use", using.strip(), "warn"),
                                ("This version", "off", "warn")]}
@@ -253,6 +260,7 @@ class Service:
         # This process restarts below; its own in-use watcher must not start
         # the backend here first.
         self.plugin._switching = True
+        before = builds.in_use()
         builds.use(appenv.KIND)
         subprocess.run(["systemctl", "--user", "enable", "deckyemu.service"], check=False)
         appenv.logger.info("Taking over from the other build, from the library tile")
@@ -262,6 +270,13 @@ class Service:
                 break
             time.sleep(1)
         else:
+            # Put it all back, or neither build runs: this one stays in standby
+            # and turns itself off, and the other is no longer named.
+            appenv.logger.warning("The other build kept the state; staying in standby")
+            if before:
+                builds.use(before)
+            subprocess.run(["systemctl", "--user", "disable", "deckyemu.service"], check=False)
+            self.plugin._switching = False
             return False, "The other version did not stop. Restart the Deck and try again."
         threading.Thread(target=self._restart_steam_and_self, daemon=True).start()
         return True, "Switched to this version. Steam restarts now so its tab shows."
@@ -282,9 +297,24 @@ class Service:
         self.request_restart()
         return True, "DeckyEmu is restarting."
 
+    def _leave_standby(self):
+        """The backend started as the build in use: show the panel after all."""
+        import buildhost
+
+        if not self.standby:
+            return
+        appenv.logger.info("This build is in use now; leaving standby")
+        self.standby = False
+        buildhost.STANDBY = False
+        if self._standby_timer:
+            self._standby_timer.cancel()
+        self.injector.start()
+
     def _standby_over(self):
         import subprocess
 
+        if not self.standby:
+            return
         appenv.logger.info("Nothing chosen on the tile's page; turning the service off")
         subprocess.run(["systemctl", "--user", "disable", "--now", "deckyemu.service"], check=False)
 
@@ -316,10 +346,13 @@ class Service:
                 import buildhost
 
                 buildhost.STANDBY = True
+                # Switched to from the other build's panel meanwhile, the
+                # backend starts here and standby ends.
+                buildhost.ON_STARTED = self._leave_standby
                 appenv.logger.info("Started from the library tile while the other build is in use")
-                timer = threading.Timer(STANDBY_SECONDS, self._standby_over)
-                timer.daemon = True
-                timer.start()
+                self._standby_timer = threading.Timer(STANDBY_SECONDS, self._standby_over)
+                self._standby_timer.daemon = True
+                self._standby_timer.start()
             else:
                 self.injector.start()
             self.rescue.start()
