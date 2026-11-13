@@ -327,7 +327,10 @@ class Shortcuts(plugin_base.PluginContext):
 
         # Refused now rather than launching an emulator with nothing to run.
         if rom_changed:
-            extension = await self._run(ra_cores.content_extension, rom_path)
+            # What launches: a playlist this core can't read starts disc 1.
+            extension = await self._run(
+                ra_cores.content_extension,
+                await self._run(launchers.launch_target, core, rom_path))
             supported = [text.lower() for text in core.get("extensions", [])]
             if extension and supported and extension.lower() not in supported:
                 return {

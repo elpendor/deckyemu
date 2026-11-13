@@ -250,6 +250,10 @@ class Probe(plugin_base.PluginContext):
             discset.discs_in_sibling_folders, rom_path
         )
 
+        # A disc that names its own system, where the extension cannot.
+        disc = ""
+        if match_extension in ("iso", "gcm", "rvz", "wia"):
+            disc = await self._run(platforms.disc_system, rom_path)
         result = {
             "extension": extension,
             "match_extension": match_extension,
@@ -353,7 +357,7 @@ class Probe(plugin_base.PluginContext):
             "system_for_core": {
                 core["id"]: platforms.system_for_extension(
                     core.get("databases") or [], match_extension
-                )
+                ) or (disc if disc in (core.get("databases") or []) else "")
                 for core in cores
             },
         }

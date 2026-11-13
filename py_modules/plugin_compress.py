@@ -106,6 +106,8 @@ class Compress(plugin_base.PluginContext):
             done, saved, failed, before = 0, 0, [], 0
             try:
                 for game in games:
+                    if await self._run(romcompress.cancelled):
+                        break
                     def progress(fraction, game=game, before=before):
                         say(game["title"],
                             int(100 * (before + fraction * game["bytes"]) / total))

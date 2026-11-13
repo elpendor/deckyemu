@@ -11,6 +11,7 @@ Genesis Plus GX declares six systems and libretro lists them alphabetically, so
 
 import os
 import sys
+import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -106,3 +107,27 @@ _unknown = sorted(
     }
 )
 check("no mapping points at a database name nothing else knows", _unknown, [])
+
+section("a Nintendo disc says which console it is for")
+
+# Both are `.iso`, and Dolphin declares both; only the header tells them apart.
+with tempfile.TemporaryDirectory() as _folder:
+    def _disc(name, offset, magic):
+        path = os.path.join(_folder, name)
+        head = bytearray(0x40)
+        head[offset:offset + 4] = bytes.fromhex(magic)
+        with open(path, "wb") as handle:
+            handle.write(bytes(head))
+        return path
+
+    check("a Wii disc is Wii", platforms.disc_system(_disc("w.iso", 0x18, "5d1c9ea3")),
+          "Nintendo - Wii")
+    check("a GameCube disc is GameCube",
+          platforms.disc_system(_disc("g.iso", 0x1C, "c2339f3d")), "Nintendo - GameCube")
+    # As read off a real Wii RVZ on the Deck: "RVZ\x01", then 2 at 0x48.
+    _rvz = os.path.join(_folder, "w.rvz")
+    with open(_rvz, "wb") as _handle:
+        _handle.write(b"RVZ\x01" + bytes(0x44) + (2).to_bytes(4, "big"))
+    check("a Wii RVZ is Wii", platforms.disc_system(_rvz), "Nintendo - Wii")
+    check("any other disc names nothing",
+          platforms.disc_system(_disc("p.iso", 0x18, "00000000")), "")

@@ -19,6 +19,7 @@ import threading
 import zipfile
 
 import appenv
+import discset
 import romshelf
 import sysenv
 
@@ -105,6 +106,10 @@ def reset():
     _cancel.clear()
 
 
+def cancelled():
+    return _cancel.is_set()
+
+
 def method_for(system, extension):
     """(method, new extension) for one file of a system, or None."""
     ext = (extension or "").lower().lstrip(".")
@@ -150,6 +155,11 @@ def plan_game(entry, library):
     system = entry.get("system") or ""
 
     playlist = rom if rom.lower().endswith(".m3u") else ""
+    if not playlist:
+        # A record left on its first disc when the set was joined.
+        beside = os.path.join(folder, discset.playlist_name([os.path.basename(rom)]))
+        if os.path.basename(rom) in (romshelf.named_by(beside) or []):
+            playlist = beside
     if playlist:
         discs = romshelf.named_by(playlist)
         if not discs:
@@ -181,6 +191,11 @@ def plan_game(entry, library):
             return ("skip", "Some of its files are missing.")
         files.add(name)
         files.update(named)
+        if name.lower().endswith(".wbfs"):
+            # Split parts, which Dolphin opens with the first.
+            stem = os.path.splitext(name)[0]
+            files.update(part for part in ("%s.wbf%d" % (stem, n) for n in range(1, 10))
+                         if os.path.isfile(os.path.join(folder, part)))
 
     outputs = []
     for name in discs:
@@ -295,6 +310,13 @@ def _dolphin_tool(folder, *args):
             DOLPHIN] + list(args)
 
 
+def _disc_crc(folder, path):
+    """The CRC32 of a disc's data as Dolphin reads it, or ""."""
+    ok, said = _run(_dolphin_tool(folder, "verify", "-i", path, "-a", "crc32"))
+    found = re.findall(r"\b[0-9a-f]{8}\b", said) if ok else []
+    return found[-1] if found else ""
+
+
 def _digest(path):
     hasher = hashlib.sha256()
     with open(path, "rb") as handle:
@@ -307,8 +329,14 @@ def _digest(path):
 
 def _zip(source, out):
     name = os.path.basename(source)
-    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
-        archive.write(source, name)
+    info = zipfile.ZipInfo.from_file(source, name)
+    info.compress_type = zipfile.ZIP_DEFLATED
+    # In blocks, so Cancel stops it like the tools.
+    with zipfile.ZipFile(out, "w") as archive, open(source, "rb") as reading,             archive.open(info, "w") as writing:
+        for block in iter(lambda: reading.read(4 * 1024 * 1024), b""):
+            if _cancel.is_set():
+                raise Cancelled()
+            writing.write(block)
     with zipfile.ZipFile(out) as archive:
         if archive.testzip() is not None or archive.getinfo(name).file_size \
                 != os.path.getsize(source):
@@ -339,8 +367,11 @@ def _one(game, tools, name, out_name, work, on_percent):
                         on_percent)
         if not ok:
             return "dolphin-tool failed: %s" % said
-        ok, said = _run(_dolphin_tool(folder, "header", "-i", out))
-        return "" if ok else "The RVZ did not read back: %s" % said
+        # verify exits 0 whatever it finds, so the disc's CRC is compared.
+        before, after = _disc_crc(folder, source), _disc_crc(folder, out)
+        if not before or before != after:
+            return "The RVZ did not match the original."
+        return ""
 
     if method == "z3ds":
         ok, said = _run(tools["azahar"] + ["-c", source, "-o", work], on_percent)
@@ -377,11 +408,12 @@ def compress(game, tools, progress=None):
     work = os.path.join(folder, WORK_DIR)
     failed = {"ok": False, "error": "", "rom_path": "", "created": [], "saved": 0}
 
+    # Every disc's copy waits in `work` until the last is done; Azahar's
+    # check unpacks one more.
     largest = 0
     for name in game["files"]:
         largest = max(largest, os.path.getsize(os.path.join(folder, name)))
-    # Azahar's check unpacks a second copy.
-    need = largest * (2 if game["method"] == "z3ds" else 1) + _MARGIN
+    need = game["bytes"] + (largest if game["method"] == "z3ds" else 0) + _MARGIN
     if shutil.disk_usage(folder).free < need:
         failed["error"] = "Not enough free space to compress %s." % game["title"]
         return failed

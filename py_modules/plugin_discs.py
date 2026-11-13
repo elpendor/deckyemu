@@ -98,6 +98,13 @@ class Discs(plugin_base.PluginContext):
 
         name = os.path.basename(filed)
         playlist = rom_path if rom_path.lower().endswith(".m3u") else ""
+        if not playlist:
+            # A set joined before the record followed its playlist: adopt it.
+            beside = os.path.join(folder, await self._run(
+                discset.playlist_name, [os.path.basename(rom_path), name]))
+            named = await self._run(romshelf.named_by, beside)
+            if named and os.path.basename(rom_path) in named:
+                playlist = beside
         if playlist:
             known = await self._run(romshelf.named_by, playlist)
             if known is None:
@@ -113,7 +120,7 @@ class Discs(plugin_base.PluginContext):
         discs = await self._run(discset.in_disc_order, known + [name])
         written, error = await self._run(
             discset.write_playlist, folder, discs,
-            os.path.basename(rom_path) if rom_path.lower().endswith(".m3u") else "",
+            os.path.basename(playlist) if playlist else "",
         )
         if error:
             return {"ok": False, "playlist": "", "discs": [], "error": error}
@@ -125,8 +132,9 @@ class Discs(plugin_base.PluginContext):
     async def join_disc_to_game(self, app_id: int, disc_path: str):
         """Add a disc to a game and repoint its shortcut, in one press.
 
-        For the transfer dialog. The shortcut moves to the playlist only for a
-        core that declares `m3u`; others keep starting their disc. Returns
+        For the transfer dialog. The record always moves to the playlist, so
+        later discs and compression see the set; a core that can't read `m3u`
+        still starts its first disc (`launchers.launch_target`). Returns
         {ok, error, title, exe, launcher_changed}.
         """
         added = await self.add_disc_to_game(app_id, disc_path)
@@ -136,12 +144,7 @@ class Discs(plugin_base.PluginContext):
 
         library = await self._run(store.get_library)
         entry = library.get(str(app_id)) or {}
-        core = self._core_by_id(entry.get("core_id", ""))
-        reads_playlist = "m3u" in [
-            text.lower() for text in (core or {}).get("extensions", [])
-        ]
-        if not added["playlist"] or not reads_playlist:
-            # The set is on disk and the shortcut already starts a disc of it.
+        if not added["playlist"]:
             return {"ok": True, "error": "", "title": entry.get("title", ""),
                     "exe": "", "launcher_changed": False}
 

@@ -99,6 +99,28 @@ with tempfile.TemporaryDirectory() as library:
           romcompress.plan_game(entry(rom, PSX, ["cue", "chd"]), library),
           ("skip", "Made Up.chd is already there."))
 
+with tempfile.TemporaryDirectory() as library:
+    folder = os.path.join(library, "psx")
+    os.makedirs(folder)
+    disc(folder, "Made Up (Disc 1).cue")
+    disc(folder, "Made Up (Disc 2).cue")
+    write(folder, "Made Up.m3u", "Made Up (Disc 1).cue\nMade Up (Disc 2).cue\n")
+    rom = os.path.join(folder, "Made Up (Disc 1).cue")
+    kind, game = romcompress.plan_game(entry(rom, PSX, ["cue", "chd"]), library)
+    check("a record left on disc 1 of a set compresses the whole set",
+          (game["playlist"], game["outputs"]),
+          ("Made Up.m3u", ["Made Up (Disc 1).chd", "Made Up (Disc 2).chd"]))
+
+with tempfile.TemporaryDirectory() as library:
+    folder = os.path.join(library, "wii")
+    os.makedirs(folder)
+    for name in ("Made Up.wbfs", "Made Up.wbf1", "Made Up.wbf2", "Other.wbf1"):
+        write(folder, name)
+    rom = os.path.join(folder, "Made Up.wbfs")
+    kind, game = romcompress.plan_game(entry(rom, "Nintendo - Wii", ["wbfs", "rvz"]), library)
+    check("a split WBFS takes its parts with it", game["files"],
+          ["Made Up.wbf1", "Made Up.wbf2", "Made Up.wbfs"])
+
 
 section("compressing")
 
@@ -161,3 +183,30 @@ with tempfile.TemporaryDirectory() as scripts, tempfile.TemporaryDirectory() as 
           (result["ok"], sorted(os.listdir(folder))),
           (False, ["Made Up (Disc 1).bin", "Made Up (Disc 1).cue", "Made Up (Disc 2).bin",
                    "Made Up (Disc 2).cue", "Made Up.m3u"]))
+
+with tempfile.TemporaryDirectory() as library:
+    folder = os.path.join(library, "gba")
+    os.makedirs(folder)
+    write(folder, "Made Up.gba", "rom" * 1000)
+    _, game = romcompress.plan_game(entry(os.path.join(folder, "Made Up.gba"), GBA, ["gba"]),
+                                    library)
+    romcompress.cancel()
+    try:
+        romcompress.compress(game, {})
+        stopped = False
+    except romcompress.Cancelled:
+        stopped = True
+    romcompress.reset()
+    check("Cancel stops a zip too, leaving the ROM alone",
+          (stopped, sorted(os.listdir(folder))), (True, ["Made Up.gba"]))
+
+section("the RVZ check reads the CRC dolphin-tool prints")
+
+# What `dolphin-tool verify -a crc32` printed on the Deck: the CRC, alone.
+_real = romcompress._run
+romcompress._run = lambda argv, on_percent=None: (True, "1047de4c")
+try:
+    check("the CRC is read from verify's output",
+          romcompress._disc_crc("/x", "/x/a.iso"), "1047de4c")
+finally:
+    romcompress._run = _real

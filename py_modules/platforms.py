@@ -237,6 +237,32 @@ def system_for_extension(databases, extension):
     return ""
 
 
+#: The magic words a Nintendo disc's header carries: Wii at 0x18, GameCube at
+#: 0x1C. An `.iso` is both systems' extension, so only the disc can say.
+_DISC_MAGIC = ((0x18, bytes.fromhex("5d1c9ea3"), "Nintendo - Wii"),
+               (0x1C, bytes.fromhex("c2339f3d"), "Nintendo - GameCube"))
+
+
+def disc_system(rom_path):
+    """The Wii or GameCube database a disc image names, or "".
+
+    A plain image carries the console's magic word; an RVZ or WIA says it as
+    its disc type at 0x48: 1 GameCube, 2 Wii.
+    """
+    try:
+        with open(rom_path, "rb") as handle:
+            head = handle.read(0x4C)
+    except OSError:
+        return ""
+    if head[:4] in (b"RVZ\x01", b"WIA\x01"):
+        kind = int.from_bytes(head[0x48:0x4C], "big")
+        return {1: "Nintendo - GameCube", 2: "Nintendo - Wii"}.get(kind, "")
+    for offset, magic, system in _DISC_MAGIC:
+        if head[offset:offset + 4] == magic:
+            return system
+    return ""
+
+
 # The folder a ROM sits in, when that folder names a system.
 #
 # This exists for the case EXTENSION_SYSTEMS deliberately refuses: disc images.
