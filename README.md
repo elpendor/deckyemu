@@ -55,7 +55,10 @@ you switch on cloud saves.
 
 ## Install it
 
-In Desktop Mode, open Konsole and run:
+In Desktop Mode, download
+[DeckyEmu-install.desktop](https://github.com/elpendor/deckyemu/releases/latest/download/DeckyEmu-install.desktop),
+double-click it, and close the window when it says DeckyEmu is installed. Or
+open Konsole and run:
 
 ```
 curl -fsSL https://github.com/elpendor/deckyemu/releases/latest/download/install.sh | sh

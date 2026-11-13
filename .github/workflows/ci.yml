@@ -387,7 +387,8 @@ jobs:
       # DeckyEmu's updater reads GitHub releases, so a release is what makes an
       # update reachable. One release carries both builds, each with deckyemu/
       # at its root; each build only looks for its own file. install.sh also
-      # goes up on its own, for a first install to fetch by a fixed URL.
+      # goes up on its own, for a first install to fetch by a fixed URL, and
+      # DeckyEmu-install.desktop runs it from a double-click in Desktop Mode.
 
       # MAME's chdman for the ROM compressor; SteamOS doesn't ship it. Attached
       # to every release so the tool downloader finds it on the latest one.
@@ -453,7 +454,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "v${{ steps.meta.outputs.version }}" deckyemu-service.tar.gz deckyemu.zip install.sh chdman-linux-x86_64 \
+          gh release create "v${{ steps.meta.outputs.version }}" deckyemu-service.tar.gz deckyemu.zip install.sh DeckyEmu-install.desktop chdman-linux-x86_64 \
             --repo "$GITHUB_REPOSITORY" \
             --target "${{ steps.commit.outputs.sha }}" \
             --title "v${{ steps.meta.outputs.version }}" \

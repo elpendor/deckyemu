@@ -11,14 +11,18 @@ Back to [the README](https://github.com/elpendor/deckyemu#readme).
 This is the one thing you do in Desktop Mode, and the only trip you make —
 everything after it happens on the couch.
 
-1. Switch to Desktop Mode and open **Konsole**.
-2. Run:
-
-   ```
-   curl -fsSL https://github.com/elpendor/deckyemu/releases/latest/download/install.sh | sh
-   ```
-
+1. Switch to Desktop Mode and download
+   [DeckyEmu-install.desktop](https://github.com/elpendor/deckyemu/releases/latest/download/DeckyEmu-install.desktop).
+2. Double-click it in your Downloads folder. If it asks whether to run it, say
+   yes. A window shows the install, then says **DeckyEmu is installed**; press
+   Enter to close it.
 3. Switch back to Game Mode.
+
+Rather type it? Open **Konsole** and run the same thing the file does:
+
+```
+curl -fsSL https://github.com/elpendor/deckyemu/releases/latest/download/install.sh | sh
+```
 
 DeckyEmu shows up as its own tab in the Quick Access menu, and as a **DeckyEmu**
 tile in your library.

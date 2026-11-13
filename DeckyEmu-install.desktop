@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Install DeckyEmu
+Comment=Install or update DeckyEmu, then go back to Game Mode
+Icon=steamdeck-gaming-return
+Terminal=true
+Exec=bash -o pipefail -c "curl -fsSL https://github.com/elpendor/deckyemu/releases/latest/download/install.sh | sh && echo && echo 'DeckyEmu is installed. Go back to Game Mode to use it.' || echo 'The install did not finish. Check the network and try again.'; echo; echo 'Press Enter to close this window.'; read line"
