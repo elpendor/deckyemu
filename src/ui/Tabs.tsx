@@ -63,6 +63,23 @@ export function Tabs({ tabs, activeTab, onShowTab }: TabsProps) {
     }
     shown.current = activeId;
   }, [activeId, pills]);
+  // The list scrolls only from here: the active pill, and any pill the D-pad
+  // lands on, kept in view between the bumpers.
+  const bar = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const list = bar.current?.querySelector<HTMLElement>(".dek-tab-list");
+    if (!list) return;
+    const reveal = (pill: Element | null | undefined) => {
+      if (!(pill instanceof HTMLElement) || !list.contains(pill)) return;
+      if (pill.offsetLeft < list.scrollLeft) list.scrollLeft = pill.offsetLeft;
+      const end = pill.offsetLeft + pill.offsetWidth;
+      if (end > list.scrollLeft + list.clientWidth) list.scrollLeft = end - list.clientWidth;
+    };
+    reveal(list.querySelector(".dek-tab.dek-active"));
+    const onFocus = (event: FocusEvent) => reveal((event.target as Element)?.closest?.(".dek-tab"));
+    list.addEventListener("focusin", onFocus);
+    return () => list.removeEventListener("focusin", onFocus);
+  }, [activeId]);
   const step = (by: number) => {
     const next = tabs[index + by];
     if (next) onShowTab(next.id);
@@ -74,7 +91,13 @@ export function Tabs({ tabs, activeTab, onShowTab }: TabsProps) {
   };
   return (
     <Focusable className="dek-tabs" onButtonDown={onButtonDown}>
-      <div className="dek-tab-bar" ref={styled}>
+      <div
+        className="dek-tab-bar"
+        ref={(node) => {
+          bar.current = node;
+          styled(node);
+        }}
+      >
         <Bumper side="l1" />
         <Focusable className="dek-tab-list" flow-children="row" role="tablist">
           {tabs.map((tab) => (

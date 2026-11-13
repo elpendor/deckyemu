@@ -83,12 +83,33 @@ registerLookup(showModalLookup);
  * Show `modal` over the Game Mode window. Throws if Steam's modal manager could
  * not be found, which the caller is better placed to explain than a blank
  * dialog would be.
+ *
+ * Steam's is async: it resolves to the handle. Callers get one at once, as
+ * every caller here expects, and a Close asked for early is kept until the
+ * real one lands.
  */
 export function showModal(modal: ReactNode, _parent?: unknown, options: Any = {}): ShowModalResult {
   const show = showModalLookup();
   const window_ = mainWindow()?.BrowserWindow;
   if (!show || !window_) throw new Error("Steam's modal manager is not where it was");
-  return show(modal, window_, options);
+  let real: ShowModalResult | null = null;
+  let closed = false;
+  let latest: ReactNode | undefined;
+  void Promise.resolve(show(modal, window_, options)).then((handle) => {
+    real = handle;
+    if (closed) handle.Close();
+    else if (latest !== undefined) handle.Update?.(latest);
+  }).catch((error) => console.error("[deckyemu] could not show a dialog", error));
+  return {
+    Close() {
+      closed = true;
+      real?.Close();
+    },
+    Update(next: ReactNode) {
+      latest = next;
+      real?.Update?.(next);
+    },
+  };
 }
 
 // --- the Quick Access menu

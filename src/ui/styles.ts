@@ -117,9 +117,11 @@ const CSS = `
 }
 .dek-bumper { width: 32px; height: 32px; display: flex; }
 .dek-bumper img { width: 100%; height: 100%; }
+/* "safe": centred while the tabs fit; past that, plain center pushed the
+   overflow off the left edge, where no scroll reaches, under the L1 glyph. */
 .dek-tab-list {
-  flex: 1; display: flex; flex-direction: row; justify-content: center; gap: 8px;
-  overflow: hidden;
+  flex: 1; display: flex; flex-direction: row; justify-content: safe center; gap: 8px;
+  overflow: hidden; position: relative; margin: 0 8px;
 }
 .dek-tab {
   display: flex; align-items: center; padding: 6px 16px; border-radius: 64px;
