@@ -165,6 +165,21 @@ check("the save file is in the archive",
 check("and the config is not", any("FussyConfig" in name for name in _fussy), False)
 emulator_catalog.CATALOG = (_declares, _whole, _imported)
 
+# Two declared roots of the same name, only the second there yet: the backup
+# has to call it what a restore onto a Deck with both calls it.
+_drop(".twins/system/save/sys.bin")
+_twins = dict(_declares, id="twins", name="Twins",
+              saves=[".twins/user/save", ".twins/system/save"])
+emulator_catalog.CATALOG = (_twins,)
+_backed = [savedata.roots_of(one) for one in savedata._all_sources() if one["id"] == "twins"]
+_restoring = [savedata.roots_of(one) for one in savedata._all_sources(True)
+              if one["id"] == "twins"]
+check("a root's folder name does not depend on which roots exist yet",
+      (_backed[0], dict(_restoring[0])["save-2"]),
+      ([("save-2", os.path.join(_home, ".twins", "system", "save"))],
+       os.path.join(_home, ".twins", "system", "save")))
+emulator_catalog.CATALOG = (_declares, _whole, _imported)
+
 check("an imported entry's own directory is offered too",
       _listed["aardvark-port"]["paths"],
       [os.path.join(_home, ".local", "share", "SomeStudio", "Imported")])
@@ -364,15 +379,47 @@ check("and is overwritten only when replacing was asked for",
       io.open(os.path.join(_home, ".var", "app", "dev.plainly.Plain", "config",
                            "plain", "memcards", "card1.mcd")).read(),
       "x")
-# Replacing keeps what it overwrites as a backup, so Restore undoes it.
-_kept = os.path.join(savedata.arrivals_dir(), _replaced["kept"])
-check("and what it overwrote is kept as a backup on this Deck",
+# Replacing keeps what it overwrites as an earlier copy, so Restore undoes it.
+_kept = os.path.join(savedata.earlier_dir(), _replaced["kept"])
+check("and what it overwrote is kept as an earlier copy on this Deck",
       (bool(_replaced["kept"]), savedata.is_backup(_kept)), (True, True))
 with zipfile.ZipFile(_kept) as _bundle:
     check("holding the version that was replaced",
           _bundle.read("saves/plain/dev.plainly.plain/config/plain/memcards/card1.mcd"),
           b"played since the backup")
+_listed = savedata.earlier_copies()
+check("listed as an earlier copy, by which saves and when",
+      ([one["path"] for one in _listed], _listed[0]["label"].split(" - ")[0]),
+      ([_kept], "Aardvark Port, Plain, Pretendo"))
+check("and not among the backups",
+      _kept in [one["path"] for one in savedata.backups_in(savedata.arrivals_dir())],
+      False)
+check("which nothing deletes on its own", savedata.made_here(_kept), True)
 os.remove(_kept)
+
+with io.open(os.path.join(_home, ".var", "app", "dev.plainly.Plain", "config",
+                          "plain", "memcards", "card1.mcd"), "w") as _handle:
+    _handle.write("played again")
+check("replacing without keeping keeps nothing",
+      savedata.restore(_destination, replace=True, keep=False).get("kept"), "")
+
+# One from before the folder, still in the backups: moved in on the next look.
+_old = os.path.join(savedata.arrivals_dir(), savedata.KEPT_PREFIX + "20260101-120000.zip")
+shutil.copy(_destination, _old)
+check("an earlier copy from before the folder is moved into it",
+      [os.path.basename(one["path"]) for one in savedata.earlier_copies()],
+      ["20260101-120000.zip"])
+check("and leaves the backups", os.path.exists(_old), False)
+
+# Ten, as the cloud keeps: the oldest go.
+for _n in range(12):
+    shutil.copy(_destination, os.path.join(savedata.earlier_dir(),
+                                           "20260102-1200%02d.zip" % _n))
+savedata._prune_earlier()
+_names = sorted(os.listdir(savedata.earlier_dir()))
+check("ten are kept, the newest", (len(_names), _names[0]),
+      (savedata.KEEP_EARLIER, "20260102-120002.zip"))
+shutil.rmtree(savedata.earlier_dir())
 
 section("an archive may not say where its files go")
 

@@ -1556,6 +1556,8 @@ class Transfers(plugin_base.PluginContext):
                 await self._run(savedata.arrivals_dir),
                 await self._run(fileserver.default_dir),
             ),
+            # What replaces here overwrote, like `cloud_snapshots`.
+            "earlier": await self._run(savedata.earlier_copies),
         }
 
     async def discard_save_backup(self, path: str):
@@ -1592,7 +1594,8 @@ class Transfers(plugin_base.PluginContext):
         """
         return await self._run(savedata.describe, path)
 
-    async def restore_save_backup(self, path: str, ids=None, replace: bool = False):
+    async def restore_save_backup(self, path: str, ids=None, replace: bool = False,
+                                  keep: bool = True):
         """Put saves back from an archive sent to this Deck, then delete it.
 
         `replace` overwrites saves already here and is the one destructive thing
@@ -1611,10 +1614,14 @@ class Transfers(plugin_base.PluginContext):
         `discard_transferred_file` exists to fix, one folder over.
 
         Only after a restore that succeeded. A failure leaves the file, because
-        then it really is the way to try again.
+        then it really is the way to try again. Never an earlier copy: that
+        one did not arrive from anywhere.
         """
-        result = await self._run(savedata.restore, path, ids, replace)
+        result = await self._run(savedata.restore, path, ids, replace, keep)
         if not result.get("ok"):
+            return result
+        if savedata.made_here(path):
+            # An earlier copy: the only one, so it stays.
             return result
         try:
             await self._run(os.remove, path)

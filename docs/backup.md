@@ -44,7 +44,10 @@ same dialog. Send the zip, then press **Restore** beside it. The Deck needs room
 for the zip and for what it holds while it restores; the zip is deleted once
 the restore is done.
 
-It replaces DeckyEmu's settings and games on this Deck with the backup's. Then
+It replaces DeckyEmu's settings, games and saves on this Deck with the backup's.
+It asks first, the same way **Restore all** does in **Restore saves**: **Keep a
+copy first** puts the saves it overwrites under *This Deck — earlier copies*, so
+a newer save isn't lost to an older backup. Then
 it finishes the job itself: it installs RetroArch, its cores and your emulators
 if they're missing, rebuilds the launchers, and adds your games back to Steam
 with their artwork and collections. That part downloads, so it needs a network

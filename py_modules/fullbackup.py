@@ -19,6 +19,7 @@ import subprocess
 import threading
 import time
 import zipfile
+import zlib
 
 import appenv
 
@@ -76,6 +77,10 @@ def release(held):
             held.wait(timeout=5)
         except subprocess.TimeoutExpired:
             held.kill()
+
+
+class _WriteFailed(OSError):
+    """Writing the backup failed, as opposed to reading one file for it."""
 
 
 class Cancelled(Exception):
@@ -379,7 +384,9 @@ def plan(include):
             if name in _SETTINGS_SKIP or not os.path.isfile(path):
                 continue
             files.append((path, "settings/%s" % name))
-        planned["settings"] = (files + _art()
+        # Imported definitions, so the saves of those emulators have a place.
+        imported = os.path.join(appenv.SETTINGS_DIR, "emulators.d")
+        planned["settings"] = (files + _tree(imported, "settings/emulators.d") + _art()
                                + _tree(sysenv.user_dir("icons", create=False), "icons"))
     if "signins" in include:
         conf = os.path.join(appenv.SETTINGS_DIR, "rclone.conf")
@@ -448,7 +455,16 @@ class _Pieces(io.RawIOBase):
     def write(self, data):
         if _cancel.is_set():
             raise Cancelled()
-        view = memoryview(data)
+        try:
+            self._write(memoryview(data))
+        except OSError as error:
+            raise _WriteFailed(error.errno, str(error)) from error
+        self.pos += len(data)
+        if self.moved:
+            self.moved(len(data))
+        return len(data)
+
+    def _write(self, view):
         while view:
             room = (self.size - self.used) if self.size else len(view)
             if room <= 0:
@@ -461,10 +477,6 @@ class _Pieces(io.RawIOBase):
             view = view[len(chunk):]
             if self.unsynced >= _FLUSH:
                 self._sync()
-        self.pos += len(data)
-        if self.moved:
-            self.moved(len(data))
-        return len(data)
 
     def finish(self):
         self._sync()
@@ -572,6 +584,8 @@ def _fill(out, include, entries, total, progress):
             for path, name in entries:
                 try:
                     _stored(bundle, path, name)
+                except _WriteFailed:
+                    raise
                 except OSError as error:
                     appenv.logger.warning("Backup skipped %s: %s", path, error)
                     skipped += 1
@@ -703,26 +717,35 @@ _USER_FOLDERS = ("roms", "patches", "updates-dlc", "firmware", "emulators", "ico
 ART_DIR = os.path.join(appenv.DATA_DIR, "restored-art")
 
 
-def _destinations(bundle):
-    """[(member, local path)] for everything in a backup that has a place here."""
+def _destinations(bundle, saves):
+    """([(member, local path)], [members with no place here]).
+
+    Everything but saves, or only saves: those are placed once the restored
+    settings have brought back the emulators they belong to.
+    """
     landing = {}
-    for source in savedata._all_sources(True, anywhere=True):
-        for segment, root in savedata.roots_of(source):
-            landing[(source["id"], segment)] = (source, root)
-    members = [info for info in bundle.infolist()
-               if not info.is_dir() and info.filename != MANIFEST]
     under: dict = {}
-    for info in members:
-        parts = info.filename.split("/")
-        if parts[0] == "saves" and len(parts) >= 4:
-            under.setdefault((parts[1], parts[2]), []).append("/".join(parts[3:]))
+    members = [info for info in bundle.infolist()
+               if not info.is_dir() and info.filename != MANIFEST
+               and info.filename.startswith("saves/") == saves]
+    if saves:
+        for source in savedata._all_sources(True, anywhere=True):
+            for segment, root in savedata.roots_of(source):
+                landing[(source["id"], segment)] = (source, root)
+        for info in members:
+            parts = info.filename.split("/")
+            if len(parts) >= 4:
+                under.setdefault((parts[1], parts[2]), []).append("/".join(parts[3:]))
 
     placed = []
+    nowhere = []
     for info in members:
         top, _, rest = info.filename.partition("/")
         target = ""
         if top in _USER_FOLDERS:
             target = savedata._safe_member(sysenv.user_dir(top, create=False), rest)
+        elif top == "settings" and rest.startswith("emulators.d/"):
+            target = savedata._safe_member(appenv.SETTINGS_DIR, rest)
         elif top == "settings" and "/" not in rest and rest not in _SETTINGS_SKIP:
             target = os.path.join(appenv.SETTINGS_DIR, rest)
         elif top == "signins" and rest == "rclone.conf":
@@ -741,11 +764,30 @@ def _destinations(bundle):
             placed.append((info, target))
         else:
             appenv.logger.warning("Restore has no place for %s", info.filename)
-    return placed
+            nowhere.append(info.filename)
+    return placed, nowhere
 
 
-def restore(path, progress=None):
-    """Put everything in a backup back where it belongs. Returns what happened."""
+def _differs(info, target):
+    """Whether the file here holds something other than this member."""
+    try:
+        if os.path.getsize(target) != info.file_size:
+            return True
+        crc = 0
+        with open(target, "rb") as reading:
+            for block in iter(lambda: reading.read(_FLUSH), b""):
+                crc = zlib.crc32(block, crc)
+        return crc != info.CRC
+    except OSError:
+        return False
+
+
+def restore(path, progress=None, keep=True):
+    """Put everything in a backup back where it belongs. Returns what happened.
+
+    With `keep`, saves here that it would overwrite with something different
+    go to the earlier copies first, as a save replace's do.
+    """
     try:
         bundle = open_backup(path)
     except (OSError, zipfile.BadZipFile, ValueError) as error:
@@ -753,8 +795,7 @@ def restore(path, progress=None):
     with bundle:
         if not _manifest(bundle):
             return {"ok": False, "error": "This isn't a DeckyEmu backup this version can read."}
-        placed = _destinations(bundle)
-        total = sum(info.file_size for info, _ in placed)
+        total = sum(info.file_size for info in bundle.infolist() if not info.is_dir())
         free = shutil.disk_usage(sysenv.user_home()).free
         if total + _MARGIN > free:
             return {"ok": False, "error": "Not enough room: needs %.1f GB, %.1f GB free."
@@ -764,8 +805,9 @@ def restore(path, progress=None):
         done = [0]
         said = [0.0]
         _cancel.clear()
-        written = failed = 0
-        try:
+        counts = {"written": 0, "failed": 0}
+
+        def put(placed):
             for info, target in placed:
                 if _cancel.is_set():
                     raise Cancelled()
@@ -788,18 +830,50 @@ def restore(path, progress=None):
                     when = _mtime(info)
                     os.utime(partial, (when, when))
                     os.replace(partial, target)
-                    written += 1
+                    counts["written"] += 1
                 except OSError as error:
                     appenv.logger.warning("Could not restore %s: %s", target, error)
-                    failed += 1
+                    counts["failed"] += 1
+
+        kept = ""
+        try:
+            placed, nowhere = _destinations(bundle, saves=False)
+            put(placed)
+            if any(info.filename.startswith("settings/emulators.d/") for info, _ in placed):
+                import emulator_catalog
+
+                emulator_catalog.reload_imported()
+            placed, more = _destinations(bundle, saves=True)
+            nowhere += more
+            overwritten = [(target, info.filename) for info, target in placed
+                           if os.path.isfile(target) and _differs(info, target)]
+            if overwritten and keep:
+                kept, failed = savedata._keep_aside(overwritten)
+                if failed:
+                    return {"ok": False, "written": counts["written"],
+                            "error": "The saves here could not be kept first, so none "
+                                     "were replaced. %s" % failed}
+            put(placed)
         except Cancelled:
-            return {"ok": False, "cancelled": True, "written": written,
+            return {"ok": False, "cancelled": True, "written": counts["written"],
                     "error": "Cancelled. What was restored so far stays."}
     if progress:
         progress("Done", 100)
-    appenv.logger.info("Restored %d file(s) from %s, %d failed", written, path, failed)
+    written, failed = counts["written"], counts["failed"]
+    appenv.logger.info("Restored %d file(s) from %s, %d failed, %d with no place%s",
+                       written, path, failed, len(nowhere),
+                       ", replaced saves kept in %s" % kept if kept else "")
+    notes = []
+    if nowhere:
+        notes.append("%d file(s) had no place on this Deck, so the backup was kept."
+                     % len(nowhere))
+    if kept:
+        notes.append("The saves it replaced are under Restore saves, in This Deck "
+                     "- earlier copies.")
     return {"ok": failed == 0, "written": written, "failed": failed,
-            "error": "%d file(s) could not be restored." % failed if failed else ""}
+            "nowhere": len(nowhere), "kept": kept,
+            "error": ("%d file(s) could not be restored." % failed if failed
+                      else " ".join(notes))}
 
 
 def still_to_do():
@@ -943,7 +1017,10 @@ class _Sink(io.RawIOBase):
     def write(self, data):
         if _cancel.is_set():
             raise Cancelled()
-        self.send(bytes(data))
+        try:
+            self.send(bytes(data))
+        except OSError as error:
+            raise _WriteFailed(error.errno, str(error)) from error
         self.pos += len(data)
         self.moved(len(data))
         return len(data)

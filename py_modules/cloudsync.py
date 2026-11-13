@@ -41,6 +41,7 @@ by making you start again.
 
 import json
 import os
+import posixpath
 import re
 import shutil
 import time
@@ -1690,8 +1691,13 @@ def pull_steps(remote, ids=None, replace=False, stamp="", known=None):
 SPEED_FILES = 60
 SPEED_FILE_BYTES = 50 * 1024
 
-#: Where on the storage the test writes, removed again after.
-SPEED_FOLDER = "DeckyEmu/.speed-test"
+#: Where on the storage the test writes, removed again after: beside `ROOT`,
+#: and bucketed the same way (`speed_folder`).
+SPEED_FOLDER = ".speed-test"
+
+
+def speed_folder(remote):
+    return "%s/%s" % (posixpath.dirname(root_of(remote)), SPEED_FOLDER)
 
 
 def speed_test(remote, scratch):
@@ -1706,7 +1712,7 @@ def speed_test(remote, scratch):
     for index in range(SPEED_FILES):
         with open(os.path.join(scratch, "file%02d.bin" % index), "wb") as handle:
             handle.write(os.urandom(SPEED_FILE_BYTES))
-    target = "%s:%s" % (remote, SPEED_FOLDER)
+    target = "%s:%s" % (remote, speed_folder(remote))
     args = ["copy", scratch, target] + _FILES_AT_ONCE + _by_content(remote)
     timed = []
     try:

@@ -82,8 +82,12 @@ type Picked =
   | { kind: "file"; file: SaveBackupFile }
   /** `stamp` empty is the live saves; set, it is what one copy replaced. */
   | { kind: "cloud"; remote: string; label: string; stamp: string }
-  /** Not a source: the list of what one storage's copies have replaced. */
+  /** Not a source: what one storage's copies replaced. `remote` "" is this
+   * Deck's, what its replaces overwrote. */
   | { kind: "earlier"; remote: string; label: string };
+
+/** The Deck's own earlier copies, named on screen as a storage is. */
+const THIS_DECK = "This Deck";
 
 /**
  * What to call one storage on screen.
@@ -111,6 +115,8 @@ function nameOf(one: CloudRemote, all: CloudRemote[]) {
 
 export function RestoreSavesModal({ closeModal }: Props) {
   const [files, setFiles] = useState<SaveBackupFile[] | null>(null);
+  /** What replaces on this Deck overwrote, newest first. */
+  const [kept, setKept] = useState<SaveBackupFile[]>([]);
   const [accounts, setAccounts] = useState<CloudRemote[]>([]);
   /** Which storage saves are being copied to, of the ones signed into. */
   const [inUse, setInUse] = useState("");
@@ -198,10 +204,10 @@ export function RestoreSavesModal({ closeModal }: Props) {
       });
   }, []);
 
-  const open = useCallback(async (file: SaveBackupFile) => {
+  const open = useCallback(async (file: SaveBackupFile, from?: Picked) => {
     const mine = (showing.current += 1);
     setError("");
-    setCameFrom(null);
+    setCameFrom(from ?? null);
     setChosen({ kind: "file", file });
     setContents(null);
     try {
@@ -300,13 +306,14 @@ export function RestoreSavesModal({ closeModal }: Props) {
      */
     let backups: SaveBackupFile[] | null = null;
     let signedIn: CloudRemote[] | null = null;
+    let hasKept = false;
     const decide = () => {
       if (!live || backups === null || signedIn === null) return;
       // Read straight away when it is the only thing there is, so its row
       // carries the counts rather than a Choose button with one possible
       // answer. With a storage signed in there is a choice, and making it for
       // somebody is how the other option becomes invisible.
-      if (backups.length === 1 && signedIn.length === 0) void open(backups[0]);
+      if (backups.length === 1 && signedIn.length === 0 && !hasKept) void open(backups[0]);
     };
 
     void listSaveBackups()
@@ -314,6 +321,8 @@ export function RestoreSavesModal({ closeModal }: Props) {
         if (!live) return;
         backups = result.backups;
         setFiles(result.backups);
+        setKept(result.earlier ?? []);
+        hasKept = (result.earlier ?? []).length > 0;
         setBackupDir(result.dir ?? "");
         decide();
       })
@@ -451,7 +460,7 @@ export function RestoreSavesModal({ closeModal }: Props) {
         return;
       }
       const file = chosen.file;
-      void restoreSaveBackup(file.path, scope, replace)
+      void restoreSaveBackup(file.path, scope, replace, keep)
         .then((result) => {
           if (!result.ok) {
             setError(result.error ?? "The saves could not be restored.");
@@ -466,7 +475,7 @@ export function RestoreSavesModal({ closeModal }: Props) {
           // Named, because the file going is a thing that happened to something
           // of theirs. Silence reads as "where did my backup go".
           if (result.removed) parts.push("the backup was removed from this Deck");
-          if (result.kept) parts.push("what was replaced is kept as a backup on this Deck");
+          if (result.kept) parts.push(`what was replaced is under ${THIS_DECK} - earlier copies`);
           toaster.toast({ title: "Saves restored", body: parts.join(", ") + "." });
           closeModal?.();
         })
@@ -481,8 +490,8 @@ export function RestoreSavesModal({ closeModal }: Props) {
 
   /**
    * The one action here that overwrites saves, behind the plugin's own
-   * confirmation, counting what it overwrites. A backup restore keeps those
-   * files as a backup first; a cloud restore offers to keep them in the cloud.
+   * confirmation, counting what it overwrites. Keeping them first is offered
+   * the same way from anywhere: a storage keeps them up there, a file here.
    */
   const confirmReplace = useCallback(() => {
     if (!contents) return;
@@ -495,10 +504,11 @@ export function RestoreSavesModal({ closeModal }: Props) {
             ? "Nothing here would be overwritten - no save in this backup is already on the Deck."
             : `${overwritten} save file(s) on this Deck will be overwritten. ` +
               (chosen?.kind === "cloud"
-                ? "Keeping a copy first puts them in your storage under earlier copies, where you can get them back. Replacing without one cannot be undone."
-                : "What they hold now is kept as a backup on this Deck, so you can restore it.")
+                ? "Keeping a copy first puts them in your storage under earlier copies"
+                : `Keeping a copy first puts them under ${THIS_DECK} - earlier copies`) +
+              ", where you can get them back. Replacing without one cannot be undone."
         }
-        {...(chosen?.kind === "cloud"
+        {...(overwritten > 0
           ? {
               /* **Offered, not imposed.** Replacing is the one thing here that
                  destroys a save with nothing set aside, and it is two presses
@@ -681,12 +691,12 @@ export function RestoreSavesModal({ closeModal }: Props) {
           storages share it because from here they are the same thing --
           somewhere a backup is -- and two scrollers over one list of sources
           would be two places to look for the same answer. */}
-      {choosing && (files?.length || accounts.length > 0) ? (
+      {choosing && (files?.length || accounts.length > 0 || kept.length > 0) ? (
       <ScrollList style={{ maxHeight: "38vh" }}>
       {/* Which backup, when there is a choice -- more than one file on the
           Deck, or a storage signed into. A lone file with nowhere else to read
           from is opened for you, so this does not appear. */}
-      {files !== null && choosing && (files.length > 1 || accounts.length > 0)
+      {files !== null && choosing && (files.length > 1 || accounts.length > 0 || kept.length > 0)
         && files.map((file) => (
         <Field
           key={file.path}
@@ -735,6 +745,26 @@ export function RestoreSavesModal({ closeModal }: Props) {
           </Field>
         </Focusable>
       ))}
+      {/* What replaces here overwrote: a storage's earlier copies, for the
+          Deck. Last, as the way out of a mistake rather than a source. */}
+      {choosing && kept.length > 0 && (
+        <Field
+          label={`${THIS_DECK} — earlier copies`}
+          description={`${kept.length} kept`}
+          childrenContainerWidth="min"
+        >
+          <DialogButton
+            onClick={() => {
+              showing.current += 1;
+              setCameFrom(null);
+              setChosen({ kind: "earlier", remote: "", label: THIS_DECK });
+            }}
+            style={ICON_BUTTON_WIDE}
+          >
+            Choose
+          </DialogButton>
+        </Field>
+      )}
       </ScrollList>
       ) : null}
 
@@ -751,16 +781,18 @@ export function RestoreSavesModal({ closeModal }: Props) {
               {`${earlier.label} — earlier copies`}
             </div>
             <div style={{ fontSize: "12px", opacity: 0.7, marginTop: "3px" }}>
-              Each is what one copy to this storage replaced. Choosing one shows
-              what it holds before anything is put back.
+              {earlier.remote
+                ? "Each is what one copy to this storage replaced."
+                : "Each is what one restore on this Deck replaced."}
+              {" Choosing one shows what it holds before anything is put back."}
             </div>
           </div>
-          {replaced[earlier.remote] === undefined && (
+          {earlier.remote && replaced[earlier.remote] === undefined && (
             <div style={{ display: "flex", justifyContent: "center", padding: "24px" }}>
               <Spinner style={{ height: "32px" }} />
             </div>
           )}
-          {replaced[earlier.remote]?.length === 0 && (
+          {earlier.remote && replaced[earlier.remote]?.length === 0 && (
             <Field
               label="Nothing has been replaced"
               description="A copy to this storage has never had to overwrite anything, so there is nothing to go back to."
@@ -772,7 +804,14 @@ export function RestoreSavesModal({ closeModal }: Props) {
               the screen with the buttons never rendering -- which is the exact
               thing that container was added downstairs to stop. */}
           <ScrollList style={{ maxHeight: "38vh" }}>
-          {(replaced[earlier.remote] ?? []).map((snapshot) => (
+          {!earlier.remote && kept.map((file) => (
+            <Field key={file.path} label={file.label ?? file.name} childrenContainerWidth="min">
+              <DialogButton onClick={() => void open(file, earlier)} style={ICON_BUTTON_WIDE}>
+                Choose
+              </DialogButton>
+            </Field>
+          ))}
+          {(earlier.remote ? replaced[earlier.remote] ?? [] : []).map((snapshot) => (
             <Field
               key={snapshot.stamp}
               label={snapshot.label}
@@ -834,7 +873,11 @@ export function RestoreSavesModal({ closeModal }: Props) {
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: "14px", fontWeight: 600 }}>
                 {chosen!.kind === "file" ? (
-                  <FileName name={chosen!.file.name} />
+                  chosen!.file.label ? (
+                    `${THIS_DECK} — ${chosen!.file.label}`
+                  ) : (
+                    <FileName name={chosen!.file.name} />
+                  )
                 ) : (
                   chosen!.label
                 )}
@@ -883,7 +926,7 @@ export function RestoreSavesModal({ closeModal }: Props) {
                 An icon, in a DANGER_CLASS wrapper, exactly as the import
                 dialog's rows carry theirs. Files only -- see `confirmDiscard`
                 for why nothing here empties somebody's cloud storage. */}
-            {chosen!.kind === "file" && (
+            {chosen!.kind === "file" && !chosen!.file.label && (
               <div className={DANGER_CLASS} style={{ flex: "none" }}>
                 <DialogButton
                   disabled={working}

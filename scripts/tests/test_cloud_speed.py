@@ -39,8 +39,8 @@ try:
     check("the files saves are made of", _copies[0][-1], cloudsync.SPEED_FILES)
     check("with the flags a real copy uses",
           ("--checkers" in _copies[0], "--checksum" in _copies[0]), (True, True))
-    check("into its own folder", _copies[0][2], "box:" + cloudsync.SPEED_FOLDER)
-    check("which is removed after", _calls[-1], ["purge", "box:" + cloudsync.SPEED_FOLDER])
+    check("into its own folder", _copies[0][2], "box:DeckyEmu/.speed-test")
+    check("which is removed after", _calls[-1], ["purge", "box:DeckyEmu/.speed-test"])
     check("and so is the local copy", os.path.exists(_scratch), False)
     check("timed", (_result["ok"], "upload" in _result, "check" in _result), (True, True, True))
 
@@ -51,6 +51,14 @@ try:
     _failed = cloudsync.speed_test("box", _scratch)
     check("says why", _failed, {"ok": False, "error": "no route to host"})
     check("and still cleans up", (_calls[-1][0], os.path.exists(_scratch)), ("purge", False))
+    section("a bucket storage")
+    _real_kinds = cloudsave.remote_kinds
+    cloudsave.remote_kinds = lambda: {"bucket": "s3"}
+    try:
+        check("uses the lowercase root", cloudsync.speed_folder("bucket"),
+              "deckyemu/.speed-test")
+    finally:
+        cloudsave.remote_kinds = _real_kinds
 finally:
     cloudsave.rclone = _real_rclone
     cloudsync._by_content = _real_compare

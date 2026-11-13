@@ -30,6 +30,10 @@ import { BackupPlaces, NETWORK } from "./BackupPlaces";
 /** Steam's sleep blocker for the restore under way, through its last step. */
 let awake = () => {};
 
+function stayAwake() {
+  awake = keepAwake();
+}
+
 /** "DeckyEmu-backup-20261109-190426.zip" as "9 Nov 2026, 19:04". */
 function when(name: string): string {
   const found = /(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})/.exec(name);
@@ -185,10 +189,10 @@ export function RestoreEverythingModal({ closeModal }: { closeModal?: () => void
           (text) => setStatus({ text, percent: -1 }),
         )
           .then((problems) => {
-            report(
-              "Restored",
-              problems.length ? `Everything else is back. These didn't work: ${problems.join("; ")}` : "Everything is back.",
-            );
+            const said = problems.length
+              ? `Everything else is back. These didn't work: ${problems.join("; ")}`
+              : "Everything is back.";
+            report("Restored", error ? `${said} ${error}` : said);
             closeModal?.();
           })
           .catch((finishError) => report("Restore failed", String(finishError)));
@@ -231,45 +235,55 @@ export function RestoreEverythingModal({ closeModal }: { closeModal?: () => void
     })();
   };
 
+  const start = (path: string, keep: boolean) => {
+    setRunning(true);
+    setStatus({ text: "Starting", percent: 0 });
+    stayAwake();
+    startFullRestore(path, keep)
+      .then((result) => {
+        if (!result.ok) {
+          awake();
+          setRunning(false);
+          openModal(
+            <ConfirmModal
+              strTitle="Restore failed"
+              strDescription={result.error ?? ""}
+              strOKButtonText="Close"
+              bAlertDialog
+            />,
+          );
+        }
+      })
+      .catch((error) => {
+        awake();
+        setRunning(false);
+        logError("could not start the restore", error);
+        openModal(
+          <ConfirmModal
+            strTitle="Restore failed"
+            strDescription={String(error)}
+            strOKButtonText="Close"
+            bAlertDialog
+          />,
+        );
+      });
+  };
+
+  // The same choice, in the same words, as replacing saves in Restore saves.
   const restore = (path: string) =>
     openModal(
       <ConfirmModal
         strTitle="Restore this backup?"
-        strDescription="It replaces DeckyEmu's settings and games on this Deck."
-        strOKButtonText="Restore"
-        onOK={() => {
-          setRunning(true);
-          setStatus({ text: "Starting", percent: 0 });
-          awake = keepAwake();
-          startFullRestore(path)
-            .then((result) => {
-              if (!result.ok) {
-                awake();
-                setRunning(false);
-                openModal(
-                  <ConfirmModal
-                    strTitle="Restore failed"
-                    strDescription={result.error ?? ""}
-                    strOKButtonText="Close"
-                    bAlertDialog
-                  />,
-                );
-              }
-            })
-            .catch((error) => {
-              awake();
-              setRunning(false);
-              logError("could not start the restore", error);
-              openModal(
-                <ConfirmModal
-                  strTitle="Restore failed"
-                  strDescription={String(error)}
-                  strOKButtonText="Close"
-                  bAlertDialog
-                />,
-              );
-            });
-        }}
+        strDescription={
+          "It replaces DeckyEmu's settings, games and saves on this Deck. Keeping a copy " +
+          "first puts the saves it replaces under Restore saves, in This Deck - earlier " +
+          "copies, where you can get them back. Replacing without one cannot be undone."
+        }
+        strOKButtonText="Keep a copy first"
+        onOK={() => start(path, true)}
+        strMiddleButtonText="Replace without keeping"
+        onMiddleButton={() => start(path, false)}
+        bDestructiveWarning
       />,
     );
 

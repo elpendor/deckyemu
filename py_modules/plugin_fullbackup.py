@@ -64,7 +64,7 @@ class FullBackup(plugin_base.PluginContext):
         self._detach(run(), "full_backup_done", False, "", 0, False, once=True)
         return {"ok": True, "started": True}
 
-    async def start_full_restore(self, path: str):
+    async def start_full_restore(self, path: str, keep: bool = True):
         """Start restoring a backup found on a connected drive; it reports on
         `full_restore_progress` and ends on `full_restore_done`."""
         known = [os.path.join(drive["path"], name)
@@ -81,10 +81,10 @@ class FullBackup(plugin_base.PluginContext):
         async def run():
             awake = await self._run(fullbackup.stay_awake, "Restoring a backup")
             try:
-                result = await self._run(fullbackup.restore, path, progress)
+                result = await self._run(fullbackup.restore, path, progress, keep)
             finally:
                 await self._run(fullbackup.release, awake)
-            if result.get("ok") and path in sent:
+            if result.get("ok") and not result.get("nowhere") and path in sent:
                 # Sent over for this restore and now spent; it is also where it
                 # came from, and holding 10 GB twice on the Deck helps nobody.
                 await self._run(os.remove, path)

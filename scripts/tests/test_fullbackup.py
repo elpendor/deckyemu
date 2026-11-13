@@ -194,6 +194,48 @@ try:
         _bundle.writestr("a.txt", "x")
     check("a zip that is not a backup is refused", fullbackup.restore(_plain)["ok"], False)
 
+    section("a restore over saves played since")
+    _drop(_save, "played since")
+    _older = os.path.join(TMP, "older.zip")
+    with zipfile.ZipFile(_older, "w") as _bundle:
+        _bundle.writestr(fullbackup.MANIFEST, json.dumps({"format": fullbackup.FORMAT}))
+        _bundle.writestr("saves/plain/saves/slot1.sav", "older")
+        _bundle.writestr("saves/gone/saves/slot1.sav", "nowhere")
+    _back = fullbackup.restore(_older)
+    check("the older save is put back", open(_save).read(), "older")
+    _kept_at = os.path.join(savedata.earlier_dir(), _back["kept"])
+    check("what it replaced is kept as an earlier copy",
+          (bool(_back["kept"]), savedata.made_here(_kept_at)), (True, True))
+    with zipfile.ZipFile(_kept_at) as _kept:
+        check("holding the newer save", _kept.read("saves/plain/saves/slot1.sav"),
+              b"played since")
+    check("a save with no place is said, not dropped quietly",
+          (_back["ok"], _back["nowhere"], "no place" in _back["error"]), (True, 1, True))
+    _again = fullbackup.restore(_older)
+    check("an identical save is not kept again", _again["kept"], "")
+
+    section("imported definitions travel with settings")
+    _drop(os.path.join(appenv.SETTINGS_DIR, "emulators.d", "made-up.deckyemu.json"), "{}")
+    check("the backup carries them",
+          "settings/emulators.d/made-up.deckyemu.json" in
+          {name for _, name in fullbackup.plan(["settings"])["settings"]}, True)
+    os.remove(os.path.join(appenv.SETTINGS_DIR, "emulators.d", "made-up.deckyemu.json"))
+
+    section("a drive that fails mid-write")
+    _before = fullbackup.backups_on(_drive)
+    _real_write = fullbackup._Pieces._write
+
+    def _broken(self, view):
+        raise OSError(5, "Input/output error")
+
+    fullbackup._Pieces._write = _broken
+    try:
+        _failed = fullbackup.backup(_drive, ["roms"])
+    finally:
+        fullbackup._Pieces._write = _real_write
+    check("fails the backup rather than skipping files", _failed["ok"], False)
+    check("and keeps the one already there", fullbackup.backups_on(_drive), _before)
+
     section("a game added back to Steam under a new id")
     import store  # noqa: E402
     _drop(os.path.join(appenv.SETTINGS_DIR, "library.json"), json.dumps({"3000000001": {

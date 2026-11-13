@@ -333,10 +333,14 @@ The choice that matters is which button you press:
 | | |
 | --- | --- |
 | **Restore missing** | Writes only the saves you don't have. Anything already on your Deck is left alone, so a game you played since the backup can't lose progress |
-| **Restore all** | The backup wins. What you want after wiping a Deck. It asks first and says how many files it'd overwrite, and keeps those as a new backup on your Deck, so you can restore them if you change your mind |
+| **Restore all** | The backup wins. What you want after wiping a Deck. It asks first and says how many files it'd overwrite. **Keep a copy first** puts those under *This Deck — earlier copies*, so you can restore them if you change your mind; **Replace without keeping** doesn't |
 
 Before you press anything, the screen tells you how many files are in the backup
 and how many you already have.
+
+*This Deck — earlier copies* works like a storage's: one dated row per restore
+that kept a copy, *RetroArch — 12 Nov, 18:21*, ten at most, oldest removed first.
+Restoring from one leaves it there.
 
 Restoring everything from a storage also takes that storage's record of what it
 holds, so the next game you close doesn't copy the same saves straight back up.

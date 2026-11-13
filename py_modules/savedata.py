@@ -383,6 +383,9 @@ def _catalog_sources(empty=False, anywhere=False):
             # definition as `_SKIP_TOP`, applied one level up.
             roots = [(os.path.basename(path), path) for path in owned
                      if not _is_cache_root(relative_of(path, home))]
+        # Numbered over every declared root, before any is dropped below, so a
+        # backup made before a root existed names its folders as a restore does.
+        segments = dict(zip(roots, _numbered(label for label, _ in roots)))
         # A declared path that is not there yet is still where its saves go.
         # Kept only for restoring, because a backup listing it would offer an
         # emulator with nothing in it.
@@ -403,6 +406,7 @@ def _catalog_sources(empty=False, anywhere=False):
             "id": entry["id"],
             "name": entry["name"],
             "roots": roots,
+            "segments": segments,
             "one_file": one_file,
             "only": only,
             "whole": not declared,
@@ -479,9 +483,18 @@ def roots_of(source):
     The segment depends on that emulator alone, so its folder has the same name
     in every zip and on every storage, whatever else was copied with it.
     """
+    segments = source.get("segments")
+    if segments:
+        return [(segments[root], root[1]) for root in source["roots"]]
+    return list(zip(_numbered(label for label, _ in source["roots"]),
+                    (path for _, path in source["roots"])))
+
+
+def _numbered(labels):
+    """A segment per label, in order; a repeated one gets `-2`, `-3`, ..."""
     taken = set()
     listed = []
-    for label, path in source["roots"]:
+    for label in labels:
         segment = slug(label)
         candidate = segment
         nth = 2
@@ -489,7 +502,7 @@ def roots_of(source):
             candidate = "%s-%d" % (segment, nth)
             nth += 1
         taken.add(candidate)
-        listed.append((candidate, path))
+        listed.append(candidate)
     return listed
 
 
@@ -787,7 +800,7 @@ def backups_in(*directories):
             continue
         for name in sorted(names):
             path = os.path.join(directory, name)
-            if path in seen or not os.path.isfile(path) or not is_backup(path):
+            if path in seen or made_here(path) or not os.path.isfile(path)                     or not is_backup(path):
                 continue
             seen.add(path)
             try:
@@ -849,14 +862,107 @@ def _fits(writes):
     return True, ""
 
 
+#: What a replace overwrote, kept on this Deck as the cloud keeps its own:
+#: `<backups>/earlier`, ten at most, newest first. Out of the backups folder
+#: proper so they are never listed or deleted as backups.
+EARLIER_SUBDIR = "earlier"
+KEEP_EARLIER = 10
+#: How they were named, and where they went, before they had a folder.
+KEPT_PREFIX = "deckyemu-saves-replaced-"
+
+
+def earlier_dir(create=True):
+    path = os.path.join(arrivals_dir(create), EARLIER_SUBDIR)
+    if create:
+        os.makedirs(path, exist_ok=True)
+    return path
+
+
+def made_here(path):
+    """True for an earlier copy, which nothing may delete on its own."""
+    return (os.path.dirname(os.path.normpath(path)) == os.path.normpath(earlier_dir(False))
+            or os.path.basename(path).startswith(KEPT_PREFIX))
+
+
+def _move_old_kept():
+    """Earlier copies from before the folder: into it, out of the backups."""
+    try:
+        names = [name for name in os.listdir(arrivals_dir(False))
+                 if name.startswith(KEPT_PREFIX)]
+    except OSError:
+        return
+    for name in names:
+        stamp = name[len(KEPT_PREFIX):]
+        try:
+            os.replace(os.path.join(arrivals_dir(False), name),
+                       os.path.join(earlier_dir(), stamp))
+        except OSError as error:
+            appenv.logger.warning("Could not move %s to earlier copies: %s", name, error)
+
+
+def _earlier_files():
+    """[(path, stamp)] newest first. Named `YYYYmmdd-HHMMSS[-n].zip`."""
+    _move_old_kept()
+    try:
+        names = os.listdir(earlier_dir(False))
+    except OSError:
+        return []
+    found = []
+    for name in names:
+        match = re.match(r"^(\d{8}-\d{6})(?:-(\d+))?\.zip$", name)
+        if match:
+            found.append((match.group(1), int(match.group(2) or 0), name))
+    found.sort(reverse=True)
+    return [(os.path.join(earlier_dir(False), name), stamp) for stamp, _, name in found]
+
+
+def _prune_earlier():
+    for path, _ in _earlier_files()[KEEP_EARLIER:]:
+        try:
+            os.remove(path)
+        except OSError as error:
+            appenv.logger.warning("Could not remove earlier copy %s: %s", path, error)
+
+
+def earlier_copies():
+    """What replaces on this Deck overwrote, newest first, as the cloud's
+    `cloudsync.snapshots` lists its own: which saves, and when."""
+    names = {source["id"]: source["name"] for source in _all_sources()}
+    listed = []
+    for path, stamp in _earlier_files()[:KEEP_EARLIER]:
+        try:
+            with zipfile.ZipFile(path) as bundle:
+                manifest, problem = _read_manifest(bundle)
+            size = os.path.getsize(path)
+        except (OSError, zipfile.BadZipFile, ValueError):
+            continue
+        if problem:
+            continue
+        held = ", ".join(names.get(one, one)
+                         for one in sorted((manifest.get("emulators") or {}).keys()))
+        when = time.strftime("%d %b, %H:%M", time.strptime(stamp, "%Y%m%d-%H%M%S")).lstrip("0")
+        listed.append({
+            "name": os.path.basename(path),
+            "path": path,
+            "bytes": size,
+            "modified": os.path.getmtime(path),
+            "label": "%s - %s" % (held, when) if held else when,
+        })
+    return listed
+
+
 def _keep_aside(overwritten):
-    """Zip what a replace is about to overwrite, beside the other backups.
+    """Zip what a replace is about to overwrite, into the earlier copies.
 
     `overwritten` is (local path, name in the archive) pairs. The zip is an
-    ordinary backup, so Restore offers it like any other. Returns (name, error).
+    ordinary backup, so it restores like one. Returns (name, error).
     """
-    name = time.strftime("deckyemu-saves-replaced-%Y%m%d-%H%M%S.zip")
-    destination = os.path.join(arrivals_dir(), name)
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    destination = os.path.join(earlier_dir(), stamp + ".zip")
+    taken = 1
+    while os.path.exists(destination):
+        destination = os.path.join(earlier_dir(), "%s-%d.zip" % (stamp, taken))
+        taken += 1
     partial = destination + _PARTIAL
     emulators = sorted({member.split("/")[1] for _, member in overwritten})
     try:
@@ -872,15 +978,16 @@ def _keep_aside(overwritten):
         except OSError:
             pass
         return "", str(error)
-    return name, ""
+    _prune_earlier()
+    return os.path.basename(destination), ""
 
 
-def restore(path, ids=None, replace=False):
+def restore(path, ids=None, replace=False, keep=True):
     """Put saves back from an archive. Returns what happened, per emulator.
 
     Off, `replace` writes only what is not here, which cannot lose a save
-    played since. On, it overwrites -- after zipping what it overwrites
-    beside the other backups, so a replace can be undone from Restore.
+    played since. On, it overwrites -- with `keep`, after zipping what it
+    overwrites into the earlier copies, so a replace can be undone.
 
     Each file is written beside its destination and renamed over it, so a full
     disk leaves whole files rather than truncated ones.
@@ -951,6 +1058,8 @@ def restore(path, ids=None, replace=False):
             + [(arrivals_dir(), sum(size_of(target) for target, _ in overwritten))])
         if not fits:
             return {"ok": False, "error": tight}
+        if not keep:
+            overwritten = []
         kept = ""
         if overwritten:
             kept, failed = _keep_aside(overwritten)

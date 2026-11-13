@@ -536,6 +536,8 @@ export interface SaveBackupFile {
   bytes: number;
   /** Unix seconds. Newest first, since restoring is usually about the last one. */
   modified: number;
+  /** An earlier copy's "RetroArch - 12 Nov, 18:21"; absent on a backup. */
+  label?: string;
 }
 
 /**
@@ -548,7 +550,8 @@ export interface SaveBackupFile {
 export const listSaveBackups = callable<
   [],
   /** `dir` is where a backup belongs, for pointing the transfer server at it. */
-  { ok: boolean; dir: string; backups: SaveBackupFile[] }
+  /** `earlier`: what replaces here overwrote, as a storage keeps. */
+  { ok: boolean; dir: string; backups: SaveBackupFile[]; earlier?: SaveBackupFile[] }
 >("list_save_backups");
 /**
  * Delete one backup from the Deck without restoring it.
@@ -572,10 +575,11 @@ export const describeSaveBackup = callable<
  * lose a save played since the backup was taken.
  *
  * The archive is deleted once it has been read, the same way unpacking a zip
- * consumes it. `removed` names the file when that happened.
+ * consumes it, unless it is an earlier copy. `removed` names the file when
+ * that happened. `keep` puts what a replace overwrites in the earlier copies.
  */
 export const restoreSaveBackup = callable<
-  [path: string, ids: string[] | null, replace: boolean],
+  [path: string, ids: string[] | null, replace: boolean, keep: boolean],
   {
     ok: boolean;
     error?: string;
@@ -586,7 +590,7 @@ export const restoreSaveBackup = callable<
     not_installed?: string[];
     /** The archive, once it was deleted. Absent when it could not be. */
     removed?: string;
-    /** The backup holding what a replace overwrote, or "". */
+    /** The earlier copy holding what a replace overwrote, or "". */
     kept?: string;
   }
 >("restore_save_backup");
@@ -907,7 +911,7 @@ export interface RestoreTodo {
 }
   /** Restored games' app ids; the panel asks Steam which are missing. */
 export const startFullRestore = callable<
-  [path: string],
+  [path: string, keep: boolean],
   { ok: boolean; error?: string; started?: boolean }
 >("start_full_restore");
 /** A restored game, as Steam needs it to add it back. */
