@@ -73,6 +73,9 @@ export async function ensureRescueTile(): Promise<void> {
     localStorage.setItem(KEY, String(appId));
 
     if (tile.art && tile.art_version && localStorage.getItem(ART_KEY) !== tile.art_version) {
+      // The icon is part of the art's version, so a new one reaches a tile
+      // that already exists.
+      if (tile.icon) setShortcutIcon(appId, tile.icon);
       if (await applyArtwork(appId, tile.art)) localStorage.setItem(ART_KEY, tile.art_version);
     }
   } catch (error) {

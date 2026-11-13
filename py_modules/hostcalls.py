@@ -73,11 +73,17 @@ class HostCalls:
             digest.update(data)
             art[slot] = {"data": "data:image/png;base64," + base64.b64encode(data).decode(),
                          "kind": "png"}
+        icon = os.path.join(assets, "tile", "icon.png")
+        try:
+            with open(icon, "rb") as handle:
+                digest.update(handle.read())
+        except OSError:
+            icon = os.path.join(assets, "game-icon.png")
         return {
             "name": "DeckyEmu",
             "exe": os.path.join(appenv.ROOT, "rescue.sh"),
             "start_dir": appenv.ROOT,
-            "icon": os.path.join(assets, "game-icon.png"),
+            "icon": icon,
             "art": art,
             "art_version": digest.hexdigest()[:16] if art else "",
         }
