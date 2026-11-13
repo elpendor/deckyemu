@@ -39,6 +39,7 @@ the restore screen. Every comparable project holds one remote and answers this
 by making you start again.
 """
 
+import fnmatch
 import json
 import os
 import posixpath
@@ -228,6 +229,17 @@ def _excludes(source):
     for name in savedata._SKIP_TOP:
         args += ["--exclude", "%s/**" % name]
     return args
+
+
+def _held_back(source, relative):
+    """Whether `_excludes` keeps `relative` (a path under one root) out."""
+    parts = relative.split("/")
+    names, folders = savedata.split_except(source.get("except"))
+    if any(fnmatch.fnmatch(parts[-1], rule) for rule in names):
+        return True
+    if any(fnmatch.fnmatch(part, rule) for part in parts[:-1] for rule in folders):
+        return True
+    return bool(source.get("whole")) and parts[0] in savedata._SKIP_TOP
 
 
 #: How rclone decides whether two files are the same, and what it does not
@@ -1199,7 +1211,9 @@ def record_pushes(remote, source_ids):
     shutil.rmtree(staging, ignore_errors=True)
     if ok:
         for source_id, state in states.items():
-            _keep_mine(source_id, state)
+            # With the storage, as `record_push` keeps it: without, a switch
+            # left every record naming the one before.
+            _keep_mine(source_id, state, remote)
     return ok, "" if ok else output
 
 
@@ -1420,7 +1434,7 @@ def name_of(source_id):
 
 def _nothing(error):
     """The shape `compare` answers with when there is nothing to say."""
-    return {"missing": 0, "differing": [], "roots": [], "here": 0, "there": 0,
+    return {"missing": 0, "differing": [], "newer": [], "roots": [], "here": 0, "there": 0,
             "theirs": {"device": "", "at": 0}, "error": error}
 
 
@@ -1428,7 +1442,8 @@ def compare(remote, source_id, seconds=BEFORE_PLAY_SECONDS):
     """What one emulator has up there that this Deck does not. One request.
 
     Returns a dict: `missing` (files up there and not here), `differing` (names
-    that this Deck and another device have both changed), `roots` (which save
+    that this Deck and another device have both changed), `newer` (names only
+    another device has changed since this Deck's upload), `roots` (which save
     roots exist up there, so the fetch that follows does not ask again), `here`
     and `there` (when each side was last written, as unix seconds) and `error`.
 
@@ -1470,7 +1485,11 @@ def compare(remote, source_id, seconds=BEFORE_PLAY_SECONDS):
     # Whether the record up there is this Deck's own last upload. Compared on
     # the whole record rather than a timestamp: two Decks writing in the same
     # second is unlikely and a clock going backwards is not.
-    ours = bool(mine) and _identity(mine) == _identity(theirs)
+    # A record of what went to another storage is no baseline for this one:
+    # every file differing would read as "only they changed it" and be taken
+    # unasked, though theirs may be the older save.
+    elsewhere = bool(mine.get("remote")) and mine["remote"] != remote
+    ours = bool(mine) and not elsewhere and _identity(mine) == _identity(theirs)
     # **No record here means no basis for a disagreement.** "Both sides changed
     # it since this Deck last uploaded" cannot be asked when this Deck has never
     # uploaded: every shared file read as changed, so an emulator whose saves
@@ -1487,6 +1506,9 @@ def compare(remote, source_id, seconds=BEFORE_PLAY_SECONDS):
 
     missing = 0
     differing = []
+    # Changed only up there since this Deck's own upload: the other device's
+    # save is simply newer, and this Deck's version is what it last sent.
+    newer = []
     roots = set()
     for name, said in up_there.items():
         root = name.split("/", 1)[0]
@@ -1501,7 +1523,7 @@ def compare(remote, source_id, seconds=BEFORE_PLAY_SECONDS):
             # Whatever differs is what this Deck has done since, which is not a
             # question for anybody.
             continue
-        was = (mine.get("files") or {}).get(name)
+        was = None if elsewhere else (mine.get("files") or {}).get(name)
         size, mtime = here_now[name]
         changed_here = was is None or (
             was.get("size") != size or was.get("mtime") != mtime)
@@ -1511,10 +1533,13 @@ def compare(remote, source_id, seconds=BEFORE_PLAY_SECONDS):
             # which files get preserved before they are overwritten, and a
             # basename does not say which save root it came from.
             differing.append(name)
+        elif changed_there:
+            newer.append(name)
 
     return {
         "missing": missing,
         "differing": differing,
+        "newer": sorted(newer),
         "roots": sorted(roots),
         # What each side last wrote, by its own clock. Shown in the dialog and
         # never compared with each other -- see the module docstring.
@@ -1555,6 +1580,10 @@ def _forget_gone(remote, entries, only):
         if only and emulator != only:
             continue
         mine = read_mine(emulator)
+        # A record of what went to another storage says nothing about this
+        # one; "repairing" it here rewrote every emulator's record on a switch.
+        if (mine or {}).get("remote") and mine["remote"] != remote:
+            continue
         held = (mine or {}).get("files") or {}
         gone = [name for name in held if name not in names]
         if not gone:
@@ -1567,7 +1596,65 @@ def _forget_gone(remote, entries, only):
         _write_record(remote, emulator, dict(mine, files=kept))
 
 
-def pull_steps(remote, ids=None, replace=False, stamp="", known=None):
+def sync_differences(remote, source_id):
+    """For a storage just put in use: saves here and up there that disagree.
+
+    Only against another device's upload. This Deck's own record, or one it has
+    already answered about, means any difference is this Deck's own play since.
+    Returns {"names", "here", "there", "theirs"}, names empty when nothing asks.
+    """
+    nothing = {"names": [], "here": 0, "there": 0, "theirs": {"device": "", "at": 0}}
+    source = next(
+        (one for one in savedata._all_sources() if one["id"] == source_id), None)
+    if source is None or not _SEGMENT.match(source_id):
+        return nothing
+    here_now = _local_files(source)
+    if not here_now:
+        return nothing
+    theirs, error = _remote_state(remote, source_id, LIST_SECONDS)
+    if error or not theirs:
+        return nothing
+    mine = read_mine(source_id)
+    same_storage = not mine.get("remote") or mine.get("remote") == remote
+    if same_storage and (_identity(mine) == _identity(theirs)
+                         or mine.get("answered") == _identity(theirs)):
+        return nothing
+    names = []
+    for name, said in (theirs.get("files") or {}).items():
+        now = here_now.get(name)
+        if isinstance(said, dict) and now and (said.get("size"), said.get("mtime")) != now:
+            names.append(name)
+    newest = max((mtime for _size, mtime in here_now.values()), default=0)
+    return {"names": sorted(names), "here": int(newest),
+            "there": int(theirs.get("at") or 0), "theirs": _identity(theirs)}
+
+
+def local_copies(source_id, names):
+    """[(path here, name in a save backup)] for `names` that exist on this Deck.
+
+    The shape `savedata._keep_aside` takes, so a launch can keep this Deck's
+    copies locally -- no upload in front of a waiting game.
+    """
+    source = next(
+        (one for one in savedata._all_sources() if one["id"] == source_id), None)
+    if source is None:
+        return []
+    roots = {segment: path for segment, path in _roots_of(source)}
+    found = []
+    for name in names:
+        segment, _, relative = name.partition("/")
+        root = roots.get(segment)
+        if not relative or not root:
+            continue
+        # A file root is held as `<root>/<file>`; its file sits beside it here.
+        base = root if os.path.isdir(root) else os.path.dirname(root)
+        path = savedata._safe_member(base, relative)
+        if path and os.path.isfile(path):
+            found.append((path, "saves/%s/%s" % (source_id, name)))
+    return found
+
+
+def pull_steps(remote, ids=None, replace=False, stamp="", known=None, names=None):
     """One rclone call per save root, coming the other way. Returns (steps, error).
 
     `replace` is the same switch as the local restore and means the same thing:
@@ -1589,6 +1676,9 @@ def pull_steps(remote, ids=None, replace=False, stamp="", known=None):
     `known` is the set of `(emulator, root)` pairs a caller has already looked
     up -- `compare` returns them, and passing them through is what keeps a
     launch to one network round trip instead of two.
+
+    `names` (`<root>/<file>`, as `compare` gives them) fetches those files only,
+    overwriting: the ones another device changed and this one did not.
 
     Otherwise the remote is listed first, and what comes back is matched **per
     save root**, not per emulator. Matching per emulator was a real failure: RPCS3
@@ -1646,10 +1736,18 @@ def pull_steps(remote, ids=None, replace=False, stamp="", known=None):
     if not listed:
         return [], "That storage has nothing for the emulators installed here."
 
+    wanted = {}
+    for name in names or ():
+        segment, _, relative = name.partition("/")
+        if relative:
+            wanted.setdefault(segment, []).append(relative)
+
     steps = []
     for source in listed:
         for segment, path in _roots_of(source):
             if (source["id"], segment) not in up_there:
+                continue
+            if names is not None and segment not in wanted:
                 continue
             target = _safe(source["id"], segment)
             if not target:
@@ -1673,9 +1771,24 @@ def pull_steps(remote, ids=None, replace=False, stamp="", known=None):
             # excluded it: what arrives is some other Deck's, which is the
             # controller bound by device id that `saves_except` exists to keep
             # out, and it arrives looking like a save.
-            args = (["copy", "%s:%s/%s" % (remote, root, where), into]
-                    + _only_for(source, segment) + _excludes(source))
-            if not replace:
+            args = ["copy", "%s:%s/%s" % (remote, root, where), into]
+            if names is None:
+                args += _only_for(source, segment) + _excludes(source)
+            else:
+                # rclone takes `--files-from` alone, with no other filter, so
+                # the same exclusions are applied to the list here instead.
+                fetch = [one for one in wanted[segment] if not _held_back(source, one)]
+                if not fetch:
+                    continue
+                listing = os.path.join(STATE_DIR, "%s-%s.fetching" % (source["id"], segment))
+                try:
+                    os.makedirs(STATE_DIR, exist_ok=True)
+                    with open(listing, "w", encoding="utf-8") as handle:
+                        handle.write("\n".join(fetch))
+                except OSError as error:
+                    return [], str(error)
+                args += ["--files-from", listing]
+            if names is None and not replace:
                 args.append("--ignore-existing")
             command = cloudsave.argv(
                 args + _by_content(remote) + _FILES_AT_ONCE + _STATS)

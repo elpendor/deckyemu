@@ -746,6 +746,75 @@ found = with_run(fake, lambda: cloudsync.compare("dropbox", "retroarch"), source
 check("another device writing is not itself a conflict when this Deck has not "
       "touched the file",
       found["differing"], [])
+# **And their newer copy is named, so it comes down.** It used to stop here,
+# and the Deck played its older save.
+check("the file only the other device changed is reported as newer",
+      found["newer"], ["saves/here.srm"])
+
+# Fetched by name, overwriting: those files and nothing else of the root.
+fake = FakeRun()
+_named, _ = with_run(fake, lambda: cloudsync.pull_steps(
+    "dropbox", ["retroarch"], True, "", {("retroarch", "saves")}, ["saves/here.srm"]),
+    sources=ONE)
+_argv = _named[0]["argv"] if _named else []
+# Setting a storage up: saves both devices had before linking are asked about,
+# once, and only against another device's upload.
+def _differences(theirs_record):
+    return with_run(FakeRun(stdout=_json.dumps(theirs_record)),
+                    lambda: cloudsync.sync_differences("dropbox", "retroarch"), sources=ONE)
+
+
+cloudsync._keep_mine("retroarch", _record("deck-aaa", 1000, _as_uploaded), "dropbox")
+check("this Deck's own upload asks nothing on setup",
+      _differences(_record("deck-aaa", 1000, _theirs))["names"], [])
+check("another device's different save is asked about on setup",
+      _differences(_record("deck-bbb", 2000, _theirs))["names"], ["saves/here.srm"])
+check("an identical save is not",
+      _differences(_record("deck-bbb", 2000, _as_uploaded))["names"], [])
+cloudsync.remember_answer("retroarch", _record("deck-bbb", 2000, _theirs))
+check("nor an upload already answered about",
+      _differences(_record("deck-bbb", 2000, _theirs))["names"], [])
+
+# Listing one storage repairs this Deck's record of it -- not a record of
+# another. On a switch that rewrote every emulator's, 90 seconds each.
+cloudsync._keep_mine("retroarch", _record("deck-aaa", 1000, _as_uploaded), "dropbox")
+_writes = FakeRun()
+with_run(_writes, lambda: cloudsync._forget_gone(
+    "onedrive", [{"Path": "retroarch/saves/other.srm"}], ""), sources=ONE)
+check("a record of another storage is not repaired against this one",
+      (len(_writes.calls), cloudsync.read_mine("retroarch").get("remote")), (0, "dropbox"))
+
+check("a named fetch lists exactly those files and keeps nothing as existing",
+      ("--files-from" in _argv, "--ignore-existing" in _argv,
+       open(_argv[_argv.index("--files-from") + 1], encoding="utf-8").read()
+       if "--files-from" in _argv else ""),
+      (True, False, "here.srm"))
+# rclone refuses `--files-from` beside any other filter; on the Deck that was
+# "the usage of --files-from overrides all other filters".
+check("and carries no other filter, which rclone would refuse",
+      [arg for arg in _argv if arg in ("--include", "--exclude", "--filter")], [])
+_held = dict(ONE[0], **{"except": ["pad.cfg", "cache/"]})
+check("what a definition holds back is still held back from a named fetch",
+      [cloudsync._held_back(_held, one) for one in
+       ("pad.cfg", "x/pad.cfg", "cache/a.bin", "game.srm")],
+      [True, True, True, False])
+_kept = with_run(FakeRun(), lambda: cloudsync.local_copies("retroarch", ["saves/here.srm"]),
+                 sources=ONE)
+check("and what it would overwrite is found here, to keep first",
+      _kept, [(os.path.join(_saves, "here.srm"), "saves/retroarch/saves/here.srm")])
+
+# 3b. This Deck's record is of another storage, so it says nothing about what
+# this one holds: their copy may be the older save. Asked, never taken unasked.
+cloudsync._keep_mine("retroarch", _record("deck-aaa", 1000, _as_uploaded), "onedrive")
+fake = FakeRun(stdout=_json.dumps(_record("deck-bbb", 2000, _theirs)))
+found = with_run(fake, lambda: cloudsync.compare("dropbox", "retroarch"), sources=ONE)
+check("after a switch, a save that differs is a question, not a newer copy",
+      (found["newer"], found["differing"]), ([], ["saves/here.srm"]))
+cloudsync._keep_mine("retroarch", _record("deck-aaa", 1000, _as_uploaded), "dropbox")
+fake = FakeRun(stdout=_json.dumps(_record("deck-bbb", 2000, _theirs)))
+found = with_run(fake, lambda: cloudsync.compare("dropbox", "retroarch"), sources=ONE)
+check("while a record of this storage still takes it as newer",
+      found["newer"], ["saves/here.srm"])
 
 # 4. Both wrote. **This is the only question worth interrupting a launch for.**
 cloudsync._keep_mine("retroarch", _record("deck-aaa", 1000, _played))
@@ -753,6 +822,8 @@ fake = FakeRun(stdout=_json.dumps(_record("deck-bbb", 2000, _theirs)))
 found = with_run(fake, lambda: cloudsync.compare("dropbox", "retroarch"), sources=ONE)
 check("two devices having changed the same save is the one thing that asks",
       found["differing"], ["saves/here.srm"])
+check("and a file in question is never also taken as simply newer",
+      found["newer"], [])
 check("and each side's own time comes back, for the dialog to show",
       (found["here"], found["there"]), (1000, 2000))
 
@@ -799,7 +870,7 @@ check("a save only up there is missing here, and is fetched without asking",
 fake = FakeRun(returncode=1, stderr="ERROR : directory not found")
 check("an emulator never copied up has nothing to compare and nothing to say",
       with_run(fake, lambda: cloudsync.compare("dropbox", "retroarch"), sources=ONE),
-      {"missing": 0, "differing": [], "roots": [], "here": 0, "there": 0,
+      {"missing": 0, "differing": [], "newer": [], "roots": [], "here": 0, "there": 0,
        "theirs": {"device": "", "at": 0}, "error": ""})
 
 # Bounded at both ends, and both ends have been wrong. Too high and a launch

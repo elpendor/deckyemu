@@ -68,8 +68,9 @@ def _use_if_only(name):
     can be chosen deliberately.
     """
     if len(cloudsave.remotes()) > 1:
-        return
+        return False
     store.set_settings({"cloud_remote": "%s:" % name})
+    return True
 
 
 def _received_owners(received):
@@ -345,8 +346,10 @@ class Transfers(plugin_base.PluginContext):
             return False, "Saved, but %s did not answer: %s" % (
                 label, cloudsave.said_plainly(error))
 
-        _use_if_only(name)
+        if _use_if_only(name):
+            self._first_sync_soon(name)
         self._note_cloud_state()
+        self._storage_changed_soon()
         return True, ""
 
     def _cloud_login(self, step, kind, pasted):
@@ -376,9 +379,105 @@ class Transfers(plugin_base.PluginContext):
             return (False, "Signed in, but %s did not answer: %s" % (
                 label, cloudsave.said_plainly(error)), "")
 
-        _use_if_only(name)
+        if _use_if_only(name):
+            self._first_sync_soon(name)
         self._note_cloud_state()
+        self._storage_changed_soon()
         return (True, "", "")
+
+    def _storage_changed_soon(self):
+        """From the server's thread: tell open panels the storage changed."""
+        self.loop.call_soon_threadsafe(
+            lambda: self.loop.create_task(appenv.emit("cloud_storage_changed")))
+
+    def _first_sync_soon(self, name):
+        """From the server's thread: start the first sync on the backend's loop."""
+        self.loop.call_soon_threadsafe(lambda: self._detach(
+            self._first_sync(name), "cloud_sync_done", False, "", []))
+
+    async def _settle_first_sync(self, name):
+        """Ask, per emulator, about saves two devices both had before linking.
+
+        Returns the emulators to leave out of the copy up: unanswered ones,
+        which the question at their next launch settles instead.
+        "Cloud storage" keeps this Deck's copies aside and takes the storage's;
+        "This Deck" marks its copies newest, so the copy up replaces the
+        storage's, which keeps what it replaced.
+        """
+        storage = cloudsave.label_for(
+            (await self._run(cloudsave.remote_kinds)).get(name, "")) or name
+        skipped = []
+        for index, source in enumerate(await self._run(savedata._all_sources)):
+            found = await self._run(cloudsync.sync_differences, name, source["id"])
+            if not found["names"]:
+                continue
+            key = -1000 - index
+            self._asked[key] = ""
+            await appenv.emit("cloud_sync_conflict", key, found["names"], found["here"],
+                              found["there"], source["name"], storage)
+            waited = 0.0
+            while not self._asked.get(key) and waited < self._ASK_SECONDS:
+                await asyncio.sleep(0.2)
+                waited += 0.2
+            chosen = self._asked.pop(key, "")
+            if chosen == "cloud":
+                await self._take_newer(name, source["id"], {"roots": [], "theirs":
+                                                            found["theirs"]}, found["names"])
+            elif chosen == "deck":
+                now = time.time()
+                for path, _member in await self._run(
+                        cloudsync.local_copies, source["id"], found["names"]):
+                    try:
+                        os.utime(path, (now, now))
+                    except OSError as error:
+                        appenv.logger.warning("Could not mark %s newest: %s", path, error)
+            else:
+                skipped.append(source["id"])
+            appenv.logger.info("First sync: %s for %s (%d file(s))",
+                               chosen or "unanswered", source["id"], len(found["names"]))
+        return skipped
+
+    async def _first_sync(self, name):
+        """When a storage becomes the one in use: both sides made whole.
+
+        What is only up there comes down (never overwriting), then everything
+        with saves goes up. A second device is then ready at once, instead of
+        filling in one emulator at a time as games are played.
+        """
+        if self._copying:
+            return
+
+        async def busy():
+            # Shown from the start, listing included: against a slow storage
+            # that is most of the wait, and the row said nothing through it.
+            self._copying = "first"
+            await appenv.emit("cloud_copying", "first")
+
+        try:
+            await busy()
+            await self._run(cloudsync.learn_compare, name)
+            steps, error = await self._run(cloudsync.pull_steps, name, None, False, "")
+            if steps and not error:
+                ok, reason = await self._stream_cloud(steps, "first")
+                if not ok:
+                    appenv.logger.warning("First sync could not bring saves down: %s", reason)
+                await busy()
+            skipped = await self._settle_first_sync(name)
+            await busy()
+            ids = None
+            if skipped:
+                ids = [one["id"] for one in await self._run(savedata._all_sources)
+                       if one["id"] not in skipped]
+            steps, error = await self._run(cloudsync.push_steps, name, ids)
+            if error:
+                appenv.logger.info("First sync had nothing to copy up: %s", error)
+                await appenv.emit("cloud_sync_done", True, "", [], "first")
+                return
+            await self._carry_saves(steps, "cloud_sync_done", name, kind="first")
+        finally:
+            if self._copying == "first":
+                self._copying = ""
+                await appenv.emit("cloud_copying", "")
 
     async def cloud_status(self, details: bool = True):
         """Whether saves have somewhere to go, and where. Never a credential.
@@ -496,9 +595,15 @@ class Transfers(plugin_base.PluginContext):
             return {"ok": False, "error": "The cloud transfer tool is missing."}
         if name and name not in await self._run(cloudsave.remotes):
             return {"ok": False, "error": "There is no storage called %r." % name}
+        before = (await self._run(store.get_settings)).get("cloud_remote") or ""
         await self._run(store.set_settings,
                         {"cloud_remote": ("%s:" % name) if name else ""})
         await self._run(self._note_cloud_state)
+        await appenv.emit("cloud_storage_changed")
+        # A storage newly in use is one this Deck's saves may never have
+        # reached, whether it is the first or a switch.
+        if name and before.rstrip(":") != name:
+            self._detach(self._first_sync(name), "cloud_sync_done", False, "", [])
         return await self.cloud_status(False)
 
     async def forget_cloud_remote(self, name: str):
@@ -532,6 +637,7 @@ class Transfers(plugin_base.PluginContext):
         if not left:
             await self._run(store.set_settings, {"cloud_saves": False})
         await self._run(self._note_cloud_state)
+        await appenv.emit("cloud_storage_changed")
         # Cheap, for the reason `choose_cloud_remote` gives: the row has gone,
         # and asking a provider about the one left is not what says so.
         return await self.cloud_status(False)
@@ -1087,6 +1193,38 @@ class Transfers(plugin_base.PluginContext):
             appenv.logger.warning("Could not re-apply %s settings after saves came down: %s",
                                  source, result.get("error"))
 
+    async def _take_newer(self, remote, source, found, newer):
+        """Bring down saves only another device changed. Returns how many came.
+
+        This Deck's versions are what it last uploaded, so nothing is lost, and
+        they are zipped into its earlier copies first anyway: locally, so a game
+        waiting to start waits for no upload. Then the upload is marked settled,
+        or the files' new times would read as a conflict at the next launch.
+        """
+        overwritten = await self._run(cloudsync.local_copies, source, newer)
+        if overwritten:
+            kept, failed = await self._run(savedata._keep_aside, overwritten)
+            if failed:
+                appenv.logger.warning(
+                    "Not taking %s's newer saves: could not keep this Deck's first (%s)",
+                    source, failed)
+                return 0
+        # What a launch's comparison already listed; otherwise the pull lists.
+        known = {(source, root) for root in found["roots"]} if found["roots"] else None
+        steps, plan_error = await self._run(
+            cloudsync.pull_steps, remote, [source], True, "", known, newer)
+        if plan_error:
+            appenv.logger.warning("Could not plan %s's newer saves: %s", source, plan_error)
+            return 0
+        ok, reason = await self._stream_cloud(steps, "launch")
+        if not ok:
+            appenv.logger.warning("Could not bring %s's newer saves down: %s", source, reason)
+            return 0
+        await self._run(cloudsync.remember_answer, source, found["theirs"])
+        await self._reapply_setup(source)
+        appenv.logger.info("Brought %d newer file(s) down for %s before play", len(newer), source)
+        return len(newer)
+
     async def cloud_before_play(self, app_id: int, core_id: str):
         """Bring down what this Deck is missing before a game opens its saves.
 
@@ -1162,6 +1300,10 @@ class Transfers(plugin_base.PluginContext):
                     else:
                         appenv.logger.warning(
                             "Could not bring %s down before play: %s", source, reason)
+
+            newer = found.get("newer") or []
+            if newer:
+                restored += await self._take_newer(remote, source, found, newer)
             # `differing` is emptied once it has been answered: whatever the
             # answer was, there is no question left standing for the panel.
             return {"ok": True, "differing": [] if answered else differing,

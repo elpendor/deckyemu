@@ -165,7 +165,7 @@ export function LibraryPanel({ onRefresh }: Props) {
     return () => removeEventListener("cloud_copying", moving);
   }, [loadWaiting]);
 
-  useEffect(() => {
+  const loadCloud = useCallback(() => {
     // The row names the service, which is local. Asking the provider who you
     // are would be two round trips on every open of the Library tab.
     cloudStatus(false)
@@ -188,6 +188,17 @@ export function LibraryPanel({ onRefresh }: Props) {
       )
       .catch((error) => logError("could not read the cloud destination", error));
   }, []);
+
+  // Again whenever the storage in use changes, which happens in a dialog
+  // over this panel or on a phone.
+  useEffect(() => {
+    loadCloud();
+    const changed = addEventListener<[]>("cloud_storage_changed", () => {
+      loadCloud();
+      loadWaiting();
+    });
+    return () => removeEventListener("cloud_storage_changed", changed);
+  }, [loadCloud, loadWaiting]);
 
   const loadPlainIcons = useCallback(() => {
     gamesWithoutIcon()
@@ -472,37 +483,42 @@ export function LibraryPanel({ onRefresh }: Props) {
         </PanelSectionRow>
       </PanelSection>
 
-      {/* Where saves go first, since the rows under it depend on it; then
-          the actions; then the automatic copies. */}
+      {/* Where saves go and whether they are there, in one row; the copy
+          button only when it has something to do; one switch for both
+          automatic copies. */}
       <PanelSection title="Save data">
         <PanelSectionRow>
           <ButtonItem
-            label="Cloud storage"
+            label="Cloud saves"
             onClick={() => openModal(<CloudSetupModal />)}
             description={
-              cloudRemote
-                ? `Saves go to ${cloudRemote}.`
-                : "Not set up. Copies saves to Dropbox, WebDAV, SFTP or S3, set up from a phone or PC."
+              !cloudRemote
+                ? "Not set up. Keeps saves in Dropbox, WebDAV, SFTP or S3, set up from a phone or PC."
+                : copying
+                  ? `${cloudRemote}. Copying...`
+                  : waiting.length > 0
+                    ? `${cloudRemote}. ${namesOf(waiting)} ${waiting.length === 1 ? "has" : "have"} saves not copied yet.`
+                    : lastSync
+                      ? `${cloudRemote}. Everything copied ${ago(lastSync)}.`
+                      : `${cloudRemote}. Nothing copied yet.`
             }
           >
             {cloudRemote ? "Change" : "Set up"}
           </ButtonItem>
         </PanelSectionRow>
 
-        {/* What is waiting, or when the last copy went: the answer to "is
-            this working?", beside the button that fixes it. */}
-        {cloudRemote && (
+        {cloudRemote && copying && (
+          <PanelSectionRow>
+            <div style={{ paddingBottom: "8px" }}>
+              <ProgressBar fraction={percent < 0 ? -1 : percent / 100} />
+            </div>
+          </PanelSectionRow>
+        )}
+
+        {cloudRemote && !copying && (waiting.length > 0 || !(beforePlay && afterPlay)) && (
           <PanelSectionRow>
             <ButtonItem
               layout="below"
-              disabled={Boolean(copying)}
-              description={
-                waiting.length > 0
-                  ? `${namesOf(waiting)} ${waiting.length === 1 ? "has" : "have"} saves not copied yet.`
-                  : lastSync
-                    ? `Everything is copied. Last copied ${ago(lastSync)}.`
-                    : "Nothing has been copied yet."
-              }
               onClick={() => {
                 void cloudBackupNow(waiting.length > 0 ? waiting.map((one) => one.id) : null)
                   .then((result) => {
@@ -513,16 +529,36 @@ export function LibraryPanel({ onRefresh }: Props) {
                   .catch((error) => logError("could not start the copy", error));
               }}
             >
-              {copying ? "Copying..." : "Copy saves now"}
+              Copy saves now
             </ButtonItem>
           </PanelSectionRow>
         )}
 
-        {cloudRemote && copying && (
+        {cloudRemote && (
           <PanelSectionRow>
-            <div style={{ paddingBottom: "8px" }}>
-              <ProgressBar fraction={percent < 0 ? -1 : percent / 100} />
-            </div>
+            <ToggleField
+              label="Sync automatically"
+              description="Saves come down before a game starts and go up after it closes. Off for a slow connection."
+              checked={beforePlay && afterPlay}
+              onChange={(on) => {
+                // Both halves move together; a failed write shows as the
+                // switch going back.
+                setBeforePlay(on);
+                setAfterPlay(on);
+                void setSettings({ cloud_before_play: on, cloud_after_play: on })
+                  .then(() => cloudStatus(false))
+                  .then((result) => {
+                    setBeforePlay(Boolean(result.before_play));
+                    setAfterPlay(Boolean(result.after_play));
+                    setLastSync(Number(result.last_sync) || 0);
+                  })
+                  .catch((error) => {
+                    logError("could not change automatic sync", error);
+                    setBeforePlay(!on);
+                    setAfterPlay(!on);
+                  });
+              }}
+            />
           </PanelSectionRow>
         )}
 
@@ -545,52 +581,6 @@ export function LibraryPanel({ onRefresh }: Props) {
             Restore saves
           </ButtonItem>
         </PanelSectionRow>
-
-        {/* Two switches, not one: the check before a game makes every launch
-            wait on the network, which is a different thing to want off. */}
-        {cloudRemote && (
-          <PanelSectionRow>
-            <ToggleField
-              label="Check for newer saves when a game starts"
-              description="Brings down saves this Deck does not have, and asks which to use when both sides changed. Off means a game starts straight away and uses whatever is here."
-              checked={beforePlay}
-              onChange={(on) => {
-                setBeforePlay(on);
-                void setSettings({ cloud_before_play: on })
-                  .then(() => cloudStatus(false))
-                  .then((result) => setBeforePlay(Boolean(result.before_play)))
-                  .catch((error) => {
-                    logError("could not change the before-play check", error);
-                    setBeforePlay(!on);
-                  });
-              }}
-            />
-          </PanelSectionRow>
-        )}
-
-        {cloudRemote && (
-          <PanelSectionRow>
-            <ToggleField
-              label="Copy saves when a game closes"
-              description="Only the saves that changed, for the emulator you were playing."
-              checked={afterPlay}
-              onChange={(on) => {
-                // Moves at once; a failed write shows as the switch going back.
-                setAfterPlay(on);
-                void setSettings({ cloud_after_play: on })
-                  .then(() => cloudStatus(false))
-                  .then((result) => {
-                    setAfterPlay(Boolean(result.after_play));
-                    setLastSync(Number(result.last_sync) || 0);
-                  })
-                  .catch((error) => {
-                    logError("could not change the after-play copy", error);
-                    setAfterPlay(!on);
-                  });
-              }}
-            />
-          </PanelSectionRow>
-        )}
       </PanelSection>
 
       <PanelSection title="Storage">

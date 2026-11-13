@@ -57,11 +57,13 @@ interface Choice {
    * dialog up in its place.
    */
   onAnswer?: (choice: "cloud" | "deck" | "stop") => void;
+  /** Set when a storage is being set up rather than a game started. */
+  storage?: string;
   closeModal?: () => void;
 }
 
 function Conflict(
-  { appId, title, emulator, names, here, there, onAnswer, closeModal }: Choice,
+  { appId, title, emulator, names, here, there, onAnswer, storage, closeModal }: Choice,
 ) {
   const answer = (choice: "cloud" | "deck" | "stop") => {
     closeModal?.();
@@ -86,9 +88,12 @@ function Conflict(
         Which {emulator} saves should this Deck use?
       </div>
       <div style={{ ...MUTED, marginBottom: "12px" }}>
-        Starting {title}. {names.length === 1 ? "One save is" : `${names.length} saves are`}{" "}
+        {storage ? `Setting up ${storage}.` : `Starting ${title}.`}{" "}
+        {names.length === 1 ? "One save is" : `${names.length} saves are`}{" "}
         different here and in your cloud storage, which usually means {emulator} was
-        played somewhere else since this Deck last copied anything up.{" "}
+        {storage
+          ? " also played on another device before this one was linked. "
+          : " played somewhere else since this Deck last copied anything up. "}
         <b>This choice applies to all of them.</b>
       </div>
 
@@ -133,11 +138,13 @@ function Conflict(
         {/* Not destructive, but it is the one that does something unexpected --
             the game does not start. Last, where this plugin puts the answer a
             thumb should not land on without meaning to. */}
-        <div className={DANGER_CLASS} style={{ flex: 1, display: "flex" }}>
-          <DialogButton onClick={() => answer("stop")} style={{ flex: 1, minWidth: "auto" }}>
-            Don't start
-          </DialogButton>
-        </div>
+        {!storage && (
+          <div className={DANGER_CLASS} style={{ flex: 1, display: "flex" }}>
+            <DialogButton onClick={() => answer("stop")} style={{ flex: 1, minWidth: "auto" }}>
+              Don't start
+            </DialogButton>
+          </div>
+        )}
       </Focusable>
 
       {/* True in both directions, which it was not when this first shipped: a
@@ -145,8 +152,8 @@ function Conflict(
           copies overwrote files here with nothing kept -- and those are exactly
           the versions the storage does not have. */}
       <div style={{ ...MUTED, marginTop: "12px" }}>
-        Neither answer loses anything. Whichever copies get replaced are kept in
-        your storage, and <b>Restore saves</b> lists them by date.
+        Neither answer loses anything. Whichever copies get replaced are kept
+        {storage ? "" : " in your storage"}, and <b>Restore saves</b> lists them by date.
       </div>
     </ModalRoot>
   );
@@ -167,6 +174,7 @@ export function showCloudDiffer(options: {
   here: number;
   there: number;
   onAnswer?: (choice: "cloud" | "deck" | "stop") => void;
+  storage?: string;
 }): () => void {
   const handle = openModal(<Conflict {...options} />);
   return () => handle.Close();

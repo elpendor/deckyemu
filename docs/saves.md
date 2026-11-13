@@ -43,7 +43,7 @@ folder if you want them carried.
 
 ## Setting up cloud storage
 
-Press **Set up** beside **Cloud storage**, the first row under **Save data**, to
+Press **Set up** beside **Cloud saves**, the first row under **Save data**, to
 pick somewhere off your Deck for saves to go. The storage is yours and so is the account — your Deck
 just writes down how to reach it, and your password stays on the device.
 
@@ -97,8 +97,9 @@ page and on your Deck.
 
 ### Managing your storages
 
-Once one is set up, the row names the service — "Saves go to Dropbox" — and its
-button reads **Change**. Open it and you'll see every storage on this
+Once one is set up, the row names the service and says whether everything is
+copied — "Dropbox. Everything copied 5 minutes ago" — and its button reads
+**Change**. Open it and you'll see every storage on this
 Deck, with **In use** next to the one saves go to.
 
 - **Pick another** to switch.
@@ -115,7 +116,17 @@ Got two accounts on the same service? They're numbered, here and in **Restore
 saves**, so the storage you copy to and the storage you restore from are
 named the same way.
 
-Setting this up copies nothing. It only records where saves would go.
+A storage gets your saves in step the moment it becomes the one saves go to,
+whether it's the first you set up or one you pick under **Change**. Whatever it
+holds that this Deck doesn't comes down, without replacing any save here, and
+then this Deck's saves go up. A second Deck is ready the moment it's set up,
+rather than filling in one emulator at a time as you play.
+
+If both devices already had different saves for the same emulator, you're asked
+which to keep, once per emulator — the same question as [when a game
+starts](#i-was-asked-to-choose-between-two-saves), without *Don't start*. The
+one not chosen is kept: under **Restore saves**, in the storage's or this Deck's
+earlier copies.
 
 ## Sending saves to the cloud
 
@@ -176,15 +187,16 @@ Drive game sends a few kilobytes.
 
 Nothing to press, no dialog.
 
-Want to check it's working? **Copy saves now** says when saves last went up, and
-reads *Copying...* while a copy is running. Turn off *Copy saves when a game
-closes* if you're on a hotspot and would rather choose when to spend the
-connection.
+Want to check it's working? The **Cloud saves** row says when saves last went
+up, and reads *Copying...* while a copy is running. Turn off *Sync
+automatically* if you're on a hotspot and would rather choose when to spend the
+connection; **Copy saves now** then appears, for doing it by hand.
 
 ### Some of my saves haven't been copied
 
-**Copy saves now** says so: *RetroArch and DuckStation have saves not copied
-yet*. Press it and they go up there and then.
+The **Cloud saves** row says so: *RetroArch and DuckStation have saves not
+copied yet*, and **Copy saves now** appears under it. Press it and they go up
+there and then.
 
 Worth using, because the copy after a game only covers the emulator you were
 playing. One that failed while you were offline would otherwise sit there until
@@ -193,7 +205,7 @@ you next play *that* emulator, which might be never.
 If something's still waiting after a later copy has come and gone, DeckyEmu's
 front panel tells you too, with the same button.
 
-> **Note:** only one copy runs at a time. Press **Copy now** or start a restore
+> **Note:** only one copy runs at a time. Press **Copy saves now** or start a restore
 > while one is going and you'll be asked to try again in a moment.
 
 Copying doesn't run from the launcher, which is why your library tile goes back
@@ -202,11 +214,13 @@ to "Stopped" the moment you quit instead of waiting for the network.
 ## Saves coming back before a game starts
 
 The other half of the same idea. Start a game and your storage gets checked for
-saves this Deck doesn't have, which come down before the emulator opens
-anything.
+saves this Deck doesn't have, and for saves another device has played since
+this Deck last sent its own. Both come down before the emulator opens anything.
+Play on one device, pick up on the other.
 
-Nothing gets overwritten — a file that isn't here can't replace one that is — so
-it happens quietly and asks you nothing.
+It asks you nothing, because nothing can be lost. A newer save only replaces one
+this Deck hasn't touched since it sent it, and this Deck's copy is kept first,
+under **Restore saves** in *This Deck — earlier copies*.
 
 If it takes more than a moment you'll see *Getting your saves*, with a bar and a
 **Start now** button. Nothing to fetch means you see nothing at all.
@@ -216,18 +230,15 @@ seconds whatever your storage is doing. If DeckyEmu can't answer at all — your
 network's gone, it's restarting — the launcher gives up and starts the game on
 the saves already there.
 
-**Its own switch** sits above the other one: *Check for newer saves when a game
-starts*. On by default, because it's the half that makes a second device work —
-without it your saves only ever go up.
-
-Turn it off and games start straight away on whatever's on your Deck, while
-copies still go up when you stop playing. Worth doing on a slow connection, or
-if this Deck is the only place you play.
+*Sync automatically* covers this half too, and it's on by default. Turn it off
+and games start straight away on whatever's on your Deck, and nothing goes up
+when you stop playing either; **Copy saves now** does it by hand. Worth doing on
+a slow connection.
 
 ### I was asked to choose between two saves
 
-That happens when a save exists both here and in your storage and the two are
-different. Your game waits while you decide.
+That happens only when a save has changed on both sides: here, and on another
+device since this Deck last sent it. Your game waits while you decide.
 
 > **Note:** this is about the emulator, not the one game. Saves can't reliably be
 > traced to a single game — RetroArch names them after the ROM, but RPCS3 files
@@ -261,9 +272,8 @@ A restore from a .zip only writes to your Deck. Your storage still holds what it
 held, so the next launch of that emulator brings down the files it has and your
 Deck no longer does.
 
-If you've deliberately gone back to an older set of saves, either turn *Check
-for newer saves when a game starts* off, or copy the older set up first so the
-two agree.
+If you've deliberately gone back to an older set of saves, either turn *Sync
+automatically* off, or copy the older set up first so the two agree.
 
 ## When there is no network
 
@@ -275,7 +285,7 @@ on the saves it already has.
 Closing a game still tries. A copy that can't reach your storage rides out a
 short outage, and if it fails properly nothing gets written down as sent — so
 that save goes up on the next copy instead, whether that's the next game you
-close or **Copy now**.
+close or **Copy saves now**.
 
 ## Restoring from the cloud
 

@@ -31,6 +31,7 @@ const SAYS: Record<string, string> = {
   launch: "Bringing down saves this Deck does not have yet.",
   backup: "Copying your saves to your cloud storage.",
   restore: "Bringing saves back from your cloud storage.",
+  first: "Getting your saves and your storage in step.",
 };
 
 //: When the waiting list was last read, so opening the panel repeatedly does

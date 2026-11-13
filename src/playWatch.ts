@@ -207,6 +207,22 @@ export function watchPlaying(): () => void {
    * stopped process, so it waits for as long as somebody takes -- and this
    * closes anything already on screen and asks in its place.
    */
+  /*
+   * The same question while a storage is being set up, when two devices both
+   * had saves before they were linked. No game waits on it, so it has no
+   * "don't start", and nothing else on screen to close first.
+   */
+  const syncConflict = addEventListener<
+    [key: number, names: string[], here: number, there: number, emulator: string,
+      storage: string]
+  >("cloud_sync_conflict", (key, names, here, there, emulator, storage) => {
+    if (!names?.length) return;
+    showCloudDiffer({
+      appId: key, title: "", emulator: emulator || "these", names, here, there,
+      storage: storage || "your cloud storage",
+    });
+  });
+
   const conflicted = addEventListener<
     [appId: number, names: string[], here: number, there: number, emulator: string]
   >("cloud_conflict", (appId, names, here, there, emulator) => {
@@ -250,5 +266,6 @@ export function watchPlaying(): () => void {
     removeEventListener("cloud_sync_progress", moving);
     removeEventListener("cloud_fetch_done", finished);
     removeEventListener("cloud_conflict", conflicted);
+    removeEventListener("cloud_sync_conflict", syncConflict);
   };
 }
