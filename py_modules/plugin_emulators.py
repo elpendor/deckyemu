@@ -996,7 +996,8 @@ class Emulators(plugin_base.PluginContext):
                         error = "That build is no longer published."
                     else:
                         asset = {"name": match["name"], "url": match["url"],
-                                 "tag": match["tag"], "size": match["size"]}
+                                 "tag": match["tag"], "size": match["size"],
+                                 "digest": match.get("digest") or ""}
             else:
                 asset, error = await self._run(
                     emu_install.resolve_release_asset,
@@ -1435,11 +1436,13 @@ class Emulators(plugin_base.PluginContext):
                 emulator, [], seconds=self._PRIME_SECONDS,
                 env_overrides=environment, wrapper=wrapper,
             )
-            if not await self._run(emu_config.missing_files, setup):
+            # Judged as the need was: a file we authored is there whether or
+            # not the emulator ran, so its being there proves nothing.
+            if not await self._run(emu_config.needs_priming, entry):
                 break
 
-        left = await self._run(emu_config.missing_files, setup)
-        if left:
+        if await self._run(emu_config.needs_priming, entry):
+            left = await self._run(emu_config.missing_files, setup) or ["its config"]
             appenv.logger.warning(
                 "%s wrote no config with no display; settings will be written into a "
                 "new file and re-applied after its first run (%s)",

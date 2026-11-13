@@ -185,10 +185,13 @@ def install_appimage(entry, asset, on_progress=None):
 
     target_dir = emulators_dir(entry["id"])
     path = os.path.join(target_dir, asset["name"])
+    # Many releases reuse one file name, so the live build is only replaced
+    # once the download has checked out.
+    incoming = path + INCOMING
 
     ok, error = net.download(
         asset["url"],
-        path,
+        incoming,
         max_bytes=MAX_APPIMAGE_BYTES,
         on_progress=on_progress,
     )
@@ -196,10 +199,10 @@ def install_appimage(entry, asset, on_progress=None):
         return "", error or "Download failed."
 
     # Before unpacking, so a damaged archive is refused whole.
-    whole, damaged = _digest_matches(path, asset.get("digest", ""))
+    whole, damaged = _digest_matches(incoming, asset.get("digest", ""))
     if not whole:
         try:
-            os.remove(path)
+            os.remove(incoming)
         except OSError:
             pass
         return "", damaged
@@ -209,9 +212,9 @@ def install_appimage(entry, asset, on_progress=None):
     extract = source.get("extract") or ""
     if extract and source.get("unpack"):
         # A tree rather than one file; `extract` names the one to run.
-        member, failure = _unpack_release(path, target_dir, extract)
+        member, failure = _unpack_release(incoming, target_dir, extract)
         try:
-            os.remove(path)
+            os.remove(incoming)
         except OSError:
             pass
         if failure:
@@ -219,15 +222,25 @@ def install_appimage(entry, asset, on_progress=None):
         path = member
         asset = dict(asset, name=os.path.basename(member))
     elif extract:
-        member, failure = _extract_member(path, target_dir, extract)
+        member, failure = _extract_member(incoming, target_dir, extract)
         try:
-            os.remove(path)
+            os.remove(incoming)
         except OSError:
             pass
         if failure:
             return "", failure
         path = member
         asset = dict(asset, name=os.path.basename(member))
+    else:
+        try:
+            os.chmod(incoming, 0o755)
+            os.replace(incoming, path)
+        except OSError as error:
+            try:
+                os.remove(incoming)
+            except OSError:
+                pass
+            return "", "Downloaded but could not put it in place: %s" % error
 
     try:
         os.chmod(path, 0o755)
@@ -325,9 +338,10 @@ def install_tool(name, asset, on_progress=None, extract=""):
 
     target_dir = tools_dir(name)
     path = os.path.join(target_dir, asset["name"])
+    incoming = path + INCOMING
 
     ok, error = net.download(
-        asset["url"], path, max_bytes=MAX_APPIMAGE_BYTES, on_progress=on_progress
+        asset["url"], incoming, max_bytes=MAX_APPIMAGE_BYTES, on_progress=on_progress
     )
     if not ok:
         return "", error or "Download failed."
@@ -336,19 +350,24 @@ def install_tool(name, asset, on_progress=None, extract=""):
     if extract:
         patterns = [extract] if isinstance(extract, str) else list(extract)
         for pattern in patterns:
-            member, error = _extract_member(path, target_dir, pattern)
+            member, error = _extract_member(incoming, target_dir, pattern)
             if error:
                 try:
-                    os.remove(path)
+                    os.remove(incoming)
                 except OSError:
                     pass
                 return "", error
             kept.append(member)
         try:
-            os.remove(path)
+            os.remove(incoming)
         except OSError:
             pass
         path = kept[0]
+    else:
+        try:
+            os.replace(incoming, path)
+        except OSError as error:
+            return "", "Downloaded but could not put it in place: %s" % error
 
     try:
         os.chmod(path, 0o755)
@@ -490,6 +509,9 @@ def ensure_cloud_tool(now=None):
 #: What was installed, beside the AppImage, so it survives a plugin reinstall.
 BUILD_RECORD = ".build.json"
 
+#: A download waiting on its check, beside the build it would replace.
+INCOMING = ".incoming"
+
 
 def build_record_path(entry_id):
     return os.path.join(emulators_dir(entry_id, create=False), BUILD_RECORD)
@@ -613,10 +635,13 @@ def installed_appimage(entry_id):
     directory = emulators_dir(entry_id, create=False)
     # Saves kept by a removal may be files in here; never return one.
     saves = {os.path.normpath(one) for one in declared_saves(entry_id)}
+    named = os.path.basename(read_build_record(entry_id).get("asset") or "")
+    if named and os.path.isfile(os.path.join(directory, named)):
+        return os.path.join(directory, named)
     try:
         for name in sorted(os.listdir(directory)):
-            # The build record sorts first.
-            if name == BUILD_RECORD:
+            # Records (.build.json, .patches.json) and unfinished downloads.
+            if name.startswith(".") or name.endswith((INCOMING, ".part")):
                 continue
             path = os.path.join(directory, name)
             if os.path.normpath(path) in saves:

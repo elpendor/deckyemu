@@ -166,6 +166,23 @@ try:
     check("and the emulator is started rather than trusted",
           (_prime(_stuck), len(_stuck.attempts)), (True, 1))
 
+    # Azahar on a real Deck: the file we authored is there, the offscreen try
+    # writes nothing, and that must not count as done -- the display try runs.
+    os.remove(_path)
+    emu_config.apply_setup(ENTRY)
+    _authored_second = _Fake(writes_on=2)
+    check("a file we authored does not pass for a first attempt that did nothing",
+          (_prime(_authored_second), len(_authored_second.attempts)), (True, 2))
+    os.remove(_path)
+    emu_config.apply_setup(ENTRY)
+    _authored_never = _Fake()
+    check("and when neither attempt writes, it says so",
+          (_prime(_authored_never), len(_authored_never.attempts)), (False, 2))
+    os.remove(_path)
+    emu_config.apply_setup(ENTRY)
+    _stuck_again = _Fake(writes_on=1)
+    _prime(_stuck_again)
+
     # Once the emulator has written the file itself the stamp no longer matches
     # what this plugin left behind, and there is nothing to prime.
     emu_config.apply_setup(ENTRY)

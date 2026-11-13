@@ -302,5 +302,88 @@ check("an empty one is refused, since it would match nothing",
       True)
 
 
+section("a failed update keeps the build that works")
+
+_LIVE_ENTRY = {"id": "steady-emu", "name": "Steady",
+               "source": {"kind": "github", "repo": "someone/steady",
+                          "asset": r"^Steady\.AppImage$"}, "args": "{rom}"}
+_live_dir = emu_install.emulators_dir("steady-emu")
+_live = os.path.join(_live_dir, "Steady.AppImage")
+with io.open(_live, "w") as _handle:
+    _handle.write("working build")
+
+
+def _download_junk(url, path, max_bytes=0, on_progress=None):
+    with io.open(path, "w") as handle:
+        handle.write("cut short")
+    return True, ""
+
+
+_saved_download = net.download
+net.download = _download_junk
+try:
+    _, _why = emu_install.install_appimage(
+        _LIVE_ENTRY, {"name": "Steady.AppImage", "url": "https://example.test/s",
+                      "tag": "2.0", "digest": "sha256:" + "0" * 64})
+finally:
+    net.download = _saved_download
+check("a mismatched download is refused", bool(_why), True)
+with io.open(_live) as _handle:
+    check("and the installed build is untouched", _handle.read(), "working build")
+check("nothing half-done is left beside it",
+      sorted(os.listdir(_live_dir)), ["Steady.AppImage"])
+
+section("records beside the build are never taken for it")
+
+_rec_dir = emu_install.emulators_dir("recorded-emu")
+for _name in (".build.json", ".patches.json", "Recorded.AppImage"):
+    with io.open(os.path.join(_rec_dir, _name), "w") as _handle:
+        _handle.write("{}")
+check("the patch record is skipped",
+      os.path.basename(emu_install.installed_appimage("recorded-emu")),
+      "Recorded.AppImage")
+emu_install.write_build_record("recorded-emu", "1.0", "Recorded.AppImage")
+with io.open(os.path.join(_rec_dir, "AAA-readme"), "w") as _handle:
+    _handle.write("x")
+check("the build record's name wins over what sorts first",
+      os.path.basename(emu_install.installed_appimage("recorded-emu")),
+      "Recorded.AppImage")
+
+section("an unpacked release cannot leave its folder, or break the old one")
+
+_ESCAPE = os.path.join(TMP, "release", "Escape.zip")
+with zipfile.ZipFile(_ESCAPE, "w") as _bundle:
+    _bundle.writestr("run.bin", "x")
+    _bundle.writestr("a\\..\\..\\escaped", "x")
+_esc_dir = emu_install.emulators_dir("escape-port")
+_, _esc_why = emu_install._unpack_release(_ESCAPE, _esc_dir, r"^run\.bin$")
+check("a backslash climb is refused", "leaves its own folder" in _esc_why, True)
+check("and nothing landed beside the folder",
+      os.path.exists(os.path.join(os.path.dirname(_esc_dir), "escaped")), False)
+
+_tree_dir = emu_install.emulators_dir("tree-port")
+with io.open(os.path.join(_tree_dir, "run.bin"), "w") as _handle:
+    _handle.write("old build")
+with io.open(os.path.join(_tree_dir, "save.dat"), "w") as _handle:
+    _handle.write("mine")
+_BROKEN = os.path.join(TMP, "release", "Broken.zip")
+with zipfile.ZipFile(_BROKEN, "w") as _bundle:
+    _bundle.writestr("run.bin", "new build")
+    _bundle.writestr("nothing-matches", "x")
+_, _broken_why = emu_install._unpack_release(_BROKEN, _tree_dir, r"^absent$")
+with io.open(os.path.join(_tree_dir, "run.bin")) as _handle:
+    check("a failed unpack leaves the old build", _handle.read(), "old build")
+_GOOD = os.path.join(TMP, "release", "Good.zip")
+with zipfile.ZipFile(_GOOD, "w") as _bundle:
+    _bundle.writestr("top/run.bin", "new build")
+_found, _ = emu_install._unpack_release(_GOOD, _tree_dir, r"^run\.bin$")
+with io.open(_found) as _handle:
+    check("a good one replaces it", _handle.read(), "new build")
+with io.open(os.path.join(_tree_dir, "save.dat")) as _handle:
+    check("and keeps the program's own files", _handle.read(), "mine")
+check("no staging folder is left",
+      [n for n in os.listdir(os.path.dirname(_tree_dir)) if n.endswith(".unpacking")], [])
+
+
 if __name__ == "__main__":
     summary()

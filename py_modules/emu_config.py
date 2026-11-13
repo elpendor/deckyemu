@@ -273,7 +273,8 @@ def _read_lines(path):
         # file is correct: these emulators read what they find and fill in the
         # rest themselves.
         return [], False, ""
-    except OSError as error:
+    except (OSError, UnicodeDecodeError) as error:
+        # Not UTF-8: left alone rather than rewritten through a lossy decode.
         return None, False, "Could not read %s: %s" % (path, error)
 
     try:
@@ -772,7 +773,7 @@ def _apply_whole_file(path, content, previous=None, superseded=()):
             current = handle.read()
     except FileNotFoundError:
         current = None
-    except OSError as error:
+    except (OSError, UnicodeDecodeError) as error:
         return [], [], {}, "Could not read %s: %s" % (path, error)
 
     if current is not None:

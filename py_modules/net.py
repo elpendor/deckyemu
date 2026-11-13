@@ -499,6 +499,9 @@ def download(url, dest, headers=None, max_bytes=512 * 1024 * 1024, on_progress=N
                     handle.write(chunk)
                     if on_progress is not None:
                         on_progress(done, total)
+            # read() returns b"" on an early close rather than raising.
+            if total and done < total:
+                raise OSError("download stopped at %d of %d bytes" % (done, total))
     except (urllib.error.URLError, OSError) as error:
         appenv.logger.warning("Download failed for %s: %s", url, error)
         try:

@@ -1057,3 +1057,13 @@ check("the commented binding changed", 'InputGearShiftUp = "KEY_Y,JOY1_BUTTON6"'
 check("and kept its description", "; sequential shift up" in _text, True)
 check("the appended key landed inside the section",
       _text.rstrip().endswith("XResolution = 1280"), True)
+
+section("a config file that is not UTF-8 is left alone")
+
+import emu_config  # noqa: E402
+
+_latin = os.path.join(TMP, "latin1.ini")
+with io.open(_latin, "wb") as _handle:
+    _handle.write(b"[General]\nName = Caf\xe9\n")
+_lines, _bom, _error = emu_config._read_lines(_latin)
+check("it is reported, not raised", (_lines, bool(_error)), (None, True))

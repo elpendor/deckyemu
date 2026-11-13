@@ -42,7 +42,8 @@ def _safe_target(destination, name):
     Archives come off the network, so an absolute or `..` member is refused,
     and the resolved path is checked against the destination.
     """
-    relative = os.path.normpath(name).replace("\\", "/")
+    # Backslashes first: normpath on Linux would keep `a\..\..` as one name.
+    relative = os.path.normpath(name.replace("\\", "/"))
     if relative.startswith("/") or relative.split("/")[0] == "..":
         return ""
     target = os.path.join(destination, *relative.split("/"))
@@ -118,10 +119,36 @@ def _unpack_tarball(archive, destination, pattern):
 def _unpack_release(archive, destination, pattern):
     """Unpack a whole archive, and return the member `pattern` names. (path, error).
 
-    Members keep their relative paths, so each is checked for escaping.
+    Unpacked beside `destination` first and moved over it only once whole, so
+    a failure leaves the installed build as it was. Files already there that
+    the release does not ship (the program's own data) stay.
     """
-    if tarfile.is_tarfile(archive):
-        return _unpack_tarball(archive, destination, pattern)
+    staging = os.path.join(os.path.dirname(destination),
+                           "." + os.path.basename(destination) + ".unpacking")
+    shutil.rmtree(staging, ignore_errors=True)
+    try:
+        os.makedirs(staging)
+        if tarfile.is_tarfile(archive):
+            found, error = _unpack_tarball(archive, staging, pattern)
+        else:
+            found, error = _unpack_zip(archive, staging, pattern)
+        if error:
+            return "", error
+        for root, _dirs, files in os.walk(staging):
+            for name in files:
+                source = os.path.join(root, name)
+                target = os.path.join(destination, os.path.relpath(source, staging))
+                os.makedirs(os.path.dirname(target), exist_ok=True)
+                os.replace(source, target)
+        return os.path.join(destination, os.path.relpath(found, staging)), ""
+    except OSError as error:
+        return "", "Could not unpack the download: %s" % error
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+
+
+def _unpack_zip(archive, destination, pattern):
+    """`_unpack_release` for a zip. Same contract, same refusals."""
     try:
         matcher = re.compile(pattern)
     except re.error as error:
@@ -135,10 +162,9 @@ def _unpack_release(archive, destination, pattern):
                 name = info.filename
                 if info.is_dir() or not name:
                     continue
-                relative = os.path.normpath(name).replace("\\", "/")
-                if relative.startswith("/") or relative.split("/")[0] == "..":
+                target = _safe_target(destination, name)
+                if not target:
                     return "", "The download holds a path that leaves its own folder."
-                target = os.path.join(destination, *relative.split("/"))
                 os.makedirs(os.path.dirname(target), exist_ok=True)
                 # A read-only file from the last build cannot be written over.
                 _replace(target)
@@ -148,8 +174,8 @@ def _unpack_release(archive, destination, pattern):
                 mode = info.external_attr >> 16
                 if mode:
                     os.chmod(target, mode & 0o777)
-                seen.append(os.path.basename(relative))
-                if matcher.match(os.path.basename(relative)):
+                seen.append(os.path.basename(target))
+                if matcher.match(os.path.basename(target)):
                     found = target
     except (OSError, zipfile.BadZipFile, ValueError) as error:
         return "", "Could not unpack the download: %s" % error
@@ -171,6 +197,7 @@ def _extract_member(archive, destination, pattern):
 
     found = []
     seen = []
+    partial = ""
     try:
         with zipfile.ZipFile(archive) as bundle:
             for info in bundle.infolist():
@@ -187,9 +214,17 @@ def _extract_member(archive, destination, pattern):
                         "The download contained %d files matching %r; expected "
                         "one." % (len(found), pattern))
         target = os.path.join(destination, os.path.basename(found[0].filename))
+        # Written aside and renamed, so a failure keeps the installed copy.
+        partial = target + ".part"
         with zipfile.ZipFile(archive) as bundle:
-            with bundle.open(found[0]) as source, open(target, "wb") as handle:
+            with bundle.open(found[0]) as source, open(partial, "wb") as handle:
                 shutil.copyfileobj(source, handle)
+        os.replace(partial, target)
     except (OSError, zipfile.BadZipFile, ValueError) as error:
+        if partial:
+            try:
+                os.remove(partial)
+            except OSError:
+                pass
         return "", "Could not unpack the download: %s" % error
     return target, ""
