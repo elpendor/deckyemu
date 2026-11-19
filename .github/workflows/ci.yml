@@ -25,6 +25,14 @@ on:
         description: "Publish a release"
         type: boolean
         default: false
+      prerelease:
+        description: "Publish as a pre-release, which no installed copy updates to"
+        type: boolean
+        default: false
+      draft:
+        description: "Publish as a draft, which only the repository's collaborators can see"
+        type: boolean
+        default: false
       bump:
         description: "Version to release (ignored unless publishing)"
         type: choice
@@ -453,11 +461,23 @@ jobs:
         if: inputs.publish
         env:
           GH_TOKEN: ${{ github.token }}
+        # A pre-release is invisible to every installed updater and to
+        # install.sh, and gets no announcement. Promote it with
+        # `gh release edit vX.Y.Z --prerelease=false --latest`. A draft is
+        # private as well, its assets need a sign-in, and its tag is made only
+        # when it is published: `gh release edit vX.Y.Z --draft=false --latest
+        # --discussion-category Announcements`.
         run: |
+          if [ "${{ inputs.draft }}" = "true" ]; then
+            channel=(--draft)
+          elif [ "${{ inputs.prerelease }}" = "true" ]; then
+            channel=(--prerelease)
+          else
+            channel=(--latest --discussion-category "Announcements")
+          fi
           gh release create "v${{ steps.meta.outputs.version }}" deckyemu-service.tar.gz deckyemu.zip install.sh DeckyEmu-install.desktop chdman-linux-x86_64 \
             --repo "$GITHUB_REPOSITORY" \
             --target "${{ steps.commit.outputs.sha }}" \
             --title "v${{ steps.meta.outputs.version }}" \
             --notes-file notes.md \
-            --latest \
-            --discussion-category "Announcements"
+            "${channel[@]}"

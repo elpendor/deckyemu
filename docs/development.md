@@ -258,7 +258,14 @@ A scope or a `!` is accepted and ignored (`fix(store):`, `perf!:`).
 There's no changelog file to update and no release notes to write — they come
 from the log. CI is dispatched by hand (`gh workflow run ci.yml -f publish=true
 -f bump=patch`), which is what bumps the version, tags it and publishes the zip
-DeckyEmu's own updater reads.
+DeckyEmu's own updater reads. Adding `-f prerelease=true` publishes a release
+no installed copy updates to, for testing the real downloads first; promote it
+with `gh release edit vX.Y.Z --prerelease=false --latest`. `-f draft=true`
+publishes one only the repository's collaborators can see: fetch it with
+`gh release download vX.Y.Z`, unpack the service tarball on the Deck and run the
+`install.sh` inside it, then publish it with `gh release edit vX.Y.Z
+--draft=false --latest --discussion-category Announcements`. Until either is
+promoted, Compress games can't fetch chdman, which comes from the latest release.
 
 ## Layout
 
