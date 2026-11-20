@@ -24,6 +24,7 @@ import emulator_catalog
 from emulator_catalog import hotkeys
 import emulators
 import ra_detect
+import ra_overrides
 import romshelf
 import sysenv
 from ra_overrides import (  # noqa: F401 -- re-exported; see ra_overrides.py
@@ -139,7 +140,8 @@ LAUNCH_LOG_CAP = 2 * 1024 * 1024
 #  42  withdrawn: unsetting WAYLAND_DISPLAY broke gamescope's Vulkan layer
 #  43  past the withdrawal, so a device holding 42 rewrites its launchers
 #  44  a playlist an emulator can't read launches its first disc on rebuild
-FORMAT_VERSION = 44
+#  45  PS1 cores get a DualShock core remap
+FORMAT_VERSION = 45
 
 
 def _slug(title):
@@ -651,10 +653,11 @@ def write_launcher(
         argv = emulators.launch_argv(emulator, rom_path, fullscreen, title_id)
         core_path = emulator.get("target", "")
     else:
+        config_dir = (install or {}).get("config_dir", "")
         override = write_override_config(
-            hide_osd, menu_combo, cheevos_settings,
-            config_dir=(install or {}).get("config_dir", ""),
+            hide_osd, menu_combo, cheevos_settings, config_dir=config_dir,
         )
+        ra_overrides.write_core_remap(core_path, config_dir)
         argv = ra_detect.launch_argv(install, core_path, rom_path, appendconfig=override)
 
     extra = split_extra_args(extra_args)

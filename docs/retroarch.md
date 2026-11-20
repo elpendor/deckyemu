@@ -110,6 +110,20 @@ combos are safest.
 Like the notification setting, this goes into the `--appendconfig` file, so
 changing it rewrites the launchers of games you've already added.
 
+## PlayStation games get a DualShock
+
+The PS1 cores (Beetle PSX, Beetle PSX HW, PCSX ReARMed and SwanStation) plug
+in a plain digital pad unless told otherwise, and games that need the analog
+sticks stop at a "DUALSHOCK analog controller is required" screen. DeckyEmu
+plugs in a DualShock instead, by writing a core remap file into RetroArch's
+remaps folder the first time it sets up a game for that core. On Beetle the DualShock starts in
+analog mode; on the other three it may start in digital mode, and the core's
+analog toggle combo switches it.
+
+It's an ordinary remap: change the controller type in RetroArch's Controls
+menu and save it, or remove it there, and DeckyEmu won't write it again. If a
+core already has a core remap of yours, DeckyEmu leaves it alone.
+
 ## RetroAchievements
 
 RetroArch has achievement support built in. This turns it on for games launched

@@ -3,9 +3,10 @@
 Passed with --appendconfig, so the user's retroarch.cfg is never written:
 on-screen message modes, the Steam pad's controller profile, the menu
 shortcut, a fix for exit bindings on the same buttons, achievements, and how
-often save RAM reaches disk.
+often save RAM reaches disk. PS1 cores get a core remap: see `write_core_remap`.
 """
 
+import json
 import os
 import stat
 
@@ -239,4 +240,66 @@ def write_override_config(hide_osd, menu_combo="off", cheevos_settings=None,
         os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
     except OSError as error:
         appenv.logger.warning("Could not restrict %s: %s", path, error)
+    return path
+
+
+# PS1 cores plug in a digital pad, which games that need analog refuse to
+# start with. Each core's name (its remap folder) and DualShock device id, as
+# each reported it on the Deck -- the ids differ: 517 is SwanStation's
+# analog joystick. Beetle keeps its DualShock in analog mode by default.
+DUALSHOCK_CORES = {
+    "mednafen_psx_hw": ("Beetle PSX HW", 517),
+    "mednafen_psx": ("Beetle PSX", 517),
+    "pcsx_rearmed": ("PCSX-ReARMed", 517),
+    "swanstation": ("SwanStation", 261),
+}
+_PORTS = 8
+#: Remaps already written once, so one the user removed is not put back.
+WRITTEN = os.path.join(appenv.DATA_DIR, "dualshock-remaps.json")
+
+
+def _remap_root(config_dir):
+    """Where this RetroArch keeps its remaps."""
+    config = ra_detect.parse_cfg(os.path.join(config_dir, "retroarch.cfg"))
+    value = config.get("input_remapping_directory", "")
+    return (ra_detect._resolve_ra_path(value, config_dir) if value and value != "default"
+            else os.path.join(config_dir, "config", "remaps"))
+
+
+def _written():
+    try:
+        with open(WRITTEN, encoding="utf-8") as handle:
+            found = json.load(handle)
+        return found if isinstance(found, list) else []
+    except (OSError, ValueError):
+        return []
+
+
+def write_core_remap(core_path, config_dir=""):
+    """Give a PS1 core a DualShock through a core remap. The path, or ''.
+
+    RetroArch ignores `input_libretro_device_pN` in a config and takes it from
+    a remap. Written into RetroArch's own remap folder, once and only where the
+    core has no remap: the user can then change or remove it from RetroArch's
+    menu, and saving a remap there works, flatpak included.
+    """
+    core_id = os.path.basename(core_path or "").replace("_libretro.so", "")
+    if core_id not in DUALSHOCK_CORES or not config_dir:
+        return ""
+    name, device = DUALSHOCK_CORES[core_id]
+    path = os.path.join(_remap_root(config_dir), name, name + ".rmp")
+    written = _written()
+    if os.path.exists(path) or path in written:
+        return ""
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8", newline="\n") as handle:
+            handle.writelines('input_libretro_device_p%d = "%d"\n' % (port, device)
+                              for port in range(1, _PORTS + 1))
+        os.makedirs(appenv.DATA_DIR, exist_ok=True)
+        with open(WRITTEN, "w", encoding="utf-8") as handle:
+            json.dump(written + [path], handle)
+    except OSError as error:
+        appenv.logger.warning("Could not give %s a DualShock: %s", name, error)
+        return ""
     return path
