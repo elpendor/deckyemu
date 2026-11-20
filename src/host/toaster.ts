@@ -23,11 +23,13 @@ function stackIn(doc: Document): HTMLElement {
   if (!stack) {
     stack = doc.createElement("div");
     stack.id = STACK_ID;
+    // Bottom right, above the button bar, where Steam puts its own toasts:
+    // centred, a confirmation covered the very thing it confirmed.
     Object.assign(stack.style, {
       position: "fixed",
-      left: "50%",
-      bottom: "64px",
-      transform: "translateX(-50%)",
+      right: "16px",
+      bottom: "72px",
+      alignItems: "flex-end",
       display: "flex",
       flexDirection: "column",
       gap: "8px",
@@ -39,7 +41,8 @@ function stackIn(doc: Document): HTMLElement {
   return stack;
 }
 
-function toast({ title, body, duration = 4000 }: Toast): void {
+// Only confirmations come here, so a glance is enough.
+function toast({ title, body, duration = 2500 }: Toast): void {
   try {
     const doc: Document | undefined = mainWindow()?.BrowserWindow?.document;
     if (!doc?.body) {
@@ -50,12 +53,11 @@ function toast({ title, body, duration = 4000 }: Toast): void {
     Object.assign(card.style, {
       background: "rgba(23, 29, 37, 0.96)",
       color: "#dcdedf",
-      borderRadius: "6px",
-      padding: "12px 16px",
-      minWidth: "320px",
-      maxWidth: "560px",
+      borderRadius: "4px",
+      padding: "8px 12px",
+      maxWidth: "320px",
       boxShadow: "0 4px 16px rgba(0, 0, 0, 0.5)",
-      fontSize: "15px",
+      fontSize: "13px",
       transition: "opacity 200ms",
     });
     const heading = doc.createElement("div");
