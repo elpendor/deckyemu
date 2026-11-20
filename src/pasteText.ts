@@ -45,6 +45,9 @@ export function pasteInto(input: HTMLInputElement): Promise<string> {
     input.addEventListener("paste", onPaste, { once: true });
   });
 
+  // Focus goes back to whatever pressed paste, or the field keeps it and the
+  // pad is left on a text box nobody chose.
+  const pressed = input.ownerDocument.activeElement as HTMLElement | null;
   input.focus();
   try {
     const view = input.ownerDocument.defaultView as
@@ -56,5 +59,7 @@ export function pasteInto(input: HTMLInputElement): Promise<string> {
     console.error("[deckyemu] Steam paste failed", error);
   }
 
-  return arrived;
+  return arrived.finally(() => {
+    if (pressed && pressed !== input && pressed.isConnected) pressed.focus();
+  });
 }

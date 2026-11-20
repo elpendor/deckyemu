@@ -88,6 +88,18 @@ function focusIfResuming(step: typeof lastStep): { autoFocus?: true } {
 }
 
 /**
+ * Saving or removing the key swaps the buttons, and the one pressed goes with
+ * them; this hands focus to the button that takes its place, once.
+ */
+let swapFocus: "signin" | "remove" | null = null;
+
+function takeSwapFocus(step: typeof swapFocus): { autoFocus?: true } {
+  if (swapFocus !== step) return {};
+  swapFocus = null;
+  return { autoFocus: true };
+}
+
+/**
  * Where artwork comes from, and the SteamGridDB key that unlocks the better
  * source.
  *
@@ -109,8 +121,12 @@ export function ArtworkPanel() {
   const patch = useCallback(async (changes: Record<string, unknown>) => {
     try {
       setLocalSettings(await setSettings(changes));
+      return true;
     } catch (error) {
       console.error("[deckyemu] failed to save settings", error);
+      swapFocus = null;
+      showFailure("Could not save that", error);
+      return false;
     }
   }, []);
 
@@ -136,7 +152,8 @@ export function ArtworkPanel() {
           );
           return false;
         }
-        await patch({ sgdb_api_key: key });
+        swapFocus = "remove";
+        if (!(await patch({ sgdb_api_key: key }))) return false;
         setKeyInput("");
         toaster.toast({
           title: "SteamGridDB key saved",
@@ -209,7 +226,8 @@ export function ArtworkPanel() {
   }, [commitKey]);
 
   const clearKey = useCallback(async () => {
-    await patch({ sgdb_api_key: "" });
+    swapFocus = "signin";
+    if (!(await patch({ sgdb_api_key: "" }))) return;
     setKeyInput("");
     toaster.toast({
       title: "SteamGridDB key removed",
@@ -256,7 +274,7 @@ export function ArtworkPanel() {
 
         {settings.sgdb_api_key_set ? (
           <PanelSectionRow>
-            <ButtonItem layout="below" onClick={clearKey}>
+            <ButtonItem {...takeSwapFocus("remove")} layout="below" onClick={clearKey}>
               Remove SteamGridDB key
             </ButtonItem>
           </PanelSectionRow>
@@ -270,6 +288,7 @@ export function ArtworkPanel() {
             <PanelSectionRow>
               <ButtonItem
                 {...focusIfResuming("signin")}
+                {...takeSwapFocus("signin")}
                 layout="below"
                 onClick={() => {
                   lastStep = "signin";
