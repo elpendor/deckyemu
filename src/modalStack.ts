@@ -53,9 +53,9 @@ export function openModal(modal: ReactNode): ShowModalResult {
 /**
  * Dismiss everything this plugin has open.
  *
- * For the moment before going somewhere else -- opening the Quick Access panel,
- * navigating to a page, starting a game. Anything of ours still standing would
- * be revealed on top of it.
+ * For the moment before going somewhere else -- pressing something in the Quick
+ * Access panel, navigating to a page, starting a game. Anything of ours still
+ * standing would be revealed on top of it.
  *
  * Never throws. A handle whose modal has already gone is the ordinary case
  * during a cascade, and one that refuses is not a reason to leave the rest
@@ -73,45 +73,29 @@ export function closeOpenModals(): void {
 }
 
 /**
- * What the Quick Access panel does about our modals as it appears.
+ * Close our modals when something in the Quick Access panel is pressed.
  *
- * Takes the visibility rather than reading it, so the rule is a function that
- * can be checked instead of a condition inside an effect that can only be tried
- * on the device.
+ * Steam re-reveals each modal as the one above it dismisses, so a modal left
+ * open under the panel came back over it once the panel opened something of
+ * its own -- the file browser, a dropdown, a dialog -- and took the overlay, so
+ * the panel would not open again. Opening the panel alone is no reason to
+ * close anything: Steam's own dialogs stay put under it, and a glance at Quick
+ * Access cost the game editor its unsaved edits.
  *
- * **The guard is the whole point, and it is not a tidiness check.** Opening one
- * of our modals is itself what hides the panel, so a version of this that ran
- * on any change to visibility would dismiss the modal the user had just asked
- * for, roughly a frame after it appeared -- turning "open the added-games list"
- * into a button that flashes and does nothing.
+ * A press (A, or a tap) raises `vgp_onok` and `click` on what was pressed;
+ * listening in the capture phase closes ours before its handler opens
+ * anything. D-pad moves raise neither. Returns the cleanup.
  */
-export function closeModalsOnPanelOpen(visible: boolean): void {
-  if (!visible) return;
-  closeOpenModals();
+export function closeModalsOnPress(element: HTMLElement): () => void {
+  const close = () => closeOpenModals();
+  for (const type of PRESS_EVENTS) element.addEventListener(type, close, CAPTURE);
+  return () => {
+    for (const type of PRESS_EVENTS) element.removeEventListener(type, close, CAPTURE);
+  };
 }
 
-/**
- * How long the panel must stay visible before that counts as it being opened.
- *
- * Closing a Steam dropdown inside one of our modals reports the panel visible
- * for about a millisecond and hidden again -- recorded on the device from its
- * own `visibilitychange` events, 2026-09-16. Acting on that flash closed the
- * game editor every time an emulator was picked, but only when the editor had
- * been opened from the panel. A person opening Quick Access keeps it open far
- * longer than this.
- */
-export const PANEL_SETTLE_MS = 250;
-
-/**
- * `closeModalsOnPanelOpen`, once the panel has stayed visible for
- * `PANEL_SETTLE_MS`. Returns the cancel, for an effect to hand back: the panel
- * hiding again before then is exactly the flash to ignore.
- */
-export function closeModalsWhenPanelSettles(visible: boolean): () => void {
-  if (!visible) return () => {};
-  const timer = setTimeout(() => closeModalsOnPanelOpen(true), PANEL_SETTLE_MS);
-  return () => clearTimeout(timer);
-}
+const PRESS_EVENTS = ["vgp_onok", "click"];
+const CAPTURE = { capture: true };
 
 /** How many are open. For checks; nothing in the plugin asks. */
 export function openModalCount(): number {

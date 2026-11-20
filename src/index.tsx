@@ -36,7 +36,7 @@ import { repairGameIcons } from "./repairIcons";
 import { repairGameLayouts } from "./repairLayouts";
 import { AddedGamesPanel } from "./AddedGamesPanel";
 import { ErrorBoundary } from "./ErrorBoundary";
-import { closeModalsWhenPanelSettles } from "./modalStack";
+import { closeModalsOnPress } from "./modalStack";
 import { HEADER_BUTTON, SwitchButton, TakeOverRows, onSwitched } from "./SwitchPanel";
 import { OrphanModal } from "./OrphanModal";
 import { shortcutNudge, type ShortcutCounts } from "./shortcutNudge";
@@ -197,29 +197,6 @@ function Content() {
   // The switch lives in the header (SwitchButton); the panel shows the result.
   useEffect(() => onSwitched(() => void loadStatus()), [loadStatus]);
 
-  /*
-   * Nothing of ours may still be on the modal stack while this panel is up.
-   *
-   * Steam re-reveals each modal as the one above it dismisses, so one left
-   * standing arrives on top of the panel rather than behind it -- and takes the
-   * active overlay with it. Leaving the added-games list open, opening Quick
-   * Access, and picking a ROM was enough: the file browser dismissed, the list
-   * came back over the panel, and the panel could not be opened again.
-   *
-   * `closeOpenModals` was written for exactly this and had one caller, in the
-   * transfer dialog, covering the one route that had been found. The rule is not
-   * about that route -- it is that opening Quick Access means the user has moved
-   * on from whatever was in front of them. One place, so no call site can be the
-   * one that forgets.
-   *
-   * **Only when becoming visible, never when hiding.** Opening one of our modals
-   * is itself what hides this panel, so running this on the way down would
-   * dismiss the modal the user just asked for, about a frame after it appeared.
-   */
-  //
-  // **And only once it stays visible.** A dropdown closing inside one of our
-  // modals flashes the panel visible for a millisecond; see PANEL_SETTLE_MS.
-  useEffect(() => closeModalsWhenPanelSettles(visible), [visible]);
 
   const nudge = shortcutNudge(health);
   const badge = updateBadge(update);
@@ -476,6 +453,21 @@ const GuardedManagePage = () => (
 );
 
 /**
+ * The panel, inside an element that closes our modals when anything in it is
+ * pressed; see `closeModalsOnPress`. `display: contents` so the element adds
+ * nothing to Steam's layout.
+ */
+function PressCloses({ children }: { children: ReactNode }) {
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => (box.current ? closeModalsOnPress(box.current) : undefined), []);
+  return (
+    <div ref={box} style={{ display: "contents" }}>
+      {children}
+    </div>
+  );
+}
+
+/**
  * Our tab's title in the Quick Access header: its name, and a way to the
  * settings page.
  *
@@ -510,6 +502,8 @@ function TitleView() {
     const max = getComputedStyle(panel).maxWidth;
     if (max && max !== "none") setCap(max);
   }, []);
+  // The header opens dialogs too (the switch), so a press here clears ours.
+  useEffect(() => (row.current ? closeModalsOnPress(row.current) : undefined), []);
   // Its own focus group: Steam renders the title beside the tab's panel, not
   // inside it, and a bare button there is a leaf no direction leads to.
   return (
@@ -663,7 +657,9 @@ export function start(): Started {
      */
     content: (
       <ErrorBoundary where="The DeckyEmu panel">
-        <Content />
+        <PressCloses>
+          <Content />
+        </PressCloses>
       </ErrorBoundary>
     ),
     /*

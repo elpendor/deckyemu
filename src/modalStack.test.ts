@@ -39,10 +39,8 @@ vi.mock("./steamui", () => ({ showModal: (...args: unknown[]) => (showModal as a
 const {
   openModal,
   closeOpenModals,
-  closeModalsOnPanelOpen,
-  closeModalsWhenPanelSettles,
+  closeModalsOnPress,
   openModalCount,
-  PANEL_SETTLE_MS,
 } = await import("./modalStack");
 
 beforeEach(() => {
@@ -124,30 +122,45 @@ describe("closeOpenModals", () => {
   });
 });
 
-describe("closeModalsOnPanelOpen", () => {
-  it("clears the stack when the panel becomes visible", () => {
+describe("closeModalsOnPress", () => {
+  const panel = () => new EventTarget() as unknown as HTMLElement;
+
+  it("leaves them open while the panel is only looked at", () => {
+    // Steam keeps its own dialogs under Quick Access; a glance at the panel
+    // used to cost the game editor its unsaved edits.
+    const element = panel();
+    closeModalsOnPress(element);
+    openModal(null);
+    element.dispatchEvent(new Event("vgp_onbuttondown"));
+    expect(closes).toEqual([]);
+  });
+
+  it("clears the stack when something in the panel is pressed", () => {
     // The reported fault: the added-games list left open, Quick Access opened,
     // a ROM picked -- and as the file browser dismissed, the list came back
     // over the panel and took the overlay, so the panel would not open again.
+    const element = panel();
+    closeModalsOnPress(element);
     openModal(null);
     openModal(null);
-    closeModalsOnPanelOpen(true);
+    element.dispatchEvent(new Event("vgp_onok"));
     expect(closes).toHaveLength(2);
     expect(openModalCount()).toBe(0);
   });
 
-  // The guard, and the reason it exists. Opening one of our modals is what
-  // hides the panel, so closing on the way down would dismiss the modal the
-  // user just asked for about a frame after it appeared.
-  it("leaves them alone when the panel is hiding", () => {
+  it("counts a tap as a press", () => {
+    const element = panel();
+    closeModalsOnPress(element);
     openModal(null);
-    closeModalsOnPanelOpen(false);
-    expect(closes).toEqual([]);
-    expect(openModalCount()).toBe(1);
+    element.dispatchEvent(new Event("click"));
+    expect(closes).toHaveLength(1);
   });
 
-  it("is fine with nothing open", () => {
-    expect(() => closeModalsOnPanelOpen(true)).not.toThrow();
+  it("stops listening once cleaned up", () => {
+    const element = panel();
+    closeModalsOnPress(element)();
+    openModal(null);
+    element.dispatchEvent(new Event("vgp_onok"));
     expect(closes).toEqual([]);
   });
 });
@@ -165,29 +178,5 @@ describe("every modal in the plugin goes through here", () => {
         && name !== "modalStack.ts")
       .filter((name) => /\bshowModal\s*\(/.test(readFileSync(`src/${name}`, "utf-8")));
     expect(stray).toEqual([]);
-  });
-});
-
-describe("closeModalsWhenPanelSettles", () => {
-  // Measured on the device: closing a dropdown in the game editor reported the
-  // panel visible for about a millisecond, and the editor closed on every pick.
-  it("ignores a flash of visibility", () => {
-    vi.useFakeTimers();
-    openModal(null);
-    const cancel = closeModalsWhenPanelSettles(true);
-    vi.advanceTimersByTime(1);
-    cancel();
-    vi.advanceTimersByTime(PANEL_SETTLE_MS * 2);
-    expect(closes).toHaveLength(0);
-    vi.useRealTimers();
-  });
-
-  it("closes the stack once the panel stays open", () => {
-    vi.useFakeTimers();
-    openModal(null);
-    closeModalsWhenPanelSettles(true);
-    vi.advanceTimersByTime(PANEL_SETTLE_MS);
-    expect(closes).toHaveLength(1);
-    vi.useRealTimers();
   });
 });
