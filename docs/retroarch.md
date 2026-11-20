@@ -65,9 +65,9 @@ notifications** shuts that up for games launched from DeckyEmu.
 
 | Mode | What you get |
 | --- | --- |
-| `Hide the startup banner` | No load animation, and none of the notices after it |
-| `Hide all on-screen messages` (default) | Also sets `video_font_enable = false`, so save-state confirmations and errors go quiet too |
-| `Keep RetroArch's notifications` | RetroArch behaves exactly like it does on its own |
+| `Hide startup banner` | No load animation, and none of the notices after it |
+| `Hide all messages` (default) | Also sets `video_font_enable = false`, so save-state confirmations and errors go quiet too |
+| `Show everything` | RetroArch behaves exactly like it does on its own |
 
 These get passed per launch rather than written into your own `retroarch.cfg`,
 and the override turns RetroArch's save-on-exit off so they can't settle in as

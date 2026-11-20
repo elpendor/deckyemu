@@ -54,8 +54,8 @@ export function DiagnosticsPanel() {
       <PanelSection title="Versions">
         <PanelSectionRow>
           <div style={VERSIONS}>
-            <div style={VERSION_LABEL}>Plugin on disk</div>
-            <div style={VERSION_LABEL}>Interface Steam loaded</div>
+            <div style={VERSION_LABEL}>Installed on this Deck</div>
+            <div style={VERSION_LABEL}>Running in Steam</div>
             <div style={VERSION_VALUE}>
               {backend
                 ? describe(backend.version, backend.build) +

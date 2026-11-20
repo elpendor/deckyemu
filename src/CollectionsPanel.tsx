@@ -10,7 +10,8 @@ import {
   type SingleDropdownOption,
 } from "./steamui";
 import { toaster } from "./host";
-import { useCallback, useEffect, useState } from "react";
+import { takeGamepadFocus } from "./steam/focus";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   collectionShape,
@@ -263,19 +264,13 @@ export function CollectionsPanel() {
   }, [applyMoves, patch, refreshFiled]);
 
   /**
-   * Turn collections on or off. One press, and the label says which way.
+   * Turn collections on or off, from Steam's switch like its neighbours.
    *
-   * A button rather than a switch, because this control asks a question before
-   * it does anything and a switch cannot survive the answer being no. Steam's
-   * ToggleField keeps its own visual state and does not re-read `checked` when
-   * the prop it was given has not changed, so a declined dialog left the switch
-   * drawn in the position the user pressed it into while the setting said the
-   * opposite -- and it stayed that way until the tab was left and re-entered.
-   * Writing the setting first only moved the confusion: a switch you press and
-   * then decline is a switch that looks like it did not take.
-   *
-   * A button has no position to be wrong about. Cancel means nothing happened,
-   * which is the whole of what the user needs to know.
+   * Turning off asks first. Steam's ToggleField keeps the position it was
+   * pressed into even when `checked` did not change, so a "no" left it drawn
+   * off while the setting stayed on; the switch is remounted on cancel (see
+   * `declined`) rather than replaced with a button that looks like no other
+   * row on the page.
    *
    * Turning it on files everything, without asking -- adding games to a
    * collection destroys nothing and is the reason to turn it on.
@@ -302,9 +297,20 @@ export function CollectionsPanel() {
         strDescription={unfileWarning(filed.games, filed.shelves)}
         strOKButtonText="Turn off and take them out"
         onOK={() => void turnOffAndUnfile()}
+        onCancel={() => setDeclined((n) => n + 1)}
       />,
     );
   }, [applyCollectionChange, filed, patch, settings, turnOffAndUnfile]);
+
+  // Steam's switch keeps the position it was pressed into, even when
+  // `checked` did not change, so a "no" remounts it and gives focus back.
+  const [declined, setDeclined] = useState(0);
+  const toggleRow = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!declined) return;
+    const inner = toggleRow.current?.querySelectorAll("*");
+    takeGamepadFocus(inner?.[inner.length - 1]);
+  }, [declined]);
 
   /** The row's action: take out whatever is still filed, asking first. */
   const unfileStranded = useCallback(async () => {
@@ -356,22 +362,20 @@ export function CollectionsPanel() {
           are grouped at all -- and anything that follows from it. */}
       <PanelSection>
         <PanelSectionRow>
-          {/* A button, not a switch. Turning collections off asks a question,
-              and a switch cannot survive that answer being no -- see
-              toggleEnabled. */}
-          <ButtonItem
-            layout="below"
+          <div ref={toggleRow} style={{ display: "contents" }}>
+          <ToggleField
+            key={declined}
             label="Add to a collection"
             description={
               settings.add_to_collection
                 ? "Added games are grouped together in Big Picture."
                 : "Added games are not grouped. They still appear in the library."
             }
+            checked={settings.add_to_collection}
             disabled={migrating}
-            onClick={() => void toggleEnabled()}
-          >
-            {settings.add_to_collection ? "Turn off" : "Turn on"}
-          </ButtonItem>
+            onChange={() => void toggleEnabled()}
+          />
+          </div>
         </PanelSectionRow>
 
         {/* Collections are off, but games added while they were on are still in

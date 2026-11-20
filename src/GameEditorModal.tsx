@@ -128,9 +128,9 @@ const PANE_CSS = `
 /** "" means follow the global setting rather than override it. */
 const OSD_OPTIONS: SingleDropdownOption[] = [
   { data: "", label: "Follow the global setting" },
-  { data: "startup", label: "Hide the startup banner" },
-  { data: "all", label: "Hide all on-screen messages" },
-  { data: "keep", label: "Keep RetroArch's notifications" },
+  { data: "startup", label: "Hide startup banner" },
+  { data: "all", label: "Hide all messages" },
+  { data: "keep", label: "Show everything" },
 ];
 
 const FULLSCREEN_OPTIONS: SingleDropdownOption[] = [

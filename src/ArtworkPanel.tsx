@@ -22,10 +22,17 @@ import { pasteInto } from "./pasteText";
 import { showFailure } from "./showFailure";
 
 const ART_SOURCE_OPTIONS: SingleDropdownOption[] = [
-  { data: "auto", label: "Auto (SteamGridDB, then libretro)" },
-  { data: "libretro", label: "libretro thumbnails only" },
+  { data: "auto", label: "Both" },
+  { data: "libretro", label: "libretro only" },
   { data: "sgdb", label: "SteamGridDB only" },
 ];
+
+// The detail lives here, so the dropdown's own label fits its box.
+const ART_SOURCE_DESCRIPTIONS: Record<string, string> = {
+  auto: "SteamGridDB first, then libretro's thumbnails for what it lacks.",
+  libretro: "libretro's box art alone, with no heroes or logos.",
+  sgdb: "SteamGridDB alone. Needs the key below.",
+};
 
 const SGDB_ORIGIN = "https://www.steamgriddb.com";
 
@@ -254,6 +261,7 @@ export function ArtworkPanel() {
         <PanelSectionRow>
           <DropdownItem
             label="Artwork source"
+            description={ART_SOURCE_DESCRIPTIONS[settings.art_source]}
             rgOptions={ART_SOURCE_OPTIONS}
             selectedOption={settings.art_source}
             onChange={(option) => void patch({ art_source: String(option.data) })}

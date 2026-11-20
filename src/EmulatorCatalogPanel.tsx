@@ -748,6 +748,31 @@ export function EmulatorCatalogPanel({ onChanged, ports = false }: Props) {
         </Field>
       </PanelSectionRow>
 
+      {/* Under the heading, not below a list of twenty-odd rows: updating is
+          half of what this tab is for. Only for emulators installed from a
+          release; flatpaks are already checked when the tab opens. */}
+      {hasReleaseBuilds && (
+        <PanelSectionRow>
+          <ButtonItem
+            layout="below"
+            disabled={checking}
+            onClick={() => void runCheck()}
+            description={
+              checkNote ||
+              (ports
+                ? "Ports are not checked automatically — this asks each project directly, so it happens when you press it."
+                : "Emulators marked (GitHub) are not checked automatically — this asks each project directly, so it happens when you press it.")
+            }
+          >
+            {checking
+              ? "Checking..."
+              : ports
+                ? "Check for port updates"
+                : "Check for emulator updates"}
+          </ButtonItem>
+        </PanelSectionRow>
+      )}
+
       {loading && (
         <PanelSectionRow>
           <Field label="Loading..." />
@@ -853,6 +878,8 @@ export function EmulatorCatalogPanel({ onChanged, ports = false }: Props) {
                     disabled={Boolean(busyId)}
                     onClick={() => register(entry)}
                     style={ICON_BUTTON}
+                    // Each icon's legend word goes in Steam's footer.
+                    onOKActionDescription="Set up for adding games"
                   >
                     <FaLink />
                   </DialogButton>
@@ -882,6 +909,7 @@ export function EmulatorCatalogPanel({ onChanged, ports = false }: Props) {
                       )
                     }
                     style={ICON_BUTTON}
+                    onOKActionDescription="Version"
                   >
                     <FaCodeBranch />
                   </DialogButton>
@@ -894,6 +922,7 @@ export function EmulatorCatalogPanel({ onChanged, ports = false }: Props) {
                     disabled={Boolean(busyId)}
                     onClick={() => openGui(entry)}
                     style={ICON_BUTTON}
+                    onOKActionDescription="Open the emulator"
                   >
                     <FaWindowMaximize />
                   </DialogButton>
@@ -907,6 +936,7 @@ export function EmulatorCatalogPanel({ onChanged, ports = false }: Props) {
                     disabled={Boolean(busyId)}
                     onClick={() => locate(entry)}
                     style={ICON_BUTTON}
+                    onOKActionDescription="Point at the file"
                   >
                     <FaFolderOpen />
                   </DialogButton>
@@ -931,6 +961,7 @@ export function EmulatorCatalogPanel({ onChanged, ports = false }: Props) {
                       disabled={Boolean(busyId) || entry.scope === "system"}
                       onClick={() => confirmRemove(entry)}
                       style={ICON_BUTTON}
+                      onOKActionDescription="Uninstall"
                     >
                       <FaTrash />
                     </DialogButton>
@@ -939,6 +970,7 @@ export function EmulatorCatalogPanel({ onChanged, ports = false }: Props) {
                       disabled={Boolean(busyId)}
                       onClick={() => confirmInstall(entry)}
                       style={ICON_BUTTON}
+                      onOKActionDescription="Install"
                     >
                       <FaDownload />
                     </DialogButton>
@@ -948,6 +980,7 @@ export function EmulatorCatalogPanel({ onChanged, ports = false }: Props) {
                     disabled={Boolean(busyId)}
                     onClick={() => confirmForget(entry)}
                     style={ICON_BUTTON}
+                    onOKActionDescription="Forget"
                   >
                     <FaEraser />
                   </DialogButton>
@@ -959,36 +992,6 @@ export function EmulatorCatalogPanel({ onChanged, ports = false }: Props) {
         );
       })}
 
-      {/* Below the list, because it is about the list rather than a step in
-          reading it -- and because the thing it changes is the rows above,
-          which is easier to notice from underneath them than from a button
-          scrolled off the top.
-
-          Only for emulators installed from a release. A flatpak is already
-          answered for by the two queries the tab makes on open, so a check that
-          covered those as well would be claiming to have done something it did
-          not need to do. */}
-      {hasReleaseBuilds && (
-        <PanelSectionRow>
-          <ButtonItem
-            layout="below"
-            disabled={checking}
-            onClick={() => void runCheck()}
-            description={
-              checkNote ||
-              (ports
-                ? "Ports are not checked automatically — this asks each project directly, so it happens when you press it."
-                : "Emulators marked (GitHub) are not checked automatically — this asks each project directly, so it happens when you press it.")
-            }
-          >
-            {checking
-              ? "Checking..."
-              : ports
-                ? "Check for port updates"
-                : "Check for emulator updates"}
-          </ButtonItem>
-        </PanelSectionRow>
-      )}
 
       {error && (
         <PanelSectionRow>

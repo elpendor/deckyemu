@@ -35,9 +35,9 @@ import { openModal } from "./modalStack";
 import { showFailure } from "./showFailure";
 
 const HIDE_OSD_OPTIONS: SingleDropdownOption[] = [
-  { data: "startup", label: "Hide the startup banner" },
-  { data: "all", label: "Hide all on-screen messages" },
-  { data: "keep", label: "Keep RetroArch's notifications" },
+  { data: "startup", label: "Hide startup banner" },
+  { data: "all", label: "Hide all messages" },
+  { data: "keep", label: "Show everything" },
 ];
 
 /**
@@ -264,7 +264,7 @@ export function RetroArchPanel({ status, onRefresh, reloadKey = 0 }: Props) {
         <PanelSectionRow>
           <Field
             label={INSTALL_LABELS[status.kind] ?? status.kind}
-            description={`${status.core_count} core(s) installed`}
+            description={`${status.core_count} ${status.core_count === 1 ? "core" : "cores"} installed`}
           />
         </PanelSectionRow>
 

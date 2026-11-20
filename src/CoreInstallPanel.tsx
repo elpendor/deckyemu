@@ -284,7 +284,7 @@ export function CoreInstallPanel({ onCoresChanged, reloadKey = 0 }: Props) {
       }
       toaster.toast({
         title: `Installed ${selected.display_name}`,
-        body: `${result.core_count} core(s) now available`,
+        body: `${result.core_count} ${result.core_count === 1 ? "core" : "cores"} now available`,
       });
       await load(false);
       onCoresChanged();
@@ -308,7 +308,7 @@ export function CoreInstallPanel({ onCoresChanged, reloadKey = 0 }: Props) {
       }
       toaster.toast({
         title: `Removed ${selected.display_name}`,
-        body: `${result.core_count ?? 0} core(s) remaining`,
+        body: `${result.core_count ?? 0} ${result.core_count === 1 ? "core" : "cores"} remaining`,
       });
       await load(false);
       onCoresChanged();

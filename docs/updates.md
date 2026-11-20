@@ -60,8 +60,8 @@ The **Diagnostics** tab shows two versions, and they aren't the same thing:
 
 | | |
 | --- | --- |
-| **Plugin on disk** | What got installed |
-| **Interface Steam loaded** | The half Steam is actually drawing |
+| **Installed on this Deck** | What got installed |
+| **Running in Steam** | The half Steam is actually drawing |
 
 Steam keeps the interface it already evaluated, so after an update these two can
 disagree. The tab tells you when they do, and to restart Steam.
