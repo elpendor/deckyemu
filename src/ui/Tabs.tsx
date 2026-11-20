@@ -58,11 +58,14 @@ export function Tabs({ tabs, activeTab, onShowTab }: TabsProps) {
     // A switch unmounts what had focus, and with nothing focused Steam has
     // nowhere to send the D-pad or the bumpers, so all of them stop. Focus
     // goes to the new tab's pill, as Steam's own tab bars keep it in view.
-    if (shown.current !== undefined && shown.current !== activeId) {
+    // On first show too when the active tab is not the first: the dialog's
+    // own focus lands on the first pill, lit beside the one showing.
+    const opening = shown.current === undefined && index > 0;
+    if (opening || (shown.current !== undefined && shown.current !== activeId)) {
       pills.get(activeId ?? "")?.current?.TakeFocus?.();
     }
     shown.current = activeId;
-  }, [activeId, pills]);
+  }, [activeId, index, pills]);
   // The list scrolls only from here: the active pill, and any pill the D-pad
   // lands on, kept in view between the bumpers.
   const bar = useRef<HTMLDivElement | null>(null);

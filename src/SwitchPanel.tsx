@@ -88,6 +88,9 @@ function confirmSwitch(offer: SwitchOffer, setBusy: (busy: boolean) => void) {
         " Steam restarts to show it."
       }
       strOKButtonText="Switch and restart"
+      // The ⇄ button is one Up from Added games: a stray A must not
+      // restart Steam.
+      bFocusCancel
       onOK={() => void run()}
     />,
   );

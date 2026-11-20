@@ -1,12 +1,14 @@
 import { ButtonItem, Field, PanelSection, PanelSectionRow } from "./steamui";
 import { addEventListener, removeEventListener, useQuickAccessVisible } from "./host";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { cloudBackupNow, cloudStatus, cloudWaiting } from "./backend";
 import { logError } from "./logError";
 import { ProgressBar } from "./TransferModal";
 import { useCopyPercent } from "./useCopyPercent";
 import { namesOf } from "./waitingNames";
+import { showFailure } from "./showFailure";
+import { takeGamepadFocus } from "./steam/focus";
 
 /**
  * That saves are moving right now, for the panel you can actually reach.
@@ -45,6 +47,16 @@ export function CloudStatusPanel() {
   const [overdue, setOverdue] = useState<{ id: string; name: string }[]>([]);
   const percent = useCopyPercent(copying);
   const visible = useQuickAccessVisible();
+  // "Copy them now" removes itself, which left nothing focused; the ring goes
+  // to the control after it once the row is gone.
+  const row = useRef<HTMLDivElement | null>(null);
+  const after = useRef<Element | null>(null);
+  const showsButton = !copying && overdue.length > 0;
+  useEffect(() => {
+    if (showsButton || !after.current) return;
+    if (after.current.isConnected) takeGamepadFocus(after.current);
+    after.current = null;
+  }, [showsButton]);
 
   const load = useCallback(async () => {
     try {
@@ -94,6 +106,7 @@ export function CloudStatusPanel() {
     // nobody has opened since one failed -- which is the state that ends in
     // somebody losing a save while believing they were covered.
     return (
+      <div ref={row} style={{ display: "contents" }}>
       <PanelSection>
         <PanelSectionRow>
           <ButtonItem
@@ -103,15 +116,23 @@ export function CloudStatusPanel() {
               overdue.length === 1 ? "has" : "have"
             } saves that have not reached your storage.`}
             onClick={() => {
+              const here = row.current;
+              after.current =
+                [...(here?.ownerDocument.querySelectorAll("button") ?? [])].find(
+                  (button) =>
+                    !here!.contains(button) &&
+                    here!.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING,
+                ) ?? null;
               void cloudBackupNow(overdue.map((one) => one.id))
                 .then(() => setOverdue([]))
-                .catch((error) => logError("could not start the copy", error));
+                .catch((error) => showFailure("Could not copy the saves", error));
             }}
           >
             Copy them now
           </ButtonItem>
         </PanelSectionRow>
       </PanelSection>
+      </div>
     );
   }
 

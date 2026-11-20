@@ -136,6 +136,8 @@ export interface ConfirmModalProps extends ModalRootProps {
   bOKDisabled?: boolean;
   bCancelDisabled?: boolean;
   bMiddleDisabled?: boolean;
+  /** Focus Cancel first, for an OK that cannot be undone, like a restart. */
+  bFocusCancel?: boolean;
 }
 
 /**
@@ -146,7 +148,7 @@ export function ConfirmModal(props: ConfirmModalProps) {
   const {
     strTitle, strDescription, strOKButtonText, strCancelButtonText, strMiddleButtonText,
     onOK, onCancel, onMiddleButton, bAlertDialog, bOKDisabled, bCancelDisabled,
-    bMiddleDisabled, closeModal, children, ...rest
+    bMiddleDisabled, bFocusCancel, closeModal, children, ...rest
   } = props;
   const [busy, setBusy] = useState(false);
 
@@ -192,7 +194,8 @@ export function ConfirmModal(props: ConfirmModalProps) {
             {strMiddleButtonText}
           </DialogButtonSecondary>
         )}
-        <DialogButtonSecondary onClick={cancel} disabled={bCancelDisabled}>
+        <DialogButtonSecondary onClick={cancel} disabled={bCancelDisabled}
+          autoFocus={bFocusCancel}>
           {strCancelButtonText ?? "Cancel"}
         </DialogButtonSecondary>
       </Focusable>

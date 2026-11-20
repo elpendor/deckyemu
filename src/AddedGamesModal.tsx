@@ -19,6 +19,7 @@ import { openModal } from "./modalStack";
 import { landscapeArtUrls } from "./steam";
 import { ICON_BUTTON } from "./iconButton";
 import { ScrollList } from "./ScrollList";
+import { crashMessage } from "./crashMessage";
 
 interface Props {
   closeModal?: () => void;
@@ -187,13 +188,17 @@ export function AddedGamesModal({ closeModal, onChanged }: Props) {
    * somebody who has just opened the dialog.
    */
   const [tabbed, setTabbed] = useState<boolean | null>(null);
+  // Apart from `games`: an empty list read as "nothing added", and somebody
+  // told that adds the same games again.
+  const [failed, setFailed] = useState("");
 
   const load = useCallback(() => {
+    setFailed("");
     callWithRetry(listAdded)
       .then(setGames)
       .catch((error) => {
         console.error("[deckyemu] could not list added games", error);
-        setGames([]);
+        setFailed(crashMessage(error));
       });
   }, []);
 
@@ -261,6 +266,7 @@ export function AddedGamesModal({ closeModal, onChanged }: Props) {
         <DialogButton
           onClick={() => playGame(game.app_id, game.title, closeModal)}
           style={ICON_BUTTON}
+          onOKActionDescription="Play"
         >
           <FaPlay />
         </DialogButton>
@@ -271,6 +277,7 @@ export function AddedGamesModal({ closeModal, onChanged }: Props) {
         <DialogButton
           onClick={() => viewGameDetails(game.app_id, closeModal)}
           style={ICON_BUTTON}
+          onOKActionDescription="Details"
         >
           <FaInfoCircle />
         </DialogButton>
@@ -289,12 +296,14 @@ export function AddedGamesModal({ closeModal, onChanged }: Props) {
             )
           }
           style={ICON_BUTTON}
+          onOKActionDescription="Edit"
         >
           <FaPen />
         </DialogButton>
         <DialogButton
           onClick={() => openModal(<RemoveGameModal game={game} onRemoved={changed} />)}
           style={ICON_BUTTON}
+          onOKActionDescription="Remove"
         >
           <FaTrash />
         </DialogButton>
@@ -309,7 +318,17 @@ export function AddedGamesModal({ closeModal, onChanged }: Props) {
         Added games{games ? ` (${games.length})` : ""}
       </div>
 
-      {games === null && <Spinner style={{ height: "24px" }} />}
+      {games === null && !failed && <Spinner style={{ height: "24px" }} />}
+
+      {failed && (
+        <Field
+          label="Could not load your added games"
+          description={`They are still in Steam; only this list did not arrive. ${failed}`}
+          childrenContainerWidth="min"
+        >
+          <DialogButton autoFocus onClick={load}>Try again</DialogButton>
+        </Field>
+      )}
 
       {games?.length === 0 && (
         <Field description="Nothing has been added to Steam from here yet." />
