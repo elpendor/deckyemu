@@ -1,6 +1,5 @@
 import { ConfirmModal, DialogButton, Focusable, ModalRoot, Spinner } from "./steamui";
 import { useEffect, useRef, useState } from "react";
-import { FaTrash } from "react-icons/fa";
 
 import {
   chooseCloudRemote,
@@ -15,11 +14,12 @@ import {
   type CloudState,
   type FileServerStatus,
 } from "./backend";
-import { DANGER_CLASS, DANGER_CSS, DANGER_TEXT } from "./danger";
+import { DANGER_CSS, DANGER_TEXT } from "./danger";
 import { COLUMN, MUTED } from "./dialogStyle";
 import { HandoffCode } from "./HandoffCode";
-import { ICON_BUTTON, ICON_BUTTON_WIDE } from "./iconButton";
+import { ICON_BUTTON_WIDE } from "./iconButton";
 import { logError } from "./logError";
+import { showFailure } from "./showFailure";
 import { openModal } from "./modalStack";
 import { ScrollList } from "./ScrollList";
 import { addEventListener, removeEventListener } from "./host";
@@ -95,18 +95,18 @@ const BODY = {
  * When saves last went up, in as few words as the row has space for.
  *
  * Short on purpose: this sits beside an account and a free-space figure on a
- * 854px panel, so "Synced 12 min ago" is the whole sentence. Nothing at all
+ * 854px panel, so "Copied 12 min ago" is the whole sentence. Nothing at all
  * before the first copy, rather than "never" -- a storage signed into a minute
  * ago has not failed at anything.
  */
-function syncedAgo(at?: number): string {
+function copiedAgo(at?: number): string {
   if (!at) return "";
   const mins = Math.floor((Date.now() / 1000 - at) / 60);
-  if (mins < 1) return "Synced just now";
-  if (mins < 60) return `Synced ${mins} min ago`;
+  if (mins < 1) return "Copied just now";
+  if (mins < 60) return `Copied ${mins} min ago`;
   const hours = Math.floor(mins / 60);
-  if (hours < 24) return `Synced ${hours}h ago`;
-  return `Synced ${Math.floor(hours / 24)}d ago`;
+  if (hours < 24) return `Copied ${hours}h ago`;
+  return `Copied ${Math.floor(hours / 24)}d ago`;
 }
 
 function gigabytes(bytes: number): string {
@@ -405,7 +405,7 @@ export function CloudSetupModal({ closeModal }: Props) {
         onOK={() =>
           void forgetCloudRemote(one.name)
             .then(setCloud)
-            .catch((dropError) => logError("could not remove storage", dropError))
+            .catch((dropError) => showFailure("Could not sign out", dropError))
         }
         strDescription={
           <div style={DANGER_TEXT}>
@@ -540,7 +540,7 @@ export function CloudSetupModal({ closeModal }: Props) {
                 // never said which was which. Blank for a service that will
                 // not name itself.
                 //
-                // "Synced" only on the row in use, because it is the only one
+                // "Copied" only on the row in use, because it is the only one
                 // anything is copied to, and it is the question this screen is
                 // opened with -- free space says the account exists, not that
                 // saves are arriving.
@@ -549,7 +549,7 @@ export function CloudSetupModal({ closeModal }: Props) {
                     ? ["Reading how much room is left..."]
                     : [
                         one.account || "",
-                        chosen ? syncedAgo(cloud?.last_sync) : "",
+                        chosen ? copiedAgo(cloud?.last_sync) : "",
                         chosen && cloud?.space?.free !== undefined
                           ? `${gigabytes(cloud.space.free)} free`
                           : "",
@@ -594,7 +594,7 @@ export function CloudSetupModal({ closeModal }: Props) {
                           void chooseCloudRemote(one.name)
                             .then(setCloud)
                             .catch((pickError) =>
-                              logError("could not choose storage", pickError),
+                              showFailure("Could not switch storage", pickError),
                             )
                             .finally(() => {
                               picking.current = false;
@@ -607,15 +607,15 @@ export function CloudSetupModal({ closeModal }: Props) {
                       </DialogButton>
                     )}
 
-                    <div className={DANGER_CLASS}>
-                      <DialogButton
-                        disabled={testing !== null}
-                        onClick={() => confirmForget(one)}
-                        style={ICON_BUTTON}
-                      >
-                        <FaTrash />
-                      </DialogButton>
-                    </div>
+                    {/* Words, not a red bin: nothing stored there is deleted.
+                        Red is kept for the confirmation. */}
+                    <DialogButton
+                      disabled={testing !== null}
+                      onClick={() => confirmForget(one)}
+                      style={ICON_BUTTON_WIDE}
+                    >
+                      Sign out
+                    </DialogButton>
                   </Focusable>
                 );
               })}

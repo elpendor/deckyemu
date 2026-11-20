@@ -22,7 +22,7 @@ import { logError } from "./logError";
 import { ScrollList } from "./ScrollList";
 import { HandoffCode } from "./HandoffCode";
 import { MUTED } from "./dialogStyle";
-import { backupSummary, defaultSelection, listNames, totals } from "./saveBackup";
+import { backupSummary, defaultSelection, fileCount, listNames, totals } from "./saveBackup";
 import { humanSize, ProgressBar } from "./TransferModal";
 
 /**
@@ -284,12 +284,12 @@ export function SaveBackupModal({ closeModal }: Props) {
                   key={source.id}
                   label={source.name}
                   description={
-                    `${humanSize(source.bytes)}, ${source.files} file(s)` +
+                    `${humanSize(source.bytes)}, ${fileCount(source.files)}` +
                     // The row whose size can dwarf every other one, said on the
                     // row itself rather than only in the total -- this is where
                     // somebody decides to untick it.
                     (source.whole
-                      ? " - everything it keeps, since it does not say where its saves are"
+                      ? " · everything it keeps, since it does not say where its saves are"
                       : "") +
                     // **The count is not the whole story when a folder is a
                     // link.** Nothing follows one -- not the archive, not the

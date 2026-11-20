@@ -32,6 +32,7 @@ import { logError } from "./logError";
 import { openModal } from "./modalStack";
 import { ScrollList, ScrollRow } from "./ScrollList";
 import {
+  fileCount,
   missingCount,
   missingIds,
   presentCount,
@@ -41,6 +42,7 @@ import {
 import { humanSize, ProgressBar, TransferModal } from "./TransferModal";
 import { ICON_BUTTON, ICON_BUTTON_WIDE } from "./iconButton";
 import { showFailure } from "./showFailure";
+import { crashMessage } from "./crashMessage";
 
 /**
  * Backups waiting on this Deck, and what to do with one.
@@ -282,7 +284,7 @@ export function RestoreSavesModal({ closeModal }: Props) {
     } catch (readError) {
       logError("could not read cloud saves", readError);
       if (showing.current !== mine) return;
-      setError("That storage could not be read.");
+      setError(`That storage could not be read. ${crashMessage(readError)}`);
       setChosen(null);
     }
   }, [accounts]);
@@ -447,7 +449,7 @@ export function RestoreSavesModal({ closeModal }: Props) {
           })
           .catch((restoreError) => {
             logError("could not restore saves from cloud storage", restoreError);
-            setError("The saves could not be restored.");
+            setError(`The saves could not be restored. ${crashMessage(restoreError)}`);
             setWorking(false);
             setCarrying(null);
           });
@@ -470,7 +472,7 @@ export function RestoreSavesModal({ closeModal }: Props) {
           // Both halves, always. "12 files restored" alone reads as success on
           // a run that skipped forty because they were already there, and that
           // is the run most likely to be misread.
-          const parts = [`${result.written ?? 0} file(s) restored`];
+          const parts = [`${fileCount(result.written ?? 0)} restored`];
           if (result.skipped) parts.push(`${result.skipped} left as they were`);
           if (result.refused) parts.push(`${result.refused} could not be written`);
           // Named, because the file going is a thing that happened to something
@@ -482,7 +484,7 @@ export function RestoreSavesModal({ closeModal }: Props) {
         })
         .catch((restoreError) => {
           logError("could not restore saves", restoreError);
-          setError("The saves could not be restored.");
+          setError(`The saves could not be restored. ${crashMessage(restoreError)}`);
         })
         .finally(() => setWorking(false));
     },
@@ -503,7 +505,7 @@ export function RestoreSavesModal({ closeModal }: Props) {
         strDescription={
           overwritten === 0
             ? "Nothing here would be overwritten - no save in this backup is already on the Deck."
-            : `${overwritten} save file(s) on this Deck will be overwritten. ` +
+            : `${overwritten === 1 ? "1 save file" : `${overwritten} save files`} on this Deck will be overwritten. ` +
               (chosen?.kind === "cloud"
                 ? "Keeping a copy first puts them in your storage under earlier copies"
                 : `Keeping a copy first puts them under ${THIS_DECK} - earlier copies`) +
@@ -659,7 +661,17 @@ export function RestoreSavesModal({ closeModal }: Props) {
   };
 
   return (
-    <ModalRoot closeModal={closeModal} bAllowFullSize>
+    <ModalRoot
+      closeModal={closeModal}
+      bAllowFullSize
+      // B does what the on-screen Back does while a source is open; true keeps
+      // the dialog.
+      onCancel={() => {
+        if (!(ready || earlier) || working) return false;
+        goBack();
+        return true;
+      }}
+    >
       {/* Scoped to a class, and a modal renders outside whichever panel
           opened it -- so without this the trash button is grey. */}
       <style>{DANGER_CSS}</style>
@@ -733,14 +745,20 @@ export function RestoreSavesModal({ closeModal }: Props) {
               <>
                 {nameOf(one, accounts)}
                 {one.name === inUse && (
-                  <span style={{ opacity: 0.7, fontWeight: 400 }}> — In use</span>
+                  // A margin, not a leading space: a flex child drops it.
+                  <span style={{ opacity: 0.7, fontWeight: 400, marginLeft: "0.3em" }}>— In use</span>
                 )}
               </>
             }
             description="Signed in on this Deck"
             childrenContainerWidth="min"
           >
-            <DialogButton onClick={() => void openCloud(one)} style={ICON_BUTTON_WIDE}>
+            <DialogButton
+              // The storage in use is what people are nearly always here for.
+              autoFocus={one.name === inUse}
+              onClick={() => void openCloud(one)}
+              style={ICON_BUTTON_WIDE}
+            >
               Choose
             </DialogButton>
           </Field>
@@ -888,7 +906,7 @@ export function RestoreSavesModal({ closeModal }: Props) {
                     and half of one reads as a smaller storage rather than an
                     unfinished sentence. */}
                 {chosen!.kind === "file" ? (
-                  `${humanSize(chosen!.file.bytes)} - ${restoreSummary(contents!)}`
+                  `${humanSize(chosen!.file.bytes)} · ${restoreSummary(contents!)}`
                 ) : pending > 0 ? (
                   // The count belongs on the line that is already saying this is
                   // not finished. Under the list it was a second sentence about
@@ -896,7 +914,7 @@ export function RestoreSavesModal({ closeModal }: Props) {
                   // fighting over.
                   <span style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}>
                     <Spinner style={{ height: "12px" }} />
-                    {`Reading what it holds - ${pending} to go`}
+                    {`Reading what it holds · ${pending} to go`}
                   </span>
                 ) : (
                   restoreSummary(contents!, "storage")
@@ -915,6 +933,7 @@ export function RestoreSavesModal({ closeModal }: Props) {
                   showEarlier(chosen as Picked & { kind: "cloud" })
                 }
                 style={{ ...ICON_BUTTON, flex: "none" }}
+                onOKActionDescription="Earlier copies"
               >
                 <FaHistory />
               </DialogButton>
@@ -1035,6 +1054,8 @@ export function RestoreSavesModal({ closeModal }: Props) {
         {(ready || earlier) && (
           <DialogButton
             disabled={working}
+            // Choose unmounts what had focus; Back is the safe place for it.
+            autoFocus
             onClick={goBack}
             // An equal share, like everything else in this row. `flex: "none"`
             // was tried and is what the docstring above is about: a

@@ -62,7 +62,7 @@ describe("defaultSelection", () => {
 describe("backupSummary", () => {
   it("says what is going in", () => {
     const text = backupSummary(totals(sources, new Set(["retroarch", "rpcs3"])), "418 KB");
-    expect(text).toBe("15 file(s), 418 KB, from RetroArch and RPCS3.");
+    expect(text).toBe("15 files, 418 KB, from RetroArch and RPCS3.");
   });
 
   // The row for such an emulator says so itself, which is where the decision to
@@ -70,7 +70,7 @@ describe("backupSummary", () => {
   // the screen for no new information.
   it("leaves the whole-directory warning to the row it belongs to", () => {
     const text = backupSummary(totals(sources, new Set(["plain"])), "9 MB");
-    expect(text).toBe("40 file(s), 9 MB, from DuckStation.");
+    expect(text).toBe("40 files, 9 MB, from DuckStation.");
   });
 
   it("says nothing is selected rather than reporting an empty backup", () => {
@@ -86,7 +86,7 @@ describe("backupSummary", () => {
     );
     const text = backupSummary(totals(many, defaultSelection(many)), "14 KB");
     expect(text).toBe(
-      "14 file(s), 14 KB, from Emulator 0, Emulator 1, Emulator 2 and 11 more.",
+      "14 files, 14 KB, from Emulator 0, Emulator 1, Emulator 2 and 11 more.",
     );
   });
 });
@@ -119,13 +119,13 @@ const inBackup = (
 describe("restoreSummary", () => {
   it("says how much of the backup is already here", () => {
     expect(restoreSummary([inBackup({ id: "a", files: 12, present: 5 })])).toBe(
-      "12 file(s), 5 of them already on this Deck.",
+      "12 files, 5 of them already on this Deck.",
     );
   });
 
   it("says so when none of it is", () => {
     expect(restoreSummary([inBackup({ id: "a", files: 12 })])).toBe(
-      "12 file(s), none of them already here.",
+      "12 files, none of them already here.",
     );
   });
 
@@ -152,7 +152,7 @@ describe("restoreSummary", () => {
         inBackup({ id: "a", files: 4 }),
         inBackup({ id: "b", files: 99, installed: false }),
       ]),
-    ).toBe("4 file(s), none of them already here.");
+    ).toBe("4 files, none of them already here.");
   });
 
   it("says so when none of them are installed", () => {
@@ -218,7 +218,7 @@ describe("sourceLine", () => {
       "40 KB",
     );
     expect(said).toEqual({
-      line: "3 file(s), 40 KB - not installed here, so these stay in the backup",
+      line: "3 files, 40 KB · not installed here, so these stay in the backup",
       missing: 0,
     });
   });

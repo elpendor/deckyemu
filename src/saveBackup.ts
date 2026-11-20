@@ -44,6 +44,11 @@ export function defaultSelection(sources: SaveSource[]): Set<string> {
   return new Set(sources.map((source) => source.id));
 }
 
+/** "1 file", "12 files". */
+export function fileCount(count: number): string {
+  return `${count} file${count === 1 ? "" : "s"}`;
+}
+
 /**
  * The line under the button, in the words the decision needs.
  *
@@ -59,7 +64,7 @@ export function backupSummary(totals: BackupTotals, size: string): string {
   // where somebody deciding whether to untick it is already looking. Repeated
   // underneath, it was the longest thing on the screen and told nobody
   // anything they had not just read.
-  return `${totals.files} file(s), ${size}, from ${listNames(totals.names)}.`;
+  return `${fileCount(totals.files)}, ${size}, from ${listNames(totals.names)}.`;
 }
 
 /** How many get named before a sentence turns into a list of the whole Deck. */
@@ -110,13 +115,13 @@ export function restoreSummary(
 
   const files = usable.reduce((sum, entry) => sum + entry.files, 0);
   const present = usable.reduce((sum, entry) => sum + entry.present, 0);
-  if (present === 0) return `${files} file(s), none of them already here.`;
+  if (present === 0) return `${fileCount(files)}, none of them already here.`;
   if (present === files) {
     // The case that reads as a failure unless it is named: every file is here,
     // so restoring what is missing does nothing and its button is disabled.
-    return `${files} file(s), all of them already on this Deck, so only restoring all of them would change anything.`;
+    return `${fileCount(files)}, all of them already on this Deck, so only restoring all of them would change anything.`;
   }
-  return `${files} file(s), ${present} of them already on this Deck.`;
+  return `${fileCount(files)}, ${present} of them already on this Deck.`;
 }
 
 /**
@@ -137,7 +142,7 @@ export function sourceLine(
 ): { line: string; missing: number } {
   if (!entry.installed) {
     return {
-      line: `${entry.files} file(s), ${size} - not installed here, so these stay in the backup`,
+      line: `${fileCount(entry.files)}, ${size} · not installed here, so these stay in the backup`,
       missing: 0,
     };
   }

@@ -5,8 +5,8 @@ import { cloudAnswerConflict } from "./backend";
 import { DANGER_CLASS, DANGER_CSS } from "./danger";
 import { MUTED } from "./dialogStyle";
 import { FileName } from "./FileName";
-import { logError } from "./logError";
 import { openModal } from "./modalStack";
+import { showFailure } from "./showFailure";
 
 /**
  * The one question the cloud half asks, in the shape Steam asks it.
@@ -68,8 +68,10 @@ function Conflict(
   const answer = (choice: "cloud" | "deck" | "stop") => {
     closeModal?.();
     onAnswer?.(choice);
+    // The dialog is gone by now, so a failure gets one of its own: this is
+    // the choice of which save survives.
     void cloudAnswerConflict(appId, choice).catch((error) =>
-      logError("could not answer a save conflict", error),
+      showFailure("Could not use that save", error),
     );
   };
 
