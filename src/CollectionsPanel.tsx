@@ -30,6 +30,7 @@ import { callWithRetry } from "./timeout";
 import { countFiled, strandedSummary, unfileWarning } from "./unfileWarning";
 import { logError } from "./logError";
 import { openModal } from "./modalStack";
+import { showFailure } from "./showFailure";
 
 const PLATFORM_NAME_OPTIONS: SingleDropdownOption[] = [
   { data: "short", label: "Short (SNES, N64, GBA)" },
@@ -154,21 +155,25 @@ export function CollectionsPanel() {
         // this is the one dialog where the difference is the whole point.
         const leaving = moves.every((move) => !move.to);
         const failed = moves.length - moved;
-        toaster.toast({
-          title: moved > 0 ? "Collections updated" : "Could not update collections",
-          body:
-            failed > 0
-              ? `${moved} of ${moves.length} game(s) ${leaving ? "taken out" : "moved"}; ` +
-                `${failed} could not be.`
-              : `${moved} game(s) ${leaving ? "taken out of their collections" : "moved"}.`,
-        });
+        if (failed > 0) {
+          showFailure(
+            moved > 0 ? "Some collections were not updated" : "Could not update collections",
+            `${moved} of ${moves.length} game(s) ${leaving ? "taken out" : "moved"}; ` +
+              `${failed} could not be.`,
+          );
+        } else {
+          toaster.toast({
+            title: "Collections updated",
+            body: `${moved} game(s) ${leaving ? "taken out of their collections" : "moved"}.`,
+          });
+        }
         return moved;
       } catch (error) {
         logError("collection migration failed", error);
-        toaster.toast({
-          title: "Could not update collections",
-          body: "The setting was saved but existing games were not moved.",
-        });
+        showFailure(
+          "Could not update collections",
+          "The setting was saved but existing games were not moved.",
+        );
         return 0;
       } finally {
         setMigrating(false);
@@ -210,10 +215,10 @@ export function CollectionsPanel() {
         await applyMoves(plan.moves);
       } catch (error) {
         logError("collection migration failed", error);
-        toaster.toast({
-          title: "Could not update collections",
-          body: "The setting was saved but existing games were not moved.",
-        });
+        showFailure(
+          "Could not update collections",
+          "The setting was saved but existing games were not moved.",
+        );
       } finally {
         setMigrating(false);
       }
@@ -249,10 +254,10 @@ export function CollectionsPanel() {
       await applyMoves(moves);
     } catch (error) {
       logError("could not take games out of their collections", error);
-      toaster.toast({
-        title: "Could not update collections",
-        body: "Collections are off, but the games already added are still in them.",
-      });
+      showFailure(
+        "Could not update collections",
+        "Collections are off, but the games already added are still in them.",
+      );
     }
     await refreshFiled();
   }, [applyMoves, patch, refreshFiled]);

@@ -19,6 +19,7 @@ import {
 } from "./backend";
 import { callWithRetry } from "./timeout";
 import { pasteInto } from "./pasteText";
+import { showFailure } from "./showFailure";
 
 const ART_SOURCE_OPTIONS: SingleDropdownOption[] = [
   { data: "auto", label: "Auto (SteamGridDB, then libretro)" },
@@ -129,10 +130,10 @@ export function ArtworkPanel() {
       try {
         const result = await validateSgdbKey(key);
         if (!result.ok) {
-          toaster.toast({
-            title: "SteamGridDB key rejected",
-            body: result.error ?? "Could not verify the key.",
-          });
+          showFailure(
+            "SteamGridDB key rejected",
+            result.error ?? "Could not verify the key.",
+          );
           return false;
         }
         await patch({ sgdb_api_key: key });
@@ -159,7 +160,7 @@ export function ArtworkPanel() {
       Navigation.CloseSideMenus();
     } catch (navError) {
       console.error("[deckyemu] could not open the browser", navError);
-      toaster.toast({ title: "Could not open the browser", body: url });
+      showFailure("Could not open the browser", url);
     }
   }, []);
 
@@ -182,10 +183,10 @@ export function ArtworkPanel() {
   const pasteKey = useCallback(async () => {
     const input = keyBoxRef.current?.querySelector("input");
     if (!input) {
-      toaster.toast({
-        title: "Could not paste",
-        body: "Type the key with the on-screen keyboard instead.",
-      });
+      showFailure(
+        "Could not paste",
+        "Type the key with the on-screen keyboard instead.",
+      );
       return;
     }
 
@@ -201,10 +202,10 @@ export function ArtworkPanel() {
     // Distinct from "paste did not work": Steam pasted and there was nothing to
     // paste. A copy made in Steam's browser does survive coming back here, so
     // the likeliest cause really is that nothing was copied.
-    toaster.toast({
-      title: "Nothing on the clipboard",
-      body: "Long-press the key on the API key page and choose Copy first.",
-    });
+    showFailure(
+      "Nothing on the clipboard",
+      "Long-press the key on the API key page and choose Copy first.",
+    );
   }, [commitKey]);
 
   const clearKey = useCallback(async () => {

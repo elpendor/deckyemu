@@ -25,6 +25,7 @@ import {
   type SystemOption,
   type Workaround,
 } from "./backend";
+import { showFailure } from "./showFailure";
 
 interface Props {
   /** An existing emulator to edit, or undefined to add a new one. */
@@ -86,7 +87,7 @@ function Workarounds({ emulatorId }: { emulatorId: string }) {
       try {
         const result = await setWorkaround(emulatorId, item.id, !item.enabled);
         if (!result.ok) {
-          toaster.toast({ title: "DeckyEmu", body: result.error ?? "That did not work." });
+          showFailure("Could not change that setting", result.error);
           return;
         }
         setItems((current) =>

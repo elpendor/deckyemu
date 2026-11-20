@@ -406,7 +406,11 @@ class Plugin(
                 try:
                     await appenv.emit(
                         event, *args, False,
-                        "%s: %s" % (type(error).__name__, error),
+                        # A sentence first: the type and text alone read as
+                        # gibberish, but are what a bug report needs.
+                        "DeckyEmu hit a bug and stopped (%s: %s). "
+                        "Diagnostics has the log to report it."
+                        % (type(error).__name__, error),
                     )
                 except Exception:
                     # Logged, not raised, so the first failure stays logged.

@@ -26,6 +26,7 @@ const toast = vi.fn();
 const showLaunchConflict = vi.fn();
 const approveLaunch = vi.fn();
 vi.mock("./host", () => ({ toaster: { toast: (...args: unknown[]) => toast(...args) } }));
+vi.mock("./showFailure", () => ({ showFailure: (...args: unknown[]) => toast({ title: args[0] }) }));
 vi.mock("./LaunchConflictModal", () => ({
   showLaunchConflict: (...args: unknown[]) => showLaunchConflict(...args),
 }));
@@ -88,8 +89,8 @@ describe("playGame with nothing else running", () => {
   });
 
   it("says so when Steam refuses, having already closed the modal", () => {
-    // The modal is gone by then, so the toast is the only place left to say it
-    // -- which is why the message names the library as the way through.
+    // The modal is gone by then, so the failure dialog is the only place to say
+    // it -- which is why the message names the library as the way through.
     const order = installSteam({ accepts: false });
     expect(playGame(42, "A Game", () => order.push("dismiss"))).toBe("refused");
     expect(order).toEqual(["dismiss", "RunGame(gid-42)"]);
@@ -98,7 +99,7 @@ describe("playGame with nothing else running", () => {
 
   it("still closes the modal when Steam has no RunGame at all", () => {
     // A Steam update that renames the method degrades one button; it must not
-    // leave the list sitting there with nothing having happened and no toast.
+    // leave the list sitting there with nothing having happened or said.
     const dismiss = vi.fn();
     (globalThis as Record<string, unknown>).SteamClient = { Apps: {} };
     expect(playGame(42, "A Game", dismiss)).toBe("refused");

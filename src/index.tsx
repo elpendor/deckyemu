@@ -99,6 +99,8 @@ function Content() {
   const [waitNote, setWaitNote] = useState("");
   const [health, setHealth] = useState<ShortcutCounts | null>(null);
   const [update, setUpdate] = useState<UpdateCheck | null>(null);
+  // Not loading the list must not read as having no games.
+  const [gamesFailed, setGamesFailed] = useState(false);
 
   // Its own endpoint rather than the full audit, which walks the ROM library
   // and every previous install looking for things this does not need. Failure
@@ -148,12 +150,16 @@ function Content() {
     callWithRetry(listAdded)
       .then((list) => {
         setGames(list);
+        setGamesFailed(false);
         // The context menu reads this list while rendering and cannot await, so
         // it is fed from here -- the panel already re-reads on every open and
         // after every change, which is exactly when the menu would be wrong.
         rememberAddedGames(list);
       })
-      .catch((error) => console.error("[deckyemu] could not list added games", error));
+      .catch((error) => {
+        console.error("[deckyemu] could not list added games", error);
+        setGamesFailed(true);
+      });
   }, []);
 
   const loadStatus = useCallback(async () => {
@@ -260,9 +266,9 @@ function Content() {
 
   if (unreachable) {
     return (
-      <PanelSection title="Plugin backend not responding">
+      <PanelSection title="DeckyEmu is not responding">
         <PanelSectionRow>
-          <Field description="No reply from DeckyEmu's backend after several tries. It restarts whenever its files change, and calls in flight at that moment are dropped, so this is expected right after an update." />
+          <Field description="No reply from DeckyEmu's backend after several tries. It restarts when it updates, and calls in flight at that moment are dropped, so this is expected right after an update." />
         </PanelSectionRow>
         <PanelSectionRow>
           <ButtonItem
@@ -436,6 +442,18 @@ function Content() {
             rows around it. It renders nothing until a game has been added, so
             the first-run panel is unchanged and adding a game stays the top
             control until there is something to go back to. */}
+        {gamesFailed && (
+          <PanelSectionRow>
+            <ButtonItem
+              layout="below"
+              label="Could not load your added games"
+              description="They are still in Steam; only this list did not arrive."
+              onClick={loadGames}
+            >
+              Try again
+            </ButtonItem>
+          </PanelSectionRow>
+        )}
         <AddedGamesPanel games={games} onChanged={loadGames} />
       </PanelSection>
 

@@ -40,6 +40,7 @@ import {
 } from "./saveBackup";
 import { humanSize, ProgressBar, TransferModal } from "./TransferModal";
 import { ICON_BUTTON, ICON_BUTTON_WIDE } from "./iconButton";
+import { showFailure } from "./showFailure";
 
 /**
  * Backups waiting on this Deck, and what to do with one.
@@ -549,14 +550,14 @@ export function RestoreSavesModal({ closeModal }: Props) {
             try {
               const result = await discardSaveBackup(file.path);
               if (!result.ok) {
-                toaster.toast({ title: "Could not delete", body: result.error ?? "" });
+                showFailure("Could not delete", result.error);
                 return;
               }
               toaster.toast({ title: "Deleted", body: file.name });
               closeModal?.();
             } catch (discardError) {
               logError("could not discard a save backup", discardError);
-              toaster.toast({ title: "Could not delete", body: "Something went wrong." });
+              showFailure("Could not delete", discardError);
             }
           })()
         }
@@ -599,10 +600,10 @@ export function RestoreSavesModal({ closeModal }: Props) {
       try {
         const result = await startFileServer(backupDir);
         if (!result.ok) {
-          toaster.toast({
-            title: "Could not start receiving",
-            body: result.error ?? "You can try again from the dialog.",
-          });
+          showFailure(
+            "Could not start receiving",
+            result.error ?? "You can try again from the dialog.",
+          );
         }
       } catch (startError) {
         logError("could not start the file server for a backup", startError);

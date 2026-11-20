@@ -17,6 +17,7 @@ import { humanSize } from "./TransferModal";
 import { callWithRetry } from "./timeout";
 import { openModal } from "./modalStack";
 import { ICON_BUTTON_WIDE } from "./iconButton";
+import { showFailure } from "./showFailure";
 
 /**
  * Declared here rather than in backend.ts, deliberately.
@@ -244,7 +245,7 @@ export function DevPanel({ onChanged }: Props) {
 
                 const result = await devReset(action.id);
                 if (!result.ok) {
-                  toaster.toast({ title: "Reset failed", body: result.error ?? "" });
+                  showFailure("Reset failed", result.error);
                   return;
                 }
 

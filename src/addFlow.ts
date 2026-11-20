@@ -33,6 +33,7 @@ import {
   updateDraft,
 } from "./romDraft";
 import { logError } from "./logError";
+import { showFailure } from "./showFailure";
 
 /**
  * The two consoles whose games arrive as packages rather than as ROMs.
@@ -347,10 +348,10 @@ export function unpackPendingPackage(system: Console, keyName = ""): void {
         // place for it only while this is still the game on screen; after that
         // it would be an error about a file the panel is not showing.
         if (stale()) {
-          toaster.toast({
-            title: "That package did not install",
-            body: result.error ?? "",
-          });
+          showFailure(
+            "That package did not install",
+            result.error,
+          );
         } else {
           updateDraft({ error: result.error ?? "The package did not install." });
         }

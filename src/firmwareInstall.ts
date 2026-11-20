@@ -3,6 +3,7 @@ import { toaster } from "./host";
 import { prepareFirmwareGui } from "./backend";
 import { openSetupShortcut } from "./setupShortcut";
 import { logError } from "./logError";
+import { showFailure } from "./showFailure";
 
 /**
  * Install a requirement the emulator will only take through its own window.
@@ -33,7 +34,7 @@ export async function installThroughEmulator(
   try {
     const prepared = await prepareFirmwareGui(entryId, requirement);
     if (!prepared.ok || !prepared.exe) {
-      toaster.toast({ title: "Could not open", body: prepared.error ?? "" });
+      showFailure("Could not open", prepared.error);
       return false;
     }
 
@@ -46,12 +47,12 @@ export async function installThroughEmulator(
       app_id: prepared.app_id,
     });
     if (!appId) {
-      toaster.toast({
-        title: `Could not open ${emulatorName}`,
+      showFailure(
+        `Could not open ${emulatorName}`,
         // Hidden, so pointing at "your library" would send somebody looking
         // where it does not appear.
-        body: `Steam would not start it. "${prepared.title}" is in your hidden games if you want to run it yourself.`,
-      });
+        `Steam would not start it. "${prepared.title}" is in your hidden games if you want to run it yourself.`,
+      );
       return false;
     }
 
@@ -62,7 +63,7 @@ export async function installThroughEmulator(
     return true;
   } catch (error) {
     logError("could not open the emulator to install firmware", error);
-    toaster.toast({ title: "Could not open", body: `${error}` });
+    showFailure("Could not open", `${error}`);
     return false;
   }
 }

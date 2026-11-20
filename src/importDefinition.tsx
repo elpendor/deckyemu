@@ -10,6 +10,7 @@ import { DANGER_TEXT } from "./danger";
 import { COLUMN, MUTED } from "./dialogStyle";
 import { openModal } from "./modalStack";
 import { ScrollList, ScrollRow } from "./ScrollList";
+import { showFailure } from "./showFailure";
 
 /**
  * One definition, as the confirmation describes it.
@@ -98,7 +99,7 @@ export function importDefinition(name: string, onImported?: () => void): void {
     if (!preview.ok) {
       // Multi-line on purpose: a refused definition is refused per rule, and
       // the rules are what tell the author what to change.
-      toaster.toast({ title: "Could not import", body: preview.error ?? "" });
+      showFailure("Could not import", preview.error);
       return;
     }
     const entries = preview.entries ?? [];
@@ -110,7 +111,7 @@ export function importDefinition(name: string, onImported?: () => void): void {
       void (async () => {
         const result = await importEmulatorDefinition(name, replacing);
         if (!result.ok) {
-          toaster.toast({ title: "Could not import", body: result.error ?? "" });
+          showFailure("Could not import", result.error);
           return;
         }
         const count = result.imported?.length ?? 0;

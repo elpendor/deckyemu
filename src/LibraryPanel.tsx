@@ -42,6 +42,7 @@ import { humanSize } from "./TransferModal";
 import { ago } from "./ago";
 import { logError } from "./logError";
 import { openModal } from "./modalStack";
+import { showFailure } from "./showFailure";
 
 interface Props {
   onRefresh: () => void;
@@ -331,10 +332,10 @@ export function LibraryPanel({ onRefresh }: Props) {
       onRefresh();
     } catch (error) {
       logError("could not clear the library", error);
-      toaster.toast({
-        title: "Could not clear the library",
-        body: "Nothing may have been removed. Check the plugin log.",
-      });
+      showFailure(
+        "Could not clear the library",
+        "Nothing may have been removed. Diagnostics has the log.",
+      );
     } finally {
       setClearing(false);
     }
@@ -523,7 +524,7 @@ export function LibraryPanel({ onRefresh }: Props) {
                 void cloudBackupNow(waiting.length > 0 ? waiting.map((one) => one.id) : null)
                   .then((result) => {
                     if (!result.ok) {
-                      toaster.toast({ title: "Could not copy the saves", body: result.error ?? "" });
+                      showFailure("Could not copy the saves", result.error);
                     }
                   })
                   .catch((error) => logError("could not start the copy", error));

@@ -32,6 +32,7 @@ import { InstallRetroArchPanel } from "./InstallRetroArchPanel";
 import { callWithRetry } from "./timeout";
 import { logError } from "./logError";
 import { openModal } from "./modalStack";
+import { showFailure } from "./showFailure";
 
 const HIDE_OSD_OPTIONS: SingleDropdownOption[] = [
   { data: "startup", label: "Hide the startup banner" },
@@ -163,10 +164,10 @@ export function RetroArchPanel({ status, onRefresh, reloadKey = 0 }: Props) {
     try {
       const result = await uninstallRetroArch(deleteData);
       if (!result.ok) {
-        toaster.toast({
-          title: "Could not remove RetroArch",
-          body: result.error ?? "flatpak did not say why.",
-        });
+        showFailure(
+          "Could not remove RetroArch",
+          result.error ?? "flatpak did not say why.",
+        );
         return;
       }
       toaster.toast({
@@ -179,10 +180,10 @@ export function RetroArchPanel({ status, onRefresh, reloadKey = 0 }: Props) {
       onRefresh();
     } catch (error) {
       logError("uninstall failed", error);
-      toaster.toast({
-        title: "Could not remove RetroArch",
-        body: "The backend did not answer. Check the plugin log.",
-      });
+      showFailure(
+        "Could not remove RetroArch",
+        "DeckyEmu did not answer. Diagnostics has the log.",
+      );
     } finally {
       setRemoving(false);
     }

@@ -68,6 +68,7 @@ import { DANGER_CLASS } from "./danger";
 import { FileName } from "./FileName";
 import { SwitchLabel } from "./SwitchLabel";
 import { ICON_BUTTON, ICON_BUTTON_WIDE } from "./iconButton";
+import { showFailure } from "./showFailure";
 
 interface Props {
   game: AddedGame;
@@ -730,19 +731,23 @@ export function GameEditorModal({ game, onSaved, closeModal, onLeave }: Props) {
                 );
               }
 
-              toaster.toast({
-                title: applied > 0 ? "Artwork updated" : "Artwork could not be applied",
-                body: result.art_game_name || `${applied} image(s)`,
-              });
+              if (applied > 0) {
+                toaster.toast({
+                  title: "Artwork updated",
+                  body: result.art_game_name || `${applied} image(s)`,
+                });
+              } else {
+                showFailure(
+                  "Artwork could not be applied",
+                  "No images came back for that game, or Steam would not take them.",
+                );
+              }
             } catch (error) {
               // Everything above ran unguarded, so a throw anywhere in it left
               // the artwork applied, the name unchanged, and no toast -- which
               // is precisely the symptom being chased, reported as silence.
               logError("could not finish applying the picked game", error);
-              toaster.toast({
-                title: "Artwork could not be applied",
-                body: "Something went wrong applying that game.",
-              });
+              showFailure("Artwork could not be applied", error);
             }
           })();
         }}

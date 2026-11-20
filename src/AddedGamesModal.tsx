@@ -113,6 +113,9 @@ function RowArt({ urls }: { urls: string[] }) {
     <img
       src={urls[tried]}
       alt=""
+      // A long library opens without decoding every cover at once.
+      loading="lazy"
+      decoding="async"
       style={{ ...ART_SLOT, objectFit: "cover" }}
       onError={() => setTried((n) => n + 1)}
     />

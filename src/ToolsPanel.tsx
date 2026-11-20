@@ -20,6 +20,7 @@ import { callWithRetry } from "./timeout";
 import { openModal } from "./modalStack";
 import { ICON_BUTTON } from "./iconButton";
 import { toolLine } from "./toolState";
+import { showFailure } from "./showFailure";
 
 /**
  * The helper binaries this plugin downloads, and whether they are here.
@@ -70,13 +71,13 @@ export function ToolsPanel({ reloadKey = 0 }: Props) {
       installHelperTool(tool.name)
         .then((result) => {
           if (!result.ok) {
-            toaster.toast({ title: tool.label, body: result.error || "Could not download it." });
+            showFailure(tool.label, result.error || "Could not download it.");
             return;
           }
           toaster.toast({ title: tool.label, body: "Installed." });
         })
         .catch((error: unknown) => {
-          toaster.toast({ title: tool.label, body: String(error) });
+          showFailure(tool.label, error);
         })
         .finally(() => {
           setBusy("");

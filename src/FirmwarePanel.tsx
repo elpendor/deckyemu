@@ -44,6 +44,7 @@ import { OptionalFilesModal } from "./OptionalFilesModal";
 import { confirmUnknownDump } from "./confirmUnknownDump";
 import { openModal } from "./modalStack";
 import { ICON_BUTTON, ICON_BUTTON_WIDE } from "./iconButton";
+import { showFailure } from "./showFailure";
 
 /** The tick or the triangle, in the colour that state is drawn in. */
 function StatusIcon({ state }: { state: FirmwareRowState }) {
@@ -146,10 +147,10 @@ export function FirmwarePanel({ reloadKey = 0 }: Props) {
           const where = await firmwareDir();
           const result = await startFileServer(where.path || "");
           if (!result.ok) {
-            toaster.toast({
-              title: "Could not start receiving",
-              body: result.error ?? "You can try again from the dialog.",
-            });
+            showFailure(
+              "Could not start receiving",
+              result.error ?? "You can try again from the dialog.",
+            );
           }
         } catch (startError) {
           console.error("[deckyemu] could not start the file server", startError);
@@ -190,7 +191,7 @@ export function FirmwarePanel({ reloadKey = 0 }: Props) {
           }
           const result = await installFirmware(entryId, requirement.name);
           if (!result.ok) {
-            toaster.toast({ title: "Could not install", body: result.error ?? "" });
+            showFailure("Could not install", result.error);
             return;
           }
           const moved = result.copied?.length ?? 0;
@@ -236,7 +237,7 @@ export function FirmwarePanel({ reloadKey = 0 }: Props) {
         try {
           const result = await fetchFirmware(entryId, requirement.name);
           if (!result.ok) {
-            toaster.toast({ title: "Could not download", body: result.error ?? "" });
+            showFailure("Could not download", result.error);
             return;
           }
           toaster.toast({
@@ -298,7 +299,7 @@ export function FirmwarePanel({ reloadKey = 0 }: Props) {
         try {
           const result = await deleteFirmware(requirement.waiting);
           if (!result.ok) {
-            toaster.toast({ title: "Could not delete", body: result.error ?? "" });
+            showFailure("Could not delete", result.error);
             return;
           }
           toaster.toast({
@@ -358,7 +359,7 @@ export function FirmwarePanel({ reloadKey = 0 }: Props) {
             void (async () => {
               const result = await uninstallFirmware(entryId, requirement.name);
               if (!result.ok) {
-                toaster.toast({ title: "Could not remove", body: result.error ?? "" });
+                showFailure("Could not remove", result.error);
                 return;
               }
               toaster.toast({

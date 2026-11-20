@@ -8,6 +8,7 @@ import { logError } from "./logError";
 import { openModal } from "./modalStack";
 import { ownedCount } from "./receivedGroups";
 import { humanSize } from "./TransferModal";
+import { showFailure } from "./showFailure";
 
 /**
  * Deleting a file from the transfer folder, with the one question worth asking.
@@ -72,7 +73,7 @@ export function confirmDiscardTransfer(
               ? await discardStoppedTransfer(stopped.partial)
               : await discardTransferredFile(file.name);
             if (!result.ok) {
-              toaster.toast({ title: "Could not delete", body: result.error ?? "" });
+              showFailure("Could not delete", result.error);
               return;
             }
             // Quiet when it was already gone: the list was stale, the folder is
@@ -84,7 +85,7 @@ export function confirmDiscardTransfer(
             onDiscarded();
           } catch (error) {
             logError("could not discard a transferred file", error);
-            toaster.toast({ title: "Could not delete", body: "Something went wrong." });
+            showFailure("Could not delete", error);
           }
         })()
       }

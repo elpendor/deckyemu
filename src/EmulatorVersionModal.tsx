@@ -25,6 +25,7 @@ import { InstallProgress } from "./InstallProgress";
 import { humanSize } from "./TransferModal";
 import { logError } from "./logError";
 import { ICON_BUTTON, ICON_BUTTON_WIDE } from "./iconButton";
+import { showFailure } from "./showFailure";
 
 interface Props {
   closeModal?: () => void;
@@ -135,18 +136,20 @@ export function EmulatorVersionModal({ closeModal, emulator, onChanged }: Props)
        * "now on the newest build" are wrong for a build chosen from the list,
        * which may be older *or* newer than the one that was installed.
        */
-      toaster.toast({
-        title: message
-          ? `${emulator.name} moved, but is not held`
-          : action.current === "update"
-            ? `${emulator.name} updated`
-            : `${emulator.name} changed build`,
-        body:
-          message ||
-          (action.current === "update"
-            ? "It is now on the newest build."
-            : "It is on the build you chose, and held there."),
-      });
+      if (message) {
+        showFailure(`${emulator.name} moved, but is not held`, message);
+      } else {
+        toaster.toast({
+          title:
+            action.current === "update"
+              ? `${emulator.name} updated`
+              : `${emulator.name} changed build`,
+          body:
+            action.current === "update"
+              ? "It is now on the newest build."
+              : "It is on the build you chose, and held there.",
+        });
+      }
       // Not a guess: the change reported success, so the build that was asked
       // for is the one installed. The reload that follows says the same thing
       // and corrects this if anything else moved with it.

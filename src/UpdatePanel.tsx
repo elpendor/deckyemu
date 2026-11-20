@@ -24,6 +24,7 @@ import { FRONTEND_VERSION } from "./version";
 import { useBackendVersion } from "./useBackendVersion";
 import { noteCheck, setUpdateDotEnabled } from "./updateSignal";
 import { logError } from "./logError";
+import { showFailure } from "./showFailure";
 
 /**
  * Two halves side by side rather than stacked: they are one fact -- which build
@@ -275,10 +276,10 @@ export function UpdatePanel({
       // still runs only meets "already being installed".
       const staged = await callWithRetry(() => stageUpdate(), { attempts: 1, ms: 10 * 60_000 });
       if (!staged.ok) {
-        toaster.toast({
-          title: "Could not prepare the update",
-          body: staged.error ?? "The release could not be downloaded.",
-        });
+        showFailure(
+          "Could not prepare the update",
+          staged.error ?? "The release could not be downloaded.",
+        );
         return;
       }
       toaster.toast(await updates.finish(staged, release.version));
@@ -288,10 +289,10 @@ export function UpdatePanel({
 
     } catch (error) {
       logError("could not start the update", error);
-      toaster.toast({
-        title: "Could not start the update",
-        body: error instanceof Error ? error.message : updates.noAnswer,
-      });
+      showFailure(
+        "Could not start the update",
+        error instanceof Error ? error.message : updates.noAnswer,
+      );
     } finally {
       if (live.current) setInstalling(false);
     }

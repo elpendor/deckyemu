@@ -69,6 +69,7 @@ import { groupReceived, ownedCount } from "./receivedGroups";
 import { closeOpenModals, openModal } from "./modalStack";
 import { repointShortcut } from "./steam";
 import { ICON_BUTTON, ICON_BUTTON_WIDE } from "./iconButton";
+import { showFailure } from "./showFailure";
 
 /** How often to re-check while running, to pick up newly arrived files. */
 const POLL_MS = 3000;
@@ -705,7 +706,7 @@ export function TransferModal({
       try {
         const result = await joinDiscToGame(target.app_id, path);
         if (!result.ok) {
-          toaster.toast({ title: "Could not add the disc", body: result.error ?? "" });
+          showFailure("Could not add the disc", result.error);
           return;
         }
         // Only when the launcher moved. Its filename embeds a hash of the ROM
@@ -717,7 +718,7 @@ export function TransferModal({
         await load();
       } catch (error) {
         logError("could not add a disc to a game", error);
-        toaster.toast({ title: "Could not add the disc", body: "Something went wrong." });
+        showFailure("Could not add the disc", error);
       } finally {
         setBusy(false);
       }

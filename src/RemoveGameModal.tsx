@@ -14,6 +14,7 @@ import { removeShortcut } from "./steam";
 import { unfileGames } from "./collections";
 import { humanSize } from "./TransferModal";
 import { logError } from "./logError";
+import { showFailure } from "./showFailure";
 
 interface Props {
   closeModal?: () => void;
@@ -152,10 +153,10 @@ export function RemoveGameModal({ closeModal, game, onRemoved }: Props) {
                 // The shortcut is already gone, so this is not a failed
                 // removal — it is a removal with the files still there, and
                 // saying which happened is the useful part.
-                toaster.toast({
-                  title: "Removed, but the files are still there",
-                  body: result.error ?? "",
-                });
+                showFailure(
+                  "Removed, but the files are still there",
+                  result.error,
+                );
                 onRemoved();
                 return;
               }
@@ -169,7 +170,7 @@ export function RemoveGameModal({ closeModal, game, onRemoved }: Props) {
             onRemoved();
           } catch (error) {
             logError("remove failed", error);
-            toaster.toast({ title: "Could not remove the game", body: game.title });
+            showFailure(`Could not remove ${game.title}`, error);
           }
         })();
       }}

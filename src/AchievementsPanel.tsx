@@ -22,6 +22,7 @@ import {
 } from "./backend";
 import { pasteInto } from "./pasteText";
 import { callWithRetry } from "./timeout";
+import { showFailure } from "./showFailure";
 
 /**
  * Why some cores answer "achievements are unsupported" at launch.
@@ -114,10 +115,10 @@ export function AchievementsPanel() {
       // box invites pressing the button again unchanged.
       setPassword("");
       if (!result.ok) {
-        toaster.toast({
-          title: "Could not sign in",
-          body: result.error ?? "RetroAchievements rejected the sign-in.",
-        });
+        showFailure(
+          "Could not sign in",
+          result.error ?? "RetroAchievements rejected the sign-in.",
+        );
         return;
       }
       setUsername("");
@@ -128,7 +129,7 @@ export function AchievementsPanel() {
       load();
     } catch (error) {
       console.error("[deckyemu] achievements sign-in failed", error);
-      toaster.toast({ title: "Could not sign in", body: "The backend did not answer." });
+      showFailure("Could not sign in", "The backend did not answer.");
     } finally {
       setBusy(false);
     }
@@ -139,7 +140,7 @@ export function AchievementsPanel() {
     try {
       const result = await cheevosAdopt();
       if (!result.ok) {
-        toaster.toast({ title: "Could not use that login", body: result.error ?? "" });
+        showFailure("Could not use that login", result.error);
         return;
       }
       toaster.toast({
@@ -178,10 +179,10 @@ export function AchievementsPanel() {
     const text = (await pasteInto(input)).trim();
     if (text) setPassword(text);
     else
-      toaster.toast({
-        title: "Nothing on the clipboard",
-        body: "Type the password with the on-screen keyboard instead.",
-      });
+      showFailure(
+        "Nothing on the clipboard",
+        "Type the password with the on-screen keyboard instead.",
+      );
   }, []);
 
   if (!status) {

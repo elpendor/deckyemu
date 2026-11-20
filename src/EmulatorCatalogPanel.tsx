@@ -58,6 +58,7 @@ import { runningId } from "./runningWork";
 import { openModal } from "./modalStack";
 import { importProblems } from "./importProblems";
 import { ICON_BUTTON } from "./iconButton";
+import { showFailure } from "./showFailure";
 
 interface Props {
   /** Re-read cores and emulators, so a new install becomes selectable. */
@@ -518,7 +519,7 @@ export function EmulatorCatalogPanel({ onChanged, ports = false }: Props) {
       try {
         const result = await job.action();
         if (!result.ok) {
-          toaster.toast({ title: job.failure, body: result.error ?? "" });
+          showFailure(job.failure, result.error);
           return;
         }
         toaster.toast(job.success);
@@ -567,7 +568,7 @@ export function EmulatorCatalogPanel({ onChanged, ports = false }: Props) {
         try {
           const prepared = await prepareEmulatorGui(entry.id);
           if (!prepared.ok || !prepared.exe) {
-            toaster.toast({ title: "Could not open", body: prepared.error ?? "" });
+            showFailure("Could not open", prepared.error);
             return;
           }
 
@@ -578,18 +579,18 @@ export function EmulatorCatalogPanel({ onChanged, ports = false }: Props) {
             app_id: prepared.app_id,
           });
           if (!appId) {
-            toaster.toast({
-              title: `Could not open ${entry.name}`,
+            showFailure(
+              `Could not open ${entry.name}`,
               // The shortcut is hidden, so "find it in your library" would send
               // somebody looking somewhere it does not appear.
-              body: `Steam would not start it. "${prepared.title}" is in your hidden games if you want to run it yourself.`,
-            });
+              `Steam would not start it. "${prepared.title}" is in your hidden games if you want to run it yourself.`,
+            );
             return;
           }
           onChanged();
         } catch (openError) {
           logError("could not open the emulator", openError);
-          toaster.toast({ title: "Could not open", body: `${openError}` });
+          showFailure("Could not open", openError);
         } finally {
           setBusyId("");
           setStatus("");

@@ -92,7 +92,9 @@ async def _boom():
 emitted.clear()
 detached(_boom(), "retroarch_install_done")
 check("the two-argument event shape is emitted as (ok, message)",
-      emitted[0], ("retroarch_install_done", (False, "RuntimeError: flatpak went missing mid-install")))
+      emitted[0], ("retroarch_install_done", (False,
+                   "DeckyEmu hit a bug and stopped (RuntimeError: flatpak went missing "
+                   "mid-install). Diagnostics has the log to report it.")))
 
 
 # --- success is left alone -------------------------------------------------

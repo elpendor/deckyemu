@@ -81,6 +81,7 @@ import { logError } from "./logError";
 import { sentence } from "./sentence";
 import { titleAfterArtPick } from "./titleFromArt";
 import { openModal } from "./modalStack";
+import { showFailure } from "./showFailure";
 
 const MATCH_LABELS: Record<ResolvedGame["match_kind"], string> = {
   exact: "Matched libretro database",
@@ -819,10 +820,10 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
     try {
       const result = await startFileServer("");
       if (!result.ok) {
-        toaster.toast({
-          title: "Could not start receiving",
-          body: result.error ?? "You can try again from the dialog.",
-        });
+        showFailure(
+          "Could not start receiving",
+          result.error ?? "You can try again from the dialog.",
+        );
       }
     } catch (transferError) {
       logError("could not start the file server", transferError);

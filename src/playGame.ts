@@ -1,9 +1,9 @@
-import { toaster } from "./host";
 
 import { approveLaunch } from "./backend";
 import { showLaunchConflict } from "./LaunchConflictModal";
 import { logError } from "./logError";
 import { launchApp, runningGames } from "./steam";
+import { showFailure } from "./showFailure";
 
 /** What `playGame` did, which is not always "launched". */
 export type PlayResult = "launched" | "refused" | "asked";
@@ -17,10 +17,10 @@ export type PlayResult = "launched" | "refused" | "asked";
  */
 function launchNow(appId: number): PlayResult {
   if (launchApp(appId)) return "launched";
-  toaster.toast({
-    title: "Could not start the game",
-    body: "Steam did not accept the launch request. Try it from the library.",
-  });
+  showFailure(
+    "Could not start the game",
+    "Steam did not accept the launch request. Try it from the library.",
+  );
   return "refused";
 }
 
@@ -84,10 +84,10 @@ export function playGame(appId: number, title: string, dismiss?: () => void): Pl
             // duplicate this exists to prevent. Nothing starting is the better
             // of the two, and the toast says where to go instead.
             logError("could not approve the launch", error);
-            toaster.toast({
-              title: "Could not start the game",
-              body: "The launch could not be approved. Try it from the library.",
-            });
+            showFailure(
+              "Could not start the game",
+              "The launch could not be approved. Try it from the library.",
+            );
             return;
           }
           launchNow(appId);

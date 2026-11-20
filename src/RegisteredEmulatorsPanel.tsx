@@ -18,6 +18,7 @@ import { registeredDescription } from "./registeredEmulator";
 import { callWithRetry } from "./timeout";
 import { openModal } from "./modalStack";
 import { ICON_BUTTON } from "./iconButton";
+import { showFailure } from "./showFailure";
 
 interface Props {
   /** Re-read status/cores after a change, so a new entry becomes selectable. */
@@ -82,10 +83,10 @@ export function RegisteredEmulatorsPanel({
             void (async () => {
               const result = await removeEmulator(emulator.id);
               if (!result.ok) {
-                toaster.toast({
-                  title: "Could not remove emulator",
-                  body: result.error ?? "",
-                });
+                showFailure(
+                  "Could not remove emulator",
+                  result.error,
+                );
                 return;
               }
               toaster.toast({ title: "Emulator removed", body: emulator.name });
