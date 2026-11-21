@@ -21,8 +21,12 @@ everything after it happens on the couch.
 Rather type it? Open **Konsole** and run the same thing the file does:
 
 ```
-curl -fsSL https://github.com/elpendor/deckyemu/releases/latest/download/install.sh | sh
+curl -fsSL https://install.deckyemu.xyz | sh
 ```
+
+That redirects to
+`https://github.com/elpendor/deckyemu/releases/latest/download/install.sh`,
+which you can paste instead if you'd rather see where it goes.
 
 DeckyEmu shows up as its own tab in the Quick Access menu, and as a **DeckyEmu**
 tile in your library.

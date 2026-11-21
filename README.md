@@ -61,8 +61,12 @@ double-click it, and close the window when it says DeckyEmu is installed. Or
 open Konsole and run:
 
 ```
-curl -fsSL https://github.com/elpendor/deckyemu/releases/latest/download/install.sh | sh
+curl -fsSL https://install.deckyemu.xyz | sh
 ```
+
+That short address redirects to
+`https://github.com/elpendor/deckyemu/releases/latest/download/install.sh`,
+which you can use instead if you'd rather see where it goes.
 
 Then go back to Game Mode. Nothing else is needed first: RetroArch and its cores
 install from DeckyEmu, and an existing RetroArch is found on its own.
