@@ -19,7 +19,8 @@ import {
   toaster,
   useQuickAccessVisible,
 } from "./host";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { takeGamepadFocus } from "./steam/focus";
 
 import {
   getSettings,
@@ -52,6 +53,7 @@ import { installContentFor, installWaitingContent } from "./installContent";
 import { openPatchInstall } from "./installPatch";
 import {
   continueAfterEmulator,
+  refreshAfterInstall,
   installEmulatorAndUnpack,
   LOOKUP_FAILED,
   lookupArtwork,
@@ -154,9 +156,17 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
   // it has to be gone when they come back -- otherwise the fix looks like it did
   // not take. The same applies to anything else changed over there.
   const visible = useQuickAccessVisible();
+  const chooseRow = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     getSettings().then(setLocalSettings).catch(() => undefined);
+  }, [visible]);
+
+  // And the picked file, when nothing could run it: RetroArch or an emulator
+  // may have been installed while Quick Access was closed. Installs that
+  // report back are caught in addFlow; this covers the ones that do not.
+  useEffect(() => {
+    if (visible && getDraft().romPath && !getDraft().coreId) void refreshAfterInstall();
   }, [visible]);
 
   // Re-asked whenever the emulator changes, because the answer is about the
@@ -892,6 +902,7 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
       )}
 
       <PanelSectionRow>
+        <div ref={chooseRow} style={{ display: "contents" }}>
         <ButtonItem
           layout="below"
           onClick={pickRom}
@@ -919,6 +930,7 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
             {addedName || "Choose an existing file"}
           </div>
         </ButtonItem>
+        </div>
       </PanelSectionRow>
 
       {/* Only while no ROM is chosen: these are a way in, and once a file is
@@ -1568,7 +1580,18 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
 
       {romPath && (
         <PanelSectionRow>
-          <ButtonItem layout="below" onClick={() => resetDraft()} disabled={adding}>
+          <ButtonItem
+            layout="below"
+            // Clear removes itself; the ring goes where starting again begins.
+            onClick={() => {
+              resetDraft();
+              requestAnimationFrame(() => {
+                const inner = chooseRow.current?.querySelectorAll("*");
+                takeGamepadFocus(inner?.[inner.length - 1]);
+              });
+            }}
+            disabled={adding}
+          >
             Clear
           </ButtonItem>
         </PanelSectionRow>

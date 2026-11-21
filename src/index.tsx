@@ -197,6 +197,22 @@ function Content() {
   // The switch lives in the header (SwitchButton); the panel shows the result.
   useEffect(() => onSwitched(() => void loadStatus()), [loadStatus]);
 
+  // And when an install finishes with the panel open, so the core and
+  // emulator counts move with it.
+  useEffect(() => {
+    const reload = () => void loadStatus();
+    const core = addEventListener<[id: string, stage: string]>(
+      "core_install_progress", (_id, stage) => { if (stage === "done") reload(); });
+    const emulator = addEventListener<[id: string, ok: boolean]>(
+      "emulator_install_done", (_id, ok) => { if (ok) reload(); });
+    const catalog = addEventListener("emulator_catalog_changed", reload);
+    return () => {
+      removeEventListener("core_install_progress", core);
+      removeEventListener("emulator_install_done", emulator);
+      removeEventListener("emulator_catalog_changed", catalog);
+    };
+  }, [loadStatus]);
+
 
   const nudge = shortcutNudge(health);
   const badge = updateBadge(update);

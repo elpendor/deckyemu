@@ -471,6 +471,55 @@ export async function installEmulatorAndUnpack(emulatorId: string): Promise<void
 }
 
 /**
+ * Re-read the picked file after an install that happened somewhere else.
+ *
+ * The probe is taken once, when the file is picked, so an emulator or core
+ * installed from the settings page afterwards was not offered until the file
+ * was cleared and picked again. A choice already made is kept; a file nothing
+ * could run takes what can run it now. Skipped while this panel is busy with
+ * its own add, unpack or install, which re-read the file themselves.
+ */
+export async function refreshAfterInstall(): Promise<void> {
+  const before = getDraft();
+  const { romPath } = before;
+  if (!romPath || !before.probe || before.adding || before.installingCore
+    || before.installingEmulator || before.unpacking) return;
+  try {
+    const info = await probeRom(romPath);
+    const now = getDraft();
+    if (now.romPath !== romPath) return;
+    const packaged = info.ps4_package || info.vita_package || info.ps3_package;
+    if (now.coreId || !info.suggested_core_id || packaged || info.save_backup
+      || info.archived_content) {
+      updateDraft({ probe: info });
+      return;
+    }
+    const system = chooseSystem(info, info.suggested_core_id);
+    updateDraft({
+      probe: info,
+      coreId: info.suggested_core_id,
+      systemId: system,
+      installable: [],
+      installableId: "",
+      showAllCores: false,
+    });
+    await lookupArtwork(romPath, info.suggested_core_id, "", system);
+  } catch (probeError) {
+    logError("could not re-read the file after an install", probeError);
+  }
+}
+
+// At module scope, like the install listeners below: the panel is unmounted
+// while the settings page is open, which is where these installs happen.
+addEventListener<[id: string, ok: boolean]>("emulator_install_done", (_id, ok) => {
+  if (ok) void refreshAfterInstall();
+});
+addEventListener<[id: string, stage: string]>("core_install_progress", (_id, stage) => {
+  if (stage === "done") void refreshAfterInstall();
+});
+addEventListener("emulator_catalog_changed", () => void refreshAfterInstall());
+
+/**
  * Re-read the package now the emulator is there, and unpack it.
  *
  * The re-probe is what takes the offer off screen: `emulator_ready` came from
