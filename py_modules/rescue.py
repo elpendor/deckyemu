@@ -66,26 +66,40 @@ PAGE = """<!doctype html>
  summary.pad { outline:2px solid #1a9fff; outline-offset:4px; }
  button small { display:block; font-size:15px; opacity:.7; margin-top:2px; }
  #result { margin:6px 2px; font-weight:bold; }
+ .verdict { font-size:20px; margin:0 0 14px; }
+ .note { font-size:15px; opacity:.6; margin:-4px 0 8px; }
  details { margin-top:24px; } summary { font-size:18px; cursor:pointer; opacity:.8; }
  pre { background:#0e1218; padding:12px; white-space:pre-wrap; font-size:13px; max-height:40vh; overflow:auto; }
 </style></head><body>
 <h1>DeckyEmu <small>%(version)s</small></h1>
 <div class="cols">
  <div class="card">
+  <p class="verdict">%(verdict)s</p>
   <h2>Status</h2>
 %(checks)s
 %(patches)s
  </div>
  <div class="actions">
 %(actions)s
-  <button onclick="location.reload()">Refresh</button>
+  <button data-home onclick="location.reload()">Refresh</button>
   <div id="result"></div>
  </div>
 </div>
 <details><summary>Log</summary><pre>%(log)s</pre></details>
 <script>
+// A button with data-confirm asks for a second press within five seconds,
+// in the page rather than a browser dialog the pad cannot reach.
+let armed = null;
 async function act(what) {
   const out = document.getElementById("result");
+  const button = window.event && window.event.currentTarget;
+  if (button && button.dataset.confirm && armed !== button) {
+    armed = button;
+    out.textContent = button.dataset.confirm;
+    setTimeout(() => { if (armed === button) { armed = null; out.textContent = ""; } }, 5000);
+    return;
+  }
+  armed = null;
   out.textContent = "Working...";
   try {
     // From the page's own path: it has no trailing slash, so a relative
@@ -116,7 +130,13 @@ function mark(items) {
   items.forEach((item, i) => item.classList.toggle("pad", i === at));
   items[at].scrollIntoView({ block: "nearest" });
 }
-mark([...document.querySelectorAll(".actions button, summary")]);
+// Starts on Refresh, the one button that changes nothing: the page is often
+// opened on a Deck that is fine, and A should not restart it.
+{
+  const items = [...document.querySelectorAll(".actions button, summary")];
+  at = Math.max(0, items.findIndex((item) => item.dataset.home !== undefined));
+  mark(items);
+}
 
 // The status card, kept current: a restart finishes loading the panel a few
 // seconds after the page has reloaded into it.
@@ -148,6 +168,18 @@ def patch_state(value):
     if value.startswith("refused"):
         return "refused", "bad"
     return "not found", "bad"
+
+
+def _verdict(status):
+    """One line above the card, so nobody has to add up the marks."""
+    rows = list(status.get("checks") or [])
+    rows += [(name, *patch_state(value))
+             for name, value in (status.get("patches") or {}).items()]
+    for wanted, lead in (("bad", "Not working"), ("warn", "Worth a look")):
+        for label, value, state in rows:
+            if state == wanted:
+                return "%s: %s, %s." % (lead, label, value)
+    return "Everything is working." if rows else ""
 
 
 STALE = """<!doctype html><meta charset="utf-8"><title>DeckyEmu</title>
@@ -264,15 +296,21 @@ class Rescue:
                        '<small>Steam restarts</small></button>')
             patches = ""
         else:
-            actions = ('  <button onclick="act(\'restart\')">Restart</button>\n'
-                       '  <button onclick="act(\'update\')">Update</button>')
+            actions = ('  <button onclick="act(\'restart\')">Restart'
+                       '<small>DeckyEmu only; Steam keeps running</small></button>\n'
+                       '  <button onclick="act(\'update\')">Update'
+                       '<small>Installs a newer release, if there is one</small></button>')
             previous = status.get("previous")
             if previous:
-                actions += ('\n  <button onclick="act(\'rollback\')">Go back<small>to %s</small></button>'
-                            % html.escape(previous))
+                actions += ('\n  <button data-confirm="Press again to go back to %s. DeckyEmu'
+                            ' restarts on it." onclick="act(\'rollback\')">Go back<small>to %s'
+                            '</small></button>' % (html.escape(previous), html.escape(previous)))
             patches = ('  <h2 class="sub">Patches</h2>\n'
+                       '  <p class="note">Changes DeckyEmu makes to Steam. A cross here is'
+                       ' what to report.</p>\n'
                        + ("\n".join(patches) or _item("Not reported yet", "", "warn")))
         return PAGE % {
+            "verdict": html.escape(_verdict(status)),
             "version": html.escape(str(status.get("version", ""))),
             "checks": "\n".join(checks),
             "patches": patches,

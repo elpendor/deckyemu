@@ -542,7 +542,11 @@ function TitleView() {
       <div>DeckyEmu</div>
       <div style={{ display: "flex", gap: "6px" }}>
         <SwitchButton />
-        <DialogButton style={HEADER_BUTTON} onClick={() => openManagePage()}>
+        <DialogButton
+          style={HEADER_BUTTON}
+          onOKActionDescription="Settings"
+          onClick={() => openManagePage()}
+        >
           <FaCog style={{ display: "block" }} />
         </DialogButton>
       </div>

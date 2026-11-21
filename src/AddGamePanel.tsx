@@ -1182,7 +1182,8 @@ export function AddGamePanel({ status, onGameAdded }: Props) {
               // not cores and do not run inside RetroArch.
               label="Run with"
               description={
-                `${probe.matching_cores.length} of these support ${probe.what}` +
+                `${probe.matching_cores.length} of these ` +
+                `${probe.matching_cores.length === 1 ? "supports" : "support"} ${probe.what}` +
                 (probe.is_archive && probe.match_extension !== probe.extension
                   ? ` (found inside the .${probe.extension})`
                   : "")

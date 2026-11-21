@@ -128,6 +128,7 @@ export function SwitchButton() {
     <DialogButton
       style={{ ...HEADER_BUTTON, position: "relative" }}
       disabled={busy}
+      onOKActionDescription="Switch version"
       onClick={() => {
         if (dot) {
           setHinted(false);
