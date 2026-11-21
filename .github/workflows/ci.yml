@@ -421,10 +421,13 @@ jobs:
           cp "$RUNNER_TEMP/mame/chdman" chdman-linux-x86_64
 
       # Only glibc and SDL2 may stay dynamic (SteamOS lacks libutf8proc, for
-      # one), and a round trip must give back the same bytes.
+      # one), and a round trip must give back the same bytes. SDL2 is installed
+      # here too, since a cache hit skips the build step that installs it.
       - name: Check chdman
         if: inputs.publish
         run: |
+          sudo apt-get update >/dev/null
+          sudo apt-get install -y --no-install-recommends libsdl2-2.0-0 >/dev/null
           readelf -d chdman-linux-x86_64 | grep NEEDED
           if readelf -d chdman-linux-x86_64 | grep NEEDED \
               | grep -v -E '\[(libSDL2-2\.0\.so\.0|libm\.so\.6|libc\.so\.6|ld-linux-x86-64\.so\.2)\]'; then
