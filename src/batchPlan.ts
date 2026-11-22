@@ -29,11 +29,16 @@ export interface Verdict {
   include: boolean;
   step?: Step;
   other?: OtherKind;
+  /** Not addable until something only the user can do is done; it cannot be
+   *  ticked meanwhile, and `reason` says what. */
+  blocked?: boolean;
 }
 
 const cant = (reason: string): Verdict => ({ bucket: "cant", reason, include: false });
 const check = (reason: string, include: boolean, step: Step = ""): Verdict =>
   ({ bucket: "check", reason, include, step });
+const blocked = (reason: string, step: Step): Verdict =>
+  ({ bucket: "check", reason, include: false, step, blocked: true });
 const other = (kind: OtherKind, reason: string): Verdict =>
   ({ bucket: "other", reason, include: false, other: kind });
 
@@ -54,8 +59,8 @@ export function classifyProbe(
     // one is the only thing to say -- and it is said before any install.
     if (packaged.system === "vita" && packaged.state.licence === false) {
       return (packaged.state.licence_candidates ?? []).length
-        ? check("The key here is for another game", false, "package")
-        : check("Needs its licence key", false, "package");
+        ? blocked("The key here is for another game", "package")
+        : blocked("Needs its licence key", "package");
     }
     const name = packaged.state.emulator_name || "its emulator";
     const key = packaged.system === "vita" ? " · key matched" : "";
@@ -78,7 +83,7 @@ export function classifyProbe(
     if (installable > 0) {
       return retroarch
         ? check("Installs a core first", true, "core")
-        : check("Needs RetroArch", false, "retroarch");
+        : blocked("Needs RetroArch", "retroarch");
     }
     return cant(probe.what ? `Nothing runs ${probe.what} files` : "Nothing runs it");
   }

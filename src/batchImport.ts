@@ -13,7 +13,6 @@ import {
   fetchFirmware,
   installFirmware,
   type AppliedArt,
-  forgetGames,
   getStatus,
   installCore,
   installEmulator,
@@ -34,7 +33,6 @@ import {
   resolveGameStashed,
   suggestCoresForExtension,
   takeStashedArt,
-  unfileRoms,
   unpackTransferredFile,
   vitaCoreId,
   type ResolvedGame,
@@ -42,17 +40,16 @@ import {
 } from "./backend";
 import { addGameToSteam } from "./addToSteam";
 import { classify, classifyProbe, otherVerdict, type OtherKind, type Verdict } from "./batchPlan";
-import { unfileGames } from "./collections";
 import { chooseSystem } from "./corePicker";
 import { discsMustSplit as mustSplit } from "./discSet";
 import { addEventListener, removeEventListener } from "./host";
 import { logError } from "./logError";
 import { pendingPackage, type PackageSystem } from "./packageState";
-import { removeShortcut, repointShortcut } from "./steam";
+import { repointShortcut } from "./steam";
 
 export type DiscMode = "one" | "each";
 
-/** One Steam entry a row made, for undo. */
+/** One Steam entry a row made. */
 interface Added {
   appId: number;
   /** Where its ROM went, "" when nothing was moved (an installed package). */
@@ -111,7 +108,7 @@ export interface Needs {
 
 export const NO_NEEDS: Needs = { emulator: "", download: [], send: [] };
 
-export type BatchPhase = "idle" | "checking" | "review" | "adding" | "done" | "undone";
+export type BatchPhase = "idle" | "checking" | "review" | "adding" | "done";
 
 export interface Batch {
   phase: BatchPhase;
@@ -159,7 +156,12 @@ function update(patch: Partial<Batch>): void {
 }
 
 function updateRow(path: string, patch: Partial<BatchRow>): void {
-  update({ rows: batch.rows.map((row) => (row.path === path ? { ...row, ...patch } : row)) });
+  update({ rows: batch.rows.map((row) => (row.path === path ? unblock({ ...row, ...patch }) : row)) });
+}
+
+/** A blocked game stays unticked whatever else changes on its row. */
+function unblock(row: BatchRow): BatchRow {
+  return row.verdict.blocked && row.include ? { ...row, include: false } : row;
 }
 
 const rowAt = (path: string) => batch.rows.find((one) => one.path === path);
@@ -257,7 +259,8 @@ async function fetchNeeded(row: BatchRow): Promise<string[]> {
   for (const item of row.needs.download) {
     const key = `${item.entryId}/${item.name}`;
     if (fetched.has(key)) continue;
-    update({ current: `${row.title}: downloading ${item.name}` });
+    // On the step line, as a package's install is; the bar keeps the game.
+    updateRow(row.path, { busy: true, stepStatus: `Getting ${row.needs.emulator}'s firmware`, stepPercent: -1 });
     try {
       const result = await fetchFirmware(item.entryId, item.name);
       if (!result.ok) {
@@ -266,7 +269,6 @@ async function fetchNeeded(row: BatchRow): Promise<string[]> {
       }
       // Downloaded is not installed: Vita3K imports its firmware itself, and
       // a game added before that boots to nothing.
-      update({ current: `${row.title}: installing ${item.name}` });
       const installed = await installFirmware(item.entryId, item.name);
       if (installed.ok) fetched.add(key);
       else notes.push(`${item.name} downloaded but did not install: ${installed.error ?? "no reason given"}`);
@@ -275,6 +277,7 @@ async function fetchNeeded(row: BatchRow): Promise<string[]> {
       notes.push(`${item.name} did not download.`);
     }
   }
+  updateRow(row.path, { busy: false, stepStatus: "" });
   needsCache.clear();
   return notes;
 }
@@ -489,13 +492,18 @@ export async function startBatch(files: BatchFile[]): Promise<void> {
 // --- changes made on the review -------------------------------------------
 
 export function setIncluded(path: string, include: boolean): void {
+  // A blocked game stays off until what blocks it is done.
+  if (include && rowAt(path)?.verdict.blocked) return;
   updateRow(path, { include });
 }
 
 /** A fixed row stays in its section, so nothing moves under the cursor. */
 function fixedVerdict(path: string): Verdict {
   const row = rowAt(path);
-  return { ...(row?.verdict ?? { bucket: "check", include: true }), reason: "Chosen by you", include: true };
+  const verdict = row?.verdict ?? { bucket: "check" as const, reason: "", include: true };
+  // A row that still has a step keeps saying what Add will do first.
+  return { ...verdict, reason: verdict.step ? verdict.reason : "Chosen by you",
+    include: !verdict.blocked };
 }
 
 /**
@@ -863,7 +871,7 @@ const ADDABLE_STEPS = new Set(["unpack", "package", "emulator", "core"]);
 
 /** What Add takes: ticked games, and ticked files a step makes one. */
 export const chosenRows = (rows: BatchRow[]): BatchRow[] =>
-  rows.filter((row) => row.include && !row.busy && row.outcome === ""
+  rows.filter((row) => row.include && !row.busy && row.outcome === "" && !row.verdict.blocked
     && (row.verdict.bucket === "ready" || row.verdict.bucket === "check")
     && (row.verdict.step ? ADDABLE_STEPS.has(row.verdict.step) : Boolean(row.coreId)));
 
@@ -947,21 +955,6 @@ export async function addBatch(): Promise<void> {
     update({ done: batch.done + 1 });
   }
   update({ phase: "done", current: "" });
-}
-
-/**
- * Take back every game this batch added: off its shelf, out of Steam and the
- * library, and its files back into the transfer folder. Installs and other
- * files' actions stay done; they are not games.
- */
-export async function undoBatch(): Promise<{ removed: number; kept: number }> {
-  const added = batch.rows.flatMap((row) => (row.outcome === "added" ? row.added : []));
-  const forgotten = await forgetGames(added.map((one) => one.appId));
-  await unfileGames(forgotten.games);
-  for (const one of added) removeShortcut(one.appId);
-  const moved = await unfileRoms(added.map((one) => one.filedPath).filter(Boolean));
-  update({ phase: "undone" });
-  return { removed: added.length, kept: moved.kept.length };
 }
 
 export function closeBatch(): void {

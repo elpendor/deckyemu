@@ -177,23 +177,17 @@ describe("a disc set sent without its playlist", () => {
   });
 });
 
-describe("undo", () => {
-  it("takes back every entry a row made, and moves back only filed ROMs", async () => {
-    probeRom.mockResolvedValue(probe({
-      suggested_core_id: playlistCore.id, matching_cores: [playlistCore], all_cores: [playlistCore],
-    }));
-    addGameToSteam
-      .mockResolvedValueOnce({ ok: true, appId: 11, title: "a", notes: [], romPath: "/roms/a.chd" })
-      .mockResolvedValueOnce({ ok: true, appId: 12, title: "b", notes: [], romPath: "/roms/b.chd" });
-    await store.startBatch([
-      { path: "/inbox/a.chd", name: "a.chd" },
-      { path: "/inbox/b.chd", name: "b.chd" },
-    ]);
-    await store.addBatch();
-    await store.undoBatch();
-    expect(forgetGames).toHaveBeenCalledWith([11, 12]);
-    expect(removeShortcut).toHaveBeenCalledTimes(2);
-    expect(unfileRoms).toHaveBeenCalledWith(["/roms/a.chd", "/roms/b.chd"]);
+describe("a game that is not ready", () => {
+  it("cannot be ticked, and Add leaves it out", async () => {
+    probeRom.mockResolvedValue(probe({ vita_package: { installed: false, title_id: "", emulator_ready: true,
+      emulator_id: "vita3k", emulator_name: "Vita3K", licence: false, licence_candidates: [] } }));
+    await store.startBatch([{ path: "/inbox/game.pkg", name: "game.pkg" }]);
+    const path = store.getBatch().rows[0].path;
+    store.setIncluded(path, true);
+    expect(store.getBatch().rows[0].include).toBe(false);
+    store.setTitle(path, "Harbor Dash");
+    expect(store.getBatch().rows[0].include).toBe(false);
+    expect(store.chosenRows(store.getBatch().rows)).toEqual([]);
   });
 });
 

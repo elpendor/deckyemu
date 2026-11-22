@@ -93,16 +93,15 @@ few at a time, then lists them:
   files are installed from the transfer list, where their emulator is known.
 - **Can't be added**: files nothing can use.
 
-The pencil on a game fixes it before anything is added: its name, the game and
-cover (**Choose the right game**), the emulator for that file alone (a game
+The pencil on a game turns the dialog to its page, before anything is added:
+its name, the game and cover (the closest matches are listed there, with a
+search box), the emulator for that file alone (a game
 taken for the wrong platform usually needs another one), the system where the
 emulator covers several, its discs, and every warning in full.
 
 When several emulators could run a type of file, one dropdown at the top of the
 list picks for every file of that type. **Add** then works through the ticked
-games one by one, doing each one's step first, and the result lists what went in
-and offers **Undo** until you close it. That takes them out of Steam and your
-library and puts their files back in the transfer folder, as they were.
+games one by one, doing each one's step first, and the result lists what went in.
 
 B steps out of **Add games** without losing it: opening it again with the same
 files brings it back as you left it, and checks again anything an install since
@@ -230,7 +229,7 @@ Two things it won't do:
 Add the zip the way you'd add any game. When nothing can open it as it stands —
 an Xbox 360 title, say — its row in **Add games** says *Unpacks first*, and **Add**
 unpacks it before adding. Otherwise it's an ordinary row,
-and **Unpack instead** in the pencil's dialog takes it apart.
+and **Unpack instead** on the game's page takes it apart.
 
 Both are offered because both can be right. RetroArch reads a zip directly, so a zipped SNES ROM can just be
 added. Standalone emulators mostly can't: Xenia refuses one outright, and a zip

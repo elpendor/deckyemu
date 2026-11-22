@@ -156,16 +156,24 @@ Untick what you don't want and press **Add**. You get the shortcut, the artwork,
 and the game filed into a collection, so it's findable rather than lost among
 every other non-Steam shortcut.
 
-The pencil on a row fixes that game before it goes in:
+The pencil on a row turns the dialog to that game's page. It shows the name
+in Steam and one line for each thing there is a choice about; pressing a line
+shows that choice in its place, and **Back**, or B, steps back out, first to
+the page and then to the list. Nothing opens on top of it:
 
-- **Name in Steam**, and **Choose the right game** when the cover or name is
-  wrong. Title matching is fuzzy, and a wrong cover is easier to fix now.
+- **Name in Steam**, at the top, and under it what the name was taken from
+  when it is a guess.
+- **Game**, the game the file was matched to. It lists the closest matches
+  with a search box; picking one sets the cover, and the name unless you typed
+  your own. Title matching is fuzzy, and a wrong cover is easier to fix now.
 - **Emulator**, for this game alone, with **Show everything installed** for
   when the right one isn't in the short list. Only cores and emulators that
   handle the file type are listed otherwise, with the one you used last first.
+  A package has no such line: it names its own emulator.
 - **System**, when the emulator covers more than one. It starts on what the
   file says it is, and decides the shelf your game goes on and where its cover
   comes from.
+- **Discs**, for a set of discs: one game, or each disc on its own.
 - Everything it warns about, in full: a game already in your library, a dump
   that won't boot, a missing BIOS.
 
@@ -176,7 +184,6 @@ has a button to do it now instead.
 
 Your game is now in Steam and launches like anything else, with gamescope, Steam
 Input and the overlay all behaving normally, because Steam is what starts it.
-**Undo**, until you close the result, takes everything just added back out.
 
 **Multi-disc game?** Its discs are one row. See
 [multi-disc games](#multi-disc-games).
@@ -188,7 +195,7 @@ before anything installs, and says *Installs into ‹emulator› on Add*. **Add*
 unpacks it with a progress bar, then carries on from whatever came out.
 You never have to know the product code or find the executable inside. When
 the emulator it goes into isn't installed, the row says so and **Add** installs
-that first and carries straight on. The pencil can do either step now instead.
+that first and carries straight on.
 
 RPCS3 and Vita3K do the unpacking themselves. shadPS4 can't, so the first PS4
 `.pkg` you add downloads a small tool to do it — see
@@ -287,7 +294,7 @@ number isn't inside the file. Every emulation tool works this way.
 | `Game (CD 1).bin` | |
 | `Game (Disc 1) (Rev 1).cue` | |
 
-Anything else isn't spotted. **Add a disc** in the pencil's dialog lets you
+Anything else isn't spotted. **Add a disc** on the game's page lets you
 choose the rest by hand — they have to be in the same folder. Everything except
 the disc number has to match exactly, so `Game` and `Game 2` never get merged,
 and a set missing a disc isn't offered at all.
@@ -316,7 +323,7 @@ and a set missing a disc isn't offered at all.
 | A game won't boot and the system needs firmware | Check **BIOS and firmware**. A missing file looks exactly like a game failing |
 | A bookmarked transfer link stopped working | Either **Trusted devices** is set to a new link each session, or **Reset link** was pressed |
 | A ROM stayed in `transfer/` after adding | Something was unaccounted for: a disc the playlist names, or a different dump of the same name already filed |
-| The cover or the name is wrong | The pencil on its row in **Add games**, then **Choose the right game**; or the pencil on an added game |
+| The cover or the name is wrong | The pencil on its row in **Add games**, then pick the right match; or the pencil on an added game |
 | A game is on the wrong system's shelf, with that system's cover | Its core covers several systems and you added it before the **System** row existed. Edit it, set **System**, and look the artwork up again |
 | A game opens with the sticks moving a pointer and no buttons | Steam picked a layout for it, filing layouts by the game's *name* — so a title it recognises can arrive with a browser layout attached. Games added now get a gamepad layout pinned; for an older one, open its controller settings and pick **Gamepad With Joystick Trackpad** |
 | A collection is left holding nothing | **Settings → Collections** tidies stale ones |

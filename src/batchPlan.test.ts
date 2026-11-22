@@ -78,7 +78,7 @@ describe("classifyProbe", () => {
     expect(classifyProbe(probe({ vita_package: pkg } as unknown as Partial<RomProbe>)))
       .toMatchObject({ include: false, reason: "The key here is for another game" });
     expect(classifyProbe(probe({ vita_package: { ...pkg, licence_candidates: [] } } as unknown as Partial<RomProbe>)))
-      .toMatchObject({ include: false, reason: "Needs its licence key" });
+      .toMatchObject({ include: false, reason: "Needs its licence key", blocked: true });
   });
 
   it("unpacks what nothing can open as it is", () => {

@@ -1,10 +1,17 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { FaPen } from "react-icons/fa";
-import { MdHideImage, MdInsertDriveFile } from "react-icons/md";
-import { ConfirmModal, DialogButton, Dropdown, Focusable, ModalRoot, TextField } from "./steamui";
-import { ArtPickerModal } from "./ArtPickerModal";
+import { MdCheck, MdChevronRight, MdHideImage, MdInsertDriveFile } from "react-icons/md";
+import { DialogButton, Dropdown, Focusable, ModalRoot, TextField, type DropdownOption } from "./steamui";
 import { titleAfterArtPick } from "./titleFromArt";
-import { discCandidate, getSettings, type Core, type PluginSettings } from "./backend";
+import {
+  applyArtCandidate,
+  discCandidate,
+  getSettings,
+  listArtCandidates,
+  type AppliedArt,
+  type Core,
+  type PluginSettings,
+} from "./backend";
 import {
   addBatch,
   chosenRows,
@@ -17,7 +24,6 @@ import {
   lookUpAgain,
   lookUpAll,
   markDone,
-  runStep,
   setBusy,
   setCoreFor,
   setDiscMode,
@@ -29,12 +35,11 @@ import {
   setSystemFor,
   setTitle,
   subscribeBatch,
-  undoBatch,
   unpackRow,
   type Batch,
   type BatchRow,
 } from "./batchImport";
-import type { Bucket, Step } from "./batchPlan";
+import type { Bucket } from "./batchPlan";
 import { confirmJoinDisc } from "./confirmDiscSet";
 import { coreLabel, coreOptions, installableOptions, systemOptions } from "./corePicker";
 import { withDisc } from "./discSet";
@@ -47,11 +52,10 @@ import { openPatchInstall } from "./installPatch";
 import { InstallProgress } from "./InstallProgress";
 import { logError } from "./logError";
 import { openManagePage } from "./manageRoute";
-import { closeOpenModals, openModal } from "./modalStack";
+import { closeOpenModals } from "./modalStack";
 import { openRestoreSaves } from "./openRestore";
 import { ScrollList, ScrollRow } from "./ScrollList";
 import { SGDB_PROMPT, sgdbKeyJustAppeared, shouldOfferSgdb } from "./sgdbPrompt";
-import { showFailure } from "./showFailure";
 import { SwitchLabel } from "./SwitchLabel";
 
 const MUTED = { fontSize: "13px", opacity: 0.7 } as const;
@@ -75,18 +79,6 @@ const NAME_SOURCE_LABELS: Record<string, string> = {
   port: "Named after the port, which is the game it plays.",
 };
 
-/**
- * The step a row needs, done now from the Fix dialog. The row only says what
- * Add will do, so every row keeps the same shape; this is for doing it first.
- */
-const STEP_LABELS: Record<Exclude<Step, "">, string> = {
-  unpack: "Unpack now",
-  package: "Install now",
-  emulator: "Install now",
-  core: "Install core now",
-  retroarch: "Get RetroArch",
-};
-
 function useBatch(): Batch {
   const [state, setState] = useState(getBatch);
   useEffect(() => subscribeBatch(setState), []);
@@ -105,7 +97,12 @@ function systemLabel(row: BatchRow): string {
   return (index >= 0 && core?.database_labels?.[index]?.trim()) || id.split(" - ").pop() || id;
 }
 
-const coreName = (row: BatchRow) => coreLabel(row.probe?.all_cores ?? [], row.coreId);
+/** The emulator's name; a package's own, which the probe may not list. */
+function coreName(row: BatchRow): string {
+  const packaged = row.probe?.ps4_package ?? row.probe?.vita_package ?? row.probe?.ps3_package;
+  if (packaged && row.coreId === `emu:${packaged.emulator_id}`) return packaged.emulator_name;
+  return coreLabel(row.probe?.all_cores ?? [], row.coreId);
+}
 
 /** "**SNES** · bsnes · …": the system first and bold, the rest as it was. */
 function Detail({ row, rest }: { row: BatchRow; rest: string[] }) {
@@ -171,9 +168,6 @@ function packageWarnings(row: BatchRow): string[] {
   const waiting = probe?.ps4_package ?? vita ?? ps3;
   if (!waiting || waiting.installed) return [];
   const notes: string[] = [];
-  if (!waiting.emulator_ready && waiting.needs_firmware) {
-    notes.push(`${waiting.emulator_name} also needs its firmware before games start. Emulators tab, under BIOS and firmware.`);
-  }
   if (ps3?.licence_state === "" && ps3.content_id) {
     notes.push(`Store games need a .rap licence. Send it to the same folder as the game and it goes in when the game does. If there is more than one .rap there, name this one ${ps3.content_id}.rap. Licence-free games work without one.`);
   } else if (ps3?.licence_state === "installed") {
@@ -191,51 +185,204 @@ function packageWarnings(row: BatchRow): string[] {
   return notes;
 }
 
-/** A labelled control on one line of the Fix dialog. */
-function Line({ label, children }: { label: string; children: React.ReactNode }) {
+/** One game the artwork search found, as a pickable row. */
+interface Candidate {
+  key: string;
+  source: "libretro" | "steamgriddb";
+  ref: string;
+  system: string;
+  label: string;
+  sublabel: string;
+}
+
+const CANDIDATES_SHOWN = 6;
+
+/**
+ * The search for the right game, inside the row it is for: the closest matches
+ * listed as soon as the editor opens, and a search box for when none is right.
+ * Picking one sets the row's cover, and its name unless one was typed.
+ */
+function Candidates({ row, name, onPicked }: {
+  row: BatchRow;
+  name: string;
+  onPicked: (picked: Extract<AppliedArt, { ok: true }>) => void;
+}) {
+  const [query, setQuery] = useState(name);
+  const [found, setFound] = useState<Candidate[] | null>(null);
+  const [applying, setApplying] = useState("");
+  const [error, setError] = useState("");
+
+  const search = async (term: string) => {
+    setFound(null);
+    setError("");
+    try {
+      const result = await listArtCandidates(row.path, row.coreId, term);
+      const rows: Candidate[] = [
+        ...(result.steamgriddb ?? []).map((hit) => ({
+          key: `sgdb-${hit.id}`, source: "steamgriddb" as const, ref: String(hit.id), system: "",
+          label: hit.name, sublabel: `SteamGridDB${hit.year ? ` · ${hit.year}` : ""}`,
+        })),
+        ...(result.libretro ?? []).map((hit) => ({
+          key: `libretro-${hit.system}-${hit.name}`, source: "libretro" as const, ref: hit.name,
+          system: hit.system, label: hit.name, sublabel: `libretro · ${hit.system.split(" - ").pop()}`,
+        })),
+      ];
+      setFound(rows.slice(0, CANDIDATES_SHOWN));
+    } catch (searchError) {
+      logError("artwork search failed", searchError);
+      setError("Could not search for artwork.");
+      setFound([]);
+    }
+  };
+
+  // Once, when the editor opens; the search box does the rest.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => void search(name), []);
+
+  const pick = async (candidate: Candidate) => {
+    setApplying(candidate.key);
+    setError("");
+    try {
+      const result = await applyArtCandidate(candidate.source, candidate.ref, candidate.system, candidate.label);
+      if (result.ok) onPicked(result);
+      else setError(result.error);
+    } catch (applyError) {
+      logError("could not apply artwork", applyError);
+      setError("Could not download that artwork.");
+    } finally {
+      setApplying("");
+    }
+  };
+
+  // Marked once: two entries can share a name (a remake and its original).
+  const inUse = found?.find((one) => one.label === row.resolved?.art_game_name)?.key ?? "";
   return (
-    <Focusable style={{ display: "flex", alignItems: "center", gap: "10px", marginTop: "10px" }}>
-      <div style={{ flexShrink: 0, width: "90px" }}>{label}</div>
-      <div style={{ flexGrow: 1, minWidth: 0 }}>{children}</div>
+    <>
+      <Focusable style={{ display: "flex", gap: "8px", marginTop: "10px", alignItems: "flex-end" }}>
+        <div style={{ flexGrow: 1, minWidth: 0 }}>
+          <TextField label="Search for the game" value={query} onChange={(event) => setQuery(event.target.value)} />
+        </div>
+        <DialogButton
+          onClick={() => void search(query)}
+          disabled={!query.trim() || found === null}
+          style={{ ...ICON_BUTTON_WIDE, flexShrink: 0 }}
+        >
+          Search
+        </DialogButton>
+      </Focusable>
+      {found === null && <div style={{ ...MUTED, marginTop: "8px" }}>Searching...</div>}
+      {found?.length === 0 && !error && (
+        <div style={{ ...MUTED, marginTop: "8px" }}>Nothing found for that name.</div>
+      )}
+      {found?.map((candidate) => (
+        <Focusable key={candidate.key} style={{ marginTop: "4px" }}>
+          <DialogButton
+            onClick={() => void pick(candidate)}
+            disabled={Boolean(applying)}
+            style={{ ...ICON_BUTTON_WIDE, height: "auto", minHeight: "44px", padding: "6px 14px",
+              justifyContent: "flex-start", width: "100%" }}
+          >
+            <div style={{ textAlign: "left", minWidth: 0 }}>
+              <div>
+                {applying === candidate.key ? "Applying..." : candidate.label}
+                {candidate.key === inUse && <span style={{ opacity: 0.7 }}> · in use</span>}
+              </div>
+              <div style={MUTED}>{candidate.sublabel}</div>
+            </div>
+          </DialogButton>
+        </Focusable>
+      ))}
+      {error && <div style={{ ...PROBLEM, marginTop: "6px" }}>{error}</div>}
+    </>
+  );
+}
+
+/** What a summary line on a game's page opens, in place of the summary. */
+type Choice = "game" | "emulator" | "system" | "discs" | "core";
+
+/** A dropdown's options in one level, groups opened out. */
+function flatOptions(options: DropdownOption[]): DropdownOption[] {
+  return options.flatMap((option) => (option.options ? flatOptions(option.options) : [option]));
+}
+
+/** The label of the option holding `data`, for a summary line. */
+function chosenLabel(options: DropdownOption[], data: unknown): React.ReactNode {
+  return flatOptions(options).find((option) => option.data === data)?.label ?? "";
+}
+
+/** One summary line: what is set, and a way into changing it. */
+function SummaryLine({ label, value, onClick }: {
+  label: string;
+  value: React.ReactNode;
+  onClick: () => void;
+}) {
+  return (
+    <Focusable style={{ marginTop: "4px" }}>
+      <DialogButton
+        onClick={onClick}
+        style={{ ...ICON_BUTTON_WIDE, justifyContent: "flex-start", width: "100%", gap: "10px" }}
+      >
+        <span style={{ flexShrink: 0, width: "90px", textAlign: "left" }}>{label}</span>
+        <span style={{ flexGrow: 1, minWidth: 0, textAlign: "left", overflow: "hidden",
+          textOverflow: "ellipsis", whiteSpace: "nowrap", opacity: 0.8 }}>{value}</span>
+        <MdChevronRight aria-hidden style={{ flexShrink: 0, fontSize: "20px" }} />
+      </DialogButton>
     </Focusable>
   );
 }
 
+/** A choice's options as a list, the current one marked. */
+function OptionList({ options, selected, onPick }: {
+  options: DropdownOption[];
+  selected: unknown;
+  onPick: (data: unknown) => void;
+}) {
+  return (
+    <>
+      {flatOptions(options).map((option) => (
+        <Focusable key={String(option.data)} style={{ marginTop: "4px" }}>
+          <DialogButton
+            onClick={() => onPick(option.data)}
+            style={{ ...ICON_BUTTON_WIDE, justifyContent: "flex-start", width: "100%", gap: "10px" }}
+          >
+            <span style={{ width: "20px", flexShrink: 0 }}>
+              {option.data === selected && <MdCheck aria-label="Chosen" />}
+            </span>
+            <span style={{ textAlign: "left" }}>{option.label}</span>
+          </DialogButton>
+        </Focusable>
+      ))}
+    </>
+  );
+}
+
 /**
- * Everything about one game before it is added: its name, the game and cover,
- * the emulator and system, its discs, and what the probe warns of. What the
- * panel's single add offered, for one row of the review.
+ * One game's page, shown in place of the list: its name, then one line for
+ * each thing there is a choice about. A line opens its choice in the same
+ * place, and B steps back out of it, so nothing opens on top of the review.
  */
-function FixRowModal({ path, closeModal }: { path: string; closeModal?: () => void }) {
-  const row = useBatch().rows.find((one) => one.path === path);
-  const [name, setName] = useState(row?.title ?? "");
+function GamePage({ row, onBack, register }: {
+  row: BatchRow;
+  onBack: () => void;
+  /** Hands the dialog this page's way back, for B. */
+  register: (back: () => void) => void;
+}) {
+  const [name, setName] = useState(row.title);
   // What the field held before anyone typed, so a picked game can rename it.
-  const [automatic, setAutomatic] = useState(row?.title ?? "");
+  const [automatic, setAutomatic] = useState(row.title);
   const [everything, setEverything] = useState(false);
+  const [choice, setChoice] = useState<Choice | null>(null);
   const [error, setError] = useState("");
-  if (!row) return null;
-  const capsule = row.resolved?.art?.capsule?.data;
   // Only for a core covering several systems, as in the panel.
   const systems = systemOptions(coreOf(row));
   const matching = row.probe?.matching_cores ?? [];
   const all = row.probe?.all_cores ?? [];
   const cores = everything || matching.length === 0 ? all : matching;
   const warnings = warningsOf(row);
-
-  const choose = () =>
-    openModal(
-      <ArtPickerModal
-        romPath={row.path}
-        coreId={row.coreId}
-        initialQuery={name}
-        onApplied={(picked) => {
-          const title = titleAfterArtPick(name, automatic, picked.suggested_title);
-          setName(title);
-          setAutomatic(title);
-          setPickedGame(row.path, title, picked);
-        }}
-      />,
-    );
+  const discOptions = [
+    { data: "one", label: `One game of ${row.discs.length} discs` },
+    { data: "each", label: "Each disc on its own" },
+  ];
 
   // A disc the naming rules cannot see, picked by hand from the same folder:
   // a playlist names files beside itself, so that is the only place one can be.
@@ -271,136 +418,162 @@ function FixRowModal({ path, closeModal }: { path: string; closeModal?: () => vo
 
   const done = () => {
     if (name.trim() && name !== row.title) setTitle(row.path, name.trim());
-    closeModal?.();
+    onBack();
+  };
+  const back = () => (choice ? setChoice(null) : done());
+  register(back);
+  const onClose = onBack;
+  const picked = (apply: () => void) => {
+    apply();
+    setChoice(null);
   };
 
-  return (
-    <ModalRoot closeModal={closeModal}>
-      <div style={{ fontSize: "20px", fontWeight: 600, marginBottom: "4px" }}>Fix this game</div>
-      <div style={{ ...MUTED, marginBottom: "12px", overflowWrap: "anywhere" }}>{row.name}</div>
-      {/* Short enough that the heading and two rows of buttons still fit. */}
-      <ScrollList style={{ maxHeight: "40vh" }}>
-        <Focusable style={{ display: "flex", gap: "12px", alignItems: "flex-start" }}>
-          <Cover capsule={capsule} width={64} />
-          <div style={{ flexGrow: 1, minWidth: 0 }}>
-            <TextField
-              label="Name in Steam"
-              value={name}
-              bShowClearAction
-              style={{ paddingRight: "2.6em" }}
-              onChange={(event) => setName(event.target.value)}
+  if (choice) {
+    const titles: Record<Choice, string> = {
+      game: "Which game is this?", emulator: "Emulator", system: "System",
+      discs: "Discs", core: "Core",
+    };
+    return (
+      <>
+        <div style={{ fontWeight: "bold", marginBottom: "4px" }}>{titles[choice]}</div>
+        <ScrollList style={{ maxHeight: "40vh" }}>
+          {choice === "game" && (
+            <Candidates
+              row={row}
+              name={name}
+              onPicked={(applied) => {
+                const title = titleAfterArtPick(name, automatic, applied.suggested_title);
+                setName(title);
+                setAutomatic(title);
+                setPickedGame(row.path, title, applied);
+                setChoice(null);
+              }}
             />
-            <div style={{ ...MUTED, marginTop: "6px" }}>
-              {row.busy ? "Looking up..." : row.resolved?.art_game_name ? `Artwork: ${row.resolved.art_game_name}` : "No artwork found"}
-            </div>
-            {!row.fixed && row.resolved && NAME_SOURCE_LABELS[row.resolved.title_source] && (
-              <div style={{ ...MUTED, marginTop: "4px" }}>{NAME_SOURCE_LABELS[row.resolved.title_source]}</div>
-            )}
-          </div>
+          )}
+          {choice === "emulator" && (
+            <>
+              <OptionList options={coreOptions(cores)} selected={row.coreId}
+                onPick={(data) => picked(() => void setRowCore(row.path, String(data)))} />
+              {matching.length > 0 && all.length > matching.length && (
+                <Focusable style={{ marginTop: "8px" }}>
+                  <DialogButton
+                    onClick={() => setEverything(!everything)}
+                    style={{ ...ICON_BUTTON_WIDE, justifyContent: "flex-start", width: "100%" }}
+                  >
+                    <SwitchLabel name="Show everything installed" on={everything} />
+                  </DialogButton>
+                </Focusable>
+              )}
+            </>
+          )}
+          {choice === "system" && (
+            <OptionList options={systems} selected={row.systemId}
+              onPick={(data) => picked(() => void setSystemFor(row.path, String(data)))} />
+          )}
+          {choice === "discs" && (
+            <OptionList options={discOptions} selected={row.discMode}
+              onPick={(data) => picked(() => setDiscMode(row.path, data === "each" ? "each" : "one"))} />
+          )}
+          {choice === "core" && (
+            <OptionList options={installableOptions(row.installable)} selected={row.installableId}
+              onPick={(data) => picked(() => setInstallable(row.path, String(data)))} />
+          )}
+        </ScrollList>
+        <Focusable flow-children="row" style={{ display: "flex", gap: "8px", marginTop: "12px" }}>
+          <DialogButton onClick={back} style={{ flex: 1 }}>Back</DialogButton>
         </Focusable>
+      </>
+    );
+  }
 
-        {warnings.map((text) => (
-          <ScrollRow key={text}>
-            <div style={{ fontSize: "13px", marginTop: "10px" }}>{text}</div>
-          </ScrollRow>
-        ))}
-
+  const packaged = Boolean(row.probe?.ps4_package || row.probe?.vita_package || row.probe?.ps3_package);
+  const gameName = row.resolved?.art_game_name || row.resolved?.matched_name || "Not identified";
+  return (
+    <>
+      <Focusable style={{ display: "flex", gap: "12px", alignItems: "flex-start", marginBottom: "8px" }}>
+        <Cover capsule={row.resolved?.art?.capsule?.data} width={64} />
+        <div style={{ flexGrow: 1, minWidth: 0 }}>
+          <TextField
+            label="Name in Steam"
+            value={name}
+            bShowClearAction
+            style={{ paddingRight: "2.6em" }}
+            onChange={(event) => setName(event.target.value)}
+          />
+          <FileName name={row.name} style={{ ...MUTED, marginTop: "6px" }} />
+          {!row.fixed && row.resolved && NAME_SOURCE_LABELS[row.resolved.title_source] && (
+            <div style={{ ...MUTED, marginTop: "2px" }}>{NAME_SOURCE_LABELS[row.resolved.title_source]}</div>
+          )}
+        </div>
+      </Focusable>
+      <ScrollList style={{ maxHeight: "36vh" }}>
+        <SummaryLine label="Game" value={gameName} onClick={() => setChoice("game")} />
         {/* A file taken for the wrong platform usually needs another emulator,
             and the picker for its file type would change every such file. */}
-        {cores.length > 1 && (
-          <Line label="Emulator">
-            <Dropdown
-              rgOptions={coreOptions(cores)}
-              selectedOption={row.coreId}
-              onChange={(option) => void setRowCore(row.path, String(option.data))}
-            />
-          </Line>
-        )}
-        {matching.length > 0 && all.length > matching.length && (
-          <Focusable style={{ marginTop: "8px" }}>
-            <DialogButton
-              onClick={() => setEverything(!everything)}
-              style={{ ...ICON_BUTTON_WIDE, justifyContent: "flex-start", width: "100%" }}
-            >
-              <SwitchLabel name="Show everything installed" on={everything} />
-            </DialogButton>
-          </Focusable>
+        {/* A package names its own emulator. */}
+        {all.length > 1 && !packaged && (
+          <SummaryLine label="Emulator" value={coreName(row) || "None"} onClick={() => setChoice("emulator")} />
         )}
         {systems.length > 0 && (
-          <Line label="System">
-            <Dropdown
-              rgOptions={systems}
-              selectedOption={row.systemId}
-              onChange={(option) => void setSystemFor(row.path, String(option.data))}
-            />
-          </Line>
+          <SummaryLine label="System" value={chosenLabel(systems, row.systemId)}
+            onClick={() => setChoice("system")} />
         )}
+        {row.discs.length >= 2 && !discsMustSplit(row) && (
+          <SummaryLine label="Discs" value={chosenLabel(discOptions, row.discMode)}
+            onClick={() => setChoice("discs")} />
+        )}
+        {row.installable.length > 1 && row.verdict.step === "core" && (
+          <SummaryLine label="Core" value={chosenLabel(installableOptions(row.installable), row.installableId)}
+            onClick={() => setChoice("core")} />
+        )}
+
         {discsMustSplit(row) && (
           <ScrollRow>
-            <div style={{ fontSize: "13px", marginTop: "10px" }}>
+            <div style={{ ...MUTED, marginTop: "10px" }}>
               {coreName(row) || "This emulator"} cannot be given a playlist, so each of
-              the {row.discs.length} discs is added on its own. They are filed side by side,
-              so it can find the next one when it asks.
+              the {row.discs.length} discs is added on its own, filed side by side.
             </div>
           </ScrollRow>
         )}
-        {row.discs.length >= 2 && !discsMustSplit(row) && (
-          <Line label="Discs">
-            <Dropdown
-              rgOptions={[
-                { data: "one", label: `One game of ${row.discs.length} discs` },
-                { data: "each", label: "Each disc on its own" },
-              ]}
-              selectedOption={row.discMode}
-              onChange={(option) => setDiscMode(row.path, option.data === "each" ? "each" : "one")}
-            />
-          </Line>
-        )}
-        {row.installable.length > 1 && row.verdict.step === "core" && (
-          <Line label="Core">
-            <Dropdown
-              rgOptions={installableOptions(row.installable)}
-              selectedOption={row.installableId}
-              onChange={(option) => setInstallable(row.path, String(option.data))}
-            />
-          </Line>
-        )}
+        {warnings.map((text) => (
+          <ScrollRow key={text}>
+            <div style={{ ...MUTED, marginTop: "10px" }}>{text}</div>
+          </ScrollRow>
+        ))}
         {error && <div style={{ ...PROBLEM, marginTop: "8px" }}>{error}</div>}
+
+        <Focusable flow-children="row" style={{ display: "flex", gap: "8px", marginTop: "12px", flexWrap: "wrap" }}>
+          {row.verdict.step === "retroarch" && <GetRetroArch />}
+          {/* Only once a set is in play, as in the panel: a cartridge has no
+              second disc, and a set the rules saw is where one can be missing. */}
+          {row.coreId && !row.titleId && ((row.probe?.disc_set?.length ?? 0) > 0 || row.discs.length >= 2) && (
+            <DialogButton onClick={() => void pickDisc()} disabled={row.busy} style={{ flex: 1 }}>
+              Add a disc
+            </DialogButton>
+          )}
+          {row.probe?.can_unpack && !row.verdict.step && (
+            <DialogButton
+              onClick={() => {
+                void unpackRow(row.path);
+                onClose();
+              }}
+              disabled={row.busy}
+              style={{ flex: 1 }}
+            >
+              Unpack instead
+            </DialogButton>
+          )}
+          {!row.resolved && row.coreId && (
+            <DialogButton onClick={() => void lookUpAgain(row.path)} disabled={row.busy} style={{ flex: 1 }}>
+              Look up again
+            </DialogButton>
+          )}
+        </Focusable>
       </ScrollList>
-      <Focusable flow-children="row" style={{ display: "flex", gap: "8px", marginTop: "14px", flexWrap: "wrap" }}>
-        {row.verdict.step && <StepButton row={row} close={closeModal} />}
-        {row.coreId && (
-          <DialogButton onClick={choose} disabled={row.busy} style={{ flex: 2 }}>
-            Choose the right game
-          </DialogButton>
-        )}
-        {/* Only once a set is in play, as in the panel: a cartridge has no
-            second disc, and a set the rules saw is where one can be missing. */}
-        {row.coreId && !row.titleId && ((row.probe?.disc_set?.length ?? 0) > 0 || row.discs.length >= 2) && (
-          <DialogButton onClick={() => void pickDisc()} disabled={row.busy} style={{ flex: 1 }}>
-            Add a disc
-          </DialogButton>
-        )}
-        {row.probe?.can_unpack && !row.verdict.step && (
-          <DialogButton
-            onClick={() => {
-              void unpackRow(row.path);
-              closeModal?.();
-            }}
-            disabled={row.busy}
-            style={{ flex: 1 }}
-          >
-            Unpack instead
-          </DialogButton>
-        )}
-        {!row.resolved && row.coreId && (
-          <DialogButton onClick={() => void lookUpAgain(row.path)} disabled={row.busy} style={{ flex: 1 }}>
-            Look up again
-          </DialogButton>
-        )}
-        <DialogButton autoFocus onClick={done} style={{ flex: 1 }}>Done</DialogButton>
+      <Focusable flow-children="row" style={{ display: "flex", gap: "8px", marginTop: "12px" }}>
+        <DialogButton autoFocus onClick={done} style={{ flex: 1 }}>Back</DialogButton>
       </Focusable>
-    </ModalRoot>
+    </>
   );
 }
 
@@ -429,28 +602,19 @@ function Cover({ capsule, width }: { capsule?: string; width: number }) {
   );
 }
 
-/** The row's step, as the button that does it now. **Add** does it too. */
-function StepButton({ row, close }: { row: BatchRow; close?: () => void }) {
-  const step = row.verdict.step;
-  if (!step) return null;
+/**
+ * RetroArch, which Add cannot install: it comes from its own page, and the
+ * review keeps meanwhile. Every other step Add does by itself.
+ */
+function GetRetroArch() {
   const press = () => {
-    if (step === "retroarch") {
-      // RetroArch is installed from its own page; the review keeps meanwhile.
-      closeOpenModals();
-      openManagePage("retroarch");
-      return;
-    }
-    void runStep(row.path);
-    close?.();
+    closeOpenModals();
+    openManagePage("retroarch");
   };
-  return (
-    <DialogButton onClick={press} disabled={row.busy} style={{ flex: 1 }}>
-      {STEP_LABELS[step]}
-    </DialogButton>
-  );
+  return <DialogButton onClick={press} style={{ flex: 1 }}>Get RetroArch</DialogButton>;
 }
 
-function GameRow({ row }: { row: BatchRow }) {
+function GameRow({ row, onEdit }: { row: BatchRow; onEdit: () => void }) {
   const capsule = row.resolved?.art?.capsule?.data;
   const stepping = row.busy && Boolean(row.stepStatus);
   const rest = [
@@ -471,13 +635,14 @@ function GameRow({ row }: { row: BatchRow }) {
       <Cover capsule={capsule} width={48} />
       <DialogButton
         onClick={() => setIncluded(row.path, !row.include)}
-        disabled={row.busy}
+        // Not ready, and nothing Add can do about it: it cannot be ticked.
+        disabled={row.busy || row.verdict.blocked}
         // Two lines, so the height follows the text, from the left.
         style={{ ...ICON_BUTTON_WIDE, height: "auto", minHeight: "48px", padding: "8px 16px",
           justifyContent: "flex-start", flexGrow: 1, minWidth: 0 }}
       >
         <div style={{ width: "100%", minWidth: 0 }}>
-          <SwitchLabel name={row.title} on={row.include} />
+          <SwitchLabel name={row.title} on={row.include && !row.verdict.blocked} />
           {/* The file it came from, which is how a wrong match shows. One line,
               cut in the middle so the region tags and extension stay; the
               Fix dialog has it whole. */}
@@ -494,10 +659,11 @@ function GameRow({ row }: { row: BatchRow }) {
           {row.error && <div style={{ ...PROBLEM, textAlign: "left", marginLeft: "50px" }}>{row.error}</div>}
         </div>
       </DialogButton>
-      {/* The pencil Added games uses for editing a game. */}
+      {/* The pencil Added games uses for editing a game; here it turns the
+          dialog to this game's page. */}
       <DialogButton
         aria-label="Fix"
-        onClick={() => openModal(<FixRowModal path={row.path} />)}
+        onClick={onEdit}
         disabled={row.busy}
         style={{ ...ICON_BUTTON, flexShrink: 0 }}
       >
@@ -581,7 +747,7 @@ function CantRow({ row }: { row: BatchRow }) {
   );
 }
 
-function Review({ batch, hide }: { batch: Batch; hide: () => void }) {
+function Review({ batch, hide, onEdit }: { batch: Batch; hide: () => void; onEdit: (path: string) => void }) {
   const choices = useMemo(() => coreChoices(batch.rows), [batch.rows]);
   const buckets: Bucket[] = ["ready", "check", "other", "cant"];
   const withVitaPackage = batch.rows.some((row) => row.probe?.vita_package);
@@ -620,7 +786,7 @@ function Review({ batch, hide }: { batch: Batch; hide: () => void }) {
             {rows.map((row) =>
               bucket === "other" ? <OtherRow key={row.path} row={row} hide={hide} />
                 : bucket === "cant" ? <CantRow key={row.path} row={row} />
-                  : <GameRow key={row.path} row={row} />)}
+                  : <GameRow key={row.path} row={row} onEdit={() => onEdit(row.path)} />)}
           </div>
         );
       })}
@@ -660,38 +826,18 @@ export function BatchImportModal({ closeModal }: { closeModal?: () => void }) {
   // it again with the same files brings them back. Only Cancel throws them
   // away.
   const hide = () => closeModal?.();
-  const back = phase === "checking" || phase === "review" ? hide : close;
-
-  const undo = () =>
-    openModal(
-      <ConfirmModal
-        strTitle={`Remove the ${games} game${games === 1 ? "" : "s"} just added?`}
-        strDescription="They come out of Steam and your library, and their files go back to the transfer folder."
-        strOKButtonText="Remove"
-        bDestructiveWarning
-        onOK={() => {
-          void undoBatch().then(
-            ({ kept }) => {
-              if (kept) {
-                showFailure(
-                  "Removed, but some files stayed filed",
-                  `${kept} could not go back to the transfer folder, usually because a file of the same name is already there. They are still in deckyemu/roms.`,
-                );
-              }
-            },
-            (error) => {
-              logError("batch undo failed", error);
-              showFailure("Could not remove them all", error);
-            },
-          );
-        }}
-      />,
-    );
+  // The game whose page is showing in place of the list, if any. B on it goes
+  // back to the list, keeping the name typed there.
+  const [page, setPage] = useState("");
+  const pageRow = phase === "review" ? rows.find((row) => row.path === page) : undefined;
+  const pageBack = useRef<() => void>(() => setPage(""));
+  const back = pageRow ? () => pageBack.current()
+    : phase === "checking" || phase === "review" ? hide : close;
 
   return (
     <ModalRoot closeModal={phase === "adding" ? undefined : back} bAllowFullSize>
       <div style={{ fontSize: "20px", fontWeight: 600, marginBottom: "4px" }}>
-        {phase === "done" || phase === "undone" ? "Added" : "Add games"}
+        {phase === "done" ? "Added" : "Add games"}
       </div>
 
       {phase === "checking" && (
@@ -702,7 +848,18 @@ export function BatchImportModal({ closeModal }: { closeModal?: () => void }) {
         />
       )}
 
-      {phase === "review" && (
+      {pageRow && (
+        <GamePage
+          key={pageRow.path}
+          row={pageRow}
+          onBack={() => setPage("")}
+          register={(done) => {
+            pageBack.current = done;
+          }}
+        />
+      )}
+
+      {phase === "review" && !pageRow && (
         <>
           <div style={{ ...MUTED, marginBottom: "8px" }}>
             Untick anything that looks wrong; the pencil fixes a game.
@@ -723,7 +880,7 @@ export function BatchImportModal({ closeModal }: { closeModal?: () => void }) {
               </DialogButton>
             </Focusable>
           )}
-          <Review batch={batch} hide={hide} />
+          <Review batch={batch} hide={hide} onEdit={setPage} />
         </>
       )}
 
@@ -769,32 +926,21 @@ export function BatchImportModal({ closeModal }: { closeModal?: () => void }) {
               </ScrollRow>
             ))}
           </ScrollList>
-          {games > 0 && (
-            <div style={{ ...MUTED, marginTop: "8px" }}>Undo is here until you close this.</div>
-          )}
         </div>
       )}
 
-      {phase === "undone" && (
-        <div style={{ fontSize: "14px", margin: "8px 0" }}>
-          Removed. Their files are back in the transfer folder.
-        </div>
-      )}
-
-      {/* Keyed by phase so its buttons mount anew and `autoFocus` takes. */}
+      {/* Keyed by phase so its buttons mount anew and `autoFocus` takes. A
+          game's page has its own Back in their place. */}
+      {!pageRow && (
       <Focusable key={phase} flow-children="row" style={{ display: "flex", gap: "8px", marginTop: "12px" }}>
         {phase === "review" && (
           <DialogButton autoFocus onClick={() => void addBatch()} disabled={busy || chosen.length === 0}>
             Add {chosen.length} game{chosen.length === 1 ? "" : "s"}
           </DialogButton>
         )}
-        {phase === "done" && games > 0 && (
-          <DialogButton onClick={undo}>Undo</DialogButton>
-        )}
         {phase !== "adding" && (
           <DialogButton
-            // The Add button that had focus is gone; Close, not Undo, so a
-            // stray press of A after adding keeps the games.
+            // The Add button that had focus is gone; Close takes it.
             autoFocus={phase !== "review"}
             onClick={close}
           >
@@ -802,6 +948,7 @@ export function BatchImportModal({ closeModal }: { closeModal?: () => void }) {
           </DialogButton>
         )}
       </Focusable>
+      )}
     </ModalRoot>
   );
 }
