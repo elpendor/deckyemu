@@ -21,6 +21,7 @@ import {
   FaLink,
   FaEraser,
   FaCodeBranch,
+  FaPen,
   FaQuestion,
   FaTrash,
   FaWindowMaximize,
@@ -35,6 +36,7 @@ import {
   importedEmulators,
   installEmulator,
   listEmulatorCatalog,
+  listEmulators,
   locateEmulator,
   prepareEmulatorGui,
   registerEmulator,
@@ -42,8 +44,10 @@ import {
   runningWork,
   uninstallEmulator,
   type CatalogEmulator,
+  type CustomEmulator,
   type EmulatorBuild,
 } from "./backend";
+import { EmulatorEditorModal } from "./EmulatorEditorModal";
 import { EmulatorVersionModal } from "./EmulatorVersionModal";
 import { RemoveEmulatorModal } from "./RemoveEmulatorModal";
 import { InstallProgress } from "./InstallProgress";
@@ -175,6 +179,7 @@ function describe(entry: CatalogEmulator, build?: EmulatorBuild): ReactNode {
 
 export function EmulatorCatalogPanel({ onChanged, ports = false }: Props) {
   const [entries, setEntries] = useState<CatalogEmulator[]>([]);
+  const [registered, setRegistered] = useState<Record<string, CustomEmulator>>({});
   const [loading, setLoading] = useState(true);
   const [loadFailed, setLoadFailed] = useState(false);
   // Which entry is installing, and how far along. Only one at a time: two
@@ -309,6 +314,11 @@ export function EmulatorCatalogPanel({ onChanged, ports = false }: Props) {
       } catch (problemError) {
         logError("could not read the imported definitions", problemError);
       }
+      // Each row's registration, for its Edit button and its notices. Losing
+      // it costs those, not the list.
+      callWithRetry(listEmulators)
+        .then((all) => setRegistered(Object.fromEntries(all.map((one) => [one.id, one]))))
+        .catch((registeredError) => logError("could not list registrations", registeredError));
       callWithRetry(listEmulatorCatalog)
         .then((all) => setEntries(all.filter((entry) => Boolean(entry.port) === ports)))
         .catch((loadError) => {
@@ -721,7 +731,7 @@ export function EmulatorCatalogPanel({ onChanged, ports = false }: Props) {
     <PanelSection>
       <PanelSectionRow>
         <Field
-          label={ports ? "Ports" : "Ready-made emulators"}
+          label={ports ? "Ready-made ports" : "Ready-made emulators"}
           // Ends by pointing down the page. Somebody looking for an emulator
           // that is not here has no reason to expect a second list further
           // down, and finding it by accident is how the two came to look like
@@ -729,7 +739,7 @@ export function EmulatorCatalogPanel({ onChanged, ports = false }: Props) {
           description={
             ports
               ? "Native versions of single games, each naming the game it plays. Install one, then add your own copy of that game the usual way and pick it under Run with."
-              : "For the systems RetroArch does not cover. The system, file types and launch arguments are all set up for you. Installing one also registers it below. Not here? Add your own there."
+              : "For the systems RetroArch does not cover. The system, file types and launch arguments are all set up for you. Not here? Add your own below."
           }
           childrenContainerWidth="min"
         >
@@ -866,7 +876,23 @@ export function EmulatorCatalogPanel({ onChanged, ports = false }: Props) {
           ) : (
             <Field
               label={nameWithSource(entry)}
-              description={describe(entry, builds[entry.id])}
+              description={
+                <>
+                  {describe(entry, builds[entry.id])}
+                  {/* The thing to do about either notice is update the
+                      emulator, and this row is where that happens. */}
+                  {(registered[entry.id]?.fix_notices ?? []).map((notice) => (
+                    <div key={notice.id} style={{ paddingTop: "4px", opacity: 0.9 }}>
+                      {notice.name}: {notice.note}
+                    </div>
+                  ))}
+                  {registered[entry.id]?.source_notice && (
+                    <div style={{ paddingTop: "4px", opacity: 0.9 }}>
+                      {registered[entry.id].source_notice}
+                    </div>
+                  )}
+                </>
+              }
               childrenContainerWidth="min"
             >
               <div style={{ display: "flex", gap: "6px" }}>
@@ -939,6 +965,28 @@ export function EmulatorCatalogPanel({ onChanged, ports = false }: Props) {
                     onOKActionDescription="Point at the file"
                   >
                     <FaFolderOpen />
+                  </DialogButton>
+                )}
+                {/* The registration's own details, on the row it came from
+                    rather than on a second copy of the row further down. */}
+                {registered[entry.id] && (
+                  <DialogButton
+                    disabled={Boolean(busyId)}
+                    onClick={() =>
+                      openModal(
+                        <EmulatorEditorModal
+                          emulator={registered[entry.id]}
+                          onSaved={() => {
+                            load();
+                            onChanged();
+                          }}
+                        />,
+                      )
+                    }
+                    style={ICON_BUTTON}
+                    onOKActionDescription="Edit"
+                  >
+                    <FaPen />
                   </DialogButton>
                 )}
                 {/* Installing and forgetting are independent, and conflating

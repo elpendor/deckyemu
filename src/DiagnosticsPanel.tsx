@@ -5,28 +5,6 @@ import { useBackendVersion } from "./useBackendVersion";
 import { openModal } from "./modalStack";
 import { ReportModal } from "./ReportModal";
 
-const VERSIONS: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "1fr 1fr",
-  // 4px under the labels and no outer padding, which is the rhythm Steam's own
-  // rows use: a 19px label block with a 4px gap, then the value. An invented
-  // padding here made this row taller than every Field beside it.
-  gap: "4px 12px",
-  width: "100%",
-};
-
-const VERSION_LABEL: React.CSSProperties = {
-  fontSize: "0.75em",
-  textTransform: "uppercase",
-  letterSpacing: "0.5px",
-  opacity: 0.6,
-};
-
-const VERSION_VALUE: React.CSSProperties = {
-  fontSize: "0.9em",
-  wordBreak: "break-word",
-};
-
 /**
  * What is actually running, and how to report it when it misbehaves.
  *
@@ -53,17 +31,15 @@ export function DiagnosticsPanel() {
           debugger. */}
       <PanelSection title="Versions">
         <PanelSectionRow>
-          <div style={VERSIONS}>
-            <div style={VERSION_LABEL}>Installed on this Deck</div>
-            <div style={VERSION_LABEL}>Running in Steam</div>
-            <div style={VERSION_VALUE}>
-              {backend
-                ? describe(backend.version, backend.build) +
-                  (backend.built_at ? ` — built ${backend.built_at.slice(0, 10)}` : "")
-                : "Loading..."}
-            </div>
-            <div style={VERSION_VALUE}>{describe(FRONTEND_VERSION, FRONTEND_BUILD)}</div>
-          </div>
+          <Field label="Installed on this Deck">
+            {backend
+              ? describe(backend.version, backend.build) +
+                (backend.built_at ? ` — built ${backend.built_at.slice(0, 10)}` : "")
+              : "Loading..."}
+          </Field>
+        </PanelSectionRow>
+        <PanelSectionRow>
+          <Field label="Running in Steam">{describe(FRONTEND_VERSION, FRONTEND_BUILD)}</Field>
         </PanelSectionRow>
 
         {/* The two halves load independently: the service restarts the backend on

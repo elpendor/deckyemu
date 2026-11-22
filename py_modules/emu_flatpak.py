@@ -368,6 +368,17 @@ def flatpak_installed_commit(app_id):
     return _parse_commit(_flatpak_lines(["info", "--user", app_id]))
 
 
+def flatpak_installed_version(app_id):
+    """The release `app_id` says it is ("1.22.2"), or '' when it names none."""
+    if not _valid_app_id(app_id):
+        return ""
+    for line in _flatpak_lines(["info", "--user", app_id]):
+        label, _, value = line.partition(":")
+        if label.strip().lower() == "version":
+            return value.strip()
+    return ""
+
+
 def flatpak_history(app_id, limit=12):
     """Past builds available on the remote, newest first.
 

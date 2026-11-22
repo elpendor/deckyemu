@@ -18,6 +18,7 @@ import { callWithRetry } from "./timeout";
 import { openModal } from "./modalStack";
 import { ICON_BUTTON_WIDE } from "./iconButton";
 import { showFailure } from "./showFailure";
+import { plural } from "./plural";
 
 /**
  * Declared here rather than in backend.ts, deliberately.
@@ -279,8 +280,8 @@ export function DevPanel({ onChanged }: Props) {
                         // went with it.
                         (result.freed ? ` ${humanSize(result.freed)} of data deleted.` : "")
                       : `${humanSize(result.freed ?? 0)} recovered.`) +
-                    (unshortcut ? ` ${unshortcut} Steam shortcut(s) removed.` : "") +
-                    (emptied ? ` ${emptied} empty collection(s) deleted.` : "") +
+                    (unshortcut ? ` ${plural(unshortcut, "Steam shortcut")} removed.` : "") +
+                    (emptied ? ` ${plural(emptied, "empty collection")} deleted.` : "") +
                     failed,
                 });
                 load();
@@ -297,7 +298,8 @@ export function DevPanel({ onChanged }: Props) {
   );
 
   return (
-    <PanelSection title="Reset">
+    // Untitled: the sidebar already heads the tab "Reset".
+    <PanelSection>
       <PanelSectionRow>
         <Field description="Development build only. None of this exists in a release — the tab is compiled out and the backend refuses the calls." />
       </PanelSectionRow>
@@ -328,8 +330,8 @@ export function DevPanel({ onChanged }: Props) {
                   : targets.length === 0
                     ? "Nothing to remove."
                     : total > 0
-                      ? `${targets.length} item(s), ${humanSize(total)}.`
-                      : `${targets.length} item(s).`
+                      ? `${plural(targets.length, "item")}, ${humanSize(total)}.`
+                      : `${plural(targets.length, "item")}.`
               }
               childrenContainerWidth="min"
             >

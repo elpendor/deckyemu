@@ -436,7 +436,7 @@ export function UpdatePanel({
         and a second button under it opening a second dialog is not what they
         asked for. */}
     {!releaseOnly && (
-      <PanelSection title="About">
+      <PanelSection>
         <PanelSectionRow>
           <ButtonItem
             layout="below"

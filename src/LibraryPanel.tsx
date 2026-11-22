@@ -642,7 +642,7 @@ export function LibraryPanel({ onRefresh }: Props) {
                 )
               }
             >
-              {clearing ? "Removing..." : "Remove all DeckyEmu games from Steam"}
+              {clearing ? "Removing..." : "Delete all DeckyEmu games and their files"}
             </ButtonItem>
           </div>
         </PanelSectionRow>

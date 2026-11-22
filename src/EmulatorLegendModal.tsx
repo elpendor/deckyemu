@@ -5,6 +5,7 @@ import {
   FaEraser,
   FaFolderOpen,
   FaLink,
+  FaPen,
   FaTrash,
   FaWindowMaximize,
 } from "react-icons/fa";
@@ -30,6 +31,7 @@ const ICONS: Record<string, React.ReactNode> = {
   FaFolderOpen: <FaFolderOpen />,
   FaCodeBranch: <FaCodeBranch />,
   FaWindowMaximize: <FaWindowMaximize />,
+  FaPen: <FaPen />,
   FaTrash: <FaTrash />,
   FaEraser: <FaEraser />,
 };

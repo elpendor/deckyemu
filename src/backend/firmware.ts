@@ -315,6 +315,8 @@ export interface EmulatorBuild {
    * build was recorded, which reads as unknown rather than being guessed.
    */
   build: string;
+  /** The release a flatpak reports ("1.22.2"), when it names one. */
+  version?: string;
   /**
    * `unknown` is a real answer, not a quiet `current`. A flatpak is always one
    * of the other two — one `remote-ls --updates` covers every emulator at once.

@@ -157,6 +157,18 @@ def system_for_shelf(rom_path):
     return system_for_folder(rom_path)
 
 
+def display_name(database):
+    """The name a list shows a system by: "Sony - PlayStation 2" -> PlayStation 2.
+
+    One form for every system, so the libretro ones do not keep their
+    "Manufacturer - " prefix beside the ones that have a display name.
+    """
+    for label, full, _short in NO_LIBRETRO_PLATFORMS:
+        if label == database:
+            return full
+    return (database or "").split(" - ")[-1]
+
+
 def short_name(database, fallback=""):
     """A short label for a libretro database name.
 

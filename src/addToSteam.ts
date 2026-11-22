@@ -2,6 +2,7 @@ import { makeDiscPlaylist, prepareShortcut, type ResolvedGame, type RomProbe } f
 import { addPreparedGame } from "./addGame";
 import { coreById, readsPlaylist } from "./discSet";
 import { installWaitingContent } from "./installContent";
+import { plural } from "./plural";
 
 /**
  * One game, decided: everything the add needs, whoever worked it out.
@@ -76,7 +77,7 @@ export async function addGameToSteam(
   });
 
   const notes: string[] = [
-    added.artApplied > 0 ? `${added.artApplied} artwork image(s) applied` : "no artwork found",
+    added.artApplied > 0 ? `${plural(added.artApplied, "artwork image")} applied` : "no artwork found",
   ];
   if (prepared.collection_name && !added.collection) {
     notes.push("could not add it to its collection");

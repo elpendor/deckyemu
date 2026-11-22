@@ -32,6 +32,7 @@ import { countFiled, strandedSummary, unfileWarning } from "./unfileWarning";
 import { logError } from "./logError";
 import { openModal } from "./modalStack";
 import { showFailure } from "./showFailure";
+import { plural } from "./plural";
 
 const PLATFORM_NAME_OPTIONS: SingleDropdownOption[] = [
   { data: "short", label: "Short (SNES, N64, GBA)" },
@@ -44,9 +45,9 @@ const PLATFORM_NAME_OPTIONS: SingleDropdownOption[] = [
  * The rendering itself is the backend's -- `collection_templates` runs the same
  * function that names a real collection, so a preview cannot promise a format
  * the filing does not use. This only makes a newline visible, which is a
- * property of the row rather than of the name. Steam renders collection titles
- * as single-line text and CSS collapses whitespace, so the newline will most
- * likely show as a space rather than a break wherever it really appears.
+ * property of the row rather than of the name. Steam's library draws
+ * collection titles with `white-space: normal` (measured on the Deck), so a
+ * newline shows as a space: the format is offered only to whoever has it.
  */
 const showNewlines = (preview: string) => preview.replace(/\n/g, " ⏎ ");
 
@@ -159,13 +160,13 @@ export function CollectionsPanel() {
         if (failed > 0) {
           showFailure(
             moved > 0 ? "Some collections were not updated" : "Could not update collections",
-            `${moved} of ${moves.length} game(s) ${leaving ? "taken out" : "moved"}; ` +
+            `${moved} of ${plural(moves.length, "game")} ${leaving ? "taken out" : "moved"}; ` +
               `${failed} could not be.`,
           );
         } else {
           toaster.toast({
             title: "Collections updated",
-            body: `${moved} game(s) ${leaving ? "taken out of their collections" : "moved"}.`,
+            body: `${plural(moved, "game")} ${leaving ? "taken out of their collections" : "moved"}.`,
           });
         }
         return moved;
@@ -457,8 +458,11 @@ export function CollectionsPanel() {
               <PanelSectionRow>
                 <DropdownItem
                   label="Name format"
-                  description="Each option shows how it would read. ⏎ marks a newline, which Steam will probably show as a space."
-                  rgOptions={templates.map((option) => ({
+                  description="Each option shows how it would read."
+                  rgOptions={templates.filter((option) =>
+                    // Stored as the two characters \ and n.
+                    !option.template.includes("\\n")
+                    || option.template === settings.collection_template).map((option) => ({
                     data: option.template,
                     label: showNewlines(option.preview),
                   }))}

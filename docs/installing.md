@@ -187,7 +187,7 @@ collections, same emulator setup, same firmware state, nothing to redo.
 Nothing gets cleaned up for you, so a permanent removal takes a few steps. Do
 them **before** you uninstall — afterwards there's no tab to do them from.
 
-1. **Library → Remove all DeckyEmu games from Steam**, if you want them gone.
+1. **Library → Delete all DeckyEmu games and their files**, if you want them gone.
    This takes the shortcuts and collections as well as the records. Skip it if
    you want to keep playing them.
 2. **Library → Check the library**, and take any **Remove** it offers. One of

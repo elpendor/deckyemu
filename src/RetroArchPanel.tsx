@@ -26,6 +26,7 @@ import {
 } from "./backend";
 import { AchievementsPanel } from "./AchievementsPanel";
 import { CoreInstallPanel } from "./CoreInstallPanel";
+import { FirmwarePanel } from "./FirmwarePanel";
 import { DANGER_CLASS, DANGER_CSS } from "./danger";
 import { EmulatorVersionModal } from "./EmulatorVersionModal";
 import { InstallRetroArchPanel } from "./InstallRetroArchPanel";
@@ -85,6 +86,10 @@ interface Props {
   reloadKey?: number;
 }
 
+/** "1.22.2 (9c51e2bcb6f7)": the release first, the commit for a rollback. */
+const buildName = (build: EmulatorBuild) =>
+  build.version ? `${build.version} (${build.build})` : build.build;
+
 /**
  * Everything about RetroArch itself: what is installed, which cores it has, and
  * how games launch into it.
@@ -96,6 +101,8 @@ interface Props {
  */
 export function RetroArchPanel({ status, onRefresh, reloadKey = 0 }: Props) {
   const [settings, setLocalSettings] = useState<PluginSettings | null>(null);
+  // A core installed or removed changes which BIOS files are asked for.
+  const [coreChanges, setCoreChanges] = useState(0);
   // Whether removal is even on offer, and why not when it is not. Asked of the
   // backend rather than guessed from `status.kind`, because a flatpak installed
   // system-wide looks identical from here and cannot be removed without root.
@@ -284,7 +291,15 @@ export function RetroArchPanel({ status, onRefresh, reloadKey = 0 }: Props) {
         </PanelSectionRow>
       </PanelSection>
 
-      <CoreInstallPanel onCoresChanged={onRefresh} reloadKey={reloadKey} />
+      <CoreInstallPanel
+        onCoresChanged={() => {
+          setCoreChanges((count) => count + 1);
+          onRefresh();
+        }}
+        reloadKey={reloadKey}
+      />
+      {/* Beside the cores that read them, not on the Emulators tab. */}
+      <FirmwarePanel retroarch reloadKey={reloadKey + coreChanges} />
 
       {!settings ? (
         <PanelSection title="Launching">
@@ -350,10 +365,10 @@ export function RetroArchPanel({ status, onRefresh, reloadKey = 0 }: Props) {
                 build.reason
                   ? build.reason
                   : build.held
-                    ? `${build.build} — updates will not move it until you release the hold.`
+                    ? `${buildName(build)} — updates will not move it until you release the hold.`
                     : build.update_state === "available"
-                      ? `${build.build} — a newer build is available.`
-                      : `${build.build} — this is the newest build on Flathub.`
+                      ? `${buildName(build)} — a newer build is available.`
+                      : `${buildName(build)} — this is the newest build on Flathub.`
               }
             />
           </PanelSectionRow>

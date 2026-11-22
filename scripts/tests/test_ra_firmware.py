@@ -158,6 +158,25 @@ try:
           ra_firmware._label("x.bin (Satellaview (Japan) (Rev 1))", "x.bin"),
           "Satellaview (Japan) (Rev 1)")
 
+    # A core declares every region's BIOS required; a game needs its own.
+    _regional = ra_firmware.entry(_install, [{"id": "psx", "short_name": "Psx", "firmware": [
+        {"path": name, "desc": "%s (Console %s BIOS)" % (name, region), "optional": False}
+        for name, region in (("jp.bin", "JP"), ("us.bin", "US"), ("eu.bin", "EU"))
+    ]}])
+    check("a region's copy says it is needed for that region's games",
+          _regional["firmware"][0]["note"],
+          "Console EU BIOS. Needed by Psx for games from that region.")
+    _none = [{"name": spec["name"], "installed": [], "elsewhere": [], "waiting": [],
+              "optional": False} for spec in _regional["firmware"]]
+    check("with no copy in place every region shows",
+          len(ra_firmware.visible(_regional, _none, {"psx"})[0]), 3)
+    _one = [dict(row, installed=["us.bin"] if row["name"] == "us.bin" else [])
+            for row in _none]
+    _shown, _folded = ra_firmware.visible(_regional, _one, {"psx"})
+    check("one region in place folds the others into optional files",
+          ([row["name"] for row in _shown], [item["name"] for item in _folded]),
+          (["us.bin"], ["eu.bin", "jp.bin"]))
+
     _result = emu_firmware.install(_entry, "dummy_bios.bin", shared=[])
     _landed = os.path.join(_home, "Emulation", "bios", "dummy_bios.bin")
     # The core opens exactly the name its .info gives; nothing else is read.

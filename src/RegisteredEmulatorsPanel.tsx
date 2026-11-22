@@ -10,7 +10,7 @@ import { toaster } from "./host";
 import { useCallback, useEffect, useState } from "react";
 import { FaPen, FaTrash } from "react-icons/fa";
 
-import { listEmulators, removeEmulator, type CustomEmulator } from "./backend";
+import { listEmulatorCatalog, listEmulators, removeEmulator, type CustomEmulator } from "./backend";
 import { EmulatorEditorModal } from "./EmulatorEditorModal";
 import { ImportDefinitionModal } from "./ImportDefinitionModal";
 import { byName } from "./order";
@@ -51,10 +51,21 @@ export function RegisteredEmulatorsPanel({
 }: Props) {
   const [emulators, setEmulators] = useState<CustomEmulator[]>([]);
 
+  // Only what the catalog list above does not show: that list carries its own
+  // Edit button. Without the catalog, everything, rather than hiding entries
+  // that have nowhere else to be edited.
   const load = useCallback(() => {
-    callWithRetry(listEmulators)
-      .then((all) => setEmulators(all.filter((one) => Boolean(one.port) === ports)))
-      .catch((error) => console.error("[deckyemu] could not list emulators", error));
+    void (async () => {
+      try {
+        const all = await callWithRetry(listEmulators);
+        const listed = await callWithRetry(listEmulatorCatalog)
+          .then((catalog) => new Set(catalog.map((entry) => entry.id)))
+          .catch(() => new Set<string>());
+        setEmulators(all.filter((one) => Boolean(one.port) === ports && !listed.has(one.id)));
+      } catch (error) {
+        console.error("[deckyemu] could not list emulators", error);
+      }
+    })();
   }, [ports]);
 
   useEffect(load, [load, reloadKey]);
@@ -99,30 +110,20 @@ export function RegisteredEmulatorsPanel({
     [afterChange],
   );
 
-  const what = ports ? "ports" : "emulators";
+  // A port only ever comes from a list, so one the catalog does not show is
+  // rare; with none there is nothing for this section to say.
+  if (ports && emulators.length === 0) return null;
 
   return (
-    /* Not "Custom": installing anything from the list above registers it here
-       too, so most of these are not custom at all. What the list actually holds
-       is everything wired up for adding games, however it got there -- and
-       where each one's details can be changed. */
-    <PanelSection
-      title={`All registered ${what}${emulators.length ? ` (${emulators.length})` : ""}`}
-    >
-      {/* Always, not only when the list is empty. It used to explain itself
-          only while it had nothing in it, so the moment it had contents it
-          stopped saying what it was -- which is exactly when somebody asks
-          why an emulator is in two lists at once. */}
+    <PanelSection title={ports ? "Other ports" : "Your own emulators"}>
       <PanelSectionRow>
         <Field
           description={
-            emulators.length === 0
-              ? ports
-                ? "A port you installed above appears here, where its details can be changed. Nothing is installed yet."
-                : "Everything set up for adding games appears here. Nothing is yet: install one above, or point the plugin at a Flatpak or executable of your own and tell it which system it runs."
-              : ports
-                ? "Every port installed above, where its file types and launch arguments can be changed."
-                : "Everything set up for adding games, whether it came from the list above or you added it by hand. Edit one to change its system, file types or launch arguments."
+            ports
+              ? "Ports set up for adding games that the list above does not show."
+              : emulators.length === 0
+                ? "Not in the list above? Point the plugin at a Flatpak or executable of your own and tell it which system it runs."
+                : "Emulators you added by hand. Edit one to change its system, file types or launch arguments."
           }
         />
       </PanelSectionRow>

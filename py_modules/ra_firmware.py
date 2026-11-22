@@ -46,6 +46,23 @@ def _label(desc, path):
     return desc or posixpath.basename(path)
 
 
+#: A region in a BIOS label: "PS1 JP BIOS", "Sega CD EU BIOS".
+_REGION = re.compile(r"\b(JP|JPN|Japan|US|USA|NA|EU|EUR|Europe|PAL)\b", re.I)
+
+
+def _region_group(spec):
+    """A key shared by one core's per-region copies of the same BIOS, or None.
+
+    Cores declare every region's BIOS as required, though a game needs only
+    its own region's. Grouped, the rest stop reading as missing once one is in.
+    """
+    label = spec.get("label", "")
+    if not _REGION.search(label):
+        return None
+    cores = ",".join(sorted(spec.get("core_ids") or ()))
+    return "%s|%s" % (cores, " ".join(_REGION.sub("", label).split()))
+
+
 def _relative_system_dir(install):
     """The system folder relative to the home, or '' when it is not under it.
 
@@ -107,8 +124,19 @@ def entry(install, cores):
         return None
 
     firmware = []
+    sizes = {}
+    for row in rows.values():
+        key = _region_group(row)
+        sizes[key] = sizes.get(key, 0) + 1
     for path in sorted(rows, key=str.lower):
         row = rows[path]
+        key = _region_group(row)
+        row["region_group"] = key if key and sizes[key] > 1 else ""
+        if row["region_group"] and not row["optional"]:
+            row["note"] = "%s. Needed by %s for games from that region." % (
+                row["label"], ", ".join(row["core_names"]))
+            firmware.append(row)
+            continue
         # `label` and `core_names` stay on the spec: the optional-files list
         # shows them apart, where a row shows them joined into the note.
         row["note"] = "%s. %s by %s." % (
@@ -146,9 +174,17 @@ def visible(entry_, report, used):
     files for dozens of those.
     """
     by_name = {spec["name"]: spec for spec in (entry_ or {}).get("firmware") or ()}
+    # Region groups with one copy in place: the other regions are optional.
+    covered = {
+        by_name.get(row["name"], {}).get("region_group")
+        for row in report
+        if row["installed"] or row["elsewhere"]
+    } - {"", None}
     rows = []
     optional = []
     for row in report:
+        if by_name.get(row["name"], {}).get("region_group") in covered:
+            row = dict(row, optional=True)
         in_use = set(by_name.get(row["name"], {}).get("core_ids") or ()) & set(used)
         if row["waiting"]:
             rows.append(row)

@@ -50,6 +50,7 @@ from emu_flatpak import (  # noqa: F401 -- re-exported; see emu_flatpak.py
     flatpak_install_steps,
     flatpak_installed,
     flatpak_installed_commit,
+    flatpak_installed_version,
     _flatpak_lines,
     flatpak_scope,
     flatpak_uninstall_argv,

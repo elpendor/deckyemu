@@ -45,6 +45,13 @@ import { confirmUnknownDump } from "./confirmUnknownDump";
 import { openModal } from "./modalStack";
 import { ICON_BUTTON, ICON_BUTTON_WIDE } from "./iconButton";
 import { showFailure } from "./showFailure";
+import { plural } from "./plural";
+
+/** "Installed: 4.93", leaving out what the row's title already names. */
+function withNames(state: string, title: string, names: string[]): string {
+  const news = names.filter((name) => !title.includes(name));
+  return news.length ? `${state}: ${news.join(", ")}` : `${state}.`;
+}
 
 /** The tick or the triangle, in the colour that state is drawn in. */
 function StatusIcon({ state }: { state: FirmwareRowState }) {
@@ -78,9 +85,11 @@ interface Props {
    * reopened. Which reads as the firmware step not existing.
    */
   reloadKey?: number;
+  /** RetroArch's BIOS files alone, for its own tab; otherwise every other. */
+  retroarch?: boolean;
 }
 
-export function FirmwarePanel({ reloadKey = 0 }: Props) {
+export function FirmwarePanel({ reloadKey = 0, retroarch = false }: Props) {
   const [report, setReport] = useState<FirmwareReport | null>(null);
   const [busy, setBusy] = useState("");
 
@@ -209,8 +218,8 @@ export function FirmwarePanel({ reloadKey = 0 }: Props) {
               : shared
                 ? `${(result.linked ?? []).join(", ")} shared from ${(result.shared_from ?? []).join(", ")}, which keeps it too.`
                 : kept
-                  ? `${moved} file(s) moved into place; ${kept} already there and left alone.`
-                  : `${moved} file(s) moved into place.`,
+                  ? `${plural(moved, "file")} moved into place; ${kept} already there and left alone.`
+                  : `${plural(moved, "file")} moved into place.`,
           });
           load();
         } finally {
@@ -366,7 +375,7 @@ export function FirmwarePanel({ reloadKey = 0 }: Props) {
                 title: `${requirement.name} removed`,
                 body: result.freed
                   ? `${humanSize(result.freed)} recovered.`
-                  : `${(result.removed?.length ?? 0) + (result.foreign?.length ?? 0)} file(s) deleted.`,
+                  : `${plural((result.removed?.length ?? 0) + (result.foreign?.length ?? 0), "file")} deleted.`,
               });
               load();
             })();
@@ -379,7 +388,10 @@ export function FirmwarePanel({ reloadKey = 0 }: Props) {
 
   // Nothing installed that wants firmware: say nothing at all rather than
   // showing an empty section.
-  if (!report || report.emulators.length === 0) return null;
+  const groups = (report?.emulators ?? []).filter(
+    (emulator) => (emulator.id === "retroarch") === retroarch,
+  );
+  if (groups.length === 0) return null;
 
   /* Waiting and missing share the triangle as well as the colour: both mean
      this requirement is not met yet, and the row's own words say which of the
@@ -387,7 +399,7 @@ export function FirmwarePanel({ reloadKey = 0 }: Props) {
      distinction already spelled out an inch to the right. */
 
   return (
-    <PanelSection title="BIOS and firmware">
+    <PanelSection title={retroarch ? "BIOS" : "BIOS and firmware"}>
       <PanelSectionRow>
         <Field description="Some systems need files only you can supply. They are never downloaded by this plugin — send one from another device and it is put where the emulator reads it." />
       </PanelSectionRow>
@@ -397,11 +409,14 @@ export function FirmwarePanel({ reloadKey = 0 }: Props) {
           — xemu wants two dumps and a disk image — and repeating "xemu — " on
           every row spent the front of each label saying what the row above had
           already said. */}
-      {[...report.emulators].sort(byName).map((emulator) => (
+      {[...groups].sort(byName).map((emulator) => (
         <div key={emulator.id}>
-          <PanelSectionRow>
-            <div style={{ fontWeight: 600, padding: "10px 0 2px" }}>{emulator.name}</div>
-          </PanelSectionRow>
+          {/* On RetroArch's own tab the tab already names it. */}
+          {!retroarch && (
+            <PanelSectionRow>
+              <div style={{ fontWeight: 600, padding: "10px 0 2px" }}>{emulator.name}</div>
+            </PanelSectionRow>
+          )}
 
           {/* Files a core in use could read and does not need. One line
               rather than a row each: as rows they were a column of warnings
@@ -472,8 +487,8 @@ export function FirmwarePanel({ reloadKey = 0 }: Props) {
                   // filename or version to quote — only that it is there.
                   `Installed by ${emulator.name}.`
                 : requirement.imported
-                  ? `Installed: ${requirement.installed.join(", ")}`
-                  : `In place: ${requirement.installed.join(", ")}`;
+                  ? withNames("Installed", requirement.name, requirement.installed)
+                  : withNames("In place", requirement.name, requirement.installed);
               // The file it was unpacked from is still sitting in the transfer
               // folder, because importing reads it rather than moving it. Said
               // here because a couple of hundred megabytes of it is worth

@@ -324,7 +324,7 @@ and a set missing a disc isn't offered at all.
 | No cores are offered for a ROM | Nothing installed handles that file type. Its row says *Installs a core first*, and **Add** installs one |
 | A core is installed but a ROM still matches nothing | The core may be missing its `.info` file, so nothing knows what it plays. Reinstall it from **Install cores** |
 | An emulator says "installed, but not set up for adding games yet" | Something other than DeckyEmu installed it, so nothing knows what it plays. Press the chain-link button on its row to register it |
-| A game launches the emulator but no game | Its launch arguments are wrong. Edit them under **All registered emulators** |
+| A game launches the emulator but no game | Its launch arguments are wrong. Edit them with the pencil on the emulator's row |
 | A game starts in a window | The emulator's fullscreen switch is wrong, or it uses a setting rather than a flag |
 | An emulator closes immediately | For a hand-supplied AppImage, the execute bit is usually missing. Re-saving it in the editor repairs that |
 | A game worked and stopped after an emulator update | Open that emulator's version dialog and pick an earlier build. Choosing one also holds it, so nothing moves it back |

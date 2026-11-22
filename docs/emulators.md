@@ -495,7 +495,7 @@ emulate. The racers are the heaviest of them.
 
 A few emulators are marked as having unconfirmed launch arguments. They install
 the same way, but if a game opens the emulator without loading the game, edit
-the arguments under **All registered emulators** below.
+the arguments with the pencil on its row.
 
 Removing an emulator here leaves your saves and configuration alone, and games
 you've already added start working again the moment you reinstall it.
@@ -688,8 +688,8 @@ The Emulators tab has two lists:
 
 | List | What it is |
 | --- | --- |
-| **Ready-made emulators** | The catalog — what DeckyEmu knows how to install and set up |
-| **All registered emulators** | Everything wired up for adding games, whichever list it came from, and where each one's system, file types and launch arguments are edited |
+| **Ready-made emulators** | The catalog — what DeckyEmu knows how to install and set up. Once one is set up, the pencil on its row edits its system, file types and launch arguments |
+| **Your own emulators** | Emulators you added by hand, edited the same way |
 
 For anything the catalog doesn't cover, register a standalone emulator by hand
 with **Add an emulator**. You need either a Flatpak application id or an

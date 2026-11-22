@@ -57,6 +57,13 @@ export const EMULATOR_LEGEND: LegendEntry[] = [
       "It opens as a game, so the Steam button closes it.",
   },
   {
+    icon: "FaPen",
+    label: "Edit",
+    detail:
+      "Change the system, file types or launch arguments games are added with. " +
+      "Shown once the emulator is set up for adding games.",
+  },
+  {
     icon: "FaTrash",
     label: "Uninstall",
     detail:

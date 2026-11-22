@@ -31,6 +31,14 @@ the game.
 > declare both a `database` and `supported_extensions` and aren't in an excluded
 > category.
 
+### BIOS files for cores
+
+A **BIOS** section on the RetroArch tab lists what the cores your games run on
+need. Send a file from another device and it's recognised by name. A core that
+asks for one BIOS per region, like Beetle PSX HW, stops asking for the others
+once you have one: you only need the regions you play. Files a core can use but
+doesn't need are folded into one **Optional files** line.
+
 ### Uninstalling RetroArch
 
 You're only offered this when DeckyEmu can honestly do it — a user-scope

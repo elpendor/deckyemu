@@ -333,7 +333,7 @@ collection once it's empty.
 
 ## Removing everything
 
-**Remove all DeckyEmu games from Steam** sits at the bottom of the Library tab.
+**Delete all DeckyEmu games and their files** sits at the bottom of the Library tab.
 It undoes everything DeckyEmu added: every shortcut, every launcher script,
 and any collection it made that ends up empty.
 

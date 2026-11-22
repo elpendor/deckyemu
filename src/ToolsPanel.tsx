@@ -20,6 +20,7 @@ import { callWithRetry } from "./timeout";
 import { openModal } from "./modalStack";
 import { ICON_BUTTON } from "./iconButton";
 import { toolLine } from "./toolState";
+import { MUTED } from "./dialogStyle";
 import { showFailure } from "./showFailure";
 
 /**
@@ -160,15 +161,12 @@ export function ToolsPanel({ reloadKey = 0 }: Props) {
           </PanelSectionRow>
         );
       })}
-      <PanelSectionRow>
-        {/* The counterpart of the firmware section's own line, and the reason
-            these are two sections. Said once, under the list, rather than on
-            every row. */}
-        <Field
-          description="Downloaded from each project's own releases, and used only by the emulator that needs it."
-          focusable={false}
-        />
-      </PanelSectionRow>
+      {/* The counterpart of the firmware section's own line, and the reason
+          these are two sections. A note under the list, not a row of its own. */}
+      <div style={{ ...MUTED, padding: "8px 18px 0" }}>
+        Downloaded from each project's own releases, and used only by the
+        emulator that needs it.
+      </div>
     </PanelSection>
   );
 }

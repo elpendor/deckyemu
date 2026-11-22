@@ -692,7 +692,7 @@ def listing(database_extensions, installed_ids=()):
                 "summary": entry.get("summary", ""),
                 "note": entry.get("note", ""),
                 "kind": entry["source"]["kind"],
-                "system": full or system_label(entry),
+                "system": full or platforms.display_name(system_label(entry)),
                 "short": short or platforms.short_name(system_label(entry)),
                 "extensions": extensions_for(entry, database_extensions),
         # Only meaningful for an entry that cannot be handed a playlist, and

@@ -570,6 +570,7 @@ class Emulators(plugin_base.PluginContext):
 
             scope = await self._run(emu_install.flatpak_scope, app_id)
             commit = await self._run(emu_install.flatpak_installed_commit, app_id)
+            version = await self._run(emu_install.flatpak_installed_version, app_id)
             rows.append({
                 "id": entry["id"],
                 "name": entry["name"],
@@ -579,6 +580,8 @@ class Emulators(plugin_base.PluginContext):
                 # nothing anybody can read. The full value stays server-side and
                 # in `emulator_build_list`, which is what a rollback quotes back.
                 "build": commit[:12],
+                # The release it reports, which is what a person recognises.
+                "version": version,
                 # flatpak was asked, above, so this side is never unknown: one
                 # `remote-ls --updates` covers every emulator at once, which is
                 # exactly what the AppImage side cannot do.
