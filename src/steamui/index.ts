@@ -17,3 +17,4 @@ export {
 export { report as steamLookups } from "./webpack";
 export { resolveAll } from "./components";
 export * from "../ui";
+export { playNavSound, type NavSound } from "./sound";

@@ -66,7 +66,7 @@ import { titleAfterArtPick } from "./titleFromArt";
 import { openModal } from "./modalStack";
 import { DANGER_CLASS } from "./danger";
 import { FileName } from "./FileName";
-import { SwitchLabel } from "./SwitchLabel";
+import { playToggle, SwitchLabel } from "./SwitchLabel";
 import { ICON_BUTTON, ICON_BUTTON_WIDE } from "./iconButton";
 import { showFailure } from "./showFailure";
 
@@ -176,7 +176,7 @@ function WorkaroundRow({
     <Focusable style={{ display: "flex", gap: "8px", alignItems: "center" }}>
       <DialogButton
         disabled={following}
-        onClick={() => onChoose(on ? "off" : "on")}
+        onClick={() => { playToggle(!on); onChoose(on ? "off" : "on"); }}
         style={{ ...ICON_BUTTON_WIDE, flexGrow: 1 }}
       >
         <SwitchLabel name={fix.name} on={on} />
@@ -1157,7 +1157,7 @@ export function GameEditorModal({ game, onSaved, closeModal, onLeave }: Props) {
               {/* The same shape as the emulator editor's fixes: a wide button
                   that is the switch, and a small one beside it. */}
               <DialogButton
-                onClick={() => void togglePatch(row)}
+                onClick={() => { playToggle(!row.on); void togglePatch(row); }}
                 style={{ ...ICON_BUTTON_WIDE, flexGrow: 1 }}
                 disabled={busy || patchBusy === row.file}
               >

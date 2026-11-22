@@ -1,6 +1,6 @@
 import { type ReactNode } from "react";
 
-import { DialogButton, Focusable, showModal } from "../steamui/base";
+import { DialogButton, Focusable, playNavSound, showModal } from "../steamui/base";
 import { Field } from "./Field";
 import { DialogHeader, ModalRoot } from "./Modal";
 import { styled } from "./styles";
@@ -49,7 +49,12 @@ function OptionList({ options, selected, title, onPick, closeModal }: {
         bottomSeparator="none"
         label={option.label}
         autoFocus={option.data === selected}
-        onActivate={() => { closeModal?.(); onPick(option as SingleDropdownOption); }}
+        onActivate={() => {
+          // Steam's sound for A on an onClick, which onActivate replaces.
+          playNavSound("DefaultOk");
+          closeModal?.();
+          onPick(option as SingleDropdownOption);
+        }}
         onClick={() => { closeModal?.(); onPick(option as SingleDropdownOption); }}
       >
         {option.data === selected ? <span aria-label="selected">✓</span> : null}

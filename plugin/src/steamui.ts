@@ -30,6 +30,7 @@ export {
   ToggleField,
 } from "@decky/ui";
 export type { GamepadEvent, Patch, ShowModalResult } from "@decky/ui";
+export { playNavSound, type NavSound } from "../../src/steamui/sound";
 
 // DeckyEmu's own copies of the controls Steam updates break most: src/ui.
 export {

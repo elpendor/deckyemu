@@ -61,7 +61,7 @@ import { openRestoreSaves } from "./openRestore";
 import { ScrollList, ScrollRow } from "./ScrollList";
 import { sentence } from "./sentence";
 import { SGDB_PROMPT, sgdbKeyJustAppeared, shouldOfferSgdb } from "./sgdbPrompt";
-import { SwitchLabel } from "./SwitchLabel";
+import { playToggle, SwitchLabel } from "./SwitchLabel";
 
 const MUTED = { fontSize: "13px", opacity: 0.7 } as const;
 const PROBLEM = { fontSize: "13px", color: "#e35d5d" } as const;
@@ -483,7 +483,7 @@ function GamePage({ row, onBack, register }: {
               {matching.length > 0 && all.length > matching.length && (
                 <Focusable style={{ marginTop: "8px" }}>
                   <DialogButton
-                    onClick={() => setEverything(!everything)}
+                    onClick={() => { playToggle(!everything); setEverything(!everything); }}
                     style={{ ...ICON_BUTTON_WIDE, justifyContent: "flex-start", width: "100%" }}
                   >
                     <SwitchLabel name="Show everything installed" on={everything} />
@@ -670,7 +670,7 @@ function GameRow({ row, onEdit }: { row: BatchRow; onEdit: () => void }) {
       {/* One size on every row: the column lines up and any cover can be checked. */}
       <Cover capsule={capsule} width={48} />
       <DialogButton
-        onClick={() => setIncluded(row.path, !row.include)}
+        onClick={() => { playToggle(!row.include); setIncluded(row.path, !row.include); }}
         onOKActionDescription={row.include ? "Untick" : "Tick"}
         // Not ready, and nothing Add can do about it: it cannot be ticked.
         disabled={row.busy || row.verdict.blocked}

@@ -15,3 +15,4 @@ export {
 } from "@decky/ui";
 export type { GamepadEvent, ShowModalResult } from "@decky/ui";
 export type { FocusableProps } from "../../src/steamui/components";
+export { playNavSound, type NavSound } from "../../src/steamui/sound";

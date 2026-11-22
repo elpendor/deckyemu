@@ -14,3 +14,4 @@ export {
   type GamepadEvent,
 } from "./components";
 export { Navigation, showModal, type ShowModalResult } from "./navigation";
+export { playNavSound, type NavSound } from "./sound";

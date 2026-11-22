@@ -1,3 +1,5 @@
+import { playNavSound } from "./steamui";
+
 /**
  * What a button that is a switch says: a switch and the name.
  *
@@ -65,4 +67,12 @@ export function SwitchLabel({ name, on }: { name: string; on: boolean }) {
       </span>
     </span>
   );
+}
+
+/**
+ * Steam's switch sound, for the state a press turns a switch row to. It
+ * outranks the plain OK sound the button plays, so the switch's is heard.
+ */
+export function playToggle(on: boolean): void {
+  playNavSound(on ? "ToggleOn" : "ToggleOff");
 }

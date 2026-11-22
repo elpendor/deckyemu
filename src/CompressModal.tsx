@@ -6,7 +6,7 @@ import { cancelCompress, compressPlan, startCompress, type CompressGame } from "
 import { openModal } from "./modalStack";
 import { ProgressBar, humanSize } from "./TransferModal";
 import { ScrollList } from "./ScrollList";
-import { SwitchLabel } from "./SwitchLabel";
+import { playToggle, SwitchLabel } from "./SwitchLabel";
 import { ICON_BUTTON_WIDE } from "./iconButton";
 import { logError } from "./logError";
 import { keepAwakeUntil } from "./keepAwake";
@@ -151,7 +151,7 @@ export function CompressModal({ closeModal }: { closeModal?: () => void }) {
               {list.map((game) => (
                 <Focusable key={game.app_id} style={{ display: "flex", marginBottom: "4px" }}>
                   <DialogButton
-                    onClick={() => toggle(game.app_id)}
+                    onClick={() => { playToggle(!chosen.has(game.app_id)); toggle(game.app_id); }}
                     disabled={running}
                     style={{ ...ICON_BUTTON_WIDE, flexGrow: 1 }}
                   >

@@ -24,6 +24,9 @@ inside Steam's UI over Steam's remote-debugging port:
   are our own (`src/ui/`); only the controls that have never broken across
   Steam updates -- `Focusable`, buttons, text fields, toggles and the modal
   manager -- are Steam's, found in its build by anchors (`src/steamui/`).
+  Our controls request Steam's navigation sounds where its own would
+  (`playNavSound`): Steam keeps the more specific of two sounds requested
+  together, so a switch's sound wins over the plain OK its button plays.
 - The panel calls the backend through a `Runtime.addBinding` function on that
   same debugger session, so there is no port or token for anything else to find.
 

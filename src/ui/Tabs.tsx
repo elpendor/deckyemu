@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
-import { Focusable, GamepadButton, type GamepadEvent } from "../steamui/base";
+import { Focusable, GamepadButton, playNavSound, type GamepadEvent } from "../steamui/base";
 import { styled } from "./styles";
 
 export interface Tab {
@@ -83,9 +83,16 @@ export function Tabs({ tabs, activeTab, onShowTab }: TabsProps) {
     list.addEventListener("focusin", onFocus);
     return () => list.removeEventListener("focusin", onFocus);
   }, [activeId]);
+  // Steam's tab bars sound on every switch, and a bump past either end fails.
+  const show = (id: string) => {
+    if (id === activeId) return;
+    playNavSound("ChangeTabs");
+    onShowTab(id);
+  };
   const step = (by: number) => {
     const next = tabs[index + by];
-    if (next) onShowTab(next.id);
+    if (next) show(next.id);
+    else playNavSound("FailedNav");
   };
   const onButtonDown = (event: GamepadEvent) => {
     const button = event.detail?.button;
@@ -111,8 +118,8 @@ export function Tabs({ tabs, activeTab, onShowTab }: TabsProps) {
               navRef={pillRef(tab.id)}
               aria-selected={tab.id === tabs[index]?.id}
               className={tab.id === tabs[index]?.id ? "dek-tab dek-active" : "dek-tab"}
-              onActivate={() => onShowTab(tab.id)}
-              onClick={() => onShowTab(tab.id)}
+              onActivate={() => show(tab.id)}
+              onClick={() => show(tab.id)}
             >
               {tab.title}
             </Focusable>

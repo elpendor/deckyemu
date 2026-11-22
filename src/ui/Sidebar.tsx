@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
-import { Focusable, GamepadButton, Navigation, type GamepadEvent } from "../steamui/base";
+import { Focusable, GamepadButton, Navigation, playNavSound, type GamepadEvent } from "../steamui/base";
 import { styled } from "./styles";
 
 type Any = Record<string, any>;
@@ -54,6 +54,17 @@ export function SidebarNavigation({ pages, title }: { pages: SidebarPage[]; titl
     else Navigation.Navigate(id);
   };
   const current = items.find((item) => item.id === active);
+  // As in Steam's Settings: landing on a page shows it with the page sound,
+  // and choosing one also moves into it.
+  const body = useRef<{ TakeFocus?: () => void } | null>(null);
+  const show = (id: string) => {
+    playNavSound("PagedNavigation");
+    go(id);
+  };
+  const open = (id: string) => {
+    show(id);
+    body.current?.TakeFocus?.();
+  };
 
   // Text after the last control has nothing to focus, so the D-pad cannot
   // bring it into view. When a press leaves focus where it was, the page
@@ -87,9 +98,9 @@ export function SidebarNavigation({ pages, title }: { pages: SidebarPage[]; titl
               noFocusRing
               preferredFocus={item.id === active}
               className={item.id === active ? "dek-page-item dek-active" : "dek-page-item"}
-              onActivate={() => go(item.id)}
-              onClick={() => go(item.id)}
-              onFocus={() => go(item.id)}
+              onActivate={() => open(item.id)}
+              onClick={() => open(item.id)}
+              onFocus={() => show(item.id)}
             >
               <div>
                 {item.icon && <div className="dek-page-icon">{item.icon}</div>}
@@ -103,7 +114,7 @@ export function SidebarNavigation({ pages, title }: { pages: SidebarPage[]; titl
         {/* A column of its own: left unsaid, it takes the row the page uses
             to put the sidebar beside it, and rows need left and right. */}
         <Focusable className="DialogContent _DialogLayout dek-page-body" role="tabpanel"
-          flow-children="column" onButtonDown={onButtonDown}>
+          flow-children="column" onButtonDown={onButtonDown} navRef={body}>
           <div className="DialogContent_InnerWidth">
             {current && !current.hideTitle && (
               <div className="DialogHeader" role="heading" aria-level={2}>{current.title}</div>

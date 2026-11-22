@@ -9,7 +9,7 @@ import {
 } from "./steamui";
 import { FileSelectionType, openFilePicker, toaster } from "./host";
 
-import { SwitchLabel } from "./SwitchLabel";
+import { playToggle, SwitchLabel } from "./SwitchLabel";
 import { ScrollList } from "./ScrollList";
 import { WorkaroundInfo } from "./WorkaroundInfo";
 import { adoptedSystemId, initialSystemId, systemFields } from "./systemChoice";
@@ -119,7 +119,7 @@ function Workarounds({ emulatorId }: { emulatorId: string }) {
             // before you could predict a control, and one of them stranded
             // anyone who happened to be off when a fix stopped fitting.
             disabled={busy === item.id}
-            onClick={() => toggle(item)}
+            onClick={() => { playToggle(!item.enabled); toggle(item); }}
             style={{ flexGrow: 1 }}
           >
             {busy === item.id ? (
