@@ -262,6 +262,7 @@ FIRMWARE_OPTIONAL = FIRMWARE_ROUTES + (
     "system",       # also accept any BIOS libretro lists for this system, by content
     "sizes",        # byte sizes a valid file may have
     "optional",     # the emulator runs without it, so do not warn
+    "blocks",       # no game starts without it: True, or the extensions that need it
     "removes",      # paths to delete when uninstalling this firmware
     "detect",       # how to tell it is already installed, when a path will not
     "stub",         # how to recognise a placeholder the emulator wrote itself
@@ -1388,6 +1389,13 @@ def _validate_firmware(entry_id, item):
     for path in item.get("removes") or ():
         if path.startswith("/") or ".." in path.split("/"):
             bad("removes %r must be relative to home and must not escape it" % path)
+
+    blocks = item.get("blocks")
+    if blocks is not None and blocks is not True and not (
+            isinstance(blocks, list) and blocks and all(isinstance(one, str) for one in blocks)):
+        bad("blocks must be True or a list of file extensions")
+    if blocks and item.get("optional"):
+        bad("cannot be both optional and blocking")
 
     pattern = item.get("match")
     if pattern:

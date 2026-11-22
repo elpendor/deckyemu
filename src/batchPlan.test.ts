@@ -98,6 +98,15 @@ describe("classifyProbe", () => {
       .toMatchObject({ step: "unpack", include: true });
   });
 
+  it("blocks an .nsz when nothing installed runs what it unpacks to", () => {
+    const nsz = { can_unpack: true, unpack_kind: "nsz" as const, suggested_core_id: "" };
+    expect(classifyProbe(probe({ ...nsz, all_cores: [] })))
+      .toMatchObject({ blocked: true, include: false });
+    const runsNsp = { id: "emu:x", extensions: ["nsp"] } as unknown as RomProbe["all_cores"][number];
+    expect(classifyProbe(probe({ ...nsz, all_cores: [runsNsp] })))
+      .toMatchObject({ step: "unpack", include: true });
+  });
+
   it("offers a core, or RetroArch first, when one could run the file", () => {
     expect(classifyProbe(probe({ suggested_core_id: "" }), 2, true))
       .toMatchObject({ step: "core", include: true });

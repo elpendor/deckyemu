@@ -83,6 +83,7 @@ _XEMU_FIRMWARE = [
         # which it is, which is better than asking the user to rename it.
         "name": "MCPX boot ROM",
         "note": "Dumped from your own Xbox. 512 bytes exactly.",
+        "blocks": True,
         "match": r"(?i)^.*\.bin$",
         "sizes": [512],
         "expects": "The 512-byte MCPX boot ROM, under any name.",
@@ -92,6 +93,7 @@ _XEMU_FIRMWARE = [
     {
         "name": "Xbox BIOS",
         "note": "Dumped from your own Xbox, or one of the community BIOSes.",
+        "blocks": True,
         "match": r"(?i)^.*\.bin$",
         # The three sizes a real Xbox BIOS comes in: 256KB, 512KB and 1MB.
         "sizes": [262144, 524288, 1048576],

@@ -131,6 +131,7 @@ ENTRY = {
         {
             "name": "PS2 BIOS",
             "note": "PCSX2 will not start a game without one. Dump it from your own console.",
+            "blocks": True,
             # A PS2 BIOS is scph + *five* digits; the PS1's is four, and both
             # are called scph*.bin. That digit count is the only thing
             # separating a DuckStation BIOS from a PCSX2 one by name.

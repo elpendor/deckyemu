@@ -22,6 +22,7 @@ const addGameToSteam = vi.fn();
 const forgetGames = vi.fn(async (ids: number[]) => ({ games: ids.map((app_id) => ({ app_id })) }));
 const unfileRoms = vi.fn(async (..._args: unknown[]) => ({ ok: true, returned: [], kept: [] }));
 const removeShortcut = vi.fn();
+const missingFirmware = vi.fn(async (..._args: unknown[]) => ({ missing: [] as unknown[] }));
 
 vi.mock("./logError", () => ({ logError: vi.fn() }));
 vi.mock("./host", () => ({
@@ -54,7 +55,7 @@ vi.mock("./backend", () => ({
     games: [{ title_id: "CUSA00001", title: "Harbor Dash", eboot: "/games/CUSA00001/eboot.bin" }],
   })),
   listInstalledVitaGames: vi.fn(),
-  missingFirmware: vi.fn(async () => ({ missing: [] })),
+  missingFirmware: (...args: unknown[]) => missingFirmware(...args),
   probeRom: (...args: unknown[]) => probeRom(...args),
   ps3CoreId: vi.fn(),
   ps4CoreId: vi.fn(async () => ({ ok: true, core_id: "emu:shadps4" })),
@@ -210,6 +211,99 @@ describe("a BIOS set kept one per region", () => {
 
   it("asks for all of them when the game's region is not said", () => {
     expect(store.sendFor({ name: "Harbor Dash.chd", needs })).toHaveLength(3);
+  });
+});
+
+describe("updates and DLC sent with their game", () => {
+  it("are counted on the game's row and go in with it", async () => {
+    probeRom.mockResolvedValue(probe({
+      suggested_core_id: playlistCore.id, matching_cores: [playlistCore], all_cores: [playlistCore],
+      content_waiting: [
+        { path: "/inbox/u.nsp", name: "u.nsp", label: "Update v2" },
+        { path: "/inbox/d.nsp", name: "d.nsp", label: "DLC" },
+      ],
+    }));
+    await store.startBatch([{ path: "/inbox/game.nsp", name: "game.nsp" }]);
+    const row = store.getBatch().rows[0];
+    expect(store.contentSummary(row)).toBe("+ 1 update · 1 DLC");
+    expect(store.contentWithGames(store.getBatch().rows).get("d.nsp")).toBe(row.title);
+  });
+});
+
+describe("an emulator missing what no game starts without", () => {
+  it("blocks the game until it is sent, and only warns for the rest", async () => {
+    probeRom.mockResolvedValue(probe({
+      suggested_core_id: "emu:switchy", matching_cores: [playlistCore], all_cores: [playlistCore],
+    }));
+    missingFirmware.mockResolvedValueOnce({ missing: [
+      { name: "keys.bin", blocks: true, waiting: false },
+      { name: "firmware.zip", waiting: false },
+    ] });
+    await store.startBatch([{ path: "/inbox/game.nsp", name: "game.nsp" }]);
+    const row = store.getBatch().rows[0];
+    expect(row.verdict).toMatchObject({ blocked: true, include: false });
+    expect(row.verdict.reason).toContain("keys.bin");
+    expect(row.verdict.reason).not.toContain("firmware.zip");
+  });
+
+  it("is checked again when the review reopens, once the file is sent", async () => {
+    probeRom.mockResolvedValue(probe({
+      suggested_core_id: "emu:later", matching_cores: [playlistCore], all_cores: [playlistCore],
+    }));
+    missingFirmware.mockResolvedValueOnce({ missing: [{ name: "keys.bin", blocks: true, waiting: false }] });
+    const files = [{ path: "/inbox/game.nsp", name: "game.nsp" }];
+    await store.startBatch(files);
+    expect(store.getBatch().rows[0].verdict.blocked).toBe(true);
+    // Sent meanwhile: the emulator now reports nothing missing.
+    store.resumeOrStartBatch(files);
+    await vi.waitFor(() => expect(store.getBatch().rows[0].verdict.blocked ?? false).toBe(false));
+    expect(store.getBatch().rows[0].include).toBe(true);
+  });
+
+  it("blocks only the file types that need it", async () => {
+    probeRom.mockResolvedValue(probe({
+      suggested_core_id: "emu:discy", matching_cores: [playlistCore], all_cores: [playlistCore],
+    }));
+    missingFirmware.mockResolvedValue({ missing: [{ name: "keys.txt", blocks: ["wud"], waiting: false }] });
+    await store.startBatch([
+      { path: "/inbox/a.wud", name: "a.wud" },
+      { path: "/inbox/b.wua", name: "b.wua" },
+    ]);
+    const [disc, archive] = store.getBatch().rows;
+    expect(disc.verdict.blocked).toBe(true);
+    expect(archive.verdict.blocked ?? false).toBe(false);
+    expect(store.sendFor(archive)).toEqual(["keys.txt"]);
+  });
+});
+
+describe("reopening the review", () => {
+  const files = [{ path: "/inbox/game.chd", name: "game.chd" }];
+  const runnable = probe({
+    suggested_core_id: playlistCore.id, matching_cores: [playlistCore], all_cores: [playlistCore],
+  });
+
+  it("notices an emulator removed meanwhile", async () => {
+    probeRom.mockResolvedValue(runnable);
+    await store.startBatch(files);
+    expect(store.getBatch().rows[0].include).toBe(true);
+    probeRom.mockResolvedValue(probe({ what: ".chd" }));
+    store.resumeOrStartBatch(files);
+    await vi.waitFor(() => expect(store.getBatch().rows[0].verdict.bucket).toBe("cant"));
+    expect(store.chosenRows(store.getBatch().rows)).toEqual([]);
+  });
+
+  it("keeps a name typed and a game unticked", async () => {
+    probeRom.mockResolvedValue(runnable);
+    await store.startBatch(files);
+    const path = store.getBatch().rows[0].path;
+    store.setTitle(path, "Harbor Dash Deluxe");
+    store.setIncluded(path, false);
+    store.resumeOrStartBatch(files);
+    await vi.waitFor(() => expect(probeRom).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(store.getBatch().rows[0].busy).toBe(false));
+    const row = store.getBatch().rows[0];
+    expect(row.title).toBe("Harbor Dash Deluxe");
+    expect(row.include).toBe(false);
   });
 });
 

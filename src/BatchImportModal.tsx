@@ -34,6 +34,8 @@ import {
   setSystemFor,
   sendFor,
   setTitle,
+  contentSummary,
+  contentWithGames,
   subscribeBatch,
   unpackRow,
   type Batch,
@@ -647,6 +649,7 @@ function GameRow({ row, onEdit }: { row: BatchRow; onEdit: () => void }) {
         : `${row.discs.length} discs as one game`
       : "",
     row.busy && !stepping ? "Looking up..." : row.verdict.reason,
+    contentSummary(row),
     // Who supplies what the emulator is missing, said the same way for every
     // platform: what downloads by itself, and what has to be sent.
     row.needs.download.length ? `${row.needs.download.map((one) => one.name).join(", ")} downloads on Add` : "",
@@ -743,7 +746,9 @@ function OtherRow({ row, hide }: { row: BatchRow; hide: () => void }) {
       {/* The game rows' text sits 16px into their button; this matches it. */}
       <div style={{ flexGrow: 1, minWidth: 0, padding: "6px 16px" }}>
         <FileName name={rowFileLabel(row)} />
-        <div style={MUTED}>{row.busy ? "Working..." : [row.verdict.reason, note].filter(Boolean).join(" · ")}</div>
+        <div style={MUTED}>
+          {row.busy ? "Working..." : [row.verdict.reason, note].filter(Boolean).join(" · ")}
+        </div>
         {row.error && <div style={PROBLEM}>{row.error}</div>}
       </div>
       {label && row.outcome !== "done" && (
@@ -773,6 +778,7 @@ function CantRow({ row }: { row: BatchRow }) {
 function Review({ batch, hide, onEdit }: { batch: Batch; hide: () => void; onEdit: (path: string) => void }) {
   const choices = useMemo(() => coreChoices(batch.rows), [batch.rows]);
   const buckets: Bucket[] = ["ready", "check", "other", "cant"];
+  const withGames = contentWithGames(batch.rows);
   const withVitaPackage = batch.rows.some((row) => row.probe?.vita_package);
   return (
     // The pickers scroll with the rows: above them they left the list no room.
@@ -799,7 +805,9 @@ function Review({ batch, hide, onEdit }: { batch: Batch; hide: () => void; onEdi
       {buckets.map((bucket) => {
         const rows = batch.rows.filter((row) => row.verdict.bucket === bucket
           // A Vita key goes in with its package, whose row says so.
-          && !(row.verdict.other === "key" && withVitaPackage));
+          && !(row.verdict.other === "key" && withVitaPackage)
+          // So does an update or DLC: its game's row counts it.
+          && !(row.verdict.other === "content" && withGames.has(row.name)));
         if (!rows.length) return null;
         return (
           <div key={bucket}>
@@ -807,7 +815,8 @@ function Review({ batch, hide, onEdit }: { batch: Batch; hide: () => void; onEdi
               {HEADINGS[bucket]} ({rows.length})
             </div>
             {rows.map((row) =>
-              bucket === "other" ? <OtherRow key={row.path} row={row} hide={hide} />
+              bucket === "other"
+                ? <OtherRow key={row.path} row={row} hide={hide} />
                 : bucket === "cant" ? <CantRow key={row.path} row={row} />
                   : <GameRow key={row.path} row={row} onEdit={() => onEdit(row.path)} />)}
           </div>

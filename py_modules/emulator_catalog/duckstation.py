@@ -135,7 +135,10 @@ ENTRY = {
     "firmware": [
         {
             "name": "PS1 BIOS",
-            "note": "Optional, but compatibility is better with one.",
+            # Its README: "A PS1 or PS2 BIOS ROM image is required to start
+            # the emulator and to play games." It has no built-in one.
+            "note": "DuckStation will not start a game without one.",
+            "blocks": True,
             # Four digits, where the PS2's has five -- see the PCSX2 entry.
             "match": r"(?i)^scph[-_]?\d{4}\.(bin|rom)$",
             # DuckStation tells PS1 BIOS files apart by their contents, so a

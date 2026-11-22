@@ -241,6 +241,7 @@ ENTRY = {
         {
             "name": "Wii U title keys (keys.txt)",
             "note": "Cemu cannot decrypt a WUD or WUX disc image without the key for it.",
+            "blocks": ["wud", "wux"],
             "match": r"(?i)^keys\.txt$",
             "expects": "A file called keys.txt, one 32-character key per line. Lines starting with # are comments.",
             # GetUserDataPath, not the config path settings.xml lives in --

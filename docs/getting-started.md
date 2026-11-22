@@ -210,7 +210,8 @@ Firmware works the same way on every system. What DeckyEmu can download itself
 — the Vita's and the PS3's, from Sony — downloads as the game is added, and the
 row says so. What only you can supply, like a PS2 BIOS or Switch keys, is named
 on the row, to send from the transfer page; the game is added anyway, and many
-run without it. Where a BIOS comes one per region, only the game's own is named.
+run without it. What no game starts without, like Switch keys, is the exception:
+the row can't be ticked until it's sent. Where a BIOS comes one per region, only the game's own is named.
 Games RPCS3, shadPS4 or Vita3K already
 have installed are listed under **Add a game** too.
 

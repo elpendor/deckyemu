@@ -802,6 +802,8 @@ def status(entry, files=None, state=None, shared=None):
                 # emulator -- and the add flow must not warn "RPCS3 is missing
                 # something" at every PS3 game because of it.
                 "optional": bool(requirement.get("optional")),
+                # No game starts without it, so adding one waits for it.
+                "blocks": requirement.get("blocks") or False,
                 # Whether "not installed" is a fact or merely the absence of a
                 # way to tell. A requirement the emulator installs itself, with
                 # nowhere named to look, can only be reported as unknown --

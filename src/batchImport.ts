@@ -103,7 +103,8 @@ export interface Needs {
   emulator: string;
   download: { entryId: string; name: string }[];
   /** What only the user can send, with what each is ("PS1 US BIOS"). */
-  send: { name: string; label: string }[];
+  /** `blocks`: no game starts without it, or only these file types' games. */
+  send: { name: string; label: string; blocks?: boolean | string[] }[];
 }
 
 export const NO_NEEDS: Needs = { emulator: "", download: [], send: [] };
@@ -242,7 +243,9 @@ function needsFor(coreId: string): Promise<Needs> {
           download: missing.filter((item) => item.fetchable && item.entry_id)
             .map((item) => ({ entryId: item.entry_id!, name: item.name })),
           send: missing.filter((item) => !item.fetchable)
-            .map((item) => ({ name: posixBase(item.name), label: item.label ?? "" })),
+            .map((item) => ({
+              name: posixBase(item.name), label: item.label ?? "", blocks: item.blocks ?? false,
+            })),
         };
       })
       .catch(() => NO_NEEDS);
@@ -268,13 +271,57 @@ const REGIONS: [RegExp, RegExp][] = [
  * listing all three reads as three things missing.
  */
 export function sendFor(row: { name: string; needs: Needs }): string[] {
-  const send = row.needs.send;
+  // What blocks the row is its reason already, not a recommendation.
+  const send = row.needs.send.filter((item) => !blocksGame(item, row.name));
   for (const [game, file] of REGIONS) {
     if (!game.test(row.name)) continue;
     const own = send.filter((item) => file.test(item.label));
     if (own.length) return own.map((item) => item.name);
   }
   return send.map((item) => item.name);
+}
+
+/**
+ * Updates and DLC whose game is in this batch, by file name, to that game's
+ * title. Add installs them straight after the game; its row counts them.
+ */
+export function contentWithGames(rows: BatchRow[]): Map<string, string> {
+  const owners = new Map<string, string>();
+  for (const row of rows) {
+    for (const one of row.probe?.content_waiting ?? []) owners.set(one.name, row.title);
+  }
+  return owners;
+}
+
+/** "+ 1 update · 2 DLC" for a game sent with its content, or "". */
+export function contentSummary(row: BatchRow): string {
+  const waiting = row.probe?.content_waiting ?? [];
+  const updates = waiting.filter((one) => one.label.startsWith("Update")).length;
+  const dlc = waiting.length - updates;
+  const parts = [
+    updates ? `${updates} update${updates === 1 ? "" : "s"}` : "",
+    dlc ? `${dlc} DLC` : "",
+  ].filter(Boolean);
+  return parts.length ? `+ ${parts.join(" · ")}` : "";
+}
+
+/** Whether this missing file stops the game in `path` from starting. */
+function blocksGame(item: Needs["send"][number], path: string): boolean {
+  if (Array.isArray(item.blocks)) {
+    const extension = path.slice(path.lastIndexOf(".") + 1).toLowerCase();
+    return item.blocks.includes(extension);
+  }
+  return Boolean(item.blocks);
+}
+
+/** A row that cannot start without a file only the user can send. */
+function waitingFor(needs: Needs, verdict: Verdict, path: string): Verdict {
+  const missing = needs.send.filter((item) => blocksGame(item, path)).map((item) => item.name);
+  if (!missing.length) return verdict;
+  return {
+    bucket: "check", include: false, blocked: true, step: verdict.step,
+    reason: `Needs ${missing.join(", ")}: send it from the transfer page`,
+  };
 }
 
 /** Firmware already fetched in this batch, so ten games ask for it once. */
@@ -369,15 +416,23 @@ async function examine(row: BatchRow, single = false): Promise<Partial<BatchRow>
       installable = await suggestCoresForExtension(probe.match_extension).catch(() => []);
     }
     const early = classifyProbe(probe, installable.length, retroarchFound);
-    if (early && packaged) {
-      // A package is looked up by its name now, so the row has its cover
-      // before anything installs; its own metadata names it properly after.
-      const system = { ps3: "Sony - PlayStation 3", ps4: "Sony - PlayStation 4",
-        vita: "Sony - PlayStation Vita" }[packaged[0]];
+    // A package, or a Switch .nsz, is looked up by its name now, so the row
+    // has its cover before anything installs or unpacks.
+    const nsz = probe.can_unpack && probe.unpack_kind === "nsz";
+    if (early && (packaged || nsz)) {
+      const system = packaged
+        ? { ps3: "Sony - PlayStation 3", ps4: "Sony - PlayStation 4",
+          vita: "Sony - PlayStation Vita" }[packaged[0]]
+        : "Nintendo - Switch";
       const preview = await lookUp({ ...row, probe }, "", system, probe.provisional_title);
+      // What will run it once unpacked, so its requirements are said now.
+      const runner = nsz ? (probe.all_cores ?? []).find((core) => core.extensions.includes("nsp")) : undefined;
+      const needs = runner ? await needsFor(runner.id) : NO_NEEDS;
+      // Judged as the .nsp it unpacks to, which is what the emulator gets.
+      const verdict = early.blocked ? early : waitingFor(needs, early, "game.nsp");
       return {
         probe, title: preview.title ?? probe.provisional_title, resolved: preview.resolved ?? null,
-        systemId: system, verdict: early, include: early.include,
+        systemId: system, verdict, include: verdict.include, needs,
       };
     }
     if (early) {
@@ -398,7 +453,8 @@ async function examine(row: BatchRow, single = false): Promise<Partial<BatchRow>
     };
     // A set is ready like any game: the row says it goes in as one, and the
     // Discs line on its page is where that changes.
-    patch.include = patch.verdict!.include;
+    patch.verdict = waitingFor(patch.needs!, patch.verdict!, row.path);
+    patch.include = patch.verdict.include;
     return patch;
   } catch (error) {
     logError("batch probe failed", error);
@@ -433,22 +489,46 @@ async function checkOne(file: BatchFile, asked: number): Promise<void> {
 }
 
 /**
- * Check the rows left out again. A kept review predates whatever was installed
- * since, and "Nothing runs .md files" is the one verdict an install changes.
+ * Check every game row again, as things stand now. A kept review predates
+ * whatever was installed, removed or sent since: an emulator, a core, a BIOS,
+ * keys. What the user chose stays where it still applies.
  */
-async function recheckLeftOut(): Promise<void> {
+async function recheckAll(): Promise<void> {
   const asked = generation;
-  // A package waiting for a key is in here too: the advice is to send it, and
-  // coming back is when it may have arrived.
-  const rows = batch.rows.filter((row) => row.verdict.bucket === "cant"
-    || row.verdict.step === "core" || row.verdict.step === "retroarch" || row.verdict.step === "emulator"
-    || (row.verdict.step === "package" && !row.include));
+  needsCache.clear();
+  const rows = batch.rows.filter((row) => row.outcome === "" && !row.busy && row.verdict.bucket !== "other");
   for (const row of rows) updateRow(row.path, { busy: true });
   await Promise.all(rows.map(async (row) => {
-    const patch = await examine(row);
+    // An installed package's row is its game already; only its needs move.
+    const patch = row.probe === null && row.coreId
+      ? { needs: await needsFor(row.coreId) }
+      : withChoices(row, await examine(row, row.discs.length < 2));
     if (generation !== asked) return;
     updateRow(row.path, { ...patch, busy: false });
   }));
+}
+
+/** A fresh examination, with the user's choices put back where they apply. */
+function withChoices(row: BatchRow, fresh: Partial<BatchRow>): Partial<BatchRow> {
+  const patch = { ...fresh };
+  const verdict = patch.verdict ?? row.verdict;
+  // The core picked by hand, while it is still installed and runs the file.
+  if (row.corePicked && patch.probe?.all_cores?.some((core) => core.id === row.coreId) && !verdict.step) {
+    patch.coreId = row.coreId;
+    patch.corePicked = true;
+  }
+  if (row.systemPicked) Object.assign(patch, { systemId: row.systemId, systemPicked: true });
+  if (row.discs.length >= 2) Object.assign(patch, { discs: row.discs, discMode: row.discMode });
+  if (row.fixed) Object.assign(patch, { title: row.title, resolved: row.resolved, fixed: true });
+  // Unticked by hand stays unticked; a block wins either way (see unblock).
+  const unticked = !row.include && row.verdict.include && !row.verdict.blocked;
+  if (unticked) patch.include = false;
+  // A row the user fixed keeps its section and says so, unless now blocked.
+  if (row.fixed && !verdict.blocked && !verdict.step && verdict.bucket !== "cant") {
+    patch.verdict = { ...verdict, bucket: row.verdict.bucket, reason: "Chosen by you", include: true };
+    if (!unticked) patch.include = true;
+  }
+  return patch;
 }
 
 /**
@@ -481,7 +561,7 @@ export function resumeOrStartBatch(files: BatchFile[]): void {
     batch.rows.every((row) => asked.has(row.path) || row.titleId || row.path.endsWith("eboot.bin"));
   if (batch.phase === "checking" && same) return;
   if (batch.phase === "review" && same) {
-    void recheckLeftOut();
+    void recheckAll();
     return;
   }
   void startBatch(files);
@@ -950,7 +1030,13 @@ export async function addBatch(): Promise<void> {
       }
       for (const path of paths) {
         const row = rowAt(path);
-        if (!row || !row.coreId || row.verdict.step || row.verdict.bucket === "cant") continue;
+        if (!row) continue;
+        // What its step left is not a game anything here runs: say so, or the
+        // result reads "Added 0 games" with nothing to explain it.
+        if (!row.coreId || row.verdict.step || row.verdict.bucket === "cant") {
+          updateRow(path, { outcome: "failed", error: row.verdict.reason || "Nothing here runs it." });
+          continue;
+        }
         update({ current: row.title });
         await addRow(row);
       }

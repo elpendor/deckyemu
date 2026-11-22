@@ -82,6 +82,12 @@ export function classifyProbe(
   // Nothing can open it as it is, but it comes apart: an Xbox 360 zip, an .nsz.
   const mustUnpack = probe.can_unpack &&
     (probe.archived_content || probe.unpack_kind === "nsz" || !probe.suggested_core_id);
+  // An .nsz unpacks to an .nsp, and with nothing installed to run one the
+  // unpack would only end in a file nobody can play.
+  if (mustUnpack && probe.unpack_kind === "nsz"
+    && !(probe.all_cores ?? []).some((core) => core.extensions.includes("nsp"))) {
+    return blocked("Needs a Switch emulator: add one from the Emulators tab", "unpack");
+  }
   if (mustUnpack) return check("Unpacks first", true, "unpack");
 
   if (!probe.suggested_core_id) {

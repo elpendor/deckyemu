@@ -241,6 +241,8 @@ ENTRY = {
         {
             "name": "prod.keys",
             "note": "Dumped from your own Switch. Nothing runs without it.",
+            # Not a warning: a game added without it cannot start at all.
+            "blocks": True,
             "match": r"(?i)^prod\.keys$",
             "expects": "A file named exactly prod.keys.",
             "dest": ".var/app/io.github.ryubing.Ryujinx/config/Ryujinx/system",
