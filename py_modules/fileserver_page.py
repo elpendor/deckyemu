@@ -111,8 +111,10 @@ _STYLE = """
              color: var(--text); background: var(--card);
              border: 1px solid var(--line); }
   a.report:hover { border-color: var(--accent); background: var(--accent-soft); }
-  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .08em;
-       color: var(--muted); margin: 24px 0 8px; font-weight: 600; }
+  h2 { font-size: 13px; color: var(--muted); margin: 24px 0 8px; font-weight: 600; }
+  /* One ring for every control, keyboard only: a browser's own is often
+     invisible on this background. */
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   p.dir { color: var(--muted); font-size: 13px; margin: 0 0 18px;
           word-break: break-all; }
   p.keep { font-size: 13px; margin: 0 0 18px; padding: 11px 13px;
@@ -127,20 +129,39 @@ _STYLE = """
   label.pick b { display: block; font-size: 16px; font-weight: 600; }
   label.pick span { display: block; margin-top: 3px; font-size: 13px;
                     color: var(--muted); }
-  input[type=file] { display: none; }
+  /* Hidden but focusable: `display: none` took it out of the tab order, and the
+     label around it cannot take focus, so a keyboard never reached the picker. */
+  input[type=file] { position: absolute; width: 1px; height: 1px; opacity: 0;
+                     overflow: hidden; }
+  label.pick { position: relative; }
+  label.pick:focus-within { border-color: var(--accent); background: var(--accent-soft);
+                            outline: 2px solid var(--accent); outline-offset: 2px; }
+  label.platform { display: block; margin: 0 0 10px; font-size: 13px;
+                   color: var(--muted); }
+  label.platform select { display: block; width: 100%; margin-top: 5px;
+                          padding: 10px; font-size: 15px; color: var(--text);
+                          background: var(--card); border: 1px solid var(--line);
+                          border-radius: 10px; }
   /* The link box. Deliberately quieter than the file picker: sending files is
      what this page is for, and a definition is the occasional errand. */
   form.link { display: flex; gap: 8px; }
   form.link input { flex: 1; min-width: 0; padding: 10px 12px; font: inherit;
                     font-size: 15px; color: var(--text); background: var(--card);
                     border: 1px solid var(--line); border-radius: 10px; }
-  form.link input:focus { outline: none; border-color: var(--accent); }
+  form.link input:focus { border-color: var(--accent); }
   form.link button { padding: 10px 16px; font: inherit; font-size: 15px;
                      font-weight: 600; color: var(--text); background: var(--card);
                      border: 1px solid var(--line); border-radius: 10px;
                      cursor: pointer; }
   form.link button:disabled { opacity: .55; cursor: default; }
   p.linkNote { margin: 6px 0 0; font-size: 13px; color: var(--muted); }
+  /* The occasional errand, folded below the lists: a definition by link. */
+  details.link { margin-top: 28px; }
+  details.link summary { cursor: pointer; font-size: 14px; color: var(--muted);
+                         padding: 4px 0; }
+  details.link[open] summary { margin-bottom: 8px; }
+  /* The platform a file was sent as, beside its name. */
+  .for { color: var(--muted); font-size: 12px; white-space: nowrap; }
   /* `minmax(0, 1fr)` rather than the implicit `1fr`, and `min-width: 0` on the
      row: a grid item defaults to `min-width: auto`, which means it refuses to
      shrink below the width of its own content. The name inside already clips
@@ -320,6 +341,7 @@ document.getElementById('pick').addEventListener('change', (event) => {
   const files = [...event.target.files];
   event.target.value = '';
   files.forEach(enqueue);
+  platformDone();
 });
 
 // Drag and drop, for the desktop half of the audience. The document-level
@@ -336,7 +358,15 @@ document.getElementById('pick').addEventListener('change', (event) => {
 });
 zone.addEventListener('drop', (event) => {
   [...(event.dataTransfer ? event.dataTransfer.files : [])].forEach(enqueue);
+  platformDone();
 });
+
+// A pick is for the files it was made for. Left selected, it went on to tag
+// every later file too, unseen; each row now says which platform it went as.
+function platformDone() {
+  const platform = document.getElementById('platform');
+  if (platform) platform.value = '';
+}
 
 // One at a time, in the order they were chosen.
 //
@@ -431,6 +461,7 @@ function attempt(job) {
     // exactly like a retry from there. Without the distinction, cancelling
     // could not both stop this transfer and let the file be sent again.
     if (first) request.setRequestHeader('X-Upload-Restart', '1');
+    if (job.system) request.setRequestHeader('X-Upload-System', job.system);
 
     // Bytes this attempt handed to the network. Not what the Deck has -- only
     // it knows that, and the next attempt asks -- but enough to tell an attempt
@@ -569,6 +600,15 @@ function enqueue(file) {
   size.className = 'size';
   size.textContent = humanSize(file.size);
   head.appendChild(name);
+  const platform = document.getElementById('platform');
+  const system = platform ? platform.value : '';
+  // Said either way, so an empty corner never means "nobody picked".
+  const tag = document.createElement('div');
+  tag.className = 'for';
+  tag.textContent = system
+    ? 'for ' + platform.options[platform.selectedIndex].text
+    : 'detect from the file';
+  head.appendChild(tag);
   head.appendChild(size);
   const bar = document.createElement('div');
   bar.className = 'bar';
@@ -584,8 +624,9 @@ function enqueue(file) {
   // a per-request decrement is what made this go negative and question every
   // attempt to leave the page forever after.
   active += 1;
+  // Read when the file is picked, so one send can mix platforms.
   pending.push({ file: file, row: row, bar: bar, fill: fill, size: size,
-                 stalls: 0, tries: 0, timer: 0 });
+                 stalls: 0, tries: 0, timer: 0, system: system });
   pump();
 }
 """
@@ -733,18 +774,55 @@ def download_page(name, size, token, emulators, heading=""):
     }
 
 
-def upload_page(directory, arrived, token, durable, report):
+def _platform_choice(systems):
+    """The platform dropdown above the picker, or "" when there is nothing to offer.
+
+    `systems` is (database, label) or (database, label, installed). Installed
+    ones come first; the rest are still offered, since games are often sent
+    before their emulator is installed and the pick waits with the file.
+    """
+    if not systems:
+        return ""
+
+    def option(database, label):
+        return '<option value="%s">%s</option>' % (
+            html.escape(database, quote=True), html.escape(label))
+
+    have = [one[:2] for one in systems if len(one) < 3 or one[2]]
+    rest = [one[:2] for one in systems if len(one) >= 3 and not one[2]]
+    if have and rest:
+        options = (
+            '<optgroup label="Installed">%s</optgroup>'
+            '<optgroup label="Not installed yet">%s</optgroup>'
+            % ("".join(option(*one) for one in have), "".join(option(*one) for one in rest)))
+    else:
+        options = "".join(option(*one) for one in have or rest)
+    return (
+        '  <label class="platform">Platform, for files several systems share'
+        '<select id="platform"><option value="">Detect from the file</option>%s'
+        '</select></label>\n' % options
+    )
+
+
+def upload_page(directory, arrived, token, durable, report, systems=()):
     """The upload page. Deliberately one self-contained file, no assets.
 
-    `arrived` is (name, size) pairs oldest first -- the newest is shown at the
+    `arrived` is (name, size[, platform label]) oldest first -- the newest is shown at the
     top, which is where somebody watching a transfer is looking. `durable` adds
     the bookmark hint, `report` the button beside the heading.
     """
+    def platform_tag(one):
+        if len(one) > 2 and one[2]:
+            return '<div class="for">for %s</div>' % html.escape(one[2])
+        return '<div class="for">detect from the file</div>'
+
+
+
     listed = "".join(
-        '<li class="done"><div class="row"><div class="name">%s</div>'
+        '<li class="done"><div class="row"><div class="name">%s</div>%s'
         '<div class="size">%s</div></div></li>'
-        % (html.escape(name), human_size(size))
-        for name, size in reversed(arrived)
+        % (html.escape(one[0]), platform_tag(one), human_size(one[1]))
+        for one in reversed(arrived)
     )
 
     return """<!doctype html>
@@ -763,28 +841,11 @@ def upload_page(directory, arrived, token, durable, report):
   </div>
   <p class="dir">Saving into %(dir)s</p>
 %(keep)s
-  <!-- Two ways to send something and no labels read as one flow, so each says
-       what it takes. The same small heading the two lists below use: it is the
-       page's word for "what this is". -->
-  <h2>ROMs, BIOS files and keys</h2>
-  <label class="pick" id="zone">
+%(platform)s  <label class="pick" id="zone">
     <b>Choose files</b>
     <span>or drag them here</span>
     <input id="pick" type="file" multiple>
   </label>
-
-  <!-- A definition can also be fetched by address, and this is the only place
-       with a keyboard worth typing one on: the Deck is in Game Mode. It
-       downloads into the same folder the files land in and stops there -- the
-       plugin still shows what it would install and asks. -->
-  <h2>Emulator and port definitions</h2>
-  <form class="link" id="linkForm">
-    <input id="linkUrl" type="url" inputmode="url" autocomplete="off"
-           spellcheck="false" placeholder="https://example.com/ports.deckyemu.json">
-    <button id="linkGo" type="submit">Fetch</button>
-  </form>
-  <p class="linkNote" id="linkNote">An emulator or ports definition. A shortened
-    link is fine. It is downloaded, not imported: you confirm it on the Deck.</p>
 
   <!-- The same two words the panel on the Deck uses for the same two lists:
        a file is Arriving until it lands, then it is Received. Both sides of a
@@ -792,10 +853,26 @@ def upload_page(directory, arrived, token, durable, report):
        and holding the other ends up unsure whether they are looking at the
        same thing. -->
   <h2 id="arrivingHeading" style="display:none">Arriving</h2>
-  <ul id="queue"></ul>
+  <ul id="queue" aria-live="polite"></ul>
 
   <h2 id="receivedHeading"%(hide)s>Received</h2>
-  <ul id="already">%(listed)s</ul>
+  <ul id="already" aria-live="polite">%(listed)s</ul>
+
+  <!-- A definition can also be fetched by address, and this is the only place
+       with a keyboard worth typing one on: the Deck is in Game Mode. It
+       downloads into the same folder the files land in and stops there -- the
+       plugin still shows what it would install and asks. -->
+  <details class="link">
+  <summary>Add an emulator or port from a link</summary>
+  <form class="link" id="linkForm">
+    <input id="linkUrl" type="url" inputmode="url" autocomplete="off"
+           spellcheck="false" placeholder="https://example.com/ports.deckyemu.json">
+    <button id="linkGo" type="submit">Fetch</button>
+  </form>
+  <p class="linkNote" id="linkNote">An emulator or ports definition. A shortened
+    link is fine. It is downloaded, not imported: you confirm it on the Deck.</p>
+  </details>
+
 </main>
 
 <script>
@@ -814,6 +891,7 @@ const FETCH_URL = '/%(token)s/fetch';
         "dir": html.escape(directory or "?"),
         "token": token,
         "listed": listed,
+        "platform": _platform_choice(systems),
         "hide": "" if arrived else ' style="display:none"',
         "keep": _BOOKMARK_HINT if durable else "",
         # The report is reached by its own address, which a camera gets from the

@@ -183,7 +183,9 @@ export function ArtPickerModal({
       )}
 
       {!searching && (
-        <ScrollList style={{ gap: "4px", maxHeight: "45vh" }}>
+        // 38vh: with the heading and the search above it, 45vh ran the dialog
+        // under Steam's button bar on the Deck.
+        <ScrollList style={{ gap: "4px", maxHeight: "38vh" }}>
           {rows.map((row) => (
             <DialogButton
               key={row.key}

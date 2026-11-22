@@ -17,6 +17,11 @@ stretched: whole, centred, at its true proportions, on a blurred copy of itself.
 Art already made for the slot is passed through untouched, whichever source it
 came from.
 
+libretro is also how a game gets recognised in the first place: a file named the
+way libretro names it is an exact match, and that name is what SteamGridDB is
+then searched for. The thumbnails come from thumbnails.libretro.com, or from the
+libretro-thumbnails repositories on GitHub when that server doesn't answer.
+
 **SteamGridDB** is optional and gives you purpose-made Steam art — capsule, wide
 header, hero and logo.
 

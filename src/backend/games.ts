@@ -169,6 +169,8 @@ export interface RomProbe {
    * system row, so the answer is a default on screen rather than a guess.
    */
   system_for_core: Record<string, string>;
+  /** The platform picked on the upload page, or "". */
+  system_hint?: string;
   /**
    * Set when the file is an Xbox disc image with no `default.xbe` at its root,
    * so there is nothing for the console to start. Said here because the console
@@ -553,6 +555,14 @@ export const resolveGame = callable<
   [romPath: string, coreId: string, title?: string, system?: string],
   ResolvedGame
 >("resolve_game");
+/** `resolveGame` with only the capsule returned; `art_key` fetches the rest. */
+export const resolveGameStashed = callable<
+  [romPath: string, coreId: string, title?: string, system?: string],
+  ResolvedGame & { art_key: string }
+>("resolve_game_stashed");
+/** The artwork kept under `key`, removed as it is read. */
+export const takeStashedArt = callable<[key: string], ResolvedGame["art"]>("take_stashed_art");
+export const clearStashedArt = callable<[], { ok: boolean }>("clear_stashed_art");
 export interface LibretroArtCandidate {
   name: string;
   system: string;

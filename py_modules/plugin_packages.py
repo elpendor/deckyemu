@@ -28,9 +28,11 @@ import emu_install
 import emulator_catalog
 import emulators
 import fileserver
+import platforms
 import ps3_games
 import ps4_games
 import romshelf
+import systemhint
 import vita_games
 
 
@@ -696,6 +698,25 @@ class PackagedGames(plugin_base.PluginContext):
         if error:
             return {"ok": False, "error": error}
         return {"ok": True, "freed": freed}
+
+    async def unfile_roms(self, rom_paths: list):
+        """Move filed ROMs back into the transfer folder, for undoing an import.
+
+        Returns {ok, returned: [paths now in the inbox], kept: [paths left where they were]}.
+        """
+        library = await self._run(romshelf.library_dir)
+        inbox = await self._run(fileserver.default_dir)
+        returned: list = []
+        kept: list = []
+        for path in rom_paths or []:
+            now = await self._run(romshelf.unfile_rom, path, inbox, library)
+            (returned if now != path else kept).append(now)
+            # The shelf it came off names its system, which a format several
+            # systems share needs again on the next add.
+            system = platforms.system_for_shelf(path)
+            if now != path and system:
+                await self._run(systemhint.remember, now, system)
+        return {"ok": True, "returned": returned, "kept": kept}
 
     async def delete_packaged_game(self, system: str, title_id: str):
         """Delete an unpacked PS3 or PS4 game.

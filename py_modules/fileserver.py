@@ -54,6 +54,7 @@ import fileserver_page
 import httpshim
 import net
 import sysenv
+import systemhint
 
 # Long enough that guessing is hopeless, short enough to scan reliably.
 TOKEN_BYTES = 16
@@ -119,6 +120,9 @@ _on_cloud_login = None
 #: up. Set by the plugin, because "which folder does this kind of file belong
 #: in" is policy and this module is sockets. None means leave everything alone.
 _on_arrival = None
+#: Returns the [(database, label)] the upload page offers as platforms. Set by
+#: the plugin, which knows what is installed; None offers no choice.
+_systems_source = None
 #: Downloads being streamed right now.
 #:
 #: The counterpart of `_in_flight`, and it exists for the same reason: something
@@ -943,7 +947,8 @@ class _Handler(httpshim.BASE):
                 "superseded": False,
             }
         try:
-            self._receive(upload_id, partial, destination, name, length, directory, offset)
+            self._receive(upload_id, partial, destination, name, length, directory, offset,
+                          self.headers.get("X-Upload-System") or "")
         finally:
             with _state_lock:
                 _in_flight.pop(upload_id, None)
@@ -961,7 +966,8 @@ class _Handler(httpshim.BASE):
         except OSError as error:
             appenv.logger.info("No one left to reply to: %s", error)
 
-    def _receive(self, upload_id, partial, destination, name, length, directory, offset=0):
+    def _receive(self, upload_id, partial, destination, name, length, directory, offset=0,
+                 system=""):
         received = 0
         cancelled = False
         total = offset + length
@@ -1070,6 +1076,7 @@ class _Handler(httpshim.BASE):
         # sender is waiting for a 200, so a failed filing is a tidiness problem
         # and the original path is still a real file.
         name = _file_arrived(destination, total)
+        _remember_system(os.path.join(directory, name), system)
 
         appenv.logger.info("Received %s (%d bytes) into %s", name, total, directory)
         self._reply(200, "ok")
@@ -1398,7 +1405,48 @@ def _page():
         token = _token
         durable = _durable
         report = bool(_report)
-    return fileserver_page.upload_page(directory, arrived, token, durable, report)
+    systems = offered_systems()
+    # Each file's platform, as the row said when it was sent, so a reload says
+    # it too. Outside the lock: it reads a file.
+    labels = {one[0]: one[1] for one in systems}
+    arrived = [
+        (name, size, labels.get(systemhint.hint_for(os.path.join(directory or "", name)), ""))
+        for name, size in arrived
+    ]
+    return fileserver_page.upload_page(directory, arrived, token, durable, report, systems)
+
+
+def offered_systems():
+    """The platforms the upload page offers, or [] when none can be listed."""
+    with _state_lock:
+        source = _systems_source
+    if source is None:
+        return []
+    try:
+        return list(source())
+    except Exception:  # noqa: BLE001 - a page without the choice still sends files
+        appenv.logger.exception("Could not list the platforms for the upload page")
+        return []
+
+
+def _remember_system(path, system):
+    """Keep the platform the sender picked, if it is one the page offered."""
+    if not system or not os.path.isfile(path):
+        return
+    if system not in {one[0] for one in offered_systems()}:
+        appenv.logger.info("Ignoring platform %r for %s: not offered", system, path)
+        return
+    try:
+        systemhint.remember(path, system)
+    except OSError as error:
+        appenv.logger.warning("Could not keep the platform for %s: %s", path, error)
+
+
+def set_systems_source(source):
+    """Say how to list the platforms the upload page offers."""
+    global _systems_source
+    with _state_lock:
+        _systems_source = source
 
 
 def set_arrival_handler(handler):

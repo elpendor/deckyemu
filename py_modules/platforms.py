@@ -144,6 +144,19 @@ def folder_name(database, fallback=""):
     return slug[:32]
 
 
+def system_for_shelf(rom_path):
+    """The system whose `folder_name` holds `rom_path`, or "".
+
+    The reverse of filing, which names folders by `folder_name` -- not always a
+    name `system_for_folder` knows ("gbc" is a shelf, not a folder people use).
+    """
+    shelf = posixpath.basename(posixpath.dirname(rom_path or ""))
+    for database in SHORT_NAMES:
+        if folder_name(database) == shelf:
+            return database
+    return system_for_folder(rom_path)
+
+
 def short_name(database, fallback=""):
     """A short label for a libretro database name.
 

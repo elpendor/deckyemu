@@ -236,6 +236,8 @@ export interface ReceivedFile {
    * which is not a guess worth making.
    */
   disc_for?: { app_id: number; title: string; disc: number };
+  /** The platform picked on the upload page ("SNES"), or "". */
+  platform?: string;
 }
 
 /** A file still arriving. `total` is the size its sender declared. */

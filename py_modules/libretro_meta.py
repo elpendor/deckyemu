@@ -10,6 +10,11 @@ Strategy, cheapest first:
   2. Try the de-tagged title with the usual No-Intro region suffixes.
   3. Fall back to fuzzy-matching the system's full boxart directory index,
      which is cached on disk so we pay for it at most once per system.
+
+Two hosts serve the same files: thumbnails.libretro.com, and the
+libretro-thumbnails repositories on GitHub it is built from. The server is
+tried first; when it answers nothing, GitHub is, and whichever last found
+something is asked first from then on (see `_host`).
 """
 
 import concurrent.futures
@@ -26,6 +31,10 @@ import net
 import vendored_difflib as difflib
 
 THUMB_HOST = "https://thumbnails.libretro.com"
+# One repository per system, named after it with spaces as underscores:
+# "Sega - Mega Drive - Genesis" is Sega_-_Mega_Drive_-_Genesis.
+GITHUB_RAW = "https://raw.githubusercontent.com/libretro-thumbnails"
+GITHUB_API = "https://api.github.com/repos/libretro-thumbnails"
 INDEX_CACHE_DIR = os.path.join(appenv.DATA_DIR, "thumb_index")
 INDEX_TTL_SECONDS = 30 * 24 * 60 * 60
 
@@ -115,10 +124,33 @@ def _tag_count(name):
     return name.count("(") + name.count("[")
 
 
-def boxart_url(system, name):
-    quoted_system = urllib.parse.quote(system, safe="")
+# Which host to ask first. thumbnails.libretro.com spent part of Nov 2026
+# answering 404 for every file while GitHub had them all, so the one that last
+# found something leads; the other is still tried when it finds nothing.
+_host = {"first": "libretro"}
+
+
+def _github_repo(system):
+    return system.replace(" ", "_")
+
+
+def _url_on(host, system, name):
     quoted_name = urllib.parse.quote(sanitize_for_thumbnails(name) + ".png", safe="")
-    return "%s/%s/Named_Boxarts/%s" % (THUMB_HOST, quoted_system, quoted_name)
+    if host == "github":
+        return "%s/%s/master/Named_Boxarts/%s" % (
+            GITHUB_RAW, urllib.parse.quote(_github_repo(system), safe=""), quoted_name)
+    return "%s/%s/Named_Boxarts/%s" % (
+        THUMB_HOST, urllib.parse.quote(system, safe=""), quoted_name)
+
+
+def _hosts():
+    first = _host["first"]
+    return (first, "github" if first == "libretro" else "libretro")
+
+
+def boxart_url(system, name):
+    """Where the box art for `name` is, on the host that is answering."""
+    return _url_on(_host["first"], system, name)
 
 
 def _candidate_names(stem):
@@ -230,6 +262,39 @@ def forget_cached_indexes():
     _memory_index.clear()
 
 
+def _libretro_index(system):
+    """The names in the server's directory listing for `system`, or []."""
+    url = "%s/%s/Named_Boxarts/" % (THUMB_HOST, urllib.parse.quote(system, safe=""))
+    payload, _ = net.get_bytes(url, max_bytes=32 * 1024 * 1024)
+    if not payload:
+        return []
+    listing = payload.decode("utf-8", errors="replace")
+    names = []
+    for href in _HREF_RE.findall(listing):
+        decoded = html.unescape(urllib.parse.unquote(href))
+        if decoded.lower().endswith(".png"):
+            names.append(decoded[:-4])
+    return names
+
+
+def _github_index(system):
+    """The same names from the system's GitHub repository, or [].
+
+    Two API calls -- the top of the tree, then the Named_Boxarts folder -- out
+    of the 60 an hour GitHub allows without an account; the result is cached
+    with the rest for a month, so a system costs them once.
+    """
+    repo = urllib.parse.quote(_github_repo(system), safe="")
+    top = net.get_json("%s/%s/git/trees/master" % (GITHUB_API, repo))
+    folder = next((entry.get("sha") for entry in (top or {}).get("tree") or []
+                   if entry.get("path") == "Named_Boxarts" and entry.get("type") == "tree"), "")
+    if not folder:
+        return []
+    listing = net.get_json("%s/%s/git/trees/%s" % (GITHUB_API, repo, folder))
+    return [entry["path"][:-4] for entry in (listing or {}).get("tree") or []
+            if str(entry.get("path", "")).lower().endswith(".png")]
+
+
 def fetch_boxart_index(system):
     """Every boxart filename for `system`, from the server's directory index."""
     remembered = _memory_index.get(system)
@@ -241,17 +306,12 @@ def fetch_boxart_index(system):
         _memory_index[system] = cached
         return cached
 
-    url = "%s/%s/Named_Boxarts/" % (THUMB_HOST, urllib.parse.quote(system, safe=""))
-    payload, _ = net.get_bytes(url, max_bytes=32 * 1024 * 1024)
-    if not payload:
-        return []
-
-    listing = payload.decode("utf-8", errors="replace")
     names = []
-    for href in _HREF_RE.findall(listing):
-        decoded = html.unescape(urllib.parse.unquote(href))
-        if decoded.lower().endswith(".png"):
-            names.append(decoded[:-4])
+    for host in _hosts():
+        names = _github_index(system) if host == "github" else _libretro_index(system)
+        if names:
+            _host["first"] = host
+            break
 
     if names:
         # Only a non-empty index is worth keeping, on disk or in memory. An empty
@@ -386,17 +446,11 @@ def resolve(rom_path, databases, allow_index=True):
         return fallback
 
     candidates = _candidate_names(stem)
-    for system in databases:
-        urls = [boxart_url(system, candidate) for candidate in candidates]
-        index = _first_existing(urls)
-        if index >= 0:
-            return {
-                "title": display_title(candidates[index]),
-                "boxart_url": urls[index],
-                "system": system,
-                "matched_name": candidates[index],
-                "match_kind": "exact",
-            }
+    for host in _hosts():
+        found = _exact_on(host, candidates, databases)
+        if found:
+            _host["first"] = host
+            return found
 
     if allow_index:
         for system in databases:
@@ -411,6 +465,22 @@ def resolve(rom_path, databases, allow_index=True):
                 }
 
     return fallback
+
+
+def _exact_on(host, candidates, databases):
+    """An exact match for one of `candidates` on `host`, or None."""
+    for system in databases:
+        urls = [_url_on(host, system, candidate) for candidate in candidates]
+        index = _first_existing(urls)
+        if index >= 0:
+            return {
+                "title": display_title(candidates[index]),
+                "boxart_url": urls[index],
+                "system": system,
+                "matched_name": candidates[index],
+                "match_kind": "exact",
+            }
+    return None
 
 
 def choose_title(match_kind, title, art_game_name):

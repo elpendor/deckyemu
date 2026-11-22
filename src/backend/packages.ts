@@ -179,6 +179,11 @@ export const deleteRom = callable<
   [romPath: string],
   { ok: boolean; error?: string; freed?: number }
 >("delete_rom");
+/** Move filed ROMs back into the transfer folder, for undoing an import. */
+export const unfileRoms = callable<
+  [romPaths: string[]],
+  { ok: boolean; returned: string[]; kept: string[] }
+>("unfile_roms");
 /**
  * Deletes an unpacked game. The only thing in the plugin that removes something
  * playable, and it exists because these were unpacked by the plugin rather than

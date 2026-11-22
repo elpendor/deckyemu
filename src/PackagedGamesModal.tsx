@@ -7,7 +7,9 @@ import {
   listInstalledPs4Games,
   type Ps3Game,
 } from "./backend";
-import { selectPackagedGame } from "./addFlow";
+import { startBatch } from "./batchImport";
+import { BatchImportModal } from "./BatchImportModal";
+import { closeOpenModals, openModal } from "./modalStack";
 import { ICON_BUTTON_WIDE } from "./iconButton";
 
 /**
@@ -99,11 +101,15 @@ export function PackagedGamesModal({ system, closeModal }: Props) {
         >
           <DialogButton
             onClick={() => {
-              // Deliberately not awaited: the modal closes immediately and the
-              // lookup finishes into the draft, which the panel is subscribed
-              // to whether or not it is mounted right now.
-              void selectPackagedGame(system, game.title_id);
+              // Into the review like any other game: its name, its cover and
+              // its emulator, checked before it is added.
+              void startBatch([{
+                path: game.eboot, name: game.title,
+                packaged: { system, titleId: game.title_id },
+              }]);
               closeModal?.();
+              closeOpenModals();
+              openModal(<BatchImportModal />);
             }}
             style={ICON_BUTTON_WIDE}
           >

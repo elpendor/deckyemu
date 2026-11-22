@@ -336,6 +336,7 @@ py_modules/                 Backend logic. Plain Python, no third-party
   fileserver.py             Upload from another device: QR, or short URL + code
   fileserver_page.py        The pages that server serves. Pure functions of what
                             they are handed; the server keeps state and sockets
+  systemhint.py             The platform picked on the upload page, by file path
   releases.py               Find newer releases on GitHub. Looks only.
   selfupdate.py             Install a release beside the running one; switch,
                             commit once healthy, roll back
@@ -477,9 +478,11 @@ src/                        Frontend (React + TypeScript, bundled by rollup).
                             to a phone or a PC. dialogStyle.ts, danger.ts and
                             iconButton.ts are the same idea for measurements
                             those dialogs otherwise restate.
-  romDraft.ts               Module-scope draft state. Steam unmounts the panel
-                            when a modal opens, so anything that must survive
-                            that cannot live in component state.
+  batchImport.ts            The add review's state, at module scope: Steam
+                            unmounts what is behind a modal, and a package or
+                            emulator install outlasts any component. Every way
+                            of adding a game ends here; batchPlan.ts decides
+                            each file's section, BatchImportModal.tsx draws it.
   timeout.ts                withTimeout + callWithRetry, for calls lost when the
                             service restarts mid-flight
   version.ts                Build stamps compiled in by rollup; isStale()

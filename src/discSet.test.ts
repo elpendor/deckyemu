@@ -1,12 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  addedFileName,
-  coreById,
-  discRow,
-  readsPlaylist,
-  withDisc,
-} from "./discSet";
+import { coreById, discsMustSplit, readsPlaylist, withDisc } from "./discSet";
 import type { Core, RomProbe } from "./backend";
 
 /*
@@ -77,211 +71,20 @@ describe("readsPlaylist", () => {
   });
 });
 
-describe("discRow", () => {
-  it("says nothing for an ordinary single-file game", () => {
-    expect(discRow(probe([], [SNES9X]), [], SNES9X).show).toBe(false);
+describe("discsMustSplit", () => {
+  const discs = ["Game (Disc 1).iso", "Game (Disc 2).iso"];
+  it("keeps a set as one game for a core that reads a playlist", () => {
+    expect(discsMustSplit(probe(discs, [DUCKSTATION]), DUCKSTATION.id, discs)).toBe(false);
   });
-
-  /*
-   * The question is put before the flow starts, so by the time the panel draws
-   * the answer is in. Either answer takes the row away: a switch offering what
-   * you just refused and one offering what you just chose read the same, and
-   * neither is the panel having listened.
-   */
-  it("says nothing once the question has been answered", () => {
-    const discs = ["Game (Disc 1).cue", "Game (Disc 2).cue"];
-    expect(discRow(probe(discs, [DUCKSTATION]), [], DUCKSTATION, "single").show).toBe(false);
-    expect(discRow(probe(discs, [DUCKSTATION]), discs, DUCKSTATION, "set").show).toBe(false);
+  it("keeps a set as one game for an emulator that changes disc itself", () => {
+    expect(discsMustSplit(probe(discs, [PCSX2]), PCSX2.id, discs)).toBe(false);
+    expect(discsMustSplit(probe(discs, [XENIA]), XENIA.id, discs)).toBe(false);
   });
-
-  it("offers the set when nobody was asked", () => {
-    // Nothing was declined -- the check could not run, or the caller does not
-    // ask. The row is then what does the informing, so it has to show.
-    const discs = ["Game (Disc 1).cue", "Game (Disc 2).cue"];
-    expect(discRow(probe(discs, [DUCKSTATION]), discs, DUCKSTATION).show).toBe(true);
+  it("splits a set for an emulator that can do neither", () => {
+    expect(discsMustSplit(probe(discs, [NO_DISCS]), NO_DISCS.id, discs)).toBe(true);
   });
-
-  it("offers the set when the core can read one", () => {
-    const row = discRow(
-      probe(["Game (Disc 1).cue", "Game (Disc 2).cue"],
-            [DUCKSTATION]),
-      ["Game (Disc 1).cue", "Game (Disc 2).cue"],
-      DUCKSTATION,
-    );
-    expect(row.show).toBe(true);
-    expect(row.on).toBe(true);
-    expect(row.disabled).toBe(false);
-    expect(row.label).toContain("2 discs");
-    // The panel says which file it is about to write, rather than that it will
-    // write one. The probe has carried the name all along.
-    expect(row.description).toContain("Game.m3u");
-  });
-
-  it("describes the playlist without a name when the probe has none", () => {
-    // Never seen in practice -- a found set always names one -- but the row is
-    // a sentence, and one with a hole in it is worse than a vaguer one.
-    const discs = ["Game (Disc 1).cue", "Game (Disc 2).cue"];
-    const bare = { ...probe(discs, [DUCKSTATION]), disc_playlist: "" };
-    const row = discRow(bare, discs, DUCKSTATION);
-    expect(row.description).toContain("a playlist naming them");
-    expect(row.description).not.toContain("called");
-  });
-
-  /*
-   * The case that would otherwise be silent: a set was found, but the core
-   * chosen cannot load a playlist. Offering the switch here produces a game
-   * that will not start, so the row stays and the switch does not.
-   */
-  /*
-   * **Not being able to read a playlist does not make it two games.** That is a
-   * statement about what gets launched, not about what the discs are: PCSX2
-   * changes disc from its own menu, and what makes that bearable is disc two
-   * being in the same folder as disc one rather than wherever it was sent from.
-   *
-   * So the switch stays on, the playlist is still written -- it is what filing
-   * and deleting follow -- and `playlistRuns` is what tells the panel to start
-   * a disc instead of it.
-   */
-  it("keeps a set together for an emulator that cannot read a playlist", () => {
-    const row = discRow(
-      probe(["Game (Disc 1).cue", "Game (Disc 2).cue"], [PCSX2]),
-      ["Game (Disc 1).cue", "Game (Disc 2).cue"],
-      PCSX2,
-    );
-    expect(row.show).toBe(true);
-    expect(row.on).toBe(true);
-    expect(row.disabled).toBe(false);
-    // The one flag the add flow acts on.
-    expect(row.playlistRuns).toBe(false);
-    // Says where the discs went and where to change them, and names the
-    // emulator because that is where you would go to do it.
-    expect(row.description).toContain("PCSX2");
-    expect(row.description).toContain("one folder");
-  });
-
-  it("runs the playlist itself when the core can read one", () => {
-    const row = discRow(
-      probe(["Game (Disc 1).cue", "Game (Disc 2).cue"], [DUCKSTATION]),
-      ["Game (Disc 1).cue", "Game (Disc 2).cue"],
-      DUCKSTATION,
-    );
-    expect(row.playlistRuns).toBe(true);
-  });
-
-  /*
-   * Xenia takes the same shape as PCSX2, by a different mechanism: it
-   * implements `XamLoaderLaunchTitleOnDvd`, so a game split across its discs
-   * asks the console for the next one and Xenia serves it from the folder.
-   *
-   * This was briefly a refusal, on the grounds that Xbox 360 sets are not all
-   * the same shape and merging suits only one of them. That is true and was the
-   * wrong conclusion: refusing means four library entries under one name, of
-   * which three start nothing — the exact thing this feature removes. The
-   * switch is the answer to the ambiguity, not a refusal.
-   */
-  it("keeps a set together for an emulator whose games ask for the next disc", () => {
-    const row = discRow(
-      probe(["Game (Disc 1).iso", "Game (Disc 2).iso"], [XENIA]),
-      ["Game (Disc 1).iso", "Game (Disc 2).iso"],
-      XENIA,
-    );
-    expect(row.on).toBe(true);
-    expect(row.disabled).toBe(false);
-    expect(row.playlistRuns).toBe(false);
-    expect(row.description).toContain("Xenia");
-  });
-
-  /*
-   * The refusal still has to exist: an emulator that can neither be handed a
-   * playlist nor reach the other discs would otherwise get one entry that can
-   * only ever play disc one, under a sentence promising otherwise.
-   */
-  it("refuses the set when the other discs would be unreachable", () => {
-    const row = discRow(
-      probe(["Game (Disc 1).iso", "Game (Disc 2).iso"], [NO_DISCS]),
-      ["Game (Disc 1).iso", "Game (Disc 2).iso"],
-      NO_DISCS,
-    );
-    expect(row.show).toBe(true);
-    expect(row.on).toBe(false);
-    expect(row.disabled).toBe(true);
-    expect(row.description).toContain("each disc on its own");
-    expect(row.description).toContain("side by side");
-  });
-
-  it("offers the set switched off, whichever kind of emulator it is", () => {
-    for (const runner of [DUCKSTATION, PCSX2]) {
-      const row = discRow(
-        probe(["Game (Disc 1).cue", "Game (Disc 2).cue"], [runner]),
-        [],
-        runner,
-      );
-      expect(row.show).toBe(true);
-      expect(row.on).toBe(false);
-      // Never refused now: a set is always offerable, and what differs is only
-      // what starts when you press play.
-      expect(row.disabled).toBe(false);
-      expect(row.label).toContain("2 discs");
-    }
-  });
-
-  it("still shows the row when the set is switched off", () => {
-    const row = discRow(
-      probe(["Game (Disc 1).cue", "Game (Disc 2).cue"], [DUCKSTATION]),
-      [],
-      DUCKSTATION,
-    );
-    expect(row.show).toBe(true);
-    expect(row.on).toBe(false);
-    // Counts what is on disk, not the empty list.
-    expect(row.label).toContain("2 discs");
-  });
-
-  // The fallback's whole purpose: nothing was detected, the user picked the
-  // discs by hand, and the row has to appear for a probe that found nothing.
-  it("appears for a hand-built set the rules never saw", () => {
-    const row = discRow(
-      probe([], [DUCKSTATION]),
-      ["FF7 d1.cue", "FF7 d2.cue"],
-      DUCKSTATION,
-    );
-    expect(row.show).toBe(true);
-    expect(row.on).toBe(true);
-    expect(row.description).toContain("FF7 d2.cue");
-  });
-
-  it("says nothing when one disc has been picked and no set was found", () => {
-    expect(discRow(probe([], [DUCKSTATION]), ["FF7 d1.cue"], DUCKSTATION).show).toBe(false);
-  });
-});
-
-describe("addedFileName", () => {
-  it("names the playlist once the discs are one game", () => {
-    expect(addedFileName("Game (Disc 2).cue",
-                         ["Game (Disc 1).cue", "Game (Disc 2).cue"],
-                         "Game.m3u")).toBe("Game.m3u");
-  });
-
-  it("names the picked disc when the set was refused", () => {
-    // A no empties the list, so one disc and no set are the same state here.
-    expect(addedFileName("Game (Disc 2).cue", [], "Game.m3u"))
-      .toBe("Game (Disc 2).cue");
-  });
-
-  it("names the file for an ordinary game", () => {
-    expect(addedFileName("Ayeway.z64", [], "")).toBe("Ayeway.z64");
-  });
-
-  it("falls back to the file when no playlist name came back", () => {
-    // Never seen -- a set always names one -- but a blank button would be the
-    // panel showing nothing at all where the file goes.
-    expect(addedFileName("Game (Disc 1).cue",
-                         ["Game (Disc 1).cue", "Game (Disc 2).cue"], ""))
-      .toBe("Game (Disc 1).cue");
-  });
-
-  it("is empty before anything is picked, which is what shows the prompt", () => {
-    expect(addedFileName("", [], "")).toBe("");
+  it("has nothing to split with fewer than two discs", () => {
+    expect(discsMustSplit(probe([], [NO_DISCS]), NO_DISCS.id, ["Game.iso"])).toBe(false);
   });
 });
 

@@ -131,9 +131,9 @@ check("nothing else is ever assigned to it", sorted(_assigned),
 # does not know shows nothing at all.
 _LABELLED = {"libretro", "steamgriddb", "filename", "port"}
 _panel = io.open(os.path.join(os.path.dirname(os.path.dirname(
-    os.path.dirname(os.path.abspath(__file__)))), "src", "AddGamePanel.tsx"),
+    os.path.dirname(os.path.abspath(__file__)))), "src", "BatchImportModal.tsx"),
     encoding="utf-8").read()
-_block = _panel.split("NAME_SOURCE_LABELS")[1].split("};")[0]
+_block = _panel.split("NAME_SOURCE_LABELS: Record<string, string> = {")[1].split("};")[0]
 _labels = set(re.findall(r"^  ([a-z]+):", _block, re.M))
 check("every name source the panel knows is one the backend sends",
       _labels, _LABELLED)

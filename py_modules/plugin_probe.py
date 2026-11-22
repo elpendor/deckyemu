@@ -18,6 +18,9 @@ alone.
 
 import asyncio
 import os
+import re
+import secrets
+import shutil
 
 import appenv
 
@@ -29,6 +32,7 @@ from emulator_catalog import ports as port_lists
 import emulators
 import fileserver
 import gamecontent
+import jsonstore
 import libretro_meta
 import model3_games
 import net
@@ -41,10 +45,15 @@ import savedata
 import sgdb
 import store
 import switch_nsz
+import systemhint
 import vita_games
 import vita_release
 import xbox360_content
 import xbox_disc
+
+#: Where a batch keeps the artwork it found until each game is added.
+STASH_DIR = os.path.join(appenv.DATA_DIR, "batch-art")
+_STASH_KEY = re.compile(r"[0-9a-f]{16}")
 
 #: Extensions that are never a game. The panel says so rather than offering
 #: cores for a save file somebody picked by mistake.
@@ -190,7 +199,9 @@ class Probe(plugin_base.PluginContext):
 
         # What the folder holding the ROM says the system is, which for a disc
         # image is the only evidence there is. See platforms.SYSTEM_FOLDERS.
-        folder_system = await self._run(platforms.system_for_folder, rom_path)
+        # A platform the sender picked on the upload page outranks the folder.
+        hinted = await self._run(systemhint.hint_for, rom_path)
+        folder_system = hinted or await self._run(platforms.system_for_folder, rom_path)
 
         self._rank_cores(matching, identified, folder_system, romset, remembered)
 
@@ -358,8 +369,11 @@ class Probe(plugin_base.PluginContext):
                 core["id"]: platforms.system_for_extension(
                     core.get("databases") or [], match_extension
                 ) or (disc if disc in (core.get("databases") or []) else "")
+                or (hinted if hinted in (core.get("databases") or []) else "")
                 for core in cores
             },
+            # The platform the sender picked, or "".
+            "system_hint": hinted,
         }
 
         await self._probe_kinds(result, rom_path, extension, romset)
@@ -734,6 +748,41 @@ class Probe(plugin_base.PluginContext):
             "core_id": core_id,
             "rom_path": rom_path,
         }
+
+    async def resolve_game_stashed(
+        self, rom_path: str, core_id: str, title: str = "", system: str = ""
+    ):
+        """`resolve_game` for a batch: the artwork waits on disk, not in the panel.
+
+        Only the capsule comes back, for the review row; `art_key` fetches the
+        rest when the game is added. A batch of fifty would otherwise hold a few
+        hundred megabytes of images in Steam's UI.
+        """
+        result = await self.resolve_game(rom_path, core_id, title, system)
+        art = result.get("art") or {}
+        key = ""
+        if art:
+            key = secrets.token_hex(8)
+            await self._run(jsonstore.write_json, os.path.join(STASH_DIR, key + ".json"), art)
+        preview = {"capsule": art["capsule"]} if "capsule" in art else {}
+        return dict(result, art=preview, art_key=key)
+
+    async def take_stashed_art(self, key: str):
+        """The artwork `resolve_game_stashed` kept under `key`, removed as it is read."""
+        if not _STASH_KEY.fullmatch(key or ""):
+            return {}
+        path = os.path.join(STASH_DIR, key + ".json")
+        art = await self._run(jsonstore.read_json, path, {})
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+        return art
+
+    async def clear_stashed_art(self):
+        """Drop every kept artwork; a new batch starts with none."""
+        await self._run(shutil.rmtree, STASH_DIR, True)
+        return {"ok": True}
 
     async def _download_art(self, urls):
         """{slot: url} -> {slot: {data, kind}} for whatever downloaded cleanly.

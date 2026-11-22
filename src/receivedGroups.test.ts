@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { ReceivedFile } from "./backend";
-import { groupReceived, ownedCount, ownedNoun } from "./receivedGroups";
+import { addableGroups, groupReceived, ownedCount, ownedNoun } from "./receivedGroups";
 
 /**
  * Folding a CD rip's tracks into the sheet that names them.
@@ -100,5 +100,31 @@ describe("ownedCount", () => {
     expect(ownedCount("Game.cue", 12)).toBe("12 tracks");
     expect(ownedCount("Game.cue", 1)).toBe("1 track");
     expect(ownedCount("Game.m3u", 26)).toBe("26 files");
+  });
+});
+
+describe("addableGroups", () => {
+  const groups = groupReceived([
+    file("Sunset Circuit (USA).cue", 2_000),
+    file("Sunset Circuit (USA) (Track 01).bin", 400_000, "Sunset Circuit (USA).cue"),
+    file("Harbor Dash.sfc", 1_000),
+    file("bios.bin", 512),
+    file("Harbor Dash.ips", 64),
+    file("Harbor Dash.rap", 16),
+    file("ports.deckyemu.json", 8),
+    { ...file("Sunset Circuit (Disc 2).cue", 2_000), disc_for: { app_id: 1, title: "Sunset Circuit", disc: 2 } },
+  ]);
+  const firmware = (name: string) => name === "bios.bin";
+
+  it("takes only the rows whose button is plain Add", () => {
+    expect(addableGroups(groups, "roms", firmware).map(({ file: one }) => one.name)).toEqual([
+      "Sunset Circuit (USA).cue",
+      "Harbor Dash.sfc",
+    ]);
+  });
+
+  it("takes nothing from a firmware or backup send", () => {
+    expect(addableGroups(groups, "firmware", firmware)).toEqual([]);
+    expect(addableGroups(groups, "backup", firmware)).toEqual([]);
   });
 });

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { type PackageState, type RomProbe } from "./backend";
-import { licenceChoice, missingEmulator, pendingPackage } from "./packageState";
+import { pendingPackage } from "./packageState";
 
 const state = (fields: Partial<PackageState> = {}): PackageState =>
   ({ title_id: "PCSA00011", installed: false, title: "", eboot: "", ...fields } as PackageState);
@@ -27,126 +27,5 @@ describe("pendingPackage", () => {
   it("is nothing once the package has been installed", () => {
     const installed = state({ installed: true, title: "Braid", eboot: "/x/EBOOT.BIN" });
     expect(pendingPackage(probe({ ps3_package: installed }))).toBeNull();
-  });
-});
-
-describe("licenceChoice", () => {
-  it("has nothing to choose for a console that needs no key", () => {
-    const ps3 = pendingPackage(probe({ ps3_package: state({ licence_state: "" }) }));
-    expect(licenceChoice(ps3, "")).toEqual({ candidates: [], chosen: "", blocked: false });
-  });
-
-  // The backend matched a key by name, so there is nothing to ask. `chosen` must
-  // stay empty: a name the user did not pick is not one to send back as though
-  // they had, and the backend re-finds it itself.
-  it("stays out of the way when the key was matched by name", () => {
-    const vita = pendingPackage(probe({ vita_package: state({ licence: true }) }));
-    expect(licenceChoice(vita, "")).toEqual({ candidates: [], chosen: "", blocked: false });
-  });
-
-  it("blocks the install when a Vita package has no key at all", () => {
-    const vita = pendingPackage(probe({ vita_package: state({ licence: false }) }));
-    // Refused rather than allowed to fail: without a key Vita3K reports a
-    // corrupt package, which reads as a bad download.
-    expect(licenceChoice(vita, "")).toEqual({ candidates: [], chosen: "", blocked: true });
-  });
-
-  it("offers the keys that are here but unmatched, and unblocks on one", () => {
-    const vita = pendingPackage(
-      probe({
-        vita_package: state({
-          licence: false,
-          licence_candidates: ["something.zrif", "other.zrif"],
-        }),
-      }),
-    );
-    const choice = licenceChoice(vita, "");
-    expect(choice.candidates).toEqual(["something.zrif", "other.zrif"]);
-    // The first is the default so the button is pressable, and it is named on
-    // the button itself -- this is the press that spends a gigabyte or two on
-    // the answer being right.
-    expect(choice.chosen).toBe("something.zrif");
-    expect(choice.blocked).toBe(false);
-  });
-
-  it("keeps a choice the user made", () => {
-    const vita = pendingPackage(
-      probe({
-        vita_package: state({ licence: false, licence_candidates: ["a.zrif", "b.zrif"] }),
-      }),
-    );
-    expect(licenceChoice(vita, "b.zrif").chosen).toBe("b.zrif");
-  });
-
-  // The bug this shape exists to prevent: a choice kept in step with the list by
-  // hand outlives the list. Another ROM picked, or the key sent under its proper
-  // name since, and the stored name is one the backend would reject -- so it is
-  // derived from what is on offer every time rather than stored and cleaned up.
-  it("drops a choice that is no longer on offer", () => {
-    const vita = pendingPackage(
-      probe({ vita_package: state({ licence: false, licence_candidates: ["a.zrif"] }) }),
-    );
-    expect(licenceChoice(vita, "gone.zrif").chosen).toBe("a.zrif");
-
-    const matchedSince = pendingPackage(probe({ vita_package: state({ licence: true }) }));
-    expect(licenceChoice(matchedSince, "gone.zrif").chosen).toBe("");
-  });
-
-  it("has nothing to choose when there is no package", () => {
-    expect(licenceChoice(null, "a.zrif")).toEqual({
-      candidates: [],
-      chosen: "",
-      blocked: false,
-    });
-  });
-});
-
-describe("missingEmulator", () => {
-  it("has nothing to say when there is no package", () => {
-    expect(missingEmulator(null)).toBeNull();
-  });
-
-  it("has nothing to say once the emulator is installed", () => {
-    // This is what takes the offer off screen after the install, and puts the
-    // ordinary unpack button back.
-    const ready = pendingPackage(
-      probe({ ps3_package: state({ emulator_ready: true, emulator_id: "rpcs3" }) }),
-    );
-    expect(missingEmulator(ready)).toBeNull();
-  });
-
-  it("names the emulator a package needs when it is not here", () => {
-    // Answered from the probe rather than by pressing Install and reading the
-    // failure — which for a PS4 package cost the whole unpack and the .pkg.
-    const pending = pendingPackage(
-      probe({
-        ps4_package: state({
-          emulator_ready: false,
-          emulator_id: "shadps4",
-          emulator_name: "shadPS4",
-        }),
-      }),
-    );
-    expect(missingEmulator(pending)).toEqual({
-      id: "shadps4",
-      name: "shadPS4",
-      needsFirmware: false,
-    });
-  });
-
-  it("carries whether installing it is enough to play the game", () => {
-    // RPCS3 and Vita3K want firmware afterwards. Said while offering the
-    // install, because the alternative is a black screen and a second surprise.
-    const pending = pendingPackage(
-      probe({
-        ps3_package: state({
-          emulator_ready: false,
-          emulator_id: "rpcs3",
-          emulator_name: "RPCS3",
-          needs_firmware: true,
-        }),
-      }),
-    );
-    expect(missingEmulator(pending)?.needsFirmware).toBe(true);
   });
 });

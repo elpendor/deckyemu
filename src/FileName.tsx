@@ -69,14 +69,16 @@ export function FileName({ name, mode = "clamp", style }: Props) {
           flex: "0 1 auto",
           overflow: "hidden",
           textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
+          // `pre`, not `nowrap`: a flex item drops the space at its edge, and
+          // the split often falls on one -- "Game(USA)".
+          whiteSpace: "pre",
         }}
       >
         {head}
       </span>
       {/* Never shrinks, so the region, revision and extension survive whatever
           happens to the front of the name. */}
-      <span style={{ flex: "0 0 auto", whiteSpace: "nowrap" }}>{tail}</span>
+      <span style={{ flex: "0 0 auto", whiteSpace: "pre" }}>{tail}</span>
     </div>
   );
 }

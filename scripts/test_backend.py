@@ -137,6 +137,33 @@ check(
 )
 meta.net.head_ok = _real_head_ok
 
+section("two hosts -- GitHub answers when thumbnails.libretro.com does not")
+# Nov 2026: the server answered 404 for every cover while GitHub had them all.
+
+
+def _only_github(url, headers=None):
+    return url.startswith(meta.GITHUB_RAW)
+
+
+meta.net.head_ok = _only_github
+meta._host["first"] = "libretro"
+_found = meta.resolve("/r/Harbor Dash (USA).sfc",
+                      ["Nintendo - Super Nintendo Entertainment System"], allow_index=False)
+check("an exact match is found on GitHub", _found["match_kind"], "exact")
+check("from the repository named after the system",
+      _found["boxart_url"].startswith(
+          meta.GITHUB_RAW + "/Nintendo_-_Super_Nintendo_Entertainment_System/master/Named_Boxarts/"),
+      True)
+check("and GitHub is asked first from then on", meta._host["first"], "github")
+check("a picked cover's address follows it",
+      meta.boxart_url("Sega - Saturn", "X").startswith(meta.GITHUB_RAW), True)
+meta.net.head_ok = lambda url, headers=None: False
+check("nothing on either host is still no match",
+      meta.resolve("/r/Harbor Dash (USA).sfc", ["Sega - Saturn"], allow_index=False)["match_kind"],
+      "none")
+meta._host["first"] = "libretro"
+meta.net.head_ok = _real_head_ok
+
 section("the art picker's scoring -- speed must not change which names come back")
 import difflib as _difflib  # noqa: E402
 
@@ -234,9 +261,9 @@ check("and the second answers without reading again", len(_index_reads), 1)
 meta._load_cached_index = _real_load_cached
 
 _real_get_bytes = meta.net.get_bytes
-meta.net.get_bytes = lambda url, headers=None, max_bytes=0: (None, None)
+meta.net.get_bytes = lambda url, headers=None, max_bytes=0, **_: (None, None)
 check("a system whose listing fails reports nothing", meta.fetch_boxart_index("Test - Offline"), [])
-meta.net.get_bytes = lambda url, headers=None, max_bytes=0: (
+meta.net.get_bytes = lambda url, headers=None, max_bytes=0, **_: (
     b'<a href="Recovered%20Game%20(USA).png">x</a>',
     "text/html",
 )

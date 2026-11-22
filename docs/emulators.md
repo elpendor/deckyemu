@@ -412,8 +412,8 @@ and your value is kept.
 and XBLA titles are almost always distributed zipped.
 
 1. Send the zip to your Deck.
-2. Start adding it.
-3. Press **Unpack this zip** in the panel.
+2. Press **Add** on it in the transfer list.
+3. Its row says *Unpacks first*; press **Add**, which unpacks it and adds the game.
 
 Inside is a folder like `58410954/000D0000/` holding one long-named file. That
 file — the game — comes out named after the zip, ready to add. See
@@ -438,8 +438,8 @@ exactly as MAME does.
 
 > **Leave it zipped.** This is the one archive on your Deck that isn't a wrapper
 > around a game. Unpacking it gives you a folder of files nothing can load, and
-> takes away the one file that could be played. The panel knows the difference
-> and doesn't offer **Unpack this zip** for a ROM set.
+> takes away the one file that could be played. DeckyEmu knows the difference
+> and doesn't offer to unpack a ROM set.
 
 It also stops guessing. A ROM set used to be matched on whatever the first chip
 dump inside was called, which meant a racing game's set could look like a

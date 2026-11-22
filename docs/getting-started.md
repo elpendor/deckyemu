@@ -98,9 +98,10 @@ game.
 Cores come from libretro's own buildbot, the same source RetroArch's Core
 Downloader uses.
 
-> **You don't have to guess which core you need.** Pick a ROM in step 3 that
-> nothing installed can run and the panel offers you the cores that could, then
-> carries on into adding the game once one is installed.
+> **You don't have to guess which core you need.** A ROM in step 3 that nothing
+> installed can run says *Installs a core first*, and the pencil
+> lists the cores that could. Once one is installed, the row is a game like any
+> other.
 
 ### Standalone emulators — for the bigger consoles
 
@@ -134,54 +135,68 @@ Each row names the game it plays, because that's the only thing that tells you
 what to supply. You still need your own dump of that game, and the port builds
 its own copy of the assets from it the first time it runs.
 
-Install one the same way as an emulator. It then appears under **Run with** in
-step 3 for a file it recognises — and only for that game's file, so there's
+Install one the same way as an emulator. It then runs, in step 3, a file it
+recognises — and only for that game's file, so there's
 nothing to choose between. [More on ports](emulators.md#native-ports).
 
 ## 3. Add the game to Steam
 
-Back in the Quick Access panel, under **Add a game**:
+Every way in leads to the same screen, **Add games**, whether it's one file or
+fifty:
 
-1. **Press Choose an existing file** and pick your ROM. The picker opens on your
-   home folder the first time and wherever you last picked one after that. A
-   file you just sent doesn't need this at all — it has its own row in the
-   transfer dialog with a button to add it.
-2. **Pick what runs it.** You're only offered cores and emulators that handle
-   that file type, with the one you used last for it first. A toggle reveals
-   everything installed, for when the right answer isn't in the short list.
+- **Add** on a file in the transfer dialog, or **Add all…** for everything there.
+- **Choose an existing file** under **Add a game** in the Quick Access panel, for
+  a game already on your Deck. The picker opens on your home folder the first
+  time and wherever you last picked one after that.
 
-   Most cores cover more than one system, so a **System** row appears when the
-   one you picked does. It starts on what the file says it is, and it decides
-   the shelf your game goes on and where its cover comes from. A core that
-   covers one system has nothing to ask and gets no row.
-3. **Check the name and the cover.** `Some Game (USA) [!].smc` becomes *Some
-   Game*. If the cover is wrong, press **Wrong game? Choose the right one** —
-   that sets the name as well as the cover — or **Choose the right game** if
-   nothing was found at all. Worth a glance either way: title matching is fuzzy,
-   and a wrong cover is easier to fix now than later.
-4. **Press Add to Steam.** You get the shortcut, the artwork, and the game filed
-   into a collection so it's findable rather than lost among every other
-   non-Steam shortcut.
+Each file is checked and gets a row: its name, the file it came from, its cover,
+its system and what will run it. Games it's sure of sit under **Ready**;
+anything worth a look sits under **Check these**, with a line saying why.
+Untick what you don't want and press **Add**. You get the shortcut, the artwork,
+and the game filed into a collection, so it's findable rather than lost among
+every other non-Steam shortcut.
+
+The pencil on a row fixes that game before it goes in:
+
+- **Name in Steam**, and **Choose the right game** when the cover or name is
+  wrong. Title matching is fuzzy, and a wrong cover is easier to fix now.
+- **Emulator**, for this game alone, with **Show everything installed** for
+  when the right one isn't in the short list. Only cores and emulators that
+  handle the file type are listed otherwise, with the one you used last first.
+- **System**, when the emulator covers more than one. It starts on what the
+  file says it is, and decides the shelf your game goes on and where its cover
+  comes from.
+- Everything it warns about, in full: a game already in your library, a dump
+  that won't boot, a missing BIOS.
+
+Some files need a step before they're a game, and their row says what **Add**
+will do first: unpack a zip nothing can open as it is, install a core when none
+you have runs it, install a package and the emulator it goes into. The pencil
+has a button to do it now instead.
 
 Your game is now in Steam and launches like anything else, with gamescope, Steam
 Input and the overlay all behaving normally, because Steam is what starts it.
+**Undo**, until you close the result, takes everything just added back out.
 
-> **One game at a time.** You see the core, the name and the cover before
-> anything reaches your library. There's no bulk import.
-
-**Multi-disc game?** Pick any disc and the panel offers to add the whole set as
-one game, so disc two is a menu away rather than a second shortcut. See
+**Multi-disc game?** Its discs are one row. See
 [multi-disc games](#multi-disc-games).
 
 ### PlayStation and Vita packages
 
-A `.pkg` isn't a game yet. Pick one and the panel offers to unpack it first,
-with a progress bar, then carries on from whatever came out. You never have to
-know the product code or find the executable inside.
+A `.pkg` isn't a game yet. Its row says *Installs into ‹emulator› first*, and
+**Add** unpacks it with a progress bar, then carries on from whatever came out.
+You never have to know the product code or find the executable inside. When
+the emulator it goes into isn't installed, the row says so and **Add** installs
+that first and carries straight on. The pencil can do either step now instead.
 
-RPCS3 and Vita3K do that themselves. shadPS4 can't, so the first PS4 `.pkg` you
-add downloads a small tool to do it — see
+RPCS3 and Vita3K do the unpacking themselves. shadPS4 can't, so the first PS4
+`.pkg` you add downloads a small tool to do it — see
 [Unpacking a PS4 package](emulators.md#unpacking-a-ps4-package).
+
+A Vita package needs its licence key in the same folder. When the key isn't
+named for the game, the pencil lets you pick it; the wrong key installs the
+whole game and then fails to decrypt it. Games RPCS3, shadPS4 or Vita3K already
+have installed are listed under **Add a game** too.
 
 ## Everyday tasks
 
@@ -208,23 +223,18 @@ collection survive the change.
 
 ### Multi-disc games
 
-Pick any disc of a set and the panel offers to **add all of them as one game**.
-One entry in your library, every disc filed into one folder. The switch is on by
-default — turn it off to add the single disc instead.
-
-**You're asked first, however you got here.** Choose a disc — with **Add** in the
-transfer dialog, or from the file browser — and a question names every disc it
-found, in the order they'd go into the playlist: **One game**, **This disc
-only**, or **Cancel** to add nothing.
+A set's discs are **one row**, under **Check these**, reading *2 discs as one
+game*. One entry in your library, every disc filed into one folder. The pencil
+has a **Discs** choice for adding **each disc on its own** instead.
 
 Merging never just happens to you. The discs are recognised by their filenames
-and nothing else can recognise them, so the guess gets put to you rather than
-acted on. Whichever you answer, the panel then shows no row about discs at all —
-it was asked and answered. To change your mind, pick the file again.
+and nothing else can recognise them, so the guess is put to you on the row
+rather than acted on.
 
 **A disc that turns up later joins the game you already added.** Send it and its
 row in the transfer dialog reads *disc 2 of ‹game›*, offering **Add to game**
-rather than **Add**. Pressing it asks once, then files the disc with the others,
+rather than **Add**, in the transfer dialog and under **Other files** in **Add
+games**. Pressing it asks once, then files the disc with the others,
 extends the playlist and repoints the shortcut. Your game keeps its entry along
 with its play time and controller layout. Answer *Its own entry* to add it
 separately instead.
@@ -248,8 +258,11 @@ discs asks the console for the next one and Xenia serves it from the folder, so
 there's nothing to press.
 
 > **Not every Xbox 360 set is split that way.** On some, disc 1 is the whole game
-> and disc 2 holds extra content that's fairly its own entry. Turn the switch off
-> for those.
+> and disc 2 holds extra content that's fairly its own entry. Pick **Each disc on
+> its own** for those.
+
+An emulator that can neither read a playlist nor change disc itself gets one
+entry per disc, and the row says so: one entry would be stuck on disc 1.
 
 PlayStation 3 never had a multi-disc game to begin with.
 
@@ -267,12 +280,12 @@ number isn't inside the file. Every emulation tool works this way.
 | `Game (CD 1).bin` | |
 | `Game (Disc 1) (Rev 1).cue` | |
 
-Anything else isn't spotted. **Pick another disc** under the switch lets you
+Anything else isn't spotted. **Add a disc** in the pencil's dialog lets you
 choose the rest by hand — they have to be in the same folder. Everything except
 the disc number has to match exactly, so `Game` and `Game 2` never get merged,
 and a set missing a disc isn't offered at all.
 
-**Three layouts the panel will warn you about:**
+**Three layouts it will warn you about:**
 
 | What you picked | What it says |
 | --- | --- |
@@ -285,7 +298,7 @@ and a set missing a disc isn't offered at all.
 | Symptom | Likely cause |
 | --- | --- |
 | The panel says the backend is not responding | DeckyEmu restarts when its files change, and calls in flight get dropped. Press **Try again** — it's expected right after an update |
-| No cores are offered for a ROM | Nothing installed handles that file type. The panel offers the cores that do, and can install one for you |
+| No cores are offered for a ROM | Nothing installed handles that file type. Its row says *Installs a core first*, and **Add** installs one |
 | A core is installed but a ROM still matches nothing | The core may be missing its `.info` file, so nothing knows what it plays. Reinstall it from **Install cores** |
 | An emulator says "installed, but not set up for adding games yet" | Something other than DeckyEmu installed it, so nothing knows what it plays. Press the chain-link button on its row to register it |
 | A game launches the emulator but no game | Its launch arguments are wrong. Edit them under **All registered emulators** |
@@ -296,7 +309,7 @@ and a set missing a disc isn't offered at all.
 | A game won't boot and the system needs firmware | Check **BIOS and firmware**. A missing file looks exactly like a game failing |
 | A bookmarked transfer link stopped working | Either **Trusted devices** is set to a new link each session, or **Reset link** was pressed |
 | A ROM stayed in `transfer/` after adding | Something was unaccounted for: a disc the playlist names, or a different dump of the same name already filed |
-| The cover or the name is wrong | **Wrong game? Choose the right one** on the add panel, or the pencil on an added game |
+| The cover or the name is wrong | The pencil on its row in **Add games**, then **Choose the right game**; or the pencil on an added game |
 | A game is on the wrong system's shelf, with that system's cover | Its core covers several systems and you added it before the **System** row existed. Edit it, set **System**, and look the artwork up again |
 | A game opens with the sticks moving a pointer and no buttons | Steam picked a layout for it, filing layouts by the game's *name* — so a title it recognises can arrive with a browser layout attached. Games added now get a gamepad layout pinned; for an older one, open its controller settings and pick **Gamepad With Joystick Trackpad** |
 | A collection is left holding nothing | **Settings → Collections** tidies stale ones |

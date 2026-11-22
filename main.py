@@ -42,6 +42,7 @@ import ra_detect
 import savedata
 import store
 import sysenv
+import systemhint
 
 def own_module_names(root):
     """The module names py_modules/ provides, imported on this run or not.
@@ -215,6 +216,24 @@ def _require_supported_device(cls):
     return cls
 
 
+def _learn_upload_catalog():
+    """Every system the core and emulator catalogs cover, for the upload page."""
+    try:
+        # Systems only: a core that is a game or an engine (DOOM, Quake) is
+        # installable, but nobody sends a file "for" it.
+        cores = [core for core in installer.core_catalog(False)
+                 if {"Emulator", "Computer"} & set(core.get("categories") or ())]
+        emus = [
+            {"id": emulators.core_id(entry["id"]),
+             "databases": entry.get("databases")
+             or ([entry["platform"]] if entry.get("platform") else [])}
+            for entry in emulator_catalog.CATALOG
+        ]
+        systemhint.learn_catalog(list(cores or []) + emus)
+    except Exception:  # noqa: BLE001 -- the list stays the installed one
+        appenv.logger.exception("Could not read the catalogs for the upload page")
+
+
 @_log_failures
 @_refuse_while_blocked
 @_require_supported_device
@@ -265,6 +284,12 @@ class Plugin(
         # A save backup leaves the ROM inbox on arrival; see
         # savedata.take_delivery. Set here as the server also starts on its own.
         fileserver.set_arrival_handler(savedata.take_delivery)
+        # The upload page's platform list: what is installed, then everything
+        # else that could be, once the catalogs are read in the background.
+        fileserver.set_systems_source(lambda: systemhint.offered(
+            list(self._cores or [])
+            + [emulators.to_core_entry(entry, "") for entry in self._emulators]))
+        self.loop.run_in_executor(None, _learn_upload_catalog)
 
         # Before the startup steps, as a task, so a hanging migration cannot
         # stop the update that fixes it from being found. Any earlier watch

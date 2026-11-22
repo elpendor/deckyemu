@@ -63,10 +63,10 @@ both act on all of it.
 > **Note:** a track whose `.cue` hasn't arrived stays a row of its own, because
 > that one is a game that can't be assembled and you need to see it.
 
-**A disc of a multi-disc game asks before it adds.** Press **Add** on one and a
-question names every disc found beside it, in playlist order, offering **One
-game** or **This disc only**. The file browser asks the same question, so a set
-is never merged without being put to you.
+**A disc of a multi-disc game is one row in Add games.** Press **Add** on one
+and the discs found beside it come with it, as one game, under **Check these**,
+so a set is never merged without being put to you; the pencil adds each disc on
+its own instead.
 
 **A disc of a game you've already added says so.** Its row reads *disc 2 of
 ‹game›* with an **Add to game** button, because the filename is enough to know
@@ -74,6 +74,49 @@ where it belongs. Pressing it puts the disc into that game — same Steam entry,
 playlist extended, shortcut repointed. *Its own entry* adds it separately
 instead. You won't be offered this when two added games would both match. See
 [multi-disc games](getting-started.md#multi-disc-games).
+
+### Adding what arrived
+
+**Add** on a row, and **Add all…** in the **Received** heading once two or more
+files are waiting, open the same screen: **Add games**. It checks every file, a
+few at a time, then lists them:
+
+- **Ready**: games it's sure of, with their cover, system and emulator.
+- **Check these**: anything worth a second look, with a line saying why — a
+  name that wasn't recognised, a close match rather than an exact one, a game
+  you've already added — and files that need a step first, saying what **Add**
+  will do: unpack them, install a core, install a package and its emulator.
+- **Other files**: what belongs to a game rather than being one, with the same
+  button the transfer list gives it — **Install** for an update, DLC, a ROM
+  hack or a PS3 licence, **Restore** for a save backup, **Import** for an
+  emulator definition, **Add to game** for a disc of a game you added. BIOS
+  files are installed from the transfer list, where their emulator is known.
+- **Can't be added**: files nothing can use.
+
+The pencil on a game fixes it before anything is added: its name, the game and
+cover (**Choose the right game**), the emulator for that file alone (a game
+taken for the wrong platform usually needs another one), the system where the
+emulator covers several, its discs, and every warning in full.
+
+When several emulators could run a type of file, one dropdown at the top of the
+list picks for every file of that type. **Add** then works through the ticked
+games one by one, doing each one's step first, and the result lists what went in
+and offers **Undo** until you close it. That takes them out of Steam and your
+library and puts their files back in the transfer folder, as they were.
+
+B steps out of **Add games** without losing it: opening it again with the same
+files brings it back as you left it, and checks again anything an install since
+might have changed. **Cancel** is what throws the check away.
+
+**You can say which system a file is for when you send it.** The upload page has
+a **Platform** dropdown above the file picker. Systems you have an emulator for
+come first, then the ones you could install, since games often arrive before
+their emulator does. It's only worth setting for formats several systems share,
+like `.chd`, `.iso` or `.bin`. Left on **Detect from the file**, nothing
+changes. What you pick goes with the files you send next, and the dropdown goes
+back to **Detect from the file** afterwards. Each game row, on the page and in
+the Deck's Received list, says *for PS2* or *detect from the file*, so you can
+see which files carry a pick. Both **Add all…** and the single **Add** use it.
 
 ### My transfer stopped partway
 
@@ -166,8 +209,8 @@ therefore all or nothing, and is refused while a transfer is running.
 
 ## Fetching a definition by link
 
-The transfer page has a box for an address, under the file picker. Paste a link
-and press **Fetch**. Your Deck downloads it into the same folder your files land
+At the bottom of the transfer page, open **Add an emulator or port from a
+link**. Paste a link and press **Fetch**. Your Deck downloads it into the same folder your files land
 in, and it appears with an **Import** button like anything else you sent.
 Shortened links work — what it redirects to is what counts.
 
@@ -184,12 +227,12 @@ Two things it won't do:
 
 ## Unpacking a zip
 
-Pick the zip the way you'd pick any game — **Add a game**, then the file browser
-or the **Add** button in the received list. The panel offers **Unpack this zip**,
-in the same place a `.pkg` offers to unpack itself.
+Add the zip the way you'd add any game. When nothing can open it as it stands —
+an Xbox 360 title, say — its row in **Add games** says *Unpacks first*, and **Add**
+unpacks it before adding. Otherwise it's an ordinary row,
+and **Unpack instead** in the pencil's dialog takes it apart.
 
-You get it *beside* the usual core choice, not instead of it, because both can
-be right. RetroArch reads a zip directly, so a zipped SNES ROM can just be
+Both are offered because both can be right. RetroArch reads a zip directly, so a zipped SNES ROM can just be
 added. Standalone emulators mostly can't: Xenia refuses one outright, and a zip
 holding a `.cue` and its `.bin` files has to come apart before any of it works.
 
@@ -199,8 +242,9 @@ titles are the reason — they arrive as a single file buried under
 `58410954/000D0000/`, and the rest of DeckyEmu only acts on files sitting
 directly in the transfer folder.
 
-If exactly one file comes out, the panel switches straight to it so you carry on
-adding the game rather than going back to a list.
+What comes out takes the zip's place in **Add games**, checked like any other
+file, so you carry on adding rather than going back to a list. Several files
+get a row each.
 
 **A single file with no extension is named after the zip.** An XBLA container is
 called something like `DA78E477AA5E31A7D01AE8F84109FD4BF89E49E858`, which is no
@@ -229,10 +273,9 @@ sitting where it was.
 An `.nsz` is a Switch package compressed to save space, and Ryujinx can't open
 one.
 
-Pick it in the add panel and **Unpack this .nsz** is the only thing offered —
-the rows for adding it wait until it's an `.nsp`. Pressing it writes the `.nsp`
-into your transfer folder with a progress bar, then the panel switches to it and
-adding carries on as usual.
+Its row in **Add games** says *Unpacks first*. **Add** writes
+the `.nsp` into your transfer folder with a progress bar, then the row becomes
+the `.nsp` and adding carries on as usual.
 
 It takes seconds rather than minutes: a 577 MB `.nsz` became its 1.34 GB `.nsp`
 in under five seconds on a Deck. No keys are involved. An `.nsz` carries what it

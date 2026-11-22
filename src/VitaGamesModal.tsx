@@ -1,17 +1,11 @@
 import { DialogButton, Field, ModalRoot, Spinner } from "./steamui";
-import { toaster } from "./host";
 import { useEffect, useState } from "react";
 
-import {
-  listAdded,
-  listInstalledVitaGames,
-  prepareVitaGame,
-  type Ps3Game,
-} from "./backend";
-import { addPreparedGame } from "./addGame";
-import { getDraft } from "./romDraft";
-import { lookupArtwork } from "./addFlow";
+import { listAdded, listInstalledVitaGames, type Ps3Game } from "./backend";
+import { startBatch } from "./batchImport";
+import { BatchImportModal } from "./BatchImportModal";
 import { ICON_BUTTON_WIDE } from "./iconButton";
+import { closeOpenModals, openModal } from "./modalStack";
 
 interface Props {
   closeModal?: () => void;
@@ -32,8 +26,6 @@ interface Props {
  */
 export function VitaGamesModal({ closeModal, onAdded }: Props) {
   const [games, setGames] = useState<Ps3Game[] | null>(null);
-  const [busy, setBusy] = useState("");
-  const [error, setError] = useState("");
 
   // Only what is not already in the library. This is a list to add *from*, so
   // a game that has been added is finished business -- offering it again
@@ -51,56 +43,17 @@ export function VitaGamesModal({ closeModal, onAdded }: Props) {
       });
   }, []);
 
+  // Into the review like any other game: its name, cover and emulator are
+  // checked there, and it is added the way an installed package's game is.
   const add = (game: Ps3Game) => {
-    setBusy(game.title_id);
-    setError("");
-    void (async () => {
-      try {
-        const prepared = await prepareVitaGame(game.title_id);
-        if (!prepared.ok) {
-          setError(prepared.error);
-          return;
-        }
-
-        // The name comes from the game's own param.sfo, so SteamGridDB is
-        // asked about "GRAVITY RUSH" rather than about a product code. The
-        // result lands in the shared draft, which is where lookupArtwork puts
-        // it — read back here rather than returned, because the panel behind
-        // this modal is unmounted and that is the only place it survives.
-        //
-        // Looked up before the shortcut exists, unlike the add flow, because
-        // there is no panel here to have done it already.
-        await lookupArtwork(prepared.rom_path ?? "", prepared.core_id ?? "", prepared.title);
-
-        // Shortcut, artwork, collection, registry -- the same five steps the
-        // add flow runs, which this file used to keep its own copy of. See
-        // addGame.ts.
-        const added = await addPreparedGame({
-          prepared,
-          romPath: prepared.rom_path ?? "",
-          coreId: prepared.core_id ?? "",
-          system: "Sony - PlayStation Vita",
-          art: getDraft().resolved?.art,
-          // What boots is eboot.bin for every Vita game, so remembering this
-          // core for `.bin` would suggest Vita3K for the next PS1 disc image.
-          rememberCore: false,
-        });
-
-        toaster.toast({
-          title: `${prepared.title} added`,
-          body: added.artApplied
-            ? `${added.artApplied} artwork image(s) applied.`
-            : "It is in your library.",
-        });
-        onAdded();
-        closeModal?.();
-      } catch (addError) {
-        console.error("[deckyemu] could not add the Vita game", addError);
-        setError(addError instanceof Error ? addError.message : "Could not add that game.");
-      } finally {
-        setBusy("");
-      }
-    })();
+    void startBatch([{
+      path: game.eboot, name: game.title,
+      packaged: { system: "vita", titleId: game.title_id },
+    }]);
+    onAdded();
+    closeModal?.();
+    closeOpenModals();
+    openModal(<BatchImportModal />);
   };
 
   return (
@@ -125,16 +78,13 @@ export function VitaGamesModal({ closeModal, onAdded }: Props) {
           childrenContainerWidth="min"
         >
           <DialogButton
-            disabled={Boolean(busy)}
             onClick={() => add(game)}
             style={ICON_BUTTON_WIDE}
           >
-            {busy === game.title_id ? "Adding..." : "Add"}
+            Add
           </DialogButton>
         </Field>
       ))}
-
-      {error && <Field description={error} />}
     </ModalRoot>
   );
 }

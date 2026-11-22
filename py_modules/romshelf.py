@@ -481,3 +481,35 @@ def file_rom(rom_path, system, inbox, library=""):
 
     appenv.logger.info("Filed %s into %s", ", ".join(moved), slug)
     return os.path.join(target, os.path.basename(rom_path))
+
+
+def unfile_rom(rom_path, inbox, library=""):
+    """Move a filed ROM and its companions back into the inbox. Returns its path there.
+
+    The reverse of `file_rom`, for undoing an import. Returns the path unchanged
+    when the file is not in `roms/<system>/` or a name is taken in the inbox.
+    """
+    if not rom_path or not inbox or not os.path.isfile(rom_path):
+        return rom_path
+    library = os.path.realpath(library or library_dir())
+    folder = os.path.dirname(os.path.realpath(rom_path))
+    if os.path.dirname(folder) != library:
+        return rom_path
+    group = companions(rom_path)
+    if not group or any(os.path.exists(os.path.join(inbox, name)) for name in group):
+        return rom_path
+    moved = []
+    for name in group:
+        try:
+            shutil.move(os.path.join(folder, name), os.path.join(inbox, name))
+        except OSError as error:
+            appenv.logger.warning("Could not return %s to the inbox: %s", name, error)
+            for done in moved:
+                try:
+                    shutil.move(os.path.join(inbox, done), os.path.join(folder, done))
+                except OSError:
+                    appenv.logger.exception("Could not undo the move of %s", done)
+            return rom_path
+        moved.append(name)
+    appenv.logger.info("Returned %s to the inbox", ", ".join(moved))
+    return os.path.join(inbox, os.path.basename(rom_path))

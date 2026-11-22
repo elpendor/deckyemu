@@ -210,10 +210,10 @@ Send one over and its row in the transfer list reads *Update v2.0.2 for* your
 game, with an **Install** button. Haven't added that game yet? Pressing
 **Install** tells you so.
 
-**Sending a game with its updates?** Send them together, then pick the game in
-the add panel. A row lists what it found alongside, and **Add to Steam** adds the
-game and installs the rest with it. The button turns into a progress bar naming
-each step. An `.nsz` gets unpacked first.
+**Sending a game with its updates?** Send them together, then add the game.
+Its updates and DLC are installed into it as it's added, an `.nsz` unpacked
+first. With **Add all…** they're listed under **Other files** too, each with its
+own **Install**.
 
 From the editor, press **Install an update or DLC**. Installing takes the file
 out of your transfer folder. Pick a file from anywhere else and it gets copied
@@ -267,11 +267,12 @@ Pick how the shelves are named:
 | `{platform} ({name})` | `SNES (DeckyEmu)` |
 | `{name}\n{platform}` | two lines — but Steam puts collection titles on one line, so expect a space |
 
-Which system a game counts as comes from the **System** row on the add panel.
+Which system a game counts as comes from the **System** row in the pencil's
+dialog on **Add games**.
 It starts on whatever the file says: a `.md` is a Mega Drive cartridge no matter
 what else its core reads. When the file doesn't say — a `.cue` or an `.iso` names
-a medium, not a system — you get the core's first system, and the row is there
-for you to fix it before adding.
+a medium, not a system — you get the core's first system, or the platform picked
+on the upload page, and the row is there for you to fix it before adding.
 
 > **Note:** games added before that row existed got their system from whichever
 > system's cover art matched the filename first. If one of yours is on a shelf

@@ -55,6 +55,7 @@ import unpack
 import vita_games
 import gamecontent
 import store
+import systemhint
 
 
 def _use_if_only(name):
@@ -201,6 +202,8 @@ class Transfers(plugin_base.PluginContext):
         for item in status.get("received") or []:
             item["part_of"] = owners.get(item["path"], "")
             lowered = item.get("name", "").lower()
+            # The platform picked on the upload page, so the row can say so.
+            item["platform"] = await self._run(systemhint.label_for, item["path"])
 
             # A Vita licence key is only read while its package installs, so its
             # row says that instead of offering Add. `.txt` too, but only when

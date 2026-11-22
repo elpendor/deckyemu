@@ -4,7 +4,7 @@ import {
   Focusable,
   ModalRoot,
 } from "./steamui";
-import { FileSelectionType, openFilePicker, openPanel, toaster } from "./host";
+import { FileSelectionType, openFilePicker, toaster } from "./host";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { FaListUl, FaTrash } from "react-icons/fa";
 
@@ -27,9 +27,8 @@ import {
   stopFileServerIfIdle,
   type FileServerStatus,
 } from "./backend";
-import { selectRom, type DiscChoice } from "./addFlow";
 import { summariseUploads } from "./arriving";
-import { askDiscChoice, confirmJoinDisc } from "./confirmDiscSet";
+import { confirmJoinDisc } from "./confirmDiscSet";
 import { FileName } from "./FileName";
 import { HandoffCode } from "./HandoffCode";
 import { TransferCodeModal } from "./TransferCodeModal";
@@ -65,7 +64,9 @@ import { installContentFor } from "./installContent";
 import { openPatchInstall } from "./installPatch";
 import { openRestoreSaves } from "./openRestore";
 import { DiscTracksModal } from "./DiscTracksModal";
-import { groupReceived, ownedCount } from "./receivedGroups";
+import { addableGroups, batchInputs, groupReceived, ownedCount } from "./receivedGroups";
+import { BatchImportModal } from "./BatchImportModal";
+import { resumeOrStartBatch, type BatchFile } from "./batchImport";
 import { closeOpenModals, openModal } from "./modalStack";
 import { repointShortcut } from "./steam";
 import { ICON_BUTTON, ICON_BUTTON_WIDE } from "./iconButton";
@@ -637,48 +638,28 @@ export function TransferModal({
    * The selection lands in the shared draft, so dismissing this modal reveals the
    * panel with the game already probed and its artwork resolved.
    */
-  const use = useCallback(
-    async (path: string, name: string, decided?: DiscChoice) => {
-      /*
-       * Asked here, before the flow starts, because merging discs must never be
-       * implied: the detection is a guess from filenames, and this is the one
-       * screen where both discs are in front of you. The answer is carried into
-       * the panel -- a no adds this disc alone and takes the row away with it,
-       * rather than leaving a switch that offers again what was just declined.
-       *
-       * A failure to ask is not a failure to add. The set is a nicety; the
-       * press was about getting this file into the add flow, and it goes there
-       * undecided, which is what the panel already handles.
-       *
-       * `decided` is an answer already given on the way here -- **Its own
-       * entry** on a disc of an added game. Without it the question came
-       * straight back: that disc's siblings may have been sent with it, so
-       * `find_set` finds a set in the transfer folder and asks about it, one
-       * dialog after the one that was just answered.
-       */
-      // Backing out of the disc question withdraws the press entirely: nothing
-      // is added, and this dialog stays where it was rather than closing and
-      // opening the panel behind it.
-      const choice = decided ?? (await askDiscChoice(path));
-      if (choice === "cancel") return;
-      void selectRom(path, choice);
-      toaster.toast({ title: "Ready to add", body: name });
+  /**
+   * Open the review on some received files. Every dialog of ours closes first:
+   * Steam re-reveals each modal as the one above it dismisses, so one left
+   * underneath would come back over the review.
+   */
+  const review = useCallback(
+    (files: BatchFile[]) => {
+      resumeOrStartBatch(files);
       void close();
-      // Everything else of ours, not just this dialog. Steam re-reveals each
-      // modal as the one above it dismisses, so anything still on the stack
-      // arrives on top of the panel opened below -- and with the added-games
-      // list underneath, that is exactly what happened: the panel appeared with
-      // the game ready and closed again about a second later, as the list came
-      // back and took the active overlay. The same reason navigating has to
-      // come after closing every modal, one layer down.
-      //
-      // Unconditional because none of them is a place to come back to. The user
-      // is adding the file they just pressed a button about; a list of games
-      // they opened beforehand is answering a question they have moved on from.
       closeOpenModals();
-      openPanel();
+      openModal(<BatchImportModal />);
     },
     [close],
+  );
+
+  /**
+   * Take a received file into the review, the same screen fifty go through.
+   * Whether its discs are one game is asked there, where they are listed.
+   */
+  const use = useCallback(
+    (path: string, name: string, single = false) => review([{ path, name, single }]),
+    [review],
   );
 
   /**
@@ -698,8 +679,8 @@ export function TransferModal({
       if (choice === "cancel") return;
       if (choice === "single") {
         // Carried, not asked again: the siblings of this disc may be waiting
-        // beside it, and the ordinary flow would ask about those next.
-        await use(path, name, "single");
+        // beside it, and the review would offer them as one game next.
+        use(path, name, true);
         return;
       }
       setBusy(true);
@@ -916,6 +897,12 @@ export function TransferModal({
   // hands back a new array every few seconds anyway, so a memo would recompute
   // on the renders that matter and only bind the two together.
   const groups = groupReceived(received);
+  const addable = addableGroups(groups, purpose, (name) => Boolean(matchFor(name)));
+  // What Add all takes: every row, each as what it is.
+  const everything = batchInputs(groups, purpose, (name) => Boolean(matchFor(name)));
+  // Game rows say what platform they go as, picked or not; a BIOS file or a
+  // definition has none to state.
+  const addablePaths = new Set(addable.map(({ file }) => file.path));
   const stopped = status?.stopped ?? [];
   const uploads = status?.uploads ?? [];
   const arriving = summariseUploads(uploads);
@@ -1222,7 +1209,24 @@ export function TransferModal({
 
         {received.length > 0 && (
           <div style={{ ...COLUMN, gap: "6px" }}>
-            <div style={{ fontWeight: 600 }}>Received ({received.length})</div>
+            <Focusable
+              flow-children="row"
+              style={{ display: "flex", alignItems: "center", gap: "10px" }}
+            >
+              <div style={{ fontWeight: 600, flex: 1 }}>Received ({received.length})</div>
+              {/* Only with two or more: one file is its own row's button. */}
+              {everything.length >= 2 && (
+                <DialogButton
+                  disabled={busy}
+                  onClick={() => review(everything)}
+                  style={ICON_BUTTON_WIDE}
+                >
+                  {/* Not a count: the review decides what gets added, and the
+                      ellipsis is Steam's mark for a dialog that follows. */}
+                  Add all…
+                </DialogButton>
+              )}
+            </Focusable>
             <ScrollList style={RECEIVED}>
               {groups.map(({ file, tracks, size }) => (
                 <Focusable
@@ -1236,6 +1240,10 @@ export function TransferModal({
                           the size a reader checks against what they sent, and
                           what deleting the row costs. */}
                       {humanSize(size)}
+                      {/* What the sender said it is, from the upload page. */}
+                      {file.platform
+                        ? ` · for ${file.platform}`
+                        : addablePaths.has(file.path) ? " · detect from the file" : ""}
                       {tracks.length > 0
                         ? ` · ${ownedCount(file.name, tracks.length)}`
                         : ""}

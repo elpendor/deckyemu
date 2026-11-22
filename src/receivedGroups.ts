@@ -1,4 +1,5 @@
 import type { ReceivedFile } from "./backend";
+import type { OtherKind } from "./batchPlan";
 
 /**
  * One row of the Received list, and everything that row speaks for.
@@ -87,4 +88,70 @@ export function ownedNoun(playlist: string): "track" | "file" {
 export function ownedCount(playlist: string, count: number): string {
   const noun = ownedNoun(playlist);
   return `${count} ${noun}${count === 1 ? "" : "s"}`;
+}
+
+const DEFINITION_SUFFIX = ".deckyemu.json";
+const PATCH_SUFFIXES = [".ips", ".bps", ".ups"];
+
+/**
+ * The rows whose button is plain **Add**: what **Add all** takes.
+ *
+ * Mirrors the order of the button chain in `TransferModal`'s received list;
+ * a row that chain gives any other button is not a game to add.
+ */
+export function addableGroups(
+  groups: ReceivedGroup[],
+  purpose: string,
+  isFirmware: (name: string) => boolean,
+): ReceivedGroup[] {
+  if (purpose === "firmware" || purpose === "backup") return [];
+  return groups.filter(({ file }) => {
+    const name = file.name.toLowerCase();
+    return !(
+      name.endsWith(DEFINITION_SUFFIX) ||
+      isFirmware(file.name) ||
+      name.endsWith(".rap") ||
+      file.licence_key ||
+      file.game_content ||
+      PATCH_SUFFIXES.some((one) => name.endsWith(one)) ||
+      file.disc_for
+    );
+  });
+}
+
+/** A received row as the review takes it: a game, or what else it is. */
+export interface BatchInput {
+  path: string;
+  name: string;
+  /** Not a game: what it is, from what the transfer list knows of it. */
+  other?: OtherKind;
+  file?: ReceivedFile;
+}
+
+/**
+ * Every row the review takes, games and the files that belong to games alike.
+ * The same decision the button chain in `TransferModal` makes, kept as data:
+ * a row that chain gives Import, Install or Add to game is not a game to add,
+ * so it goes in as what it is and the review offers that same action.
+ */
+export function batchInputs(
+  groups: ReceivedGroup[],
+  purpose: string,
+  isFirmware: (name: string) => boolean,
+): BatchInput[] {
+  if (purpose === "firmware") return [];
+  return groups.map(({ file }) => {
+    const name = file.name.toLowerCase();
+    const as = (other?: OtherKind): BatchInput =>
+      ({ path: file.path, name: file.name, other, file });
+    if (purpose === "backup") return as("save");
+    if (name.endsWith(DEFINITION_SUFFIX)) return as("definition");
+    if (isFirmware(file.name)) return as("firmware");
+    if (name.endsWith(".rap")) return as("licence");
+    if (file.licence_key) return as("key");
+    if (file.game_content) return as("content");
+    if (PATCH_SUFFIXES.some((one) => name.endsWith(one))) return as("patch");
+    if (file.disc_for) return as("disc");
+    return as();
+  });
 }

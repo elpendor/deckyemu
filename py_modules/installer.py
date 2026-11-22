@@ -257,6 +257,9 @@ def core_catalog(force=False):
                         or (databases[0].split(" - ")[-1] if databases else "Other"),
                         "databases": databases,
                         "extensions": extensions,
+                        # "Emulator", "Game", "Game engine"...: the upload page
+                        # offers a platform list, and a game is not a platform.
+                        "categories": sorted(categories),
                     }
                 )
     except (OSError, zipfile.BadZipFile) as error:
