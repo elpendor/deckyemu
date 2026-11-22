@@ -276,10 +276,12 @@ function Candidates({ row, name, onPicked }: {
       {found?.length === 0 && !error && (
         <div style={{ ...MUTED, marginTop: "8px" }}>Nothing found for that name.</div>
       )}
-      {found?.map((candidate) => (
+      {found?.map((candidate, index) => (
         <Focusable key={candidate.key} style={{ marginTop: "4px" }}>
           <DialogButton
+            autoFocus={inUse ? candidate.key === inUse : index === 0}
             onClick={() => void pick(candidate)}
+            onOKActionDescription="Choose"
             disabled={Boolean(applying)}
             style={{ ...ICON_BUTTON_WIDE, height: "auto", minHeight: "44px", padding: "6px 14px",
               justifyContent: "flex-start", width: "100%" }}
@@ -313,15 +315,18 @@ function chosenLabel(options: DropdownOption[], data: unknown): React.ReactNode 
 }
 
 /** One summary line: what is set, and a way into changing it. */
-function SummaryLine({ label, value, onClick }: {
+function SummaryLine({ label, value, onClick, autoFocus = false }: {
   label: string;
   value: React.ReactNode;
   onClick: () => void;
+  autoFocus?: boolean;
 }) {
   return (
     <Focusable style={{ marginTop: "4px" }}>
       <DialogButton
+        autoFocus={autoFocus}
         onClick={onClick}
+        onOKActionDescription="Change"
         style={{ ...ICON_BUTTON_WIDE, justifyContent: "flex-start", width: "100%", gap: "10px" }}
       >
         <span style={{ flexShrink: 0, width: "90px", textAlign: "left" }}>{label}</span>
@@ -341,10 +346,12 @@ function OptionList({ options, selected, onPick }: {
 }) {
   return (
     <>
-      {flatOptions(options).map((option) => (
+      {flatOptions(options).map((option, index, all) => (
         <Focusable key={String(option.data)} style={{ marginTop: "4px" }}>
           <DialogButton
+            autoFocus={all.some((one) => one.data === selected) ? option.data === selected : index === 0}
             onClick={() => onPick(option.data)}
+            onOKActionDescription="Choose"
             style={{ ...ICON_BUTTON_WIDE, justifyContent: "flex-start", width: "100%", gap: "10px" }}
           >
             <span style={{ width: "20px", flexShrink: 0 }}>
@@ -374,6 +381,12 @@ function GamePage({ row, onBack, register }: {
   const [automatic, setAutomatic] = useState(row.title);
   const [everything, setEverything] = useState(false);
   const [choice, setChoice] = useState<Choice | null>(null);
+  // The line a choice was opened from, focused again on the way back.
+  const [from, setFrom] = useState<Choice | null>(null);
+  const open = (next: Choice) => {
+    setFrom(next);
+    setChoice(next);
+  };
   const [error, setError] = useState("");
   // Only for a core covering several systems, as in the panel.
   const systems = systemOptions(coreOf(row));
@@ -509,25 +522,27 @@ function GamePage({ row, onBack, register }: {
           )}
         </div>
       </Focusable>
-      <ScrollList style={{ maxHeight: "36vh" }}>
-        <SummaryLine label="Game" value={gameName} onClick={() => setChoice("game")} />
+      <ScrollList style={{ maxHeight: "none" }}>
+        <SummaryLine label="Game" value={gameName} onClick={() => open("game")}
+          autoFocus={(from ?? "game") === "game"} />
         {/* A file taken for the wrong platform usually needs another emulator,
             and the picker for its file type would change every such file. */}
         {/* A package names its own emulator. */}
         {all.length > 1 && !packaged && (
-          <SummaryLine label="Emulator" value={coreName(row) || "None"} onClick={() => setChoice("emulator")} />
+          <SummaryLine label="Emulator" value={coreName(row) || "None"} onClick={() => open("emulator")}
+            autoFocus={from === "emulator"} />
         )}
         {systems.length > 0 && (
           <SummaryLine label="System" value={chosenLabel(systems, row.systemId)}
-            onClick={() => setChoice("system")} />
+            onClick={() => open("system")} autoFocus={from === "system"} />
         )}
         {row.discs.length >= 2 && !discsMustSplit(row) && (
           <SummaryLine label="Discs" value={chosenLabel(discOptions, row.discMode)}
-            onClick={() => setChoice("discs")} />
+            onClick={() => open("discs")} autoFocus={from === "discs"} />
         )}
         {row.installable.length > 1 && row.verdict.step === "core" && (
           <SummaryLine label="Core" value={chosenLabel(installableOptions(row.installable), row.installableId)}
-            onClick={() => setChoice("core")} />
+            onClick={() => open("core")} autoFocus={from === "core"} />
         )}
 
         {discsMustSplit(row) && (
@@ -574,7 +589,7 @@ function GamePage({ row, onBack, register }: {
         </Focusable>
       </ScrollList>
       <Focusable flow-children="row" style={{ display: "flex", gap: "8px", marginTop: "12px" }}>
-        <DialogButton autoFocus onClick={done} style={{ flex: 1 }}>Back</DialogButton>
+        <DialogButton onClick={done} style={{ flex: 1 }}>Back</DialogButton>
       </Focusable>
     </>
   );
@@ -643,6 +658,7 @@ function GameRow({ row, onEdit }: { row: BatchRow; onEdit: () => void }) {
       <Cover capsule={capsule} width={48} />
       <DialogButton
         onClick={() => setIncluded(row.path, !row.include)}
+        onOKActionDescription={row.include ? "Untick" : "Tick"}
         // Not ready, and nothing Add can do about it: it cannot be ticked.
         disabled={row.busy || row.verdict.blocked}
         // Two lines, so the height follows the text, from the left.
@@ -670,8 +686,9 @@ function GameRow({ row, onEdit }: { row: BatchRow; onEdit: () => void }) {
       {/* The pencil Added games uses for editing a game; here it turns the
           dialog to this game's page. */}
       <DialogButton
-        aria-label="Fix"
+        aria-label="Edit"
         onClick={onEdit}
+        onOKActionDescription="Edit"
         disabled={row.busy}
         style={{ ...ICON_BUTTON, flexShrink: 0 }}
       >
@@ -768,7 +785,7 @@ function Review({ batch, hide, onEdit }: { batch: Batch; hide: () => void; onEdi
         <Focusable key={extension} style={{ display: "flex", alignItems: "center", gap: "10px", margin: "4px 0 8px" }}>
           <div style={{ fontSize: "13px", flexShrink: 0 }}>
             {cores.length} installed emulators run .{extension}
-            <span style={{ opacity: 0.7 }}> ({count} file{count === 1 ? "" : "s"})</span>
+            <span style={{ opacity: 0.7 }}> ({count} game{count === 1 ? "" : "s"})</span>
           </div>
           <div style={{ flexGrow: 1 }}>
             <Dropdown

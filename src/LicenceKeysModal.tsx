@@ -101,9 +101,11 @@ export function LicenceKeysModal({ keys, taken, onChanged, closeModal }: {
   return (
     <ModalRoot closeModal={closeModal} bAllowFullSize>
       <h1 style={{ marginTop: 0, marginBottom: "4px", fontSize: "23px" }}>Licence keys</h1>
-      <div style={{ opacity: 0.7, fontSize: "13px", marginBottom: "12px" }}>
-        A waiting key goes in with its game when the game is added.
-      </div>
+      {left.length > 0 && (
+        <div style={{ opacity: 0.7, fontSize: "13px", marginBottom: "12px" }}>
+          A waiting key goes in with its game when the game is added.
+        </div>
+      )}
       <ScrollList style={{ maxHeight: "256px" }}>
         {left.map((key) => (
           <Focusable key={key.path} style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "4px" }}>
@@ -114,6 +116,7 @@ export function LicenceKeysModal({ keys, taken, onChanged, closeModal }: {
               <DialogButton
                 onClick={() => confirmDiscardTransfer({ name: key.name, size: key.size }, () => gone(key.name))}
                 style={ICON_BUTTON}
+                onOKActionDescription="Delete"
               >
                 <FaTrash />
               </DialogButton>
@@ -127,7 +130,7 @@ export function LicenceKeysModal({ keys, taken, onChanged, closeModal }: {
               <div style={{ opacity: 0.7, fontSize: "13px" }}>Licence {one.note}</div>
             </div>
             <div className={DANGER_CLASS}>
-              <DialogButton onClick={() => forget(one.id)} style={ICON_BUTTON}>
+              <DialogButton onClick={() => forget(one.id)} style={ICON_BUTTON} onOKActionDescription="Clear">
                 <FaTrash />
               </DialogButton>
             </div>

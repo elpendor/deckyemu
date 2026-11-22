@@ -63,7 +63,7 @@ import { installContentFor } from "./installContent";
 import { openPatchInstall } from "./installPatch";
 import { openRestoreSaves } from "./openRestore";
 import { DiscTracksModal } from "./DiscTracksModal";
-import { addableGroups, batchInputs, groupReceived, ownedCount } from "./receivedGroups";
+import { batchInputs, groupReceived, ownedCount } from "./receivedGroups";
 import { BatchImportModal } from "./BatchImportModal";
 import { resumeOrStartBatch, type BatchFile } from "./batchImport";
 import { closeOpenModals, openModal } from "./modalStack";
@@ -872,12 +872,8 @@ export function TransferModal({
   const keys = groups.filter(({ file }) => file.licence_key);
   const shown = groups.filter(({ file }) => !file.licence_key);
   const taken = status?.licences_taken ?? [];
-  const addable = addableGroups(groups, purpose, (name) => Boolean(matchFor(name)));
   // What Add all takes: every row, each as what it is.
   const everything = batchInputs(groups, purpose, (name) => Boolean(matchFor(name)));
-  // Game rows say what platform they go as, picked or not; a BIOS file or a
-  // definition has none to state.
-  const addablePaths = new Set(addable.map(({ file }) => file.path));
   const stopped = status?.stopped ?? [];
   const uploads = status?.uploads ?? [];
   const arriving = summariseUploads(uploads);
@@ -1172,6 +1168,7 @@ export function TransferModal({
                         )
                       }
                       style={ICON_BUTTON}
+                      onOKActionDescription="Delete"
                     >
                       <FaTrash />
                     </DialogButton>
@@ -1204,7 +1201,7 @@ export function TransferModal({
               )}
             </Focusable>
             <ScrollList style={RECEIVED}>
-              {shown.map(({ file, tracks, size, discs, title }) => (
+              {shown.map(({ file, tracks, size, discs, title }, index) => (
                 <Focusable
                   key={file.path}
                   style={{ display: "flex", alignItems: "center", gap: "10px" }}
@@ -1219,7 +1216,7 @@ export function TransferModal({
                       {/* What the sender said it is, from the upload page. */}
                       {file.platform
                         ? ` · for ${file.platform}`
-                        : addablePaths.has(file.path) ? " · detect from the file" : ""}
+                        : ""}
                       {discs
                         ? ` · ${discs.length} discs`
                         : tracks.length > 0
@@ -1254,6 +1251,7 @@ export function TransferModal({
                         )
                       }
                       style={ICON_BUTTON}
+                      onOKActionDescription="Show files"
                     >
                       <FaListUl />
                     </DialogButton>
@@ -1263,6 +1261,7 @@ export function TransferModal({
                       made a Steam entry out of a firmware dump. */}
                   {file.name.endsWith(DEFINITION_SUFFIX) ? (
                     <DialogButton
+                      autoFocus={codeFolded && index === 0}
                       onClick={() => importDefinition(file.name, load)}
                       style={ICON_BUTTON_WIDE}
                     >
@@ -1270,6 +1269,7 @@ export function TransferModal({
                     </DialogButton>
                   ) : matchFor(file.name) ? (
                     <DialogButton
+                      autoFocus={codeFolded && index === 0}
                       disabled={busy}
                       onClick={() => void install(file.name)}
                       style={ICON_BUTTON_WIDE}
@@ -1283,6 +1283,7 @@ export function TransferModal({
                     // entry out of something that is not a game. Offered even
                     // when that game is not in the library: pressing it says so.
                     <DialogButton
+                      autoFocus={codeFolded && index === 0}
                       disabled={busy}
                       onClick={() => {
                         setBusy(true);
@@ -1303,6 +1304,7 @@ export function TransferModal({
                     // but a patch does not say which game it is for, so the
                     // button asks first.
                     <DialogButton
+                      autoFocus={codeFolded && index === 0}
                       disabled={busy}
                       onClick={() => openPatchInstall(file.path, file.name, () => void load())}
                       style={ICON_BUTTON_WIDE}
@@ -1321,6 +1323,7 @@ export function TransferModal({
                     // of somebody's save files; Restore is what it is for, and
                     // it lands on the same screen the Library tab opens.
                     <DialogButton
+                      autoFocus={codeFolded && index === 0}
                       onClick={() => {
                         // The dialog goes first. Steam re-reveals each modal as
                         // the one above it dismisses, so leaving this underneath
@@ -1341,6 +1344,7 @@ export function TransferModal({
                     // on the button because a button carrying one shrinks the
                     // filename beside it and ellipsizes the title regardless.
                     <DialogButton
+                      autoFocus={codeFolded && index === 0}
                       disabled={busy}
                       onClick={() =>
                         void joinDisc(file.path, file.name, file.disc_for!)
@@ -1351,6 +1355,7 @@ export function TransferModal({
                     </DialogButton>
                   ) : (
                     <DialogButton
+                      autoFocus={codeFolded && index === 0}
                       // A set goes in whole; the review asks how.
                       onClick={() => discs
                         ? review(discs.map((disc) => ({ path: disc.path, name: disc.name })))
@@ -1386,6 +1391,7 @@ export function TransferModal({
                           )
                         }
                         style={ICON_BUTTON}
+                        onOKActionDescription="Delete"
                       >
                         <FaTrash />
                       </DialogButton>
@@ -1413,6 +1419,7 @@ export function TransferModal({
                       )
                     }
                     style={ICON_BUTTON}
+                    onOKActionDescription="Show keys"
                   >
                     <FaListUl />
                   </DialogButton>
@@ -1420,6 +1427,7 @@ export function TransferModal({
                     <DialogButton
                       onClick={() => confirmDeleteKeys(keys.map(({ file }) => file), taken, () => void load())}
                       style={ICON_BUTTON}
+                      onOKActionDescription="Delete"
                     >
                       <FaTrash />
                     </DialogButton>

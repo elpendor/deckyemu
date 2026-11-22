@@ -71,6 +71,9 @@ export function ScrollList({
       <style>{SCROLLER_CSS + SCROLLER_ROW_CSS}</style>
       <Focusable
         onFocus={showEnds}
+        // Steam's MAINTAIN_Y: enter at the item nearest the way in. The default
+        // is the first, so Up from a button below skipped to the list's top.
+        navEntryPreferPosition={3}
         className={className ? `${SCROLLER_CLASS} ${className}` : SCROLLER_CLASS}
         style={{
           display: "flex",
