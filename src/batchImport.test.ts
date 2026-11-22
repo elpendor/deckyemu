@@ -157,7 +157,7 @@ describe("a disc set sent without its playlist", () => {
       suggested_core_id: playlistCore.id, matching_cores: [playlistCore], all_cores: [playlistCore],
       disc_set: discs,
     }));
-    addGameToSteam.mockResolvedValue({ ok: true, appId: 7, title: "x", notes: [], romPath: "/roms/x" });
+    addGameToSteam.mockResolvedValue({ ok: true, appId: 7, title: "x", notes: [], romPath: "/roms/x", contentInstalled: [] });
     await store.startBatch(files);
     store.setDiscMode(files[0].path, "each");
     await store.addBatch();
@@ -171,11 +171,30 @@ describe("a disc set sent without its playlist", () => {
       suggested_core_id: discOnlyCore.id, matching_cores: [discOnlyCore], all_cores: [discOnlyCore],
       disc_set: discs,
     }));
-    addGameToSteam.mockResolvedValue({ ok: true, appId: 8, title: "x", notes: [], romPath: "/roms/x" });
+    addGameToSteam.mockResolvedValue({ ok: true, appId: 8, title: "x", notes: [], romPath: "/roms/x", contentInstalled: [] });
     await store.startBatch(files);
     expect(store.discsMustSplit(store.getBatch().rows[0])).toBe(true);
     await store.addBatch();
     expect(addGameToSteam).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("a disc set, this disc only", () => {
+  const discs = ["Harbor Dash (Disc 1).chd", "Harbor Dash (Disc 2).chd"];
+  const files = discs.map((name) => ({ path: "/inbox/" + name, name }));
+
+  it("adds the row's own disc alone, with no playlist", async () => {
+    probeRom.mockResolvedValue(probe({
+      suggested_core_id: discOnlyCore.id, matching_cores: [discOnlyCore], all_cores: [discOnlyCore],
+      disc_set: discs,
+    }));
+    addGameToSteam.mockResolvedValue({ ok: true, appId: 3, title: "x", notes: [], romPath: "/roms/x", contentInstalled: [] });
+    await store.startBatch(files);
+    store.setDiscMode(files[0].path, "single");
+    expect(store.discPlan(store.getBatch().rows[0])).toBe("single");
+    await store.addBatch();
+    expect(addGameToSteam).toHaveBeenCalledTimes(1);
+    expect(addGameToSteam.mock.calls[0][0]).toMatchObject({ romPath: files[0].path, discs: [] });
   });
 });
 
@@ -231,7 +250,7 @@ describe("updates and DLC sent with their game", () => {
 });
 
 describe("an emulator missing what no game starts without", () => {
-  it("blocks the game until it is sent, and only warns for the rest", async () => {
+  it("warns on the game, which can still be added", async () => {
     probeRom.mockResolvedValue(probe({
       suggested_core_id: "emu:switchy", matching_cores: [playlistCore], all_cores: [playlistCore],
     }));
@@ -241,26 +260,29 @@ describe("an emulator missing what no game starts without", () => {
     ] });
     await store.startBatch([{ path: "/inbox/game.nsp", name: "game.nsp" }]);
     const row = store.getBatch().rows[0];
-    expect(row.verdict).toMatchObject({ blocked: true, include: false });
+    // Found by name only, so one kept under another name reads as missing.
+    expect(row.verdict).toMatchObject({ bucket: "check", include: true });
+    expect(row.verdict.blocked ?? false).toBe(false);
     expect(row.verdict.reason).toContain("keys.bin");
     expect(row.verdict.reason).not.toContain("firmware.zip");
+    expect(store.chosenRows(store.getBatch().rows)).toHaveLength(1);
   });
 
-  it("is checked again when the review reopens, once the file is sent", async () => {
+  it("stops warning when the review reopens, once the file is sent", async () => {
     probeRom.mockResolvedValue(probe({
       suggested_core_id: "emu:later", matching_cores: [playlistCore], all_cores: [playlistCore],
     }));
     missingFirmware.mockResolvedValueOnce({ missing: [{ name: "keys.bin", blocks: true, waiting: false }] });
     const files = [{ path: "/inbox/game.nsp", name: "game.nsp" }];
     await store.startBatch(files);
-    expect(store.getBatch().rows[0].verdict.blocked).toBe(true);
+    expect(store.getBatch().rows[0].verdict.reason).toContain("keys.bin");
     // Sent meanwhile: the emulator now reports nothing missing.
     store.resumeOrStartBatch(files);
-    await vi.waitFor(() => expect(store.getBatch().rows[0].verdict.blocked ?? false).toBe(false));
+    await vi.waitFor(() => expect(store.getBatch().rows[0].verdict.reason).not.toContain("keys.bin"));
     expect(store.getBatch().rows[0].include).toBe(true);
   });
 
-  it("blocks only the file types that need it", async () => {
+  it("warns only for the file types that need it", async () => {
     probeRom.mockResolvedValue(probe({
       suggested_core_id: "emu:discy", matching_cores: [playlistCore], all_cores: [playlistCore],
     }));
@@ -270,9 +292,73 @@ describe("an emulator missing what no game starts without", () => {
       { path: "/inbox/b.wua", name: "b.wua" },
     ]);
     const [disc, archive] = store.getBatch().rows;
-    expect(disc.verdict.blocked).toBe(true);
-    expect(archive.verdict.blocked ?? false).toBe(false);
+    expect(disc.verdict.reason).toContain("keys.txt");
+    expect(archive.verdict.reason).not.toContain("keys.txt");
     expect(store.sendFor(archive)).toEqual(["keys.txt"]);
+  });
+});
+
+describe("a file nothing claims", () => {
+  const other = { id: "emu:custom", extensions: ["zzz"], databases: ["Custom"] };
+
+  it("waits for an emulator picked by hand, then is added with it", async () => {
+    probeRom.mockResolvedValue(probe({ what: ".xyz", all_cores: [other] }));
+    addGameToSteam.mockResolvedValue({ ok: true, appId: 9, title: "x", notes: [], romPath: "/roms/x", contentInstalled: [] });
+    const path = "/inbox/game.xyz";
+    await store.startBatch([{ path, name: "game.xyz" }]);
+    expect(store.getBatch().rows[0].verdict).toMatchObject({ bucket: "check", blocked: true, pick: true });
+    expect(store.chosenRows(store.getBatch().rows)).toEqual([]);
+
+    await store.setRowCore(path, other.id);
+    await vi.waitFor(() => expect(store.getBatch().rows[0].busy).toBe(false));
+    const row = store.getBatch().rows[0];
+    expect(row.verdict.blocked ?? false).toBe(false);
+    expect(row.include).toBe(true);
+    await store.addBatch();
+    expect(addGameToSteam.mock.calls[0][0]).toMatchObject({ coreId: other.id, romPath: path });
+  });
+
+  it("keeps the pick when the review reopens", async () => {
+    probeRom.mockResolvedValue(probe({ what: ".xyz", all_cores: [other] }));
+    const files = [{ path: "/inbox/game.xyz", name: "game.xyz" }];
+    await store.startBatch(files);
+    await store.setRowCore(files[0].path, other.id);
+    await vi.waitFor(() => expect(store.getBatch().rows[0].busy).toBe(false));
+    store.resumeOrStartBatch(files);
+    await vi.waitFor(() => expect(probeRom).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(store.getBatch().rows[0].busy).toBe(false));
+    const row = store.getBatch().rows[0];
+    expect(row.coreId).toBe(other.id);
+    expect(row.verdict.blocked ?? false).toBe(false);
+    // Found on the Deck: the pick came back, unticked.
+    expect(row.include).toBe(true);
+  });
+});
+
+describe("what adding a game reports", () => {
+  it("keeps the notes past the artwork, and marks done only content that went in", async () => {
+    probeRom.mockResolvedValue(probe({
+      suggested_core_id: playlistCore.id, matching_cores: [playlistCore], all_cores: [playlistCore],
+      content_waiting: [
+        { path: "/inbox/u.nsp", name: "u.nsp", label: "Update v2" },
+        { path: "/inbox/d.nsp", name: "d.nsp", label: "DLC" },
+      ],
+    }));
+    addGameToSteam.mockResolvedValue({
+      ok: true, appId: 5, title: "x", romPath: "/roms/x",
+      notes: ["no artwork found", "could not add it to its collection"],
+      contentInstalled: ["u.nsp"],
+    });
+    await store.startBatch([
+      { path: "/inbox/game.nsp", name: "game.nsp" },
+      { path: "/inbox/u.nsp", name: "u.nsp", other: "content" },
+      { path: "/inbox/d.nsp", name: "d.nsp", other: "content" },
+    ]);
+    await store.addBatch();
+    const [game, update, dlc] = store.getBatch().rows;
+    expect(game.notes).toEqual(["could not add it to its collection"]);
+    expect(update.outcome).toBe("done");
+    expect(dlc.outcome).toBe("");
   });
 });
 

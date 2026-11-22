@@ -203,10 +203,11 @@ def the_review():
     real_keys = os.path.isfile(keys) and any(
         line.strip() and not line.startswith("#") for line in open(keys, errors="replace"))
     if real_keys:
-        check("a .wud with Cemu's keys in place is not blocked", wud and not wud["blocked"], wud)
+        check("a .wud with Cemu's keys in place has no warning",
+              wud and not wud["blocked"] and "keys.txt" not in wud["reason"], wud)
     else:
-        check("a .wud without Cemu's keys cannot be ticked",
-              wud and wud["blocked"] and "keys.txt" in wud["reason"], wud)
+        check("a .wud without Cemu's keys warns but can be ticked",
+              wud and not wud["blocked"] and "keys.txt" in wud["reason"], wud)
     base = by_name(rows, NAMES["base"])
     check("a Switch game counts the update and DLC sent with it",
           base and base["content"] == "+ 1 update · 1 DLC", base)
@@ -281,7 +282,7 @@ def adding():
 
 
 def bios_missing():
-    """A PS2 game while PCSX2 has no BIOS: it cannot be ticked. The BIOS is
+    """A PS2 game while PCSX2 has no BIOS: it warns, and can still be ticked. The BIOS is
     moved aside for the check and always put back."""
     if not os.path.isdir(PS2_BIOS):
         print("     (skipped: PCSX2 has no BIOS folder)")
@@ -298,8 +299,9 @@ def bios_missing():
         os.makedirs(PS2_BIOS)
         try:
             row = review([PS2_GAME])["rows"][0]
-            check("a PS2 game without PCSX2's BIOS cannot be ticked",
-                  row["blocked"] and "BIOS" in row["reason"] and row["core"] == "emu:pcsx2", row)
+            check("a PS2 game without PCSX2's BIOS warns, and can be ticked",
+                  not row["blocked"] and row["include"] and "BIOS" in row["reason"]
+                  and row["core"] == "emu:pcsx2", row)
         finally:
             os.rmdir(PS2_BIOS)
             os.rename(aside, PS2_BIOS)
@@ -307,12 +309,59 @@ def bios_missing():
             print("     PCSX2's BIOS folder %s" % ("restored, every file back" if restored else "NOT RESTORED"))
             check("PCSX2's BIOS is back as it was", restored)
         row = review([PS2_GAME])["rows"][0]
-        check("and with the BIOS back it can be ticked",
-              not row["blocked"] and row["core"] == "emu:pcsx2", row)
+        check("and with the BIOS back the warning is gone",
+              not row["blocked"] and "not found" not in row["reason"] and row["core"] == "emu:pcsx2", row)
     finally:
         hints = json.load(open(HINTS)) if os.path.isfile(HINTS) else {}
         hints.pop(game, None)
         json.dump(hints, open(HINTS, "w"))
+
+
+def picking():
+    """A file nothing claims waits for an emulator from the pencil, then adds."""
+    name = "E2E Odd Thing.qqq"
+    write(name, noise(64 * 1024))
+    row = review([name])["rows"][0]
+    check("a file nothing claims waits for an emulator to be picked",
+          row["bucket"] == "check" and row["blocked"] and "pencil" in row["reason"], row)
+    out = js("""
+      const row = T.getBatch().rows[0];
+      const core = row.probe.all_cores.find((c) => c.id.startsWith("emu:")) || row.probe.all_cores[0];
+      await T.setRowCore(row.path, core.id);
+      const picked = rows()[0];
+      await T.addBatch();
+      return { picked, core: core.id, rows: rows() };
+    """, timeout=300)
+    check("picking one makes it addable", not out["picked"]["blocked"] and out["picked"]["include"], out["picked"])
+    check("and Add adds it with that emulator",
+          out["rows"][0]["outcome"] == "added" and out["rows"][0]["core"] == out["core"], out["rows"])
+    check("taking it back works", js("return await T.takeBack();") == 1)
+
+
+def one_disc():
+    """Two discs of one game, and only the first wanted: one entry, no playlist."""
+    discs = ["E2E Two Disc Game (USA) (Disc %d).iso" % n for n in (1, 2)]
+    hints = json.load(open(HINTS)) if os.path.isfile(HINTS) else {}
+    for disc in discs:
+        write(disc, noise(1024 * 1024))
+        hints[os.path.realpath(os.path.join(INBOX, disc))] = "Sony - PlayStation 2"
+    json.dump(hints, open(HINTS, "w"))
+    got = review(discs)
+    check("two discs of one game are one row", len(got["rows"]) == 1, got["rows"])
+    out = js("""
+      const row = T.getBatch().rows[0];
+      T.setDiscMode(row.path, "single");
+      T.setIncluded(row.path, true);
+      const plan = T.discPlan(T.getBatch().rows[0]);
+      await T.addBatch();
+      return { plan, rows: rows() };
+    """, timeout=300)
+    added = out["rows"][0]
+    check("This disc only adds one entry", out["plan"] == "single"
+          and added["outcome"] == "added" and added["added"] == 1, out)
+    check("and the other disc stays in the transfer folder",
+          os.path.isfile(os.path.join(INBOX, discs[1])))
+    check("taking it back works", js("return await T.takeBack();") == 1)
 
 
 # --- the disruptive ones: opt-in, and each puts everything back ------------
@@ -430,6 +479,10 @@ def main():
         adding()
         print("== a BIOS no game starts without")
         bios_missing()
+        print("== a file nothing claims")
+        picking()
+        print("== one disc of a set")
+        one_disc()
         if "--offline" in disruptive:
             print("== no network")
             offline()

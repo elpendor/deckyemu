@@ -210,8 +210,9 @@ Firmware works the same way on every system. What DeckyEmu can download itself
 — the Vita's and the PS3's, from Sony — downloads as the game is added, and the
 row says so. What only you can supply, like a PS2 BIOS or Switch keys, is named
 on the row, to send from the transfer page; the game is added anyway, and many
-run without it. What no game starts without, like Switch keys, is the exception:
-the row can't be ticked until it's sent. Where a BIOS comes one per region, only the game's own is named.
+run without it. What no game starts without, like Switch keys or a PS2 BIOS, moves
+the game to *Check these* with a warning. It's still ticked, because DeckyEmu
+finds these files by name, and one you set up under another name looks missing. Where a BIOS comes one per region, only the game's own is named.
 Games RPCS3, shadPS4 or Vita3K already
 have installed are listed under **Add a game** too.
 
@@ -243,7 +244,8 @@ collection survive the change.
 A set's discs are **one row**, named for the game and the discs that are here
 (*… · Discs 1–2*), reading *2 discs as one game*. One entry in your library,
 every disc filed into one folder. The pencil has a **Discs** choice for adding
-**each disc on its own** instead.
+**each disc on its own** instead, or **this disc only**, which leaves the other
+discs in the transfer folder.
 
 The transfer list shows a set as one row too, with every file a press away.
 

@@ -37,8 +37,11 @@ import {
   type ResolvedGame,
   type RomProbe,
 } from "./backend";
+import { refreshAddedGames } from "./addedGames";
 import { addGameToSteam } from "./addToSteam";
-import { classify, classifyProbe, otherVerdict, unpacksTo, type OtherKind, type Verdict } from "./batchPlan";
+import {
+  classify, classifyProbe, otherVerdict, PICKED, unpacksTo, withPick, type OtherKind, type Verdict,
+} from "./batchPlan";
 import { chooseSystem } from "./corePicker";
 import { discsMustSplit as mustSplit } from "./discSet";
 import { addEventListener, removeEventListener } from "./host";
@@ -46,7 +49,8 @@ import { logError } from "./logError";
 import { pendingPackage, type PackageSystem } from "./packageState";
 import { repointShortcut } from "./steam";
 
-export type DiscMode = "one" | "each";
+/** A set as one game, each disc on its own, or only the row's own disc. */
+export type DiscMode = "one" | "each" | "single";
 
 /** One Steam entry a row made. */
 interface Added {
@@ -78,6 +82,8 @@ export interface BatchRow {
   stepPercent: number;
   outcome: "" | "added" | "failed" | "done";
   error: string;
+  /** What adding it reported besides the artwork: a collection it missed. */
+  notes: string[];
   added: Added[];
   /** Named or matched by hand, which a later lookup must not undo. */
   fixed: boolean;
@@ -190,6 +196,7 @@ function newRow(file: BatchFile): BatchRow {
     stepPercent: -1,
     outcome: "",
     error: "",
+    notes: [],
     added: [],
     fixed: false,
     systemPicked: false,
@@ -204,6 +211,13 @@ function newRow(file: BatchFile): BatchRow {
 /** Whether this row's discs must go in one entry each; see `discsMustSplit`. */
 export const discsMustSplit = (row: BatchRow): boolean =>
   mustSplit(row.probe, row.coreId, row.discs);
+
+/** How the row goes in: one game, a game per disc, or its own disc alone. */
+export function discPlan(row: BatchRow): DiscMode {
+  if (row.discs.length < 2) return "one";
+  if (row.discMode === "single") return "single";
+  return row.discMode === "each" || discsMustSplit(row) ? "each" : "one";
+}
 
 // --- checking ---------------------------------------------------------------
 
@@ -221,11 +235,14 @@ async function lookUp(
     return {
       resolved,
       title: resolved.title || title || row.title,
-      verdict: row.probe ? classify(row.probe, resolved) : verdictWithoutProbe(resolved),
+      verdict: row.probe ? withPick(classify(row.probe, resolved), coreId) : verdictWithoutProbe(resolved),
     };
   } catch (error) {
     logError("batch lookup failed", error);
-    return { resolved: null, verdict: row.probe ? classify(row.probe, null) : verdictWithoutProbe(null) };
+    return {
+      resolved: null,
+      verdict: row.probe ? withPick(classify(row.probe, null), coreId) : verdictWithoutProbe(null),
+    };
   }
 }
 
@@ -314,14 +331,21 @@ function blocksGame(item: Needs["send"][number], path: string): boolean {
   return Boolean(item.blocks);
 }
 
-/** A row that cannot start without a file only the user can send. */
+/**
+ * A row whose emulator lacks a file no game starts without. A warning, not a
+ * block: the file is found by its name, so one kept under another name reads
+ * as missing, and the user is the one who knows.
+ */
 function waitingFor(needs: Needs, verdict: Verdict, path: string): Verdict {
-  const missing = needs.send.filter((item) => blocksGame(item, path)).map((item) => item.name);
+  if (verdict.blocked) return verdict;
+  const missing = blockingFor(needs, path);
   if (!missing.length) return verdict;
-  return {
-    bucket: "check", include: false, blocked: true, step: verdict.step,
-    reason: `Needs ${missing.join(", ")}: send it from the transfer page`,
-  };
+  return { ...verdict, bucket: "check", reason: `Needs ${missing.join(", ")}, not found` };
+}
+
+/** The files only the user can send that no game in `path` starts without. */
+export function blockingFor(needs: Needs, path: string): string[] {
+  return needs.send.filter((item) => blocksGame(item, path)).map((item) => item.name);
 }
 
 /** Firmware already fetched in this batch, so ten games ask for it once. */
@@ -519,6 +543,8 @@ function withChoices(row: BatchRow, fresh: Partial<BatchRow>): Partial<BatchRow>
   if (row.corePicked && patch.probe?.all_cores?.some((core) => core.id === row.coreId) && !verdict.step) {
     patch.coreId = row.coreId;
     patch.corePicked = true;
+    // Ticked again with it; one unticked by hand is unticked below.
+    if (verdict.pick) Object.assign(patch, { verdict: PICKED, include: true });
   }
   if (row.systemPicked) Object.assign(patch, { systemId: row.systemId, systemPicked: true });
   if (row.discs.length >= 2) Object.assign(patch, { discs: row.discs, discMode: row.discMode });
@@ -640,7 +666,8 @@ export async function setRowCore(path: string, coreId: string): Promise<void> {
   const systemId = chooseSystem(row.probe, coreId, row.systemPicked ? row.systemId : "");
   updateRow(path, {
     coreId, systemId, corePicked: true, busy: !row.fixed, include: true,
-    verdict: fixedVerdict(path), needs: await needsFor(coreId),
+    // A file nothing claimed is addable from the moment it has an emulator.
+    verdict: row.verdict.pick ? PICKED : fixedVerdict(path), needs: await needsFor(coreId),
   });
   if (row.fixed) return;
   const patch = await lookUp({ ...row, coreId, systemId }, coreId, systemId);
@@ -975,14 +1002,19 @@ async function addRow(row: BatchRow): Promise<void> {
   const resolved = row.resolved ? { ...row.resolved, art } : null;
   const title = row.title.trim() || row.name;
   const firmwareNotes = await fetchNeeded(row);
-  const each = row.discs.length >= 2 && (row.discMode === "each" || discsMustSplit(row));
-  const entries = each
+  const plan = discPlan(row);
+  const entries = plan === "single"
+    ? [{ romPath: row.path, title, discs: [] as string[] }]
+    : plan === "each"
     ? row.discs.map((disc, index) => ({
       romPath: `${folderOf(row.path)}/${disc}`, title: `${title} (Disc ${index + 1})`, discs: [] as string[],
     }))
     : [{ romPath: row.path, title, discs: row.discs }];
   const added: Added[] = [];
   const errors: string[] = [];
+  // What the add says besides the artwork, which the cover already shows.
+  const notes = new Set<string>();
+  const contentIn = new Set<string>();
   for (const entry of entries) {
     const outcome = await addGameToSteam({
       romPath: entry.romPath,
@@ -998,23 +1030,25 @@ async function addRow(row: BatchRow): Promise<void> {
       // An installed package's eboot is not ours to move back.
       const filed = row.probe ? outcome.romPath : "";
       added.push({ appId: outcome.appId, filedPath: filed });
+      for (const note of outcome.notes.slice(1)) notes.add(note);
+      for (const name of outcome.contentInstalled) contentIn.add(name);
     } else {
       errors.push(outcome.error);
     }
   }
   errors.push(...firmwareNotes);
   updateRow(row.path, added.length
-    ? { outcome: "added", added, error: errors.join(" ") }
+    ? { outcome: "added", added, error: errors.join(" "), notes: [...notes] }
     : { outcome: "failed", error: errors.join(" ") || "Could not add it." });
-  // Updates and DLC sent with it went in with it: their own rows are done.
-  if (added.length) {
-    const sent = new Set((row.probe?.content_waiting ?? []).map((one) => one.name));
-    for (const other of batch.rows) {
-      if (other.verdict.other === "content" && sent.has(other.name)) {
-        markDone(other.path, "Installed with its game");
-      }
+  // The updates and DLC that went in with it: their own rows are done. One
+  // refused stays open, and the dialog that said so names it.
+  for (const other of batch.rows) {
+    if (other.verdict.other === "content" && contentIn.has(other.name)) {
+      markDone(other.path, "Installed with its game");
     }
   }
+  // The library menu reads a cached list; a new game is in it from now.
+  void refreshAddedGames();
 }
 
 /** Add every ticked row, one after another, doing each one's step first. */

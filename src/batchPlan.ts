@@ -32,7 +32,16 @@ export interface Verdict {
   /** Not addable until something only the user can do is done; it cannot be
    *  ticked meanwhile, and `reason` says what. */
   blocked?: boolean;
+  /** Nothing claims the file, so it waits for an emulator picked by hand. */
+  pick?: boolean;
 }
+
+/** The verdict once an emulator is picked for a file nothing claimed. */
+export const PICKED: Verdict = { bucket: "check", reason: "Chosen by you", include: true };
+
+/** `verdict`, unless it waits for a pick and `coreId` is that pick. */
+export const withPick = (verdict: Verdict, coreId: string): Verdict =>
+  verdict.pick && coreId ? PICKED : verdict;
 
 const cant = (reason: string): Verdict => ({ bucket: "cant", reason, include: false });
 const check = (reason: string, include: boolean, step: Step = ""): Verdict =>
@@ -92,13 +101,21 @@ export function classifyProbe(
   if (mustUnpack) return check("Unpacks first", true, "unpack");
 
   if (!probe.suggested_core_id) {
-    if (probe.unsupported_extension) return cant("Not a game file");
+    // Forcing something installed is sometimes right, so the pencil offers it.
+    const pickable = (probe.all_cores ?? []).length > 0;
+    const pick = (reason: string): Verdict => ({ ...blocked(reason, ""), pick: true });
+    if (probe.unsupported_extension) {
+      return pickable ? pick("Usually a save or config file: the pencil picks an emulator")
+        : cant("Not a game file");
+    }
     if (installable > 0) {
       return retroarch
         ? check("Installs a core first", true, "core")
         : blocked("Needs RetroArch", "retroarch");
     }
-    return cant(probe.what ? `Nothing runs ${probe.what} files` : "Nothing runs it");
+    const what = probe.what ? `${probe.what} files` : "it";
+    return pickable ? pick(`Nothing claims ${what}: the pencil picks an emulator`)
+      : cant(`Nothing runs ${what}`);
   }
   return null;
 }

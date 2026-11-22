@@ -126,6 +126,14 @@ describe("classifyProbe", () => {
     );
     expect(classifyProbe(probe({ suggested_core_id: "", unsupported_extension: true }))?.bucket).toBe("cant");
   });
+
+  it("lets an emulator be picked when something is installed", () => {
+    const installed = { all_cores: [{ id: "emu:custom" } as unknown as RomProbe["all_cores"][number]] };
+    expect(classifyProbe(probe({ suggested_core_id: "", what: ".n64", ...installed })))
+      .toMatchObject({ bucket: "check", blocked: true, pick: true, include: false });
+    expect(classifyProbe(probe({ suggested_core_id: "", unsupported_extension: true, ...installed })))
+      .toMatchObject({ pick: true });
+  });
 });
 
 describe("classify", () => {

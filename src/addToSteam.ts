@@ -24,7 +24,11 @@ export interface GamePlan {
 }
 
 export type AddOutcome =
-  | { ok: true; appId: number; title: string; notes: string[]; romPath: string }
+  | {
+    ok: true; appId: number; title: string; notes: string[]; romPath: string;
+    /** File names of the updates and DLC that went in with it. */
+    contentInstalled: string[];
+  }
   | { ok: false; error: string };
 
 /**
@@ -83,15 +87,16 @@ export async function addGameToSteam(
 
   // After the record exists, because installing one is matched against it.
   const waiting = probe?.content_waiting ?? [];
-  if (waiting.length) {
-    const installed = await installWaitingContent(added.appId, waiting, (one, index) => {
+  const installed = waiting.length
+    ? await installWaitingContent(added.appId, waiting, (one, index) => {
       onContentStep?.(one.label, index, waiting.length, one.name.toLowerCase().endsWith(".nsz"));
-    });
-    if (installed.length) notes.push(`${installed.join(", ")} installed`);
-  }
+    })
+    : [];
+  if (installed.length) notes.push(`${installed.map((one) => one.label).join(", ")} installed`);
 
   return {
     ok: true, appId: added.appId, title: prepared.title, notes,
     romPath: prepared.rom_path || addPath,
+    contentInstalled: installed.map((one) => one.name),
   };
 }

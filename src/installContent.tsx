@@ -64,20 +64,20 @@ export async function installContentFor(
  * `onStep` is told before each one starts, so the panel can say which it is on:
  * an `.nsz` is unpacked on the way in, and a large update takes a while.
  *
- * Resolves the labels of the ones that went in.
+ * Resolves the ones that went in.
  */
 export async function installWaitingContent(
   appId: number,
   waiting: NonNullable<RomProbe["content_waiting"]>,
   onStep?: (one: NonNullable<RomProbe["content_waiting"]>[number], index: number) => void,
-): Promise<string[]> {
-  const installed: string[] = [];
+): Promise<NonNullable<RomProbe["content_waiting"]>> {
+  const installed: NonNullable<RomProbe["content_waiting"]> = [];
   const refused: string[] = [];
   for (const [index, one] of waiting.entries()) {
     onStep?.(one, index);
     try {
       const result = await installGameContent(appId, one.path);
-      if (result.ok) installed.push(one.label);
+      if (result.ok) installed.push(one);
       else refused.push(`${one.label}: ${result.error}`);
     } catch (error) {
       logError("could not install an update or DLC after adding", error);

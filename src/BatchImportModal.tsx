@@ -14,9 +14,11 @@ import {
 } from "./backend";
 import {
   addBatch,
+  blockingFor,
   chosenRows,
   closeBatch,
   discAsOwnGame,
+  discPlan,
   discsMustSplit,
   getBatch,
   joinDiscRow,
@@ -57,6 +59,7 @@ import { openManagePage } from "./manageRoute";
 import { closeOpenModals } from "./modalStack";
 import { openRestoreSaves } from "./openRestore";
 import { ScrollList, ScrollRow } from "./ScrollList";
+import { sentence } from "./sentence";
 import { SGDB_PROMPT, sgdbKeyJustAppeared, shouldOfferSgdb } from "./sgdbPrompt";
 import { SwitchLabel } from "./SwitchLabel";
 
@@ -154,6 +157,9 @@ function warningsOf(row: BatchRow): string[] {
     probe?.dump_warning ?? "",
     row.needs.download.length
       ? `${row.needs.emulator} needs ${row.needs.download.map((one) => one.name).join(" and ")}; it downloads from Sony as the game is added.`
+      : "",
+    blockingFor(row.needs, row.path).length
+      ? `${row.needs.emulator} will not start a game without ${blockingFor(row.needs, row.path).join(", ")}, and it was not found. Send it from the transfer page and install it there; if it is already set up under another name, add the game anyway.`
       : "",
     sendFor(row).length
       ? `${row.needs.emulator} asks for ${sendFor(row).join(", ")}. Many games run without it; if this one does not, send it from the transfer page.`
@@ -378,9 +384,10 @@ function GamePage({ row, onBack, register }: {
   /** Hands the dialog this page's way back, for B. */
   register: (back: () => void) => void;
 }) {
-  const [name, setName] = useState(row.title);
-  // What the field held before anyone typed, so a picked game can rename it.
-  const [automatic, setAutomatic] = useState(row.title);
+  // What was typed, or null: untyped, the field follows the row, whose name a
+  // lookup on this page (another emulator or system) may change.
+  const [typed, setTyped] = useState<string | null>(null);
+  const name = typed ?? row.title;
   const [everything, setEverything] = useState(false);
   const [choice, setChoice] = useState<Choice | null>(null);
   // The line a choice was opened from, focused again on the way back.
@@ -396,9 +403,12 @@ function GamePage({ row, onBack, register }: {
   const all = row.probe?.all_cores ?? [];
   const cores = everything || matching.length === 0 ? all : matching;
   const warnings = warningsOf(row);
+  // One game only where the emulator can be given the set; this disc alone
+  // is its own entry, and the other discs stay where they are.
   const discOptions = [
-    { data: "one", label: `One game of ${row.discs.length} discs` },
+    ...(discsMustSplit(row) ? [] : [{ data: "one", label: `One game of ${row.discs.length} discs` }]),
     { data: "each", label: "Each disc on its own" },
+    { data: "single", label: `This disc only: ${row.name}` },
   ];
 
   // A disc the naming rules cannot see, picked by hand from the same folder:
@@ -434,7 +444,7 @@ function GamePage({ row, onBack, register }: {
   };
 
   const done = () => {
-    if (name.trim() && name !== row.title) setTitle(row.path, name.trim());
+    if (typed?.trim() && typed.trim() !== row.title) setTitle(row.path, typed.trim());
     onBack();
   };
   const back = () => (choice ? setChoice(null) : done());
@@ -459,9 +469,8 @@ function GamePage({ row, onBack, register }: {
               row={row}
               name={name}
               onPicked={(applied) => {
-                const title = titleAfterArtPick(name, automatic, applied.suggested_title);
-                setName(title);
-                setAutomatic(title);
+                const title = titleAfterArtPick(name, row.title, applied.suggested_title);
+                setTyped(null);
                 setPickedGame(row.path, title, applied);
                 setChoice(null);
               }}
@@ -488,8 +497,9 @@ function GamePage({ row, onBack, register }: {
               onPick={(data) => picked(() => void setSystemFor(row.path, String(data)))} />
           )}
           {choice === "discs" && (
-            <OptionList options={discOptions} selected={row.discMode}
-              onPick={(data) => picked(() => setDiscMode(row.path, data === "each" ? "each" : "one"))} />
+            <OptionList options={discOptions} selected={discPlan(row)}
+              onPick={(data) => picked(() => setDiscMode(row.path,
+                data === "each" || data === "single" ? data : "one"))} />
           )}
           {choice === "core" && (
             <OptionList options={installableOptions(row.installable)} selected={row.installableId}
@@ -516,7 +526,7 @@ function GamePage({ row, onBack, register }: {
             value={name}
             bShowClearAction
             style={{ paddingRight: "2.6em" }}
-            onChange={(event) => setName(event.target.value)}
+            onChange={(event) => setTyped(event.target.value)}
           />
           <FileName name={rowFileLabel(row)} style={{ ...MUTED, marginTop: "6px" }} />
           {!row.fixed && row.resolved && NAME_SOURCE_LABELS[row.resolved.title_source] && (
@@ -526,20 +536,21 @@ function GamePage({ row, onBack, register }: {
       </Focusable>
       <ScrollList style={{ maxHeight: "none" }}>
         <SummaryLine label="Game" value={gameName} onClick={() => open("game")}
-          autoFocus={(from ?? "game") === "game"} />
+          autoFocus={from === "game" || (from === null && !row.verdict.pick)} />
         {/* A file taken for the wrong platform usually needs another emulator,
             and the picker for its file type would change every such file. */}
         {/* A package names its own emulator. */}
-        {all.length > 1 && !packaged && (
-          <SummaryLine label="Emulator" value={coreName(row) || "None"} onClick={() => open("emulator")}
-            autoFocus={from === "emulator"} />
+        {/* Also with one installed, for a file nothing claims: it is the pick. */}
+        {(all.length > 1 || (all.length > 0 && !row.coreId)) && !packaged && (
+          <SummaryLine label="Emulator" value={coreName(row) || "Not chosen"} onClick={() => open("emulator")}
+            autoFocus={from === "emulator" || (from === null && Boolean(row.verdict.pick))} />
         )}
         {systems.length > 0 && (
           <SummaryLine label="System" value={chosenLabel(systems, row.systemId)}
             onClick={() => open("system")} autoFocus={from === "system"} />
         )}
-        {row.discs.length >= 2 && !discsMustSplit(row) && (
-          <SummaryLine label="Discs" value={chosenLabel(discOptions, row.discMode)}
+        {row.discs.length >= 2 && (
+          <SummaryLine label="Discs" value={chosenLabel(discOptions, discPlan(row))}
             onClick={() => open("discs")} autoFocus={from === "discs"} />
         )}
         {row.installable.length > 1 && row.verdict.step === "core" && (
@@ -547,7 +558,7 @@ function GamePage({ row, onBack, register }: {
             onClick={() => open("core")} autoFocus={from === "core"} />
         )}
 
-        {discsMustSplit(row) && (
+        {discsMustSplit(row) && discPlan(row) === "each" && (
           <ScrollRow>
             <div style={{ ...MUTED, marginTop: "10px" }}>
               {coreName(row) || "This emulator"} cannot be given a playlist, so each of
@@ -636,18 +647,17 @@ function GetRetroArch() {
 
 /** The row's file, or for a set the game and which discs are here. */
 function rowFileLabel(row: BatchRow): string {
-  return row.discs.length >= 2 ? discSetLabel(row.discs) : row.name;
+  return discPlan(row) === "single" || row.discs.length < 2 ? row.name : discSetLabel(row.discs);
 }
 
 function GameRow({ row, onEdit }: { row: BatchRow; onEdit: () => void }) {
   const capsule = row.resolved?.art?.capsule?.data;
   const stepping = row.busy && Boolean(row.stepStatus);
   const rest = [
-    row.discs.length >= 2
-      ? row.discMode === "each" || discsMustSplit(row)
-        ? `${row.discs.length} discs, each on its own`
-        : `${row.discs.length} discs as one game`
-      : "",
+    row.discs.length < 2 ? ""
+      : discPlan(row) === "single" ? `This disc only, of ${row.discs.length}`
+        : discPlan(row) === "each" ? `${row.discs.length} discs, each on its own`
+          : `${row.discs.length} discs as one game`,
     row.busy && !stepping ? "Looking up..." : row.verdict.reason,
     contentSummary(row),
     // Who supplies what the emulator is missing, said the same way for every
@@ -944,6 +954,7 @@ export function BatchImportModal({ closeModal }: { closeModal?: () => void }) {
                   <div style={{ minWidth: 0 }}>
                     <div>{row.title}{row.added.length > 1 ? ` (${row.added.length} entries)` : ""}</div>
                     <div style={MUTED}><Detail row={row} rest={[]} /></div>
+                    {row.notes.length > 0 && <div style={MUTED}>{sentence(row.notes.join(" - "))}</div>}
                     {row.error && <div style={PROBLEM}>{row.error}</div>}
                   </div>
                 </div>

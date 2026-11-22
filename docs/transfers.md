@@ -65,7 +65,7 @@ both act on all of it.
 
 **A multi-disc game is one row**, in the transfer list and in Add games. Press
 **Add** and every disc comes with it, as one game, and the row says so; the
-pencil adds each disc on its own instead.
+pencil adds each disc on its own instead, or only one of them.
 
 **A game and what goes in with it are one row too**: its update and DLC, or a
 package's licence key, sent with it. The row says what it brings (*+ 1 update ·
@@ -97,7 +97,8 @@ few at a time, then lists them:
   **Add to game** for a disc of a game you added. BIOS files are installed from
   the transfer list, where their emulator is known. Licence keys have no
   button: they go in with their game.
-- **Can't be added**: files nothing can use.
+- **Can't be added**: files nothing can use. A file that no installed emulator
+  claims waits under *Check these* instead, and the pencil picks one to run it.
 
 The pencil on a game turns the dialog to its page, before anything is added:
 its name, the game and cover (the closest matches are listed there, with a
