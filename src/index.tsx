@@ -7,7 +7,7 @@ import {
   PanelSectionRow,
   quickAccessMenuClasses,
 } from "./steamui";
-import { addEventListener, removeEventListener, useQuickAccessVisible } from "./host";
+import { addEventListener, removeEventListener, toaster, useQuickAccessVisible } from "./host";
 import type { ReactElement, ReactNode } from "react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { FaCog, FaGamepad } from "react-icons/fa";
@@ -639,6 +639,15 @@ export function start(): Started {
     noteUpdate(Boolean(available), version || "");
   addEventListener<[boolean, string]>("update_available", onUpdateAvailable);
 
+  // A licence sent on its own goes into RPCS3 as it arrives and leaves the
+  // transfer list, so it is confirmed here or it looks lost.
+  const onLicenceArrived = (game: string, already: boolean) =>
+    toaster.toast({
+      title: already ? "Licence already installed" : "Licence installed",
+      body: `${game} · RPCS3`,
+    });
+  addEventListener<[string, boolean]>("licence_arrived", onLicenceArrived);
+
   /*
    * And ask once, rather than only listening.
    *
@@ -695,6 +704,7 @@ export function start(): Started {
     ),
     stop() {
       removeEventListener("update_available", onUpdateAvailable);
+      removeEventListener("licence_arrived", onLicenceArrived);
       // Steam keeps the patched component, so leaving this would put a dead
       // item in every game menu until the client restarts.
       unpatchContextMenu();

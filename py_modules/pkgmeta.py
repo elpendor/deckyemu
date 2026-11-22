@@ -48,6 +48,30 @@ def package_title(path):
     return " ".join(str(title).split())
 
 
+def ps3_needs_licence(path):
+    """True, False, or None when unknown: whether a PS3 package needs a .rap.
+
+    Metadata block 1 is the package's DRM type, in plain text: 1 network and
+    2 local need a licence, 3 is free. Anything else is not said.
+    """
+    try:
+        with open(path, "rb") as handle:
+            head = handle.read(0x100)
+            if not head.startswith(PKG_MAGIC):
+                return None
+            offset, count = struct.unpack_from(">II", head, 8)
+            for _ in range(min(count, 64)):
+                handle.seek(offset)
+                kind, size = struct.unpack(">II", handle.read(8))
+                if kind == 1 and size >= 4:
+                    drm = struct.unpack(">I", handle.read(4))[0]
+                    return {1: True, 2: True, 3: False}.get(drm)
+                offset += 8 + size
+    except (OSError, struct.error, ValueError):
+        return None
+    return None
+
+
 def _ps4_sfo(handle):
     """param.sfo from a PS4 package's entry table."""
     handle.seek(0x10)

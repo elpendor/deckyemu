@@ -173,16 +173,19 @@ Vita3K installs from a `.pkg` directly once it has the licence key.
 ### Sending a PS3 licence on its own
 
 A `.rap` next to its `.pkg` goes in when the game is unpacked, whatever it's
-called.
+called. A package that needs one says so in its own header, so **Add games**
+won't let you tick it until its `.rap` is there; a licence-free package goes in
+without one.
 
-Sending one later, for a game already in RPCS3? Its row in the transfer list has
-**Install**. A `.rap` named for its content id, like
-`UP0000-ABCD12345_00-0000000000000001.rap`, gets put where RPCS3 reads it. Any
-other name says nothing about which game it unlocks, so it's refused with a note
-to send it next to its `.pkg`.
+Sending one later, for a game already in RPCS3? A `.rap` named for its content
+id, like `UP0000-ABCD12345_00-0000000000000001.rap`, goes where RPCS3 reads it
+the moment it arrives, and the transfer list and the page you sent it from both
+say so. Any other name says nothing about which game it unlocks,
+so it waits in the transfer folder and goes in with its `.pkg`.
 
-A Vita `.zrif` key has nothing to go into on its own — Vita3K reads it only
-while it installs the game — so its row tells you that instead.
+Licence keys that are waiting, `.rap` and Vita `.zrif` alike, share one
+**Licence keys** entry in the transfer list, with no button: Vita3K reads a key
+only while it installs the game, and a waiting `.rap` goes in with its package.
 
 ## Getting to the emulator's own menu
 

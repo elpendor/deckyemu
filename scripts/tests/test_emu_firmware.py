@@ -361,6 +361,47 @@ try:
     check("one named anything else is sent back to go with its package",
           "does not say which game" in ps3_games.install_licence_file(_anonymous)[1], True)
     check("and is left where it was", os.path.isfile(_anonymous), True)
+
+    # On arrival, with RPCS3 installed: a named licence goes straight in, so
+    # the transfer list never needs a button for it.
+    import emulators  # noqa: E402
+    import plugin_transfers  # noqa: E402
+    _find = emulators.find
+    emulators.find = lambda slug: {"id": slug} if slug == "rpcs3" else None
+    with open(_alone, "wb") as _handle:
+        _handle.write(bytes(range(16)))
+    _said = []
+    _landed, _note = plugin_transfers.take_delivery(_alone, say=lambda *told: _said.append(told))
+    check("a named licence goes into RPCS3 the moment it arrives",
+          (os.path.basename(_landed), os.path.isfile(_alone)),
+          ("UP0000-ABCD12345_00-0000000000000001.rap", False))
+    check("and the sender's page is told what became of it", _note, "installed into RPCS3")
+    check("and says so, so it does not just vanish from the list",
+          _said, [("UP0000-ABCD12345_00-0000000000000001", False)])
+    with open(_alone, "wb") as _handle:
+        _handle.write(bytes(range(16)))
+    plugin_transfers.take_delivery(_alone, say=lambda *told: _said.append(told))
+    check("sent again, it says it was already there",
+          _said[-1], ("UP0000-ABCD12345_00-0000000000000001", True))
+    _last = plugin_transfers.taken_licences()[-1]
+    check("and the transfer list keeps saying so after the toast",
+          (_last["game"], _last["note"]),
+          ("UP0000-ABCD12345_00-0000000000000001", "already in RPCS3"))
+    plugin_transfers.forget_taken({_last["id"]})
+    check("until it is cleared, one at a time",
+          [one["id"] for one in plugin_transfers.taken_licences()].count(_last["id"]), 0)
+    plugin_transfers.forget_taken()
+    check("or all at once", plugin_transfers.taken_licences(), [])
+    check("an anonymous one waits for its package",
+          plugin_transfers.take_delivery(_anonymous), _anonymous)
+    emulators.find = lambda slug: None
+    with open(_alone, "wb") as _handle:
+        _handle.write(bytes(range(16)))
+    check("and without RPCS3 a named one waits too",
+          plugin_transfers.take_delivery(_alone), _alone)
+    emulators.find = _find
+    os.remove(_alone)
+    os.remove(_landed)
     os.remove(_anonymous)
 
     _not_a_rap = os.path.join(_fw_dir, "UP0000-ABCD12345_00-0000000000000001.rap")

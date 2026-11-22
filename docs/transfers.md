@@ -87,10 +87,11 @@ few at a time, then lists them:
   you've already added — and files that need a step first, saying what **Add**
   will do: unpack them, install a core, install a package and its emulator.
 - **Other files**: what belongs to a game rather than being one, with the same
-  button the transfer list gives it — **Install** for an update, DLC, a ROM
-  hack or a PS3 licence, **Restore** for a save backup, **Import** for an
-  emulator definition, **Add to game** for a disc of a game you added. BIOS
-  files are installed from the transfer list, where their emulator is known.
+  button the transfer list gives it — **Install** for an update, DLC or a ROM
+  hack, **Restore** for a save backup, **Import** for an emulator definition,
+  **Add to game** for a disc of a game you added. BIOS files are installed from
+  the transfer list, where their emulator is known. Licence keys have no
+  button: they go in with their game.
 - **Can't be added**: files nothing can use.
 
 The pencil on a game turns the dialog to its page, before anything is added:

@@ -266,6 +266,8 @@ export interface PackageState {
    * that "Failed to decrypt content" is no longer the first anyone hears of it.
    */
   licence_state?: "installed" | "waiting" | "" | "unknown";
+  /** PS3 only: what the package's DRM type says; null when it says nothing. */
+  licence_needed?: boolean | null;
   /**
    * PS3 only: the package's full content id, e.g.
    * `UP4049-NPUB30133_00-BRAID00000000001`. Reported because it *is* the

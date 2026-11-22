@@ -81,6 +81,18 @@ describe("classifyProbe", () => {
       .toMatchObject({ include: false, reason: "Needs its licence key", blocked: true });
   });
 
+  it("blocks a PS3 package without its .rap only when the package needs one", () => {
+    const pkg = { installed: false, title_id: "", emulator_ready: true, emulator_id: "rpcs3",
+      emulator_name: "RPCS3", content_id: "UP0000-NPUB00000_00-HARBORDASH000000",
+      licence_state: "", licence_needed: true };
+    const verdict = (extra: object) =>
+      classifyProbe(probe({ ps3_package: { ...pkg, ...extra } } as unknown as Partial<RomProbe>));
+    expect(verdict({})).toMatchObject({ reason: "Needs its licence key", blocked: true });
+    expect(verdict({ licence_needed: false })).toMatchObject({ include: true, step: "package" });
+    expect(verdict({ licence_needed: null })).toMatchObject({ include: true, step: "package" });
+    expect(verdict({ licence_state: "waiting" })).toMatchObject({ include: true, step: "package" });
+  });
+
   it("unpacks what nothing can open as it is", () => {
     expect(classifyProbe(probe({ can_unpack: true, archived_content: "stfs", suggested_core_id: "" })))
       .toMatchObject({ step: "unpack", include: true });

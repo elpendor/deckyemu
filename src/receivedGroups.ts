@@ -147,8 +147,8 @@ export function batchInputs(
     if (purpose === "backup") return as("save");
     if (name.endsWith(DEFINITION_SUFFIX)) return as("definition");
     if (isFirmware(file.name)) return as("firmware");
-    if (name.endsWith(".rap")) return as("licence");
-    if (file.licence_key) return as("key");
+    // A .rap or a Vita key: both go in with their game, and nothing else.
+    if (file.licence_key || name.endsWith(".rap")) return as("key");
     if (file.game_content) return as("content");
     if (PATCH_SUFFIXES.some((one) => name.endsWith(one))) return as("patch");
     if (file.disc_for) return as("disc");

@@ -45,7 +45,6 @@ vi.mock("./backend", () => ({
   getStatus: vi.fn(async () => ({ found: true })),
   installCore: vi.fn(),
   installEmulator: (...args: unknown[]) => installEmulator(...args),
-  installPs3Licence: vi.fn(),
   installPs3Package: vi.fn(),
   installPs4Package: (...args: unknown[]) => installPs4Package(...args),
   installVitaPackage: vi.fn(),

@@ -19,7 +19,6 @@ import {
   discAsOwnGame,
   discsMustSplit,
   getBatch,
-  installLicenceRow,
   joinDiscRow,
   lookUpAgain,
   lookUpAll,
@@ -168,7 +167,9 @@ function packageWarnings(row: BatchRow): string[] {
   const waiting = probe?.ps4_package ?? vita ?? ps3;
   if (!waiting || waiting.installed) return [];
   const notes: string[] = [];
-  if (ps3?.licence_state === "" && ps3.content_id) {
+  if (ps3?.licence_state === "" && ps3.content_id && ps3.licence_needed) {
+    notes.push(`This game needs its .rap licence. Send it to the same folder as the game, named ${ps3.content_id}.rap if more than one is there, and open this again.`);
+  } else if (ps3?.licence_state === "" && ps3.content_id && ps3.licence_needed !== false) {
     notes.push(`Store games need a .rap licence. Send it to the same folder as the game and it goes in when the game does. If there is more than one .rap there, name this one ${ps3.content_id}.rap. Licence-free games work without one.`);
   } else if (ps3?.licence_state === "installed") {
     notes.push("RPCS3 already has this game's .rap, from an earlier install.");
@@ -684,8 +685,6 @@ function OtherRow({ row, hide }: { row: BatchRow; hide: () => void }) {
   const act = () => {
     if (kind === "definition") {
       importDefinition(row.name, () => markDone(row.path, "Imported"));
-    } else if (kind === "licence") {
-      void installLicenceRow(row.path);
     } else if (kind === "content" && owner) {
       setBusy(row.path, true);
       void installContentFor(owner, row.path).then((installed) =>

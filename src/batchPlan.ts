@@ -19,7 +19,7 @@ export type Step = "" | "unpack" | "package" | "emulator" | "core" | "retroarch"
 
 /** What a non-game row does, and what its button says. */
 export type OtherKind =
-  | "definition" | "firmware" | "licence" | "key" | "content" | "patch" | "save" | "disc";
+  | "definition" | "firmware" | "key" | "content" | "patch" | "save" | "disc";
 
 export interface Verdict {
   bucket: Bucket;
@@ -61,6 +61,12 @@ export function classifyProbe(
       return (packaged.state.licence_candidates ?? []).length
         ? blocked("The key here is for another game", "package")
         : blocked("Needs its licence key", "package");
+    }
+    // A PS3 package says whether it is licence-free; one that is not cannot
+    // start without its .rap.
+    if (packaged.system === "ps3" && packaged.state.licence_needed === true
+      && packaged.state.licence_state === "") {
+      return blocked("Needs its licence key", "package");
     }
     const name = packaged.state.emulator_name || "its emulator";
     const key = packaged.system === "vita" ? " · key matched" : "";
@@ -122,8 +128,7 @@ export function otherVerdict(kind: OtherKind, label = ""): Verdict {
   const reasons: Record<OtherKind, string> = {
     definition: "An emulator definition",
     firmware: "BIOS or firmware",
-    licence: "A PS3 licence",
-    key: "A Vita licence key, used when its .pkg installs",
+    key: "A licence key, used when its game is added",
     content: label || "An update or DLC",
     patch: "A ROM hack",
     save: "A save backup",

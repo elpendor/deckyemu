@@ -486,7 +486,7 @@ function attempt(job) {
     });
     request.addEventListener('loadend', stopWatching);
     request.addEventListener('load', () => {
-      if (request.status === 200) { finish(job); return; }
+      if (request.status === 200) { finish(job, request.responseText); return; }
       // 410 is the Deck saying the user cancelled this file. Terminal, and the
       // only status here that is: everything else is worth another go, which is
       // what makes a transfer survive a phone locking itself. Retrying this one
@@ -525,9 +525,11 @@ function again(job, moved, message) {
   }, Math.min(1000 * Math.pow(2, job.stalls), 10000));
 }
 
-function finish(job) {
+function finish(job, note) {
   job.bar.remove();
-  job.size.textContent = humanSize(job.file.size);
+  // What the Deck did with it, when it did more than keep it.
+  job.size.textContent = humanSize(job.file.size) +
+    (note && note !== 'ok' ? ' \u00b7 ' + note : '');
   job.row.className = 'done';
   // Newest first, matching the order the server lists what it already had.
   receive(job.row);

@@ -29,6 +29,7 @@ import emulator_catalog
 import emulators
 import fileserver
 import platforms
+import pkgmeta
 import ps3_games
 import ps4_games
 import romshelf
@@ -127,6 +128,8 @@ class PackagedGames(plugin_base.PluginContext):
             # the name the licence ends up under, and the one the user can be
             # told to use if the search below found nothing to rename.
             "content_id": content_id,
+            # From the package's own DRM type: None when it does not say.
+            "licence_needed": pkgmeta.ps3_needs_licence(pkg_path),
             "licence_state": ps3_games.licence_state(
                 content_id,
                 ps3_games.licence_dirs(pkg_path, emu_install.firmware_dir()),
@@ -322,24 +325,6 @@ class PackagedGames(plugin_base.PluginContext):
             "title_id": added[0]["title_id"],
             "licence": licence,
         }
-
-    async def install_ps3_licence(self, name: str):
-        """Put a `.rap` sent on its own into RPCS3, by name out of the transfer folder.
-
-        By name rather than path, like everything else that acts on the folder:
-        `inbox_path` refuses anything that is not already a file in there.
-        """
-        path = await self._run(fileserver.inbox_path, name)
-        if not path:
-            return {"ok": False, "error": "%s is not in the transfer folder." % name}
-        if not name.lower().endswith(".rap"):
-            return {"ok": False, "error": "Only a .rap is a PS3 licence."}
-        if not await self._run(emulators.find, "rpcs3"):
-            return {"ok": False, "error": "RPCS3 is not installed. %s" % _WHERE}
-        installed, error = await self._run(ps3_games.install_licence_file, path)
-        if error:
-            return {"ok": False, "error": error}
-        return {"ok": True, "name": installed}
 
     async def install_ps4_package(self, path: str):
         """Unpack a PS4 .pkg with the standalone extractor, fetching it first.

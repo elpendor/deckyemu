@@ -94,7 +94,7 @@ check("and the headings follow whatever the lists actually hold",
 # `finish` and this read "the move is in `finish`" -- a link fetched from the
 # page is a second way a file arrives, so the rule became a function that both
 # endings call once they have succeeded.
-_finish = _page.partition("function finish(job) {")[2].partition("\n}")[0]
+_finish = _page.partition("function finish(job, note) {")[2].partition("\n}")[0]
 check("there is one move into the received list",
       _page.count("already.insertBefore"), 1)
 check("a completed upload takes it", "receive(job.row)" in _finish, True)
@@ -106,7 +106,7 @@ check("and a fetched link only after the Deck said it worked",
 # the line verbatim, which is how this was written and what broke when a second
 # terminal status was added beside it -- the guard was still there and still
 # correct, and the check failed on the punctuation around it.
-_finish_calls = [line.strip() for line in _page.splitlines() if "finish(job)" in line
+_finish_calls = [line.strip() for line in _page.splitlines() if "finish(job" in line
                  and "function finish" not in line]
 check("and nothing else calls it",
       (len(_finish_calls), all("status === 200" in line for line in _finish_calls)),

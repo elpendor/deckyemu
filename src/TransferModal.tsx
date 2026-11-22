@@ -19,7 +19,6 @@ import {
   type FirmwareReport,
   getSettings,
   installFirmware,
-  installPs3Licence,
   resetTransferLink,
   setSettings,
   startFileServer,
@@ -71,6 +70,7 @@ import { closeOpenModals, openModal } from "./modalStack";
 import { repointShortcut } from "./steam";
 import { ICON_BUTTON, ICON_BUTTON_WIDE } from "./iconButton";
 import { showFailure } from "./showFailure";
+import { confirmDeleteKeys, licenceSummary, LicenceKeysModal } from "./LicenceKeysModal";
 
 /** How often to re-check while running, to pick up newly arrived files. */
 const POLL_MS = 3000;
@@ -751,36 +751,6 @@ export function TransferModal({
 
   // A PS3 licence sent on its own. Refusals are a dialog, as for an update: the
   // list is about to be looked at again, and a corner toast goes unseen.
-  const installLicence = useCallback(
-    async (name: string) => {
-      const refuse = (body: string) =>
-        openModal(
-          <ConfirmModal
-            strTitle="Licence not installed"
-            strDescription={body}
-            strOKButtonText="Close"
-            bAlertDialog
-          />,
-        );
-      setBusy(true);
-      try {
-        const result = await installPs3Licence(name);
-        if (result.ok) {
-          toaster.toast({ title: "Licence installed", body: result.name ?? name });
-        } else {
-          refuse(result.error || "Could not install that licence.");
-        }
-      } catch (licenceError) {
-        logError("could not install a licence", licenceError);
-        refuse("Could not install that licence.");
-      } finally {
-        setBusy(false);
-        void load();
-      }
-    },
-    [load],
-  );
-
   const install = useCallback(
     async (name: string) => {
       const match = matchFor(name);
@@ -897,6 +867,11 @@ export function TransferModal({
   // hands back a new array every few seconds anyway, so a memo would recompute
   // on the renders that matter and only bind the two together.
   const groups = groupReceived(received);
+  // Licence keys have nothing to do on their own: they go in with their game.
+  // One entry for all of them, so they do not crowd the files that do.
+  const keys = groups.filter(({ file }) => file.licence_key);
+  const shown = groups.filter(({ file }) => !file.licence_key);
+  const taken = status?.licences_taken ?? [];
   const addable = addableGroups(groups, purpose, (name) => Boolean(matchFor(name)));
   // What Add all takes: every row, each as what it is.
   const everything = batchInputs(groups, purpose, (name) => Boolean(matchFor(name)));
@@ -918,8 +893,8 @@ export function TransferModal({
   // See the fold below. `received` counts the folder rather than this session,
   // which is the point: a file sent yesterday and never added is still the
   // reason you are looking at this dialog rather than at a QR code.
-  const codeFolded =
-    received.length > 0 || uploads.length > 0 || (status?.paused ?? 0) > 0;
+  const codeFolded = received.length > 0 || uploads.length > 0
+    || (status?.paused ?? 0) > 0 || (status?.licences_taken ?? []).length > 0;
 
   // ModalRoot gets our handler, not the raw one, so dismissing with B stops the
   // server too rather than leaving it listening behind a closed dialog.
@@ -1207,15 +1182,16 @@ export function TransferModal({
           </div>
         )}
 
-        {received.length > 0 && (
+        {(received.length > 0 || taken.length > 0) && (
           <div style={{ ...COLUMN, gap: "6px" }}>
             <Focusable
               flow-children="row"
               style={{ display: "flex", alignItems: "center", gap: "10px" }}
             >
-              <div style={{ fontWeight: 600, flex: 1 }}>Received ({received.length})</div>
-              {/* Only with two or more: one file is its own row's button. */}
-              {everything.length >= 2 && (
+              <div style={{ fontWeight: 600, flex: 1 }}>Received{received.length ? ` (${received.length})` : ""}</div>
+              {/* Only with two or more rows: one file is its own row's
+                  button, and keys go in with their game. */}
+              {shown.length >= 2 && (
                 <DialogButton
                   disabled={busy}
                   onClick={() => review(everything)}
@@ -1228,7 +1204,7 @@ export function TransferModal({
               )}
             </Focusable>
             <ScrollList style={RECEIVED}>
-              {groups.map(({ file, tracks, size }) => (
+              {shown.map(({ file, tracks, size }) => (
                 <Focusable
                   key={file.path}
                   style={{ display: "flex", alignItems: "center", gap: "10px" }}
@@ -1294,20 +1270,6 @@ export function TransferModal({
                     >
                       Install
                     </DialogButton>
-                  ) : file.name.toLowerCase().endsWith(".rap") ? (
-                    // A PS3 licence, not a game: Add would make a Steam entry
-                    // out of sixteen bytes. Install puts it where RPCS3 looks.
-                    <DialogButton
-                      disabled={busy}
-                      onClick={() => void installLicence(file.name)}
-                      style={ICON_BUTTON_WIDE}
-                    >
-                      Install
-                    </DialogButton>
-                  ) : file.licence_key ? (
-                    // Vita3K reads a key only while it installs the package, so
-                    // there is nothing to put it into from here.
-                    <div style={MUTED}>Used when its .pkg is unpacked</div>
                   ) : file.game_content ? (
                     // A Switch update or DLC names the game it is for, so this
                     // installs straight into that game -- the same Install a
@@ -1417,6 +1379,39 @@ export function TransferModal({
                   )}
                 </Focusable>
               ))}
+              {/* Waiting keys and licences taken on arrival, one entry. A
+                  taken one has left the folder, so it is said here for a
+                  while or it looks like it never came. */}
+              {(keys.length > 0 || taken.length > 0) && (
+                <Focusable style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div>Licence keys</div>
+                    <div style={MUTED}>{licenceSummary(keys.length, taken)}</div>
+                  </div>
+                  <DialogButton
+                    onClick={() =>
+                      openModal(
+                        <LicenceKeysModal
+                          keys={keys.map(({ file }) => file)}
+                          taken={taken}
+                          onChanged={() => void load()}
+                        />,
+                      )
+                    }
+                    style={ICON_BUTTON}
+                  >
+                    <FaListUl />
+                  </DialogButton>
+                  <div className={DANGER_CLASS}>
+                    <DialogButton
+                      onClick={() => confirmDeleteKeys(keys.map(({ file }) => file), taken, () => void load())}
+                      style={ICON_BUTTON}
+                    >
+                      <FaTrash />
+                    </DialogButton>
+                  </div>
+                </Focusable>
+              )}
             </ScrollList>
           </div>
         )}

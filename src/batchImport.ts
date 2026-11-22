@@ -16,7 +16,6 @@ import {
   getStatus,
   installCore,
   installEmulator,
-  installPs3Licence,
   installPs3Package,
   installPs4Package,
   installVitaPackage,
@@ -819,21 +818,6 @@ export function markFailed(path: string, error: string): void {
 
 export function setBusy(path: string, busy: boolean): void {
   updateRow(path, { busy });
-}
-
-/** A PS3 licence: into RPCS3, where its game looks for it. */
-export async function installLicenceRow(path: string): Promise<void> {
-  const row = rowAt(path);
-  if (!row) return;
-  setBusy(path, true);
-  try {
-    const result = await installPs3Licence(row.name);
-    if (result.ok) markDone(path, "Licence installed");
-    else markFailed(path, result.error || "Could not install that licence.");
-  } catch (error) {
-    logError("could not install a licence", error);
-    markFailed(path, "Could not install that licence.");
-  }
 }
 
 /** A disc of a game already added: into that game's playlist and shortcut. */

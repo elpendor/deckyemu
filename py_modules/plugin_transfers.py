@@ -24,6 +24,7 @@ code lives somewhere findable. Nothing here may be instantiated alone.
 
 import asyncio
 import os
+import threading
 import time
 
 import appenv
@@ -47,6 +48,7 @@ import emulators
 import fileserver
 import launchers
 import procout
+import ps3_games
 import discset
 import romshelf
 import savedata
@@ -177,6 +179,70 @@ def _disc_for(item, homes):
             "disc": discset.disc_number(item["name"])}
 
 
+
+def take_delivery(path, say=None):
+    """File a completed arrival. Returns where it is now.
+
+    A save backup leaves the inbox (`savedata.take_delivery`). A .rap named for
+    its content id goes straight into RPCS3, so a licence never needs a button;
+    any other .rap waits beside its .pkg and goes in with the game.
+
+    `say(game, already)` is told of a licence taken, so a file that leaves the
+    list is never a file that silently vanished.
+    """
+    path = savedata.take_delivery(path)
+    if not path.lower().endswith(".rap") or not emulators.find("rpcs3"):
+        return path
+    stem = os.path.splitext(os.path.basename(path))[0].upper()
+    target = os.path.join(ps3_games.exdata_dir(), stem + ".rap")
+    already = os.path.isfile(target)
+    name, error = ps3_games.install_licence_file(path)
+    if error or not name:
+        return path
+    game = _licence_game(stem)
+    note = "already in RPCS3" if already else "installed into RPCS3"
+    with _taken_lock:
+        global _taken_next
+        _taken_next += 1
+        _taken.append({"id": _taken_next, "game": game, "note": note, "at": time.time()})
+        del _taken[:-5]
+    if say:
+        say(game, already)
+    # The note goes back to the sender's page, which shows it on the row.
+    return os.path.join(ps3_games.exdata_dir(), name), note
+
+
+#: Licences taken on arrival, newest last, for the transfer list to keep
+#: saying so after the toast has gone.
+_taken: list = []
+_taken_next = 0
+_taken_lock = threading.Lock()
+_TAKEN_FOR = 30 * 60
+
+
+def taken_licences():
+    """[{id, game, note}] for the licences taken in the last half hour."""
+    cutoff = time.time() - _TAKEN_FOR
+    with _taken_lock:
+        return [{"id": one["id"], "game": one["game"], "note": one["note"]}
+                for one in _taken if one["at"] >= cutoff]
+
+
+def forget_taken(ids=None):
+    """Stop listing the given taken licences, or all of them. RPCS3 keeps
+    the licence itself: this is only the line saying it went in."""
+    with _taken_lock:
+        _taken[:] = [one for one in _taken if ids is not None and one["id"] not in ids]
+
+
+def _licence_game(content_id):
+    """The installed game a content id belongs to, by title id, or the id."""
+    title_id = content_id[7:16] if len(content_id) >= 16 else ""
+    for game in ps3_games.installed_games():
+        if game.get("title_id") == title_id:
+            return game.get("title") or content_id
+    return content_id
+
 class Transfers(plugin_base.PluginContext):
     """Sending files to the Deck and reading a report back. See the module docstring."""
 
@@ -185,6 +251,7 @@ class Transfers(plugin_base.PluginContext):
         # Its own folder, not wherever ROMs are browsed from -- see
         # fileserver.default_dir.
         status["suggested_dir"] = await self._run(fileserver.default_dir)
+        status["licences_taken"] = taken_licences()
         # A CD rip is one sheet and a dozen tracks, and every one of them used
         # to get its own row with its own Add -- which on a track makes a Steam
         # entry out of raw sectors. Each track carries the sheet that owns it so
@@ -211,6 +278,9 @@ class Transfers(plugin_base.PluginContext):
             if lowered.endswith(vita_games.ZRIF_SUFFIXES):
                 item["licence_key"] = bool(
                     await self._run(vita_games.zrif_from, item["path"]))
+            # A .rap still here is waiting for its .pkg, the same as a key.
+            elif lowered.endswith(".rap"):
+                item["licence_key"] = True
 
             # A disc of a game already added goes into that game rather than
             # making a second entry with the same name. Never for a track: the
@@ -1950,6 +2020,11 @@ class Transfers(plugin_base.PluginContext):
         """
         result = await self._run(fileserver.stop_if_idle)
         return {"ok": True, **result}
+
+    async def forget_taken_licences(self, ids=None):
+        """Drop taken licences from the transfer list; all when `ids` is None."""
+        forget_taken(None if ids is None else {int(one) for one in ids})
+        return {"ok": True}
 
     async def discard_transferred_file(self, name: str):
         """Delete one file from the transfer folder. The only way to, in Game Mode.

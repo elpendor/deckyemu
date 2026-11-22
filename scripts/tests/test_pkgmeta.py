@@ -77,5 +77,23 @@ if switch_nsz.available():
 check("anything else names nothing", pkgmeta.package_title(_write("d.pkg", b"not a package")), "")
 check("nor does a file that is not there", pkgmeta.package_title(os.path.join(_DIR, "gone.pkg")), "")
 
+
+def _drm(kind):
+    """A package whose metadata block 1, its DRM type, says `kind`."""
+    head = bytearray(0x100)
+    head[:4] = pkgmeta.PKG_MAGIC
+    struct.pack_into(">II", head, 8, 0x100, 2)     # two metadata blocks
+    return bytes(head) + struct.pack(">II", 2, 4) + bytes(4) + struct.pack(">III", 1, 4, kind)
+
+
+section("a PS3 package says whether it needs a licence")
+
+check("a local licence does", pkgmeta.ps3_needs_licence(_write("e.pkg", _drm(2))), True)
+check("so does a network one", pkgmeta.ps3_needs_licence(_write("f.pkg", _drm(1))), True)
+check("a free one does not", pkgmeta.ps3_needs_licence(_write("g.pkg", _drm(3))), False)
+check("a type it does not know says nothing", pkgmeta.ps3_needs_licence(_write("h.pkg", _drm(9))), None)
+check("nor does a file that is not a package",
+      pkgmeta.ps3_needs_licence(_write("i.pkg", b"not a package")), None)
+
 if __name__ == "__main__":
     summary()

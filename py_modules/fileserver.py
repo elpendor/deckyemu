@@ -1075,11 +1075,11 @@ class _Handler(httpshim.BASE):
         # Nothing it raises may cost the upload: the bytes are on disk and the
         # sender is waiting for a 200, so a failed filing is a tidiness problem
         # and the original path is still a real file.
-        name = _file_arrived(destination, total)
+        name, note = _file_arrived(destination, total)
         _remember_system(os.path.join(directory, name), system)
 
         appenv.logger.info("Received %s (%d bytes) into %s", name, total, directory)
-        self._reply(200, "ok")
+        self._reply(200, note or "ok")
 
 
 def _file_arrived(destination, total):
@@ -1096,11 +1096,16 @@ def _file_arrived(destination, total):
     and the original path is still a real file.
     """
     name = os.path.basename(destination)
+    note = ""
     with _state_lock:
         arrived = _on_arrival
     if arrived:
         try:
-            destination = arrived(destination) or destination
+            # A path, or (path, note): what became of it, for the sender.
+            filed = arrived(destination) or destination
+            if isinstance(filed, tuple):
+                filed, note = filed
+            destination = filed or destination
             name = os.path.basename(destination)
         except Exception as error:  # noqa: BLE001 - see above
             appenv.logger.warning("Arrival handler failed for %s: %s", name, error)
@@ -1110,7 +1115,7 @@ def _file_arrived(destination, total):
         # only the rest, and the list is about what the Deck now has.
         _received.append({"name": name, "path": destination, "size": total, "at": _now()})
         del _received[:-50]
-    return name
+    return name, note
 
 
 def fetch_definition(url):
@@ -1191,7 +1196,7 @@ def fetch_definition(url):
         _quiet_remove(partial)
         return "", "Could not finish the file: %s" % problem
 
-    name = _file_arrived(destination, total)
+    name, _note = _file_arrived(destination, total)
     appenv.logger.info("Fetched %s (%d bytes) from %s", name, total, url)
     return name, ""
 

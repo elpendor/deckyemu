@@ -313,6 +313,8 @@ export interface FileServerStatus {
   idle_seconds: number;
   idle_timeout: number;
   suggested_dir?: string;
+  /** PS3 licences that went into RPCS3 as they arrived, in the last while. */
+  licences_taken?: { id: number; game: string; note: string }[];
   /**
    * Where a diagnostic report is waiting to be read, or "" when none is. Also
    * carries the token, so the same caution applies as to `url`.
@@ -790,6 +792,11 @@ export const cancelUpload = callable<
  * `removed` is false when it had already gone, which is success rather than
  * failure -- a stale list pressed twice must not report an error.
  */
+/** Stop listing licences taken on arrival; all of them when `ids` is null. */
+export const forgetTakenLicences = callable<[ids: number[] | null], { ok: boolean }>(
+  "forget_taken_licences",
+);
+
 export const discardTransferredFile = callable<
   [name: string],
   { ok: boolean; error?: string; removed?: boolean; received?: ReceivedFile[] }

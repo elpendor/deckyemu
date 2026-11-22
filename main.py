@@ -39,7 +39,6 @@ import plugin_updates
 import ra_cores
 import hardware
 import ra_detect
-import savedata
 import store
 import sysenv
 import systemhint
@@ -281,9 +280,15 @@ class Plugin(
         # First in the log, so a report from other hardware explains itself.
         hardware.log_once()
 
-        # A save backup leaves the ROM inbox on arrival; see
-        # savedata.take_delivery. Set here as the server also starts on its own.
-        fileserver.set_arrival_handler(savedata.take_delivery)
+        # A save backup or a licence leaves the inbox on arrival; see
+        # plugin_transfers.take_delivery. Set here as the server also starts
+        # on its own.
+        def licence_taken(game, already):
+            asyncio.run_coroutine_threadsafe(
+                appenv.emit("licence_arrived", game, already), self.loop)
+
+        fileserver.set_arrival_handler(functools.partial(
+            plugin_transfers.take_delivery, say=licence_taken))
         # The upload page's platform list: what is installed, then everything
         # else that could be, once the catalogs are read in the background.
         fileserver.set_systems_source(lambda: systemhint.offered(
