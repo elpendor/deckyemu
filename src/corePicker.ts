@@ -77,6 +77,24 @@ export function coreOptions(cores: Core[]): DropdownOption[] {
 }
 
 /**
+ * What can run a file type, counted by the same kinds `coreOptions` groups:
+ * "1 port and 1 emulator". A port is not an emulator, so one count of
+ * "emulators" miscounted any type a port plays.
+ */
+export function runnersPhrase(cores: Core[]): string {
+  const count = (n: number, one: string) => (n ? [`${n} ${one}${n === 1 ? "" : "s"}`] : []);
+  const ports = cores.filter((core) => core.port).length;
+  const emulators = cores.filter((core) => isEmulatorId(core.id) && !core.port).length;
+  const libretro = cores.filter((core) => !isEmulatorId(core.id)).length;
+  const parts = [
+    ...count(ports, "port"),
+    ...count(emulators, "emulator"),
+    ...count(libretro, "RetroArch core"),
+  ];
+  return parts.length > 1 ? `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}` : parts[0] ?? "";
+}
+
+/**
  * `visible`, with the game's own core in it whether or not it belongs there.
  *
  * A dropdown whose `selectedOption` is not among its options draws nothing at

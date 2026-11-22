@@ -45,7 +45,7 @@ import {
 } from "./batchImport";
 import type { Bucket } from "./batchPlan";
 import { confirmJoinDisc } from "./confirmDiscSet";
-import { coreLabel, coreOptions, installableOptions, systemOptions } from "./corePicker";
+import { coreLabel, coreOptions, installableOptions, runnersPhrase, systemOptions } from "./corePicker";
 import { discSetLabel, withDisc, withoutDiscTag } from "./discSet";
 import { FileName } from "./FileName";
 import { FileSelectionType, openFilePicker } from "./host";
@@ -795,12 +795,12 @@ function Review({ batch, hide, onEdit }: { batch: Batch; hide: () => void; onEdi
     <ScrollList style={{ maxHeight: "50vh" }}>
       {/* Says why it is here: only types more than one emulator can run. */}
       {choices.length > 0 && (
-        <div style={{ ...MUTED, margin: "8px 0 4px" }}>Emulator for each file type</div>
+        <div style={{ ...MUTED, margin: "8px 0 4px" }}>What runs each file type</div>
       )}
       {choices.map(({ extension, cores, current, count }) => (
         <Focusable key={extension} style={{ display: "flex", alignItems: "center", gap: "10px", margin: "4px 0 8px" }}>
           <div style={{ fontSize: "13px", flexShrink: 0 }}>
-            {cores.length} installed emulators run .{extension}
+            {runnersPhrase(cores)} run .{extension}
             <span style={{ opacity: 0.7 }}> ({count} game{count === 1 ? "" : "s"})</span>
           </div>
           <div style={{ flexGrow: 1 }}>

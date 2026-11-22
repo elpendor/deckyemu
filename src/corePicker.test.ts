@@ -8,6 +8,7 @@ import {
   installableOptions,
   isEmulatorId,
   pinnedLabel,
+  runnersPhrase,
   systemOptions,
   withCurrentCore,
 } from "./corePicker";
@@ -390,5 +391,20 @@ describe("coreLabel", () => {
 
   it("survives an empty list, which is what a failed probe leaves", () => {
     expect(coreLabel([], "bsnes_libretro")).toBe("bsnes_libretro");
+  });
+});
+
+describe("runnersPhrase", () => {
+  const port = { ...core("emu:dusklight", "Dusklight"), port: true } as Core;
+  const emulator = core("emu:quill", "Quill");
+  const libretro = core("snes9x", "Nintendo - SNES / SFC (Snes9x)");
+
+  // A port is not an emulator; counting it as one is what this is for.
+  it("counts ports, emulators and cores as their own kinds", () => {
+    expect(runnersPhrase([port, emulator])).toBe("1 port and 1 emulator");
+    expect(runnersPhrase([port, emulator, libretro, libretro])).toBe(
+      "1 port, 1 emulator and 2 RetroArch cores",
+    );
+    expect(runnersPhrase([emulator, emulator])).toBe("2 emulators");
   });
 });
