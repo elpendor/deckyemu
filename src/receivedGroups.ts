@@ -29,6 +29,8 @@ export interface ReceivedGroup {
   discs?: ReceivedFile[];
   /** The game's name without its disc number, for a set. */
   title?: string;
+  /** Its update, DLC or licence key, sent with it: they go in with it. */
+  brought?: ReceivedFile[];
 }
 
 /** The folder part of a path, "" for a bare name. */
@@ -78,7 +80,40 @@ export function groupReceived(files: ReceivedFile[]): ReceivedGroup[] {
         size: tracks.reduce((total, one) => total + one.size, file.size),
       };
     });
-  return foldDiscSets(rows);
+  return foldBrought(foldDiscSets(rows));
+}
+
+/**
+ * A game's update, DLC or key into the game's row, as the review shows it:
+ * one row per game, and what goes in with it counted there.
+ */
+function foldBrought(rows: ReceivedGroup[]): ReceivedGroup[] {
+  const owner = new Map<string, ReceivedGroup>();
+  for (const row of rows) {
+    for (const name of row.file.brings ?? []) owner.set(`${folderOf(row.file.path)}/${name}`, row);
+  }
+  const folded = new Set<ReceivedGroup>();
+  for (const row of rows) {
+    const game = owner.get(`${folderOf(row.file.path)}/${row.file.name}`);
+    if (!game || game === row) continue;
+    game.brought = [...(game.brought ?? []), row.file];
+    game.size += row.size;
+    folded.add(row);
+  }
+  return rows.filter((row) => !folded.has(row));
+}
+
+/** "+ 1 update · 1 DLC · key" for a row that brings something, or "". */
+export function broughtSummary(brought: ReceivedFile[] = []): string {
+  const updates = brought.filter((file) => /^update/i.test(file.game_content?.label ?? "")).length;
+  const dlc = brought.filter((file) => file.game_content && !/^update/i.test(file.game_content.label ?? "")).length;
+  const keys = brought.filter((file) => file.licence_key || file.name.toLowerCase().endsWith(".rap")).length;
+  const parts = [
+    updates ? `${updates} update${updates === 1 ? "" : "s"}` : "",
+    dlc ? `${dlc} DLC` : "",
+    keys ? "key" : "",
+  ].filter(Boolean);
+  return parts.length ? `+ ${parts.join(" · ")}` : "";
 }
 
 /**
@@ -182,7 +217,12 @@ export function batchInputs(
   isFirmware: (name: string) => boolean,
 ): BatchInput[] {
   if (purpose === "firmware") return [];
-  return groups.flatMap(({ file, discs }): BatchInput | BatchInput[] => {
+  return groups.flatMap(({ file, discs, brought }): BatchInput | BatchInput[] => {
+    // What a game brings goes in as itself too; the review pairs it again.
+    if (brought?.length) {
+      return batchInputs([{ file, tracks: [], size: 0, discs }, ...brought.map((one) => ({ file: one, tracks: [], size: 0 }))],
+        purpose, isFirmware);
+    }
     // Each disc of a set goes in as itself; the review joins them again.
     if (discs && purpose !== "backup") return discs.map((disc) => ({ path: disc.path, name: disc.name, file: disc }));
     const name = file.name.toLowerCase();

@@ -63,7 +63,7 @@ import { installContentFor } from "./installContent";
 import { openPatchInstall } from "./installPatch";
 import { openRestoreSaves } from "./openRestore";
 import { DiscTracksModal } from "./DiscTracksModal";
-import { batchInputs, groupReceived, ownedCount } from "./receivedGroups";
+import { batchInputs, broughtSummary, groupReceived, ownedCount } from "./receivedGroups";
 import { BatchImportModal } from "./BatchImportModal";
 import { resumeOrStartBatch, type BatchFile } from "./batchImport";
 import { closeOpenModals, openModal } from "./modalStack";
@@ -1201,7 +1201,7 @@ export function TransferModal({
               )}
             </Focusable>
             <ScrollList style={RECEIVED}>
-              {shown.map(({ file, tracks, size, discs, title }, index) => (
+              {shown.map(({ file, tracks, size, discs, title, brought }, index) => (
                 <Focusable
                   key={file.path}
                   style={{ display: "flex", alignItems: "center", gap: "10px" }}
@@ -1222,6 +1222,7 @@ export function TransferModal({
                         : tracks.length > 0
                           ? ` · ${ownedCount(file.name, tracks.length)}`
                           : ""}
+                      {brought?.length ? ` · ${broughtSummary(brought)}` : ""}
                       {/* Which game, said here rather than on the button. The
                           subtitle has the whole row, so a long title costs
                           nothing; a button carrying one shrinks the filename
@@ -1239,14 +1240,15 @@ export function TransferModal({
                       than a second thing to do with it -- and folding twelve
                       rows away raises "did the rest arrive?", which nothing
                       else here can answer. Only on a row that folded some. */}
-                  {tracks.length > 0 && (
+                  {(tracks.length > 0 || Boolean(brought?.length)) && (
                     <DialogButton
                       onClick={() =>
                         openModal(
                           <DiscTracksModal
                             playlist={title ?? file.name}
-                            tracks={discs ? [file, ...tracks] : tracks}
+                            tracks={discs || brought?.length ? [file, ...tracks, ...(brought ?? [])] : tracks}
                             set={Boolean(discs)}
+                            brought={Boolean(brought?.length)}
                           />,
                         )
                       }
@@ -1357,9 +1359,12 @@ export function TransferModal({
                     <DialogButton
                       autoFocus={codeFolded && index === 0}
                       // A set goes in whole; the review asks how.
-                      onClick={() => discs
-                        ? review(discs.map((disc) => ({ path: disc.path, name: disc.name })))
-                        : void use(file.path, file.name)}
+                      onClick={() => brought?.length
+                        ? review(batchInputs([{ file, tracks, size, discs, brought }], purpose,
+                          (name) => Boolean(matchFor(name))))
+                        : discs
+                          ? review(discs.map((disc) => ({ path: disc.path, name: disc.name })))
+                          : void use(file.path, file.name)}
                       style={ICON_BUTTON_WIDE}
                     >
                       Add
@@ -1385,7 +1390,10 @@ export function TransferModal({
                               name: file.name,
                               size,
                               owned: tracks.length,
-                              also: discs?.slice(1).map((disc) => disc.name),
+                              also: [
+                                ...(discs?.slice(1).map((disc) => disc.name) ?? []),
+                                ...(brought ?? []).map((one) => one.name),
+                              ],
                             },
                             load,
                           )

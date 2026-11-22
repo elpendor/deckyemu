@@ -220,6 +220,8 @@ export interface ReceivedFile {
   game_content?: import("./games").GameContentOwner | null;
   /** A Vita licence key, which is used when its package is unpacked. */
   licence_key?: boolean;
+  /** For a game: the names of the files beside it that go in with it. */
+  brings?: string[];
   /** The disc set this is one disc of: its key, its name, and which disc. */
   disc_set?: string;
   disc_title?: string;

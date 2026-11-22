@@ -235,6 +235,26 @@ def forget_taken(ids=None):
         _taken[:] = [one for one in _taken if ids is not None and one["id"] not in ids]
 
 
+def brings(path):
+    """Names of the files beside a game that go in with it: its updates and
+    DLC, or a package's licence key. The same answers the review acts on, so
+    the transfer list can show a game and what comes with it as one row."""
+    lowered = path.lower()
+    folder = os.path.dirname(path)
+    found = []
+    if lowered.endswith(gamecontent.GAME_SUFFIXES):
+        found = [one["name"] for one in gamecontent.waiting_for(path)]
+    elif lowered.endswith(".pkg"):
+        if vita_games.is_package(path):
+            key = vita_games.zrif_report(path).get("file") or ""
+            found = [os.path.basename(key)] if key else []
+        else:
+            content_id = ps3_games.package_content_id(path)
+            rap = ps3_games.find_licence(content_id, [folder], path) if content_id else ""
+            found = [os.path.basename(rap)] if rap and os.path.dirname(rap) == folder else []
+    return found
+
+
 def _licence_game(content_id):
     """The installed game a content id belongs to, by title id, or the id."""
     title_id = content_id[7:16] if len(content_id) >= 16 else ""
@@ -281,6 +301,10 @@ class Transfers(plugin_base.PluginContext):
             # A .rap still here is waiting for its .pkg, the same as a key.
             elif lowered.endswith(".rap"):
                 item["licence_key"] = True
+
+            # A game's update, DLC or key, sent with it, goes in with it.
+            if not item["part_of"] and lowered.endswith(gamecontent.GAME_SUFFIXES + (".pkg",)):
+                item["brings"] = await self._run(brings, item["path"])
 
             # Which disc of which set, so the list can show a set as one row.
             # Not for a track: its sheet speaks for it.

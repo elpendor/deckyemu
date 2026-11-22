@@ -25,11 +25,13 @@ interface Props {
   tracks: ReceivedFile[];
   /** The discs of one game, rather than one sheet's tracks. */
   set?: boolean;
+  /** A game with what goes in with it: an update, DLC or its key. */
+  brought?: boolean;
   closeModal?: () => void;
 }
 
-export function DiscTracksModal({ playlist, tracks, set = false, closeModal }: Props) {
-  const noun = set ? "file" : ownedNoun(playlist);
+export function DiscTracksModal({ playlist, tracks, set = false, brought = false, closeModal }: Props) {
+  const noun = set || brought ? "file" : ownedNoun(playlist);
 
   return (
     <ModalRoot closeModal={closeModal} bAllowFullSize>
@@ -45,8 +47,11 @@ export function DiscTracksModal({ playlist, tracks, set = false, closeModal }: P
       <div style={{ opacity: 0.7, fontSize: "13px", marginBottom: "12px" }}>
         <FileName name={playlist} mode="wrap" style={{ fontWeight: 600 }} />
         <div style={{ marginTop: "4px" }}>
-          {set
-            ? "The discs of one game and their tracks, in disc order. Add takes every disc, and the review asks whether they are one game."
+          {set || brought
+            ? [
+              set ? "The discs of one game and their tracks, in disc order. Add takes every disc, and the review asks whether they are one game." : "",
+              brought ? "The game and what goes in with it: its update, DLC or licence key. Add installs them with the game." : "",
+            ].filter(Boolean).join(" ")
             : noun === "track"
               ? "Raw sectors, which is why the sheet above is the one to add — it says where each track starts and the tracks themselves do not."
               : "The discs of one game and their tracks. Adding the playlist above adds all of it, in order."}{" "}

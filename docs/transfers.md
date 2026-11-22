@@ -67,6 +67,12 @@ both act on all of it.
 **Add** and every disc comes with it, as one game, and the row says so; the
 pencil adds each disc on its own instead.
 
+**A game and what goes in with it are one row too**: its update and DLC, or a
+package's licence key, sent with it. The row says what it brings (*+ 1 update ·
+1 DLC*), **≡** lists every file, **Add** takes them all and the trash deletes
+them all. An update or DLC whose game is already in your library, sent on its
+own, keeps a row of its own with **Install**.
+
 **A disc of a game you've already added says so.** Its row reads *disc 2 of
 ‹game›* with an **Add to game** button, because the filename is enough to know
 where it belongs. Pressing it puts the disc into that game — same Steam entry,

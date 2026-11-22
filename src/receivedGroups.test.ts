@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { ReceivedFile } from "./backend";
-import { addableGroups, groupReceived, ownedCount, ownedNoun } from "./receivedGroups";
+import { addableGroups, batchInputs, broughtSummary, groupReceived, ownedCount, ownedNoun } from "./receivedGroups";
 
 /**
  * Folding a CD rip's tracks into the sheet that names them.
@@ -106,6 +106,27 @@ describe("groupReceived", () => {
     const joining = { ...lone, disc_for: { app_id: 1, title: "Harbor Dash", disc: 2 } };
     const other = { ...file("Harbor Dash (USA) (Disc 2).cue", 1), disc_set: "x", disc_number: 2 };
     expect(groupReceived([joining, other] as ReceivedFile[]).map((one) => one.discs)).toEqual([undefined, undefined]);
+  });
+
+  it("folds a game's update, DLC and key into the game's row", () => {
+    const owner = (label: string) => ({ label, app_id: 0, title: "", problem: "not added" });
+    const game = { ...file("Harbor Dash.nsp", 4_000), brings: ["Harbor Dash Upd.nsp", "Harbor Dash DLC.nsp"] };
+    const update = { ...file("Harbor Dash Upd.nsp", 200), game_content: owner("Update v1.1") };
+    const dlc = { ...file("Harbor Dash DLC.nsp", 100), game_content: owner("DLC") };
+    const other = file("Other.gba", 10);
+    const groups = groupReceived([update, game, dlc, other] as ReceivedFile[]);
+    expect(groups.map((one) => one.file.name)).toEqual(["Harbor Dash.nsp", "Other.gba"]);
+    expect(groups[0].size).toBe(4_300);
+    expect(broughtSummary(groups[0].brought)).toBe("+ 1 update · 1 DLC");
+    // Add takes all three; the review pairs them again.
+    expect(batchInputs(groups.slice(0, 1), "roms", () => false).map((one) => [one.name, one.other ?? ""]))
+      .toEqual([["Harbor Dash.nsp", ""], ["Harbor Dash Upd.nsp", "content"], ["Harbor Dash DLC.nsp", "content"]]);
+  });
+
+  it("leaves an update with no game in the list on its own row", () => {
+    const update = { ...file("Harbor Dash Upd.nsp", 200),
+      game_content: { label: "Update", app_id: 7, title: "Harbor Dash", problem: "" } };
+    expect(groupReceived([update] as ReceivedFile[])[0].brought).toBeUndefined();
   });
 
   it("is empty for an empty list, which is what hides the section", () => {
