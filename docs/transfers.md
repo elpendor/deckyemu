@@ -63,10 +63,9 @@ both act on all of it.
 > **Note:** a track whose `.cue` hasn't arrived stays a row of its own, because
 > that one is a game that can't be assembled and you need to see it.
 
-**A disc of a multi-disc game is one row in Add games.** Press **Add** on one
-and the discs found beside it come with it, as one game, under **Check these**,
-so a set is never merged without being put to you; the pencil adds each disc on
-its own instead.
+**A multi-disc game is one row**, in the transfer list and in Add games. Press
+**Add** and every disc comes with it, as one game, and the row says so; the
+pencil adds each disc on its own instead.
 
 **A disc of a game you've already added says so.** Its row reads *disc 2 of
 ‹game›* with an **Add to game** button, because the filename is enough to know

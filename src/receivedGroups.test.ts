@@ -78,6 +78,36 @@ describe("groupReceived", () => {
     ]);
   });
 
+  it("folds the discs of one game into one row, in disc order", () => {
+    const disc = (number: number, at: number) => ({
+      ...file(`Harbor Dash (USA) (Disc ${number}).cue`, 1_000),
+      at,
+      disc_set: "Harbor Dash (USA).cue",
+      disc_title: "Harbor Dash (USA)",
+      disc_number: number,
+    });
+    const groups = groupReceived([
+      disc(2, 2),
+      file("Harbor Dash (USA) (Disc 2).bin", 500_000, "Harbor Dash (USA) (Disc 2).cue"),
+      disc(1, 1),
+      file("Harbor Dash (USA) (Disc 1).bin", 400_000, "Harbor Dash (USA) (Disc 1).cue"),
+      file("Other.chd", 10),
+    ]);
+    expect(groups).toHaveLength(2);
+    expect(groups[0].title).toBe("Harbor Dash (USA)");
+    expect(groups[0].discs?.map((one) => one.disc_number)).toEqual([1, 2]);
+    expect(groups[0].size).toBe(902_000);
+    expect(groups[1].file.name).toBe("Other.chd");
+  });
+
+  it("leaves a lone disc, or a disc of a game already added, as its own row", () => {
+    const lone = { ...file("Harbor Dash (USA) (Disc 1).cue", 1), disc_set: "x", disc_number: 1 };
+    expect(groupReceived([lone])[0].discs).toBeUndefined();
+    const joining = { ...lone, disc_for: { app_id: 1, title: "Harbor Dash", disc: 2 } };
+    const other = { ...file("Harbor Dash (USA) (Disc 2).cue", 1), disc_set: "x", disc_number: 2 };
+    expect(groupReceived([joining, other] as ReceivedFile[]).map((one) => one.discs)).toEqual([undefined, undefined]);
+  });
+
   it("is empty for an empty list, which is what hides the section", () => {
     expect(groupReceived([])).toEqual([]);
   });

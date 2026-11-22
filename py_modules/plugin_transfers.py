@@ -282,6 +282,14 @@ class Transfers(plugin_base.PluginContext):
             elif lowered.endswith(".rap"):
                 item["licence_key"] = True
 
+            # Which disc of which set, so the list can show a set as one row.
+            # Not for a track: its sheet speaks for it.
+            parts = None if item["part_of"] else discset.split_disc(item.get("name", ""))
+            if parts:
+                item["disc_set"] = parts[0] + parts[2]
+                item["disc_title"] = parts[0]
+                item["disc_number"] = parts[1]
+
             # A disc of a game already added goes into that game rather than
             # making a second entry with the same name. Never for a track: the
             # sheet beside it has already said what it is.

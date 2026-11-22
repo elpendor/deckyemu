@@ -1204,13 +1204,13 @@ export function TransferModal({
               )}
             </Focusable>
             <ScrollList style={RECEIVED}>
-              {shown.map(({ file, tracks, size }) => (
+              {shown.map(({ file, tracks, size, discs, title }) => (
                 <Focusable
                   key={file.path}
                   style={{ display: "flex", alignItems: "center", gap: "10px" }}
                 >
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <FileName name={file.name} />
+                    <FileName name={title ?? file.name} />
                     <div style={MUTED}>
                       {/* The set, not the two kilobytes of text naming it --
                           the size a reader checks against what they sent, and
@@ -1220,9 +1220,11 @@ export function TransferModal({
                       {file.platform
                         ? ` · for ${file.platform}`
                         : addablePaths.has(file.path) ? " · detect from the file" : ""}
-                      {tracks.length > 0
-                        ? ` · ${ownedCount(file.name, tracks.length)}`
-                        : ""}
+                      {discs
+                        ? ` · ${discs.length} discs`
+                        : tracks.length > 0
+                          ? ` · ${ownedCount(file.name, tracks.length)}`
+                          : ""}
                       {/* Which game, said here rather than on the button. The
                           subtitle has the whole row, so a long title costs
                           nothing; a button carrying one shrinks the filename
@@ -1244,7 +1246,11 @@ export function TransferModal({
                     <DialogButton
                       onClick={() =>
                         openModal(
-                          <DiscTracksModal playlist={file.name} tracks={tracks} />,
+                          <DiscTracksModal
+                            playlist={title ?? file.name}
+                            tracks={discs ? [file, ...tracks] : tracks}
+                            set={Boolean(discs)}
+                          />,
                         )
                       }
                       style={ICON_BUTTON}
@@ -1345,7 +1351,10 @@ export function TransferModal({
                     </DialogButton>
                   ) : (
                     <DialogButton
-                      onClick={() => void use(file.path, file.name)}
+                      // A set goes in whole; the review asks how.
+                      onClick={() => discs
+                        ? review(discs.map((disc) => ({ path: disc.path, name: disc.name })))
+                        : void use(file.path, file.name)}
                       style={ICON_BUTTON_WIDE}
                     >
                       Add
@@ -1367,7 +1376,12 @@ export function TransferModal({
                       <DialogButton
                         onClick={() =>
                           confirmDiscardTransfer(
-                            { name: file.name, size, owned: tracks.length },
+                            {
+                              name: file.name,
+                              size,
+                              owned: tracks.length,
+                              also: discs?.slice(1).map((disc) => disc.name),
+                            },
                             load,
                           )
                         }

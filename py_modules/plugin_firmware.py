@@ -415,6 +415,7 @@ class Firmware(plugin_base.PluginContext):
             return [
                 {
                     "name": item["name"],
+                    "label": item.get("label", ""),
                     # Either way it is one press on the settings page, not a
                     # file to go and find.
                     "waiting": bool(item["waiting"] or item["elsewhere"]),

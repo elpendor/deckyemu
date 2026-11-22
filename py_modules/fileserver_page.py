@@ -160,6 +160,11 @@ _STYLE = """
   details.link summary { cursor: pointer; font-size: 14px; color: var(--muted);
                          padding: 4px 0; }
   details.link[open] summary { margin-bottom: 8px; }
+  /* Received keeps its newest few in view; the rest fold behind a link, so a
+     long session does not push the drop zone's results off the page. */
+  #already.folded > li:nth-child(n+4) { display: none; }
+  button.more { margin-top: 2px; padding: 4px 0; font: inherit; font-size: 14px;
+                color: var(--muted); background: none; border: 0; cursor: pointer; }
   /* The platform a file was sent as, beside its name. */
   .for { color: var(--muted); font-size: 12px; white-space: nowrap; }
   /* `minmax(0, 1fr)` rather than the implicit `1fr`, and `min-width: 0` on the
@@ -241,10 +246,24 @@ function receive(row) {
   reflowHeadings();
 }
 
+const moreReceived = document.getElementById('moreReceived');
+const RECEIVED_SHOWN = 3;
+
 function reflowHeadings() {
   arrivingHeading.style.display = queue.children.length ? '' : 'none';
-  if (already.children.length) receivedHeading.style.display = '';
+  const count = already.children.length;
+  if (count) receivedHeading.style.display = '';
+  receivedHeading.textContent = count > RECEIVED_SHOWN ? 'Received (' + count + ')' : 'Received';
+  moreReceived.style.display = count > RECEIVED_SHOWN ? '' : 'none';
+  moreReceived.textContent = already.classList.contains('folded')
+    ? 'Show all ' + count : 'Show fewer';
 }
+
+moreReceived.addEventListener('click', () => {
+  already.classList.toggle('folded');
+  reflowHeadings();
+});
+reflowHeadings();
 
 // A definition fetched by address. The Deck does the downloading, so there is
 // no progress to show and no resuming to do -- it either has the file or it
@@ -858,7 +877,8 @@ def upload_page(directory, arrived, token, durable, report, systems=()):
   <ul id="queue" aria-live="polite"></ul>
 
   <h2 id="receivedHeading"%(hide)s>Received</h2>
-  <ul id="already" aria-live="polite">%(listed)s</ul>
+  <ul id="already" class="folded" aria-live="polite">%(listed)s</ul>
+  <button id="moreReceived" class="more" type="button" style="display:none"></button>
 
   <!-- A definition can also be fetched by address, and this is the only place
        with a keyboard worth typing one on: the Deck is in Game Mode. It

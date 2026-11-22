@@ -716,6 +716,8 @@ def status(entry, files=None, state=None, shared=None):
         report.append(
             {
                 "name": requirement.get("name", ""),
+                # What the file is, e.g. "PS1 US BIOS", where the catalog says.
+                "label": requirement.get("label", ""),
                 "note": requirement.get("note", ""),
                 # What the match pattern will actually accept, in words. Without
                 # it the naming rule is invisible: a PS2 BIOS under any other

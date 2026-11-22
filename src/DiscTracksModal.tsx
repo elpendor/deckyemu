@@ -23,11 +23,13 @@ interface Props {
   /** The sheet or playlist these belong to. */
   playlist: string;
   tracks: ReceivedFile[];
+  /** The discs of one game, rather than one sheet's tracks. */
+  set?: boolean;
   closeModal?: () => void;
 }
 
-export function DiscTracksModal({ playlist, tracks, closeModal }: Props) {
-  const noun = ownedNoun(playlist);
+export function DiscTracksModal({ playlist, tracks, set = false, closeModal }: Props) {
+  const noun = set ? "file" : ownedNoun(playlist);
 
   return (
     <ModalRoot closeModal={closeModal} bAllowFullSize>
@@ -43,9 +45,11 @@ export function DiscTracksModal({ playlist, tracks, closeModal }: Props) {
       <div style={{ opacity: 0.7, fontSize: "13px", marginBottom: "12px" }}>
         <FileName name={playlist} mode="wrap" style={{ fontWeight: 600 }} />
         <div style={{ marginTop: "4px" }}>
-          {noun === "track"
-            ? "Raw sectors, which is why the sheet above is the one to add — it says where each track starts and the tracks themselves do not."
-            : "The discs of one game and their tracks. Adding the playlist above adds all of it, in order."}{" "}
+          {set
+            ? "The discs of one game and their tracks, in disc order. Add takes every disc, and the review asks whether they are one game."
+            : noun === "track"
+              ? "Raw sectors, which is why the sheet above is the one to add — it says where each track starts and the tracks themselves do not."
+              : "The discs of one game and their tracks. Adding the playlist above adds all of it, in order."}{" "}
           Added and deleted together.
         </div>
       </div>

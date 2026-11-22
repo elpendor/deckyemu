@@ -102,7 +102,8 @@ export interface BatchRow {
 export interface Needs {
   emulator: string;
   download: { entryId: string; name: string }[];
-  send: string[];
+  /** What only the user can send, with what each is ("PS1 US BIOS"). */
+  send: { name: string; label: string }[];
 }
 
 export const NO_NEEDS: Needs = { emulator: "", download: [], send: [] };
@@ -240,13 +241,40 @@ function needsFor(coreId: string): Promise<Needs> {
           emulator: result.emulator ?? "Its emulator",
           download: missing.filter((item) => item.fetchable && item.entry_id)
             .map((item) => ({ entryId: item.entry_id!, name: item.name })),
-          send: missing.filter((item) => !item.fetchable).map((item) => item.name),
+          send: missing.filter((item) => !item.fetchable)
+            .map((item) => ({ name: posixBase(item.name), label: item.label ?? "" })),
         };
       })
       .catch(() => NO_NEEDS);
     needsCache.set(coreId, known);
   }
   return known;
+}
+
+/** `system/scph5501.bin` -> `scph5501.bin`. */
+function posixBase(path: string): string {
+  return path.slice(path.lastIndexOf("/") + 1);
+}
+
+const REGIONS: [RegExp, RegExp][] = [
+  [/\((?:[^)]*\b)?(?:USA|US)\b/i, /\b(?:US|USA|NTSC-U|America)\b/i],
+  [/\((?:[^)]*\b)?(?:Europe|EU|PAL)\b/i, /\b(?:EU|Europe|PAL)\b/i],
+  [/\((?:[^)]*\b)?(?:Japan|JP)\b/i, /\b(?:JP|Japan|NTSC-J)\b/i],
+];
+
+/**
+ * What this game asks to be sent. A BIOS set kept one per region names only
+ * the game's own, from its filename tag: a USA disc wants the US BIOS, and
+ * listing all three reads as three things missing.
+ */
+export function sendFor(row: { name: string; needs: Needs }): string[] {
+  const send = row.needs.send;
+  for (const [game, file] of REGIONS) {
+    if (!game.test(row.name)) continue;
+    const own = send.filter((item) => file.test(item.label));
+    if (own.length) return own.map((item) => item.name);
+  }
+  return send.map((item) => item.name);
 }
 
 /** Firmware already fetched in this batch, so ten games ask for it once. */
@@ -368,11 +396,8 @@ async function examine(row: BatchRow, single = false): Promise<Partial<BatchRow>
       probe, coreId, systemId, discs, title: probe.provisional_title,
       needs: await needsFor(coreId), ...looked,
     };
-    // Merging discs is never implied: a set found from filenames is a guess, so
-    // the row says what it would do and waits under Check these.
-    if (discs.length >= 2 && patch.verdict?.bucket === "ready") {
-      patch.verdict = { bucket: "check", reason: `${discs.length} discs as one game`, include: true };
-    }
+    // A set is ready like any game: the row says it goes in as one, and the
+    // Discs line on its page is where that changes.
     patch.include = patch.verdict!.include;
     return patch;
   } catch (error) {

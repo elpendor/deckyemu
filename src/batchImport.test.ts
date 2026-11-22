@@ -138,7 +138,7 @@ describe("a disc set sent without its playlist", () => {
   const discs = ["Harbor Dash (Disc 1).chd", "Harbor Dash (Disc 2).chd"];
   const files = discs.map((name) => ({ path: `/inbox/${name}`, name }));
 
-  it("is one row, asked about rather than merged silently", async () => {
+  it("is one row, ready as one game", async () => {
     probeRom.mockResolvedValue(probe({
       suggested_core_id: playlistCore.id, matching_cores: [playlistCore], all_cores: [playlistCore],
       disc_set: discs,
@@ -146,7 +146,9 @@ describe("a disc set sent without its playlist", () => {
     await store.startBatch(files);
     const rows = store.getBatch().rows;
     expect(rows).toHaveLength(1);
-    expect(rows[0].verdict).toMatchObject({ bucket: "check", reason: "2 discs as one game" });
+    expect(rows[0].verdict.bucket).toBe("ready");
+    expect(rows[0].discs).toEqual(discs);
+    expect(rows[0].discMode).toBe("one");
   });
 
   it("goes in as one entry, or one per disc when asked", async () => {
@@ -187,6 +189,27 @@ describe("a game that is not ready", () => {
     store.setTitle(path, "Harbor Dash");
     expect(store.getBatch().rows[0].include).toBe(false);
     expect(store.chosenRows(store.getBatch().rows)).toEqual([]);
+  });
+});
+
+describe("a BIOS set kept one per region", () => {
+  const needs = {
+    emulator: "X", download: [],
+    send: [
+      { name: "jp.bin", label: "PS1 JP BIOS" },
+      { name: "us.bin", label: "PS1 US BIOS" },
+      { name: "eu.bin", label: "PS1 EU BIOS" },
+    ],
+  };
+
+  it("asks only for the game's own region", () => {
+    expect(store.sendFor({ name: "Harbor Dash (USA) (Disc 1).cue", needs })).toEqual(["us.bin"]);
+    expect(store.sendFor({ name: "Harbor Dash (Europe).chd", needs })).toEqual(["eu.bin"]);
+    expect(store.sendFor({ name: "Harbor Dash (Japan).chd", needs })).toEqual(["jp.bin"]);
+  });
+
+  it("asks for all of them when the game's region is not said", () => {
+    expect(store.sendFor({ name: "Harbor Dash.chd", needs })).toHaveLength(3);
   });
 });
 

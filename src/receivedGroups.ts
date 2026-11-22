@@ -22,6 +22,13 @@ export interface ReceivedGroup {
   tracks: ReceivedFile[];
   /** The set on disk — what the row reports and what discarding it costs. */
   size: number;
+  /**
+   * For a game on several discs: every disc's sheet, in disc order, the first
+   * being `file`. The row is named for the game and speaks for all of them.
+   */
+  discs?: ReceivedFile[];
+  /** The game's name without its disc number, for a set. */
+  title?: string;
 }
 
 /** The folder part of a path, "" for a bare name. */
@@ -61,7 +68,7 @@ export function groupReceived(files: ReceivedFile[]): ReceivedGroup[] {
     else owned.set(key, [file]);
   }
 
-  return files
+  const rows: ReceivedGroup[] = files
     .filter((file) => !ownerOf(file))
     .map((file) => {
       const tracks = owned.get(`${folderOf(file.path)}/${file.name}`) ?? [];
@@ -71,6 +78,41 @@ export function groupReceived(files: ReceivedFile[]): ReceivedGroup[] {
         size: tracks.reduce((total, one) => total + one.size, file.size),
       };
     });
+  return foldDiscSets(rows);
+}
+
+/**
+ * The discs of one game as one row, where the first disc to arrive stood.
+ * Only a game with two or more discs here, and never a disc of a game already
+ * added: that row joins its game instead.
+ */
+function foldDiscSets(rows: ReceivedGroup[]): ReceivedGroup[] {
+  const keyOf = ({ file }: ReceivedGroup) =>
+    file.disc_set && !file.disc_for ? `${folderOf(file.path)}/${file.disc_set}` : "";
+  const sets = new Map<string, ReceivedGroup[]>();
+  for (const row of rows) {
+    const key = keyOf(row);
+    if (key) sets.set(key, [...(sets.get(key) ?? []), row]);
+  }
+  const out: ReceivedGroup[] = [];
+  for (const row of rows) {
+    const set = sets.get(keyOf(row));
+    if (!set || set.length < 2) {
+      out.push(row);
+      continue;
+    }
+    if (set[0] !== row) continue;
+    const ordered = [...set].sort((a, b) => (a.file.disc_number ?? 0) - (b.file.disc_number ?? 0));
+    out.push({
+      file: ordered[0].file,
+      // Everything the set holds besides the first sheet, disc by disc.
+      tracks: ordered.flatMap((one, index) => (index ? [one.file, ...one.tracks] : one.tracks)),
+      size: ordered.reduce((total, one) => total + one.size, 0),
+      discs: ordered.map((one) => one.file),
+      title: ordered[0].file.disc_title || ordered[0].file.name,
+    });
+  }
+  return out;
 }
 
 /**
@@ -140,7 +182,9 @@ export function batchInputs(
   isFirmware: (name: string) => boolean,
 ): BatchInput[] {
   if (purpose === "firmware") return [];
-  return groups.map(({ file }) => {
+  return groups.flatMap(({ file, discs }): BatchInput | BatchInput[] => {
+    // Each disc of a set goes in as itself; the review joins them again.
+    if (discs && purpose !== "backup") return discs.map((disc) => ({ path: disc.path, name: disc.name, file: disc }));
     const name = file.name.toLowerCase();
     const as = (other?: OtherKind): BatchInput =>
       ({ path: file.path, name: file.name, other, file });

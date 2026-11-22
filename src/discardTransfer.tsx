@@ -44,6 +44,8 @@ export function confirmDiscardTransfer(
      * so the question has to be about all of them.
      */
     owned?: number;
+    /** The other discs of a set, each deleted with its tracks after this. */
+    also?: string[];
   },
   onDiscarded: () => void,
   /**
@@ -69,9 +71,13 @@ export function confirmDiscardTransfer(
       onOK={() =>
         void (async () => {
           try {
-            const result = stopped
+            let result = stopped
               ? await discardStoppedTransfer(stopped.partial)
               : await discardTransferredFile(file.name);
+            for (const name of file.also ?? []) {
+              if (!result.ok) break;
+              result = await discardTransferredFile(name);
+            }
             if (!result.ok) {
               showFailure("Could not delete", result.error);
               return;

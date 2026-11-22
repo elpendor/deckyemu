@@ -61,3 +61,26 @@ export function discsMustSplit(probe: RomProbe | null, coreId: string, discs: st
   const core = coreById(probe, coreId);
   return !readsPlaylist(core) && !core?.changes_disc;
 }
+
+const DISC_TAG = /\s*[([]\s*dis[ck]\s*(\d+)(?:\s*of\s*\d+)?\s*[)\]]/i;
+
+/** A name without its "(Disc 1)", so a set is named for its game. */
+export function withoutDiscTag(name: string): string {
+  return name.replace(DISC_TAG, "").trim();
+}
+
+/**
+ * "Harbor Dash (USA) · Discs 1–2" for a set: the game, and which discs are
+ * here, in place of the first disc's filename.
+ */
+export function discSetLabel(discs: string[]): string {
+  const numbers = discs
+    .map((name) => Number(DISC_TAG.exec(name)?.[1] ?? 0))
+    .filter(Boolean)
+    .sort((a, b) => a - b);
+  const stem = withoutDiscTag(discs[0].replace(/\.[^.]+$/, ""));
+  const which = numbers.length === discs.length
+    ? `Discs ${numbers[0]}\u2013${numbers[numbers.length - 1]}`
+    : `${discs.length} discs`;
+  return `${stem} \u00b7 ${which}`;
+}

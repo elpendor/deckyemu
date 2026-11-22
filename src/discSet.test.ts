@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { coreById, discsMustSplit, readsPlaylist, withDisc } from "./discSet";
+import { coreById, discSetLabel, discsMustSplit, readsPlaylist, withDisc, withoutDiscTag } from "./discSet";
 import type { Core, RomProbe } from "./backend";
 
 /*
@@ -116,5 +116,20 @@ describe("coreById", () => {
     expect(coreById(info, "")).toBeUndefined();
     expect(coreById(null, "snes9x")).toBeUndefined();
     expect(coreById(info, "nothing")).toBeUndefined();
+  });
+});
+
+describe("a set's name", () => {
+  it("is the game without its disc number", () => {
+    expect(withoutDiscTag("Harbor Dash (USA) (Disc 1)")).toBe("Harbor Dash (USA)");
+    expect(withoutDiscTag("Harbor Dash [Disc 2 of 3]")).toBe("Harbor Dash");
+    expect(withoutDiscTag("Harbor Dash (USA)")).toBe("Harbor Dash (USA)");
+  });
+
+  it("says which discs are here", () => {
+    expect(discSetLabel(["Harbor Dash (USA) (Disc 1).cue", "Harbor Dash (USA) (Disc 2).cue"]))
+      .toBe("Harbor Dash (USA) · Discs 1–2");
+    expect(discSetLabel(["Harbor Dash (A).chd", "Harbor Dash (B).chd"]))
+      .toBe("Harbor Dash (A) · 2 discs");
   });
 });

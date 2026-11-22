@@ -209,7 +209,9 @@ says *key matched*, or what's missing, before anything installs.
 Firmware works the same way on every system. What DeckyEmu can download itself
 — the Vita's and the PS3's, from Sony — downloads as the game is added, and the
 row says so. What only you can supply, like a PS2 BIOS or Switch keys, is named
-on the row, to send from the transfer page; the game is added anyway. Games RPCS3, shadPS4 or Vita3K already
+on the row, to send from the transfer page; the game is added anyway, and many
+run without it. Where a BIOS comes one per region, only the game's own is named.
+Games RPCS3, shadPS4 or Vita3K already
 have installed are listed under **Add a game** too.
 
 ## Everyday tasks
@@ -237,13 +239,12 @@ collection survive the change.
 
 ### Multi-disc games
 
-A set's discs are **one row**, under **Check these**, reading *2 discs as one
-game*. One entry in your library, every disc filed into one folder. The pencil
-has a **Discs** choice for adding **each disc on its own** instead.
+A set's discs are **one row**, named for the game and the discs that are here
+(*… · Discs 1–2*), reading *2 discs as one game*. One entry in your library,
+every disc filed into one folder. The pencil has a **Discs** choice for adding
+**each disc on its own** instead.
 
-Merging never just happens to you. The discs are recognised by their filenames
-and nothing else can recognise them, so the guess is put to you on the row
-rather than acted on.
+The transfer list shows a set as one row too, with every file a press away.
 
 **A disc that turns up later joins the game you already added.** Send it and its
 row in the transfer dialog reads *disc 2 of ‹game›*, offering **Add to game**

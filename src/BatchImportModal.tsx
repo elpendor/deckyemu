@@ -32,6 +32,7 @@ import {
   setPickedGame,
   setRowCore,
   setSystemFor,
+  sendFor,
   setTitle,
   subscribeBatch,
   unpackRow,
@@ -41,7 +42,7 @@ import {
 import type { Bucket } from "./batchPlan";
 import { confirmJoinDisc } from "./confirmDiscSet";
 import { coreLabel, coreOptions, installableOptions, systemOptions } from "./corePicker";
-import { withDisc } from "./discSet";
+import { discSetLabel, withDisc, withoutDiscTag } from "./discSet";
 import { FileName } from "./FileName";
 import { FileSelectionType, openFilePicker } from "./host";
 import { ICON_BUTTON, ICON_BUTTON_WIDE } from "./iconButton";
@@ -152,8 +153,8 @@ function warningsOf(row: BatchRow): string[] {
     row.needs.download.length
       ? `${row.needs.emulator} needs ${row.needs.download.map((one) => one.name).join(" and ")}; it downloads from Sony as the game is added.`
       : "",
-    row.needs.send.length
-      ? `${row.needs.emulator} needs ${row.needs.send.join(", ")}, which only you can supply: send it from the transfer page. The game is added anyway, but is unlikely to start until then.`
+    sendFor(row).length
+      ? `${row.needs.emulator} asks for ${sendFor(row).join(", ")}. Many games run without it; if this one does not, send it from the transfer page.`
       : "",
     ...packageWarnings(row),
   ].filter(Boolean);
@@ -488,7 +489,8 @@ function GamePage({ row, onBack, register }: {
   }
 
   const packaged = Boolean(row.probe?.ps4_package || row.probe?.vita_package || row.probe?.ps3_package);
-  const gameName = row.resolved?.art_game_name || row.resolved?.matched_name || "Not identified";
+  const gameName = withoutDiscTag(row.resolved?.art_game_name || row.resolved?.matched_name || "")
+    || "Not identified";
   return (
     <>
       <Focusable style={{ display: "flex", gap: "12px", alignItems: "flex-start", marginBottom: "8px" }}>
@@ -501,7 +503,7 @@ function GamePage({ row, onBack, register }: {
             style={{ paddingRight: "2.6em" }}
             onChange={(event) => setName(event.target.value)}
           />
-          <FileName name={row.name} style={{ ...MUTED, marginTop: "6px" }} />
+          <FileName name={rowFileLabel(row)} style={{ ...MUTED, marginTop: "6px" }} />
           {!row.fixed && row.resolved && NAME_SOURCE_LABELS[row.resolved.title_source] && (
             <div style={{ ...MUTED, marginTop: "2px" }}>{NAME_SOURCE_LABELS[row.resolved.title_source]}</div>
           )}
@@ -615,6 +617,11 @@ function GetRetroArch() {
   return <DialogButton onClick={press} style={{ flex: 1 }}>Get RetroArch</DialogButton>;
 }
 
+/** The row's file, or for a set the game and which discs are here. */
+function rowFileLabel(row: BatchRow): string {
+  return row.discs.length >= 2 ? discSetLabel(row.discs) : row.name;
+}
+
 function GameRow({ row, onEdit }: { row: BatchRow; onEdit: () => void }) {
   const capsule = row.resolved?.art?.capsule?.data;
   const stepping = row.busy && Boolean(row.stepStatus);
@@ -622,13 +629,13 @@ function GameRow({ row, onEdit }: { row: BatchRow; onEdit: () => void }) {
     row.discs.length >= 2
       ? row.discMode === "each" || discsMustSplit(row)
         ? `${row.discs.length} discs, each on its own`
-        : `${row.discs.length} discs`
+        : `${row.discs.length} discs as one game`
       : "",
     row.busy && !stepping ? "Looking up..." : row.verdict.reason,
     // Who supplies what the emulator is missing, said the same way for every
     // platform: what downloads by itself, and what has to be sent.
     row.needs.download.length ? `${row.needs.download.map((one) => one.name).join(", ")} downloads on Add` : "",
-    row.needs.send.length ? `needs ${row.needs.send.join(", ")}: send it` : "",
+    sendFor(row).length ? `${sendFor(row).join(", ")} recommended` : "",
   ];
   return (
     <Focusable style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "4px" }}>
@@ -647,7 +654,7 @@ function GameRow({ row, onEdit }: { row: BatchRow; onEdit: () => void }) {
           {/* The file it came from, which is how a wrong match shows. One line,
               cut in the middle so the region tags and extension stay; the
               Fix dialog has it whole. */}
-          <FileName name={row.name} style={{ ...MUTED, marginLeft: "50px" }} />
+          <FileName name={rowFileLabel(row)} style={{ ...MUTED, marginLeft: "50px" }} />
           {stepping ? (
             <div style={{ marginLeft: "50px" }}>
               <InstallProgress inline label={row.stepStatus} percent={row.stepPercent} status="" />
@@ -718,7 +725,7 @@ function OtherRow({ row, hide }: { row: BatchRow; hide: () => void }) {
       <FileTile />
       {/* The game rows' text sits 16px into their button; this matches it. */}
       <div style={{ flexGrow: 1, minWidth: 0, padding: "6px 16px" }}>
-        <FileName name={row.name} />
+        <FileName name={rowFileLabel(row)} />
         <div style={MUTED}>{row.busy ? "Working..." : [row.verdict.reason, note].filter(Boolean).join(" · ")}</div>
         {row.error && <div style={PROBLEM}>{row.error}</div>}
       </div>
@@ -738,7 +745,7 @@ function CantRow({ row }: { row: BatchRow }) {
       <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "4px" }}>
         <FileTile />
         <div style={{ flexGrow: 1, minWidth: 0, padding: "6px 16px" }}>
-          <FileName name={row.name} />
+          <FileName name={rowFileLabel(row)} />
           <div style={MUTED}>{row.busy ? "Checking again..." : row.verdict.reason}</div>
         </div>
       </div>
