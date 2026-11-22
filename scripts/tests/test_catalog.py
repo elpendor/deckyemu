@@ -256,8 +256,8 @@ _vita_emu_on = dict(_vita_emu, env=_vita_env,
                     layout=_vita_on.get("layout", ""))
 _vita_argv = emulators.launch_argv(_vita_emu_on, "", True, "PCSA00011")
 check("it reaches the launch, ahead of the emulator",
-      (_vita_argv[0], sorted(a.split("=")[0] for a in _vita_argv[1:4])),
-      ("env", ["SDL_GAMECONTROLLERCONFIG",
+      (_vita_argv[0], sorted(a.split("=")[0] for a in _vita_argv[1:5])),
+      ("env", ["DISABLE_GAMESCOPE_WSI", "SDL_GAMECONTROLLERCONFIG",
                "SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD",
                "SDL_GAMECONTROLLER_IGNORE_DEVICES"]))
 # Pressing Steam is a GUIDE press, and Vita3K toggles pause on it -- so the

@@ -258,7 +258,8 @@ ENTRY = {
     #      environment variable and a layout -- configuration, not a
     #      compensation for anybody's bug -- and the emulator's own half was
     #      fixed in build 4090, so there is nothing left to decline
-    "recipe": 11,
+    #  12  DISABLE_GAMESCOPE_WSI, below
+    "recipe": 12,
     # **Motion, which every Vita3K install gets.**
     #
     # This lived inside the motion workaround until upstream fixed the emulator
@@ -277,7 +278,11 @@ ENTRY = {
     # a switch while it travelled with a patched binary and somebody might
     # reasonably want the stock build; on its own it is how this emulator runs,
     # the way shadPS4's Vulkan pin and Supermodel's SDL variables are.
-    "env": deck_gyro.motion_env(),
+    #
+    # Gamescope's WSI layer is off: build 4397's ffmpeg makes a Vulkan device
+    # of its own, and the layer aborts on it (vkroots.h `Assertion 'obj'`)
+    # before the game starts. Measured on the Deck; it boots without the layer.
+    "env": {**deck_gyro.motion_env(), "DISABLE_GAMESCOPE_WSI": "1"},
     "layout": steam_layouts.DERIVED_URL,
     "setup": _VITA3K_SETUP,
     # Booted on a Deck: firmware and font fetched and imported headlessly, a
