@@ -144,6 +144,11 @@ doesn't start at login.
 The plugin offers the standalone version even before it's installed: switching
 then downloads it, checks it against the digest published with the release,
 installs it and starts it, all from the tab, with no trip to Desktop Mode.
+It doesn't matter how the plugin got there: one installed from a zip by hand
+offers the switch the same as one Decky updated. The plugin has to be v0.20.0
+or later, though, since earlier ones can't switch; install a newer zip first.
+And that first switch needs the internet, to fetch the standalone version from
+GitHub. Offline, the ⇄ button doesn't appear until it's installed.
 
 The tab of the one not in use says which one is, and has a **Use this one
 instead** button. That's your way back if a Steam update ever breaks the other
