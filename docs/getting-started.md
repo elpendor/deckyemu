@@ -183,8 +183,9 @@ Input and the overlay all behaving normally, because Steam is what starts it.
 
 ### PlayStation and Vita packages
 
-A `.pkg` isn't a game yet. Its row says *Installs into ‹emulator› first*, and
-**Add** unpacks it with a progress bar, then carries on from whatever came out.
+A `.pkg` isn't a game yet. Its row already has its name and cover, looked up
+before anything installs, and says *Installs into ‹emulator› on Add*. **Add**
+unpacks it with a progress bar, then carries on from whatever came out.
 You never have to know the product code or find the executable inside. When
 the emulator it goes into isn't installed, the row says so and **Add** installs
 that first and carries straight on. The pencil can do either step now instead.
@@ -193,9 +194,15 @@ RPCS3 and Vita3K do the unpacking themselves. shadPS4 can't, so the first PS4
 `.pkg` you add downloads a small tool to do it — see
 [Unpacking a PS4 package](emulators.md#unpacking-a-ps4-package).
 
-A Vita package needs its licence key in the same folder. When the key isn't
-named for the game, the pencil lets you pick it; the wrong key installs the
-whole game and then fails to decrypt it. Games RPCS3, shadPS4 or Vita3K already
+A Vita package needs its licence key, a `.zrif` or a `.txt` holding one, sent
+with it under any name. Each key is matched to its package by the game it
+unlocks, so the right one is used and a key for another game never is; the row
+says *key matched*, or what's missing, before anything installs.
+
+Firmware works the same way on every system. What DeckyEmu can download itself
+— the Vita's and the PS3's, from Sony — downloads as the game is added, and the
+row says so. What only you can supply, like a PS2 BIOS or Switch keys, is named
+on the row, to send from the transfer page; the game is added anyway. Games RPCS3, shadPS4 or Vita3K already
 have installed are listed under **Add a game** too.
 
 ## Everyday tasks

@@ -36,6 +36,7 @@ import jsonstore
 import libretro_meta
 import model3_games
 import net
+import pkgmeta
 import platforms
 import ps4_games
 import ra_cores
@@ -449,6 +450,13 @@ class Probe(plugin_base.PluginContext):
         # anything can start it. This used to suggest Vita3K as the core to run
         # it with, which wrote a Steam shortcut that could never work and said
         # so only when the game was launched.
+        # A package names its own game, in a param.sfo read without unpacking
+        # it, so the review can name it and find its artwork before it installs.
+        if extension == "pkg":
+            packaged_title = await self._run(pkgmeta.package_title, rom_path)
+            if packaged_title:
+                result["provisional_title"] = packaged_title
+
         if extension in ("zip", "vpk"):
             vita = await self._run(vita_release.inspect, rom_path)
             if vita["vita"]:

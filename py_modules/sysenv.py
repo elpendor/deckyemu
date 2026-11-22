@@ -91,11 +91,20 @@ LOADER_VARS = (
 # starting point when present.
 _ORIGINAL_PATH_VARS = ("SYSTEM_LD_LIBRARY_PATH",)
 
+# An AppImage built with the pkgforge tooling (Vita3K's, since 2026) asks on
+# first run whether it may update itself, in a desktop dialog. Game Mode shows
+# one window, so the question is invisible and whatever started the emulator
+# waits on it forever -- a Vita package install stalled on exactly this.
+# DeckyEmu installs and updates emulators itself, so the answer is always no.
+NO_SELF_UPDATE = {"DISABLE_AUTO_UPDATES": "1"}
+
 SHELL_PREAMBLE = (
     "# Steam's runtime libraries break system binaries such as flatpak:\n"
     "#   libcrypto.so.3: version `OPENSSL_3.4.0' not found\n"
     "# Clearing these makes the dynamic linker use the system libraries.\n"
-    "unset " + " ".join(LOADER_VARS)
+    "unset " + " ".join(LOADER_VARS) + "\n"
+    "# An AppImage's own updater would ask in a window Game Mode cannot show.\n"
+    "export DISABLE_AUTO_UPDATES=1"
 )
 
 # There was an `export SDL_JOYSTICK_HIDAPI=1` here, on the theory that emulators
@@ -226,6 +235,7 @@ def flatpak_deployed(root, app_id):
 def clean_env(base=None):
     """A copy of the environment with Steam's library redirection removed."""
     env = dict(base if base is not None else os.environ)
+    env.update(NO_SELF_UPDATE)
 
     for name in LOADER_VARS:
         env.pop(name, None)

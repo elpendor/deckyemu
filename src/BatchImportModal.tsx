@@ -24,7 +24,6 @@ import {
   setDiscs,
   setIncluded,
   setInstallable,
-  setKeyChoice,
   setPickedGame,
   setRowCore,
   setSystemFor,
@@ -154,7 +153,12 @@ function warningsOf(row: BatchRow): string[] {
     probe?.disc_folder_warning ?? "",
     probe?.disc_warning ?? "",
     probe?.dump_warning ?? "",
-    row.needs ? `${row.needs}. The game will be added, but is unlikely to start until that is supplied (Emulators tab, under BIOS and firmware).` : "",
+    row.needs.download.length
+      ? `${row.needs.emulator} needs ${row.needs.download.map((one) => one.name).join(" and ")}; it downloads from Sony as the game is added.`
+      : "",
+    row.needs.send.length
+      ? `${row.needs.emulator} needs ${row.needs.send.join(", ")}, which only you can supply: send it from the transfer page. The game is added anyway, but is unlikely to start until then.`
+      : "",
     ...packageWarnings(row),
   ].filter(Boolean);
 }
@@ -179,8 +183,10 @@ function packageWarnings(row: BatchRow): string[] {
   }
   if (vita?.licence === false) {
     notes.push((vita.licence_candidates ?? []).length
-      ? `Nothing here is named for ${vita.title_id || "this package"}, so its key cannot be matched automatically. Pick the one that came with this game below, or send it again as ${vita.licence_name || "the title id with a .zrif extension"}. The wrong key installs the whole game and then fails to decrypt it.`
-      : `Vita3K decrypts a package as it installs, so its key has to be here too. Send it to the same folder as the game: a .zrif, or a .txt with the key in it, named ${vita.licence_name || "after the title id"}. Opening this review again picks it up.`);
+      ? `The key here (${(vita.licence_candidates ?? []).join(", ")}) is for another game. Keys are matched to their package by what they unlock, so send this game's .zrif, under any name.`
+      : `Vita3K decrypts a package as it installs, so its key has to be here too: send its .zrif, or a .txt with the key in it, under any name. Opening this again picks it up.`);
+  } else if (vita) {
+    notes.push("Its licence key is here and was matched to it by what it unlocks.");
   }
   return notes;
 }
@@ -214,7 +220,6 @@ function FixRowModal({ path, closeModal }: { path: string; closeModal?: () => vo
   const matching = row.probe?.matching_cores ?? [];
   const all = row.probe?.all_cores ?? [];
   const cores = everything || matching.length === 0 ? all : matching;
-  const candidates = row.probe?.vita_package?.licence_candidates ?? [];
   const warnings = warningsOf(row);
 
   const choose = () =>
@@ -360,18 +365,6 @@ function FixRowModal({ path, closeModal }: { path: string; closeModal?: () => vo
             />
           </Line>
         )}
-        {candidates.length > 0 && (
-          <Line label="Licence key">
-            <Dropdown
-              rgOptions={candidates.map((key) => ({ data: key, label: key }))}
-              selectedOption={row.keyChoice}
-              onChange={(option) => {
-                setKeyChoice(row.path, String(option.data));
-                setIncluded(row.path, true);
-              }}
-            />
-          </Line>
-        )}
         {error && <div style={{ ...PROBLEM, marginTop: "8px" }}>{error}</div>}
       </ScrollList>
       <Focusable flow-children="row" style={{ display: "flex", gap: "8px", marginTop: "14px", flexWrap: "wrap" }}>
@@ -467,7 +460,10 @@ function GameRow({ row }: { row: BatchRow }) {
         : `${row.discs.length} discs`
       : "",
     row.busy && !stepping ? "Looking up..." : row.verdict.reason,
-    row.needs ? "BIOS missing" : "",
+    // Who supplies what the emulator is missing, said the same way for every
+    // platform: what downloads by itself, and what has to be sent.
+    row.needs.download.length ? `${row.needs.download.map((one) => one.name).join(", ")} downloads on Add` : "",
+    row.needs.send.length ? `needs ${row.needs.send.join(", ")}: send it` : "",
   ];
   return (
     <Focusable style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "4px" }}>
@@ -645,6 +641,7 @@ export function BatchImportModal({ closeModal }: { closeModal?: () => void }) {
   const games = added.reduce((sum, row) => sum + row.added.length, 0);
   const failed = rows.filter((row) => row.outcome === "failed");
   const busy = phase === "adding" || rows.some((row) => row.busy);
+  const stepping = rows.find((row) => row.busy && row.stepStatus);
   const [settings, setSettings] = useState<PluginSettings | null>(null);
   useEffect(() => {
     getSettings().then((read) => {
@@ -731,11 +728,20 @@ export function BatchImportModal({ closeModal }: { closeModal?: () => void }) {
       )}
 
       {phase === "adding" && (
-        <InstallProgress
-          label={`Adding ${batch.current} (${Math.min(batch.done + 1, batch.total)} of ${batch.total})`}
-          percent={batch.total ? Math.round((batch.done / batch.total) * 100) : 0}
-          status=""
-        />
+        <>
+          <InstallProgress
+            label={`Adding ${batch.current} (${Math.min(batch.done + 1, batch.total)} of ${batch.total})`}
+            percent={batch.total ? Math.round((batch.done / batch.total) * 100) : 0}
+            status=""
+          />
+          {/* A package or an emulator install takes minutes and reports how far
+              it has got; the bar above only counts games. */}
+          {stepping && (
+            <div style={{ marginTop: "10px" }}>
+              <InstallProgress inline label={stepping.stepStatus} percent={stepping.stepPercent} status="" />
+            </div>
+          )}
+        </>
       )}
 
       {phase === "done" && (

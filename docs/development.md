@@ -309,6 +309,8 @@ py_modules/                 Backend logic. Plain Python, no third-party
                             per-game lists Ryujinx reads at boot
   switch_nsz.py             Unpack a Switch .nsz into the .nsp Ryujinx can read,
                             checked against the original, in the room there is
+  pkgmeta.py                A PS3, PS4 or Vita .pkg's own title, read from its
+                            param.sfo without unpacking it
   discset.py                Recognise a multi-disc game from the discs beside it,
                             and write the .m3u that makes it one game
   savedata.py               Where each emulator keeps its saves, and gathering

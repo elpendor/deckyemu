@@ -17,10 +17,12 @@ arrived at the same answer independently -- they read a title id out of a
 `.psvita` file and run `-Fr` with it.
 """
 
+import base64
 import os
 import re
 import shutil
 import struct
+import zlib
 
 import appenv
 import sfo
@@ -42,6 +44,52 @@ _TITLE_ID_RE = re.compile(r"([A-Z]{4}\d{5})")
 # enough to tell a licence key from a readme sitting in the same folder.
 ZRIF_PREFIX = "KO5if"
 _ZRIF_RE = re.compile(r"^[A-Za-z0-9+/=]{40,}$")
+
+# The preset dictionary every zRIF is deflated against: 880 zero bytes, then
+# the content-id fragments that make a licence compress to fifty characters.
+# From pkg2zip (public domain), whose `zrif_decode` this mirrors; its adler32
+# is the 0x627d1d5d each zRIF's zlib header names.
+_ZRIF_DICT = bytes(880) + (
+    b"00009" + bytes(11) + b"000060000700008\x000000300004000050_00-ADDCONT00002-"
+    b"PCSG00000000001-PCSE000-PCSF000-PCSC000-PCSD000-PCSA000-PCSB000"
+    b"\x00\x01\x00\x01\x00\x01\x00\x02\xef\xcd\xab\x89gE#\x01"
+)
+
+# Where a licence names its content: a game's at 0x10, a PSM title's at 0x50.
+_RIF_CONTENT_AT = (0x10, 0x50)
+_CONTENT_LEN = 0x30
+
+
+def zrif_content_ids(key):
+    """The content ids a zRIF licenses, or an empty set when it will not decode.
+
+    A licence names the content it decrypts, and the package header names its
+    own, so a key can be matched to its game exactly -- the same check pkg2zip
+    makes before it will use one.
+    """
+    try:
+        raw = base64.b64decode(key + "=" * (-len(key) % 4))
+        rif = zlib.decompressobj(zdict=_ZRIF_DICT).decompress(raw)
+    except (ValueError, zlib.error):
+        return set()
+    found = set()
+    for offset in _RIF_CONTENT_AT:
+        text = rif[offset:offset + _CONTENT_LEN].split(b"\x00", 1)[0]
+        if text:
+            found.add(text.decode("ascii", "replace"))
+    return found
+
+
+def package_content_id(path):
+    """The content id in a Vita .pkg header, or ''."""
+    try:
+        with open(path, "rb") as handle:
+            header = handle.read(_CONTENT_ID_AT + _CONTENT_LEN)
+    except OSError:
+        return ""
+    return header[_CONTENT_ID_AT:_CONTENT_ID_AT + _CONTENT_LEN].split(
+        b"\x00", 1)[0].decode("ascii", "replace")
+
 
 # Where a key may be kept beside its package. A `.zrif` is unambiguous; a
 # `.txt` is what these are usually distributed as.
@@ -153,7 +201,23 @@ def locate_zrif(pkg_path, title_id=""):
     """
     folder = os.path.dirname(pkg_path)
     stem = os.path.splitext(os.path.basename(pkg_path))[0]
+    content = package_content_id(pkg_path)
 
+    # **Matched by what the key licenses, whatever it is called.** A licence
+    # names its content id and so does the package, so every key in the folder
+    # is decoded and the one for this package is used -- `gr.zrif` beside
+    # `gravity rush.pkg` included -- and a key for another game never is, even
+    # when it is named for this one.
+    if content:
+        for name in zrif_candidates(folder):
+            path = os.path.join(folder, name)
+            key = _read_zrif(path)
+            if content in zrif_content_ids(key):
+                return key, path
+
+    # A key that will not decode, or a header that will not read, leaves only
+    # the name to go by, which is what there was before. A named key that
+    # decodes to another game's content is still refused.
     names = []
     for base in (stem, title_id):
         if base:
@@ -162,7 +226,7 @@ def locate_zrif(pkg_path, title_id=""):
     for name in names:
         path = os.path.join(folder, name)
         key = _read_zrif(path)
-        if key:
+        if key and not (content and zrif_content_ids(key)):
             return key, path
     return "", ""
 
@@ -225,9 +289,9 @@ def write_zrif(pkg_path, key, title_id=""):
 def zrif_report(pkg_path, title_id=""):
     """{key, file, candidates} -- this package's licence, and what else is here.
 
-    `key` is filled only when a file is named for this package. `candidates` is
-    every other key file in the folder, offered so the panel can ask *which*
-    rather than either guessing or claiming there is none.
+    `key` is filled when a key in the folder licenses this package. Otherwise
+    `candidates` names the keys that are there, which are then for other games:
+    "send its key" and "the key here is for another game" are different news.
 
     Those are three different situations with three different answers -- send a
     key, choose between these, or go ahead -- and they were one boolean before.

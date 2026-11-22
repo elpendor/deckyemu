@@ -10,6 +10,8 @@
 
 import {
   clearStashedArt,
+  fetchFirmware,
+  installFirmware,
   type AppliedArt,
   forgetGames,
   getStatus,
@@ -90,13 +92,24 @@ export interface BatchRow {
   /** Cores that could run it, when none installed can; which one to install. */
   installable: InstallableCore[];
   installableId: string;
-  /** The Vita key picked for a package, "" for the one named after it. */
-  keyChoice: string;
-  /** BIOS or keys the chosen emulator is missing, said before adding. */
-  needs: string;
+  /** What the chosen emulator is missing before a game boots. */
+  needs: Needs;
   /** What the transfer list knows of a file that is not a game. */
   file: ReceivedFile | null;
 }
+
+/**
+ * What an emulator still needs before its games boot, sorted by who supplies
+ * it: what DeckyEmu downloads itself (Sony's firmware), and what only the
+ * user can (a BIOS or keys copied off their own hardware).
+ */
+export interface Needs {
+  emulator: string;
+  download: { entryId: string; name: string }[];
+  send: string[];
+}
+
+export const NO_NEEDS: Needs = { emulator: "", download: [], send: [] };
 
 export type BatchPhase = "idle" | "checking" | "review" | "adding" | "done" | "undone";
 
@@ -180,8 +193,7 @@ function newRow(file: BatchFile): BatchRow {
     corePicked: false,
     installable: [],
     installableId: "",
-    keyChoice: "",
-    needs: "",
+    needs: NO_NEEDS,
     file: file.file ?? null,
   };
 }
@@ -215,20 +227,56 @@ async function lookUp(
 }
 
 /** What the chosen emulator is missing, per core, for the batch's life. */
-const needsCache = new Map<string, Promise<string>>();
-function needsFor(coreId: string): Promise<string> {
-  if (!coreId) return Promise.resolve("");
+const needsCache = new Map<string, Promise<Needs>>();
+function needsFor(coreId: string): Promise<Needs> {
+  if (!coreId) return Promise.resolve(NO_NEEDS);
   let known = needsCache.get(coreId);
   if (!known) {
     known = missingFirmware(coreId)
-      .then((result) => {
-        const names = (result.missing ?? []).map((item) => item.name);
-        return names.length ? `${result.emulator ?? "Its emulator"} is missing ${names.join(", ")}` : "";
+      .then((result): Needs => {
+        const missing = result.missing ?? [];
+        return {
+          emulator: result.emulator ?? "Its emulator",
+          download: missing.filter((item) => item.fetchable && item.entry_id)
+            .map((item) => ({ entryId: item.entry_id!, name: item.name })),
+          send: missing.filter((item) => !item.fetchable).map((item) => item.name),
+        };
       })
-      .catch(() => "");
+      .catch(() => NO_NEEDS);
     needsCache.set(coreId, known);
   }
   return known;
+}
+
+/** Firmware already fetched in this batch, so ten games ask for it once. */
+const fetched = new Set<string>();
+
+/** Download what DeckyEmu may fetch itself, before the game needing it. */
+async function fetchNeeded(row: BatchRow): Promise<string[]> {
+  const notes: string[] = [];
+  for (const item of row.needs.download) {
+    const key = `${item.entryId}/${item.name}`;
+    if (fetched.has(key)) continue;
+    update({ current: `${row.title}: downloading ${item.name}` });
+    try {
+      const result = await fetchFirmware(item.entryId, item.name);
+      if (!result.ok) {
+        notes.push(`${item.name} did not download: ${result.error ?? "no reason given"}`);
+        continue;
+      }
+      // Downloaded is not installed: Vita3K imports its firmware itself, and
+      // a game added before that boots to nothing.
+      update({ current: `${row.title}: installing ${item.name}` });
+      const installed = await installFirmware(item.entryId, item.name);
+      if (installed.ok) fetched.add(key);
+      else notes.push(`${item.name} downloaded but did not install: ${installed.error ?? "no reason given"}`);
+    } catch (error) {
+      logError("firmware download failed", error);
+      notes.push(`${item.name} did not download.`);
+    }
+  }
+  needsCache.clear();
+  return notes;
 }
 
 const CONSOLES = {
@@ -291,11 +339,21 @@ async function examine(row: BatchRow, single = false): Promise<Partial<BatchRow>
       installable = await suggestCoresForExtension(probe.match_extension).catch(() => []);
     }
     const early = classifyProbe(probe, installable.length, retroarchFound);
+    if (early && packaged) {
+      // A package is looked up by its name now, so the row has its cover
+      // before anything installs; its own metadata names it properly after.
+      const system = { ps3: "Sony - PlayStation 3", ps4: "Sony - PlayStation 4",
+        vita: "Sony - PlayStation Vita" }[packaged[0]];
+      const preview = await lookUp({ ...row, probe }, "", system, probe.provisional_title);
+      return {
+        probe, title: preview.title ?? probe.provisional_title, resolved: preview.resolved ?? null,
+        systemId: system, verdict: early, include: early.include,
+      };
+    }
     if (early) {
       return {
         probe, title: probe.provisional_title, verdict: early, include: early.include,
         installable, installableId: installable[0]?.id ?? "",
-        keyChoice: probe.vita_package?.licence_candidates?.[0] ?? "",
       };
     }
 
@@ -412,6 +470,7 @@ export async function startBatch(files: BatchFile[]): Promise<void> {
   generation += 1;
   const asked = generation;
   needsCache.clear();
+  fetched.clear();
   update({ phase: "checking", done: 0, total: files.length, current: "", rows: files.map(newRow) });
   await clearStashedArt().catch(() => undefined);
   retroarchFound = await getStatus().then((status) => status.found, () => true);
@@ -517,10 +576,6 @@ export function setDiscs(path: string, discs: string[]): void {
 
 export function setInstallable(path: string, coreId: string): void {
   updateRow(path, { installableId: coreId });
-}
-
-export function setKeyChoice(path: string, keyName: string): void {
-  updateRow(path, { keyChoice: keyName });
 }
 
 /**
@@ -686,9 +741,8 @@ async function packageStep(row: BatchRow): Promise<string[]> {
     const result = packaged.system === "ps4"
       ? await installPs4Package(row.path)
       : packaged.system === "vita"
-        // The key named after the package unless one was picked; the backend
-        // refuses rather than guessing.
-        ? await installVitaPackage(row.path, row.keyChoice)
+        // The backend finds the key that licenses this package, by content id.
+        ? await installVitaPackage(row.path, "")
         : await installPs3Package(row.path);
     if (!result.ok || !result.title_id) {
       return failStep(row.path, result.error ?? "The package did not install.");
@@ -820,6 +874,7 @@ async function addRow(row: BatchRow): Promise<void> {
     : row.resolved?.art ?? {};
   const resolved = row.resolved ? { ...row.resolved, art } : null;
   const title = row.title.trim() || row.name;
+  const firmwareNotes = await fetchNeeded(row);
   const each = row.discs.length >= 2 && (row.discMode === "each" || discsMustSplit(row));
   const entries = each
     ? row.discs.map((disc, index) => ({
@@ -847,6 +902,7 @@ async function addRow(row: BatchRow): Promise<void> {
       errors.push(outcome.error);
     }
   }
+  errors.push(...firmwareNotes);
   updateRow(row.path, added.length
     ? { outcome: "added", added, error: errors.join(" ") }
     : { outcome: "failed", error: errors.join(" ") || "Could not add it." });

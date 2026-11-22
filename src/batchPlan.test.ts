@@ -69,14 +69,16 @@ describe("classifyProbe", () => {
     expect(classifyProbe(probe({ ps4_package: pkg } as Partial<RomProbe>)))
       .toMatchObject({ bucket: "check", step: "package", include: true });
     expect(classifyProbe(probe({ ps4_package: { ...pkg, emulator_ready: false } } as Partial<RomProbe>)))
-      .toMatchObject({ step: "emulator", reason: "Installs X, then the game" });
+      .toMatchObject({ step: "emulator", reason: "X installs on Add, then the game" });
   });
 
-  it("waits for a person to pick a Vita key that is not named for the game", () => {
-    const pkg = { installed: false, title_id: "", emulator_ready: true, emulator_id: "x",
+  it("says when a Vita package has no key for it, before anything installs", () => {
+    const pkg = { installed: false, title_id: "", emulator_ready: false, emulator_id: "x",
       emulator_name: "X", licence: false, licence_candidates: ["other.zrif"] };
-    expect(classifyProbe(probe({ vita_package: pkg } as Partial<RomProbe>)))
-      .toMatchObject({ step: "package", include: false, reason: "Pick its licence key" });
+    expect(classifyProbe(probe({ vita_package: pkg } as unknown as Partial<RomProbe>)))
+      .toMatchObject({ include: false, reason: "The key here is for another game" });
+    expect(classifyProbe(probe({ vita_package: { ...pkg, licence_candidates: [] } } as unknown as Partial<RomProbe>)))
+      .toMatchObject({ include: false, reason: "Needs its licence key" });
   });
 
   it("unpacks what nothing can open as it is", () => {

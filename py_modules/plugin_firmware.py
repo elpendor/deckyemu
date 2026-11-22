@@ -418,6 +418,10 @@ class Firmware(plugin_base.PluginContext):
                     # Either way it is one press on the settings page, not a
                     # file to go and find.
                     "waiting": bool(item["waiting"] or item["elsewhere"]),
+                    # Ours to download -- Sony's own firmware -- so adding a
+                    # game fetches it rather than asking for it.
+                    "fetchable": bool(item.get("fetchable")),
+                    "entry_id": entry.get("id", ""),
                 }
                 for item in emu_firmware.status(entry, files, shared=shared)
                 # `detectable` is the important one and was learned the hard

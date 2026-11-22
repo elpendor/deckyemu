@@ -50,18 +50,21 @@ export function classifyProbe(
 
   const packaged = pendingPackage(probe);
   if (packaged) {
-    if (!packaged.state.emulator_ready) {
-      return check(`Installs ${packaged.state.emulator_name || "its emulator"}, then the game`, true, "emulator");
-    }
+    // A Vita key is matched to its package by what it licenses, so a missing
+    // one is the only thing to say -- and it is said before any install.
     if (packaged.system === "vita" && packaged.state.licence === false) {
-      // The wrong key installs gigabytes and then fails to decrypt, so a key
-      // not named for this game is picked by a person, in the Fix dialog.
       return (packaged.state.licence_candidates ?? []).length
-        ? check("Pick its licence key", false, "package")
-        : check("Send its licence key too", false, "package");
+        ? check("The key here is for another game", false, "package")
+        : check("Needs its licence key", false, "package");
     }
-    const into = packaged.state.emulator_name ? ` into ${packaged.state.emulator_name}` : "";
-    return check(`Installs${into} first${packaged.system === "vita" ? " · key found" : ""}`, true, "package");
+    const name = packaged.state.emulator_name || "its emulator";
+    const key = packaged.system === "vita" ? " · key matched" : "";
+    if (!packaged.state.emulator_ready) {
+      // Its firmware is Sony's to download, so it comes with the emulator.
+      const what = packaged.state.needs_firmware ? `${name} and its firmware install` : `${name} installs`;
+      return check(`${what} on Add, then the game${key}`, true, "emulator");
+    }
+    return check(`Installs into ${name} on Add${key}`, true, "package");
   }
   if (probe.vita_release) return cant("A Vita release: send its .pkg instead");
 

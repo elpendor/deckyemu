@@ -601,7 +601,7 @@ export const missingFirmware = callable<
   {
     ok: boolean;
     emulator?: string;
-    missing?: { name: string; waiting: boolean }[];
+    missing?: { name: string; waiting: boolean; fetchable?: boolean; entry_id?: string }[];
   }
 >("missing_firmware");
 /** Deletes from the firmware folder only; never touches an installed copy. */
