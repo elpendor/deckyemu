@@ -146,6 +146,8 @@ export interface RomProbe {
    * its own directory is what filing deliberately refuses to do.
    */
   disc_folder_warning: string;
+  /** A zip holding a disc's sheet and tracks: unpacked before it plays. */
+  zipped_disc?: boolean;
   /**
    * Set when the file is one track of a disc with no `.cue` beside it.
    *

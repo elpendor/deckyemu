@@ -38,7 +38,7 @@ import {
   type RomProbe,
 } from "./backend";
 import { addGameToSteam } from "./addToSteam";
-import { classify, classifyProbe, otherVerdict, type OtherKind, type Verdict } from "./batchPlan";
+import { classify, classifyProbe, otherVerdict, unpacksTo, type OtherKind, type Verdict } from "./batchPlan";
 import { chooseSystem } from "./corePicker";
 import { discsMustSplit as mustSplit } from "./discSet";
 import { addEventListener, removeEventListener } from "./host";
@@ -416,20 +416,23 @@ async function examine(row: BatchRow, single = false): Promise<Partial<BatchRow>
       installable = await suggestCoresForExtension(probe.match_extension).catch(() => []);
     }
     const early = classifyProbe(probe, installable.length, retroarchFound);
-    // A package, or a Switch .nsz, is looked up by its name now, so the row
-    // has its cover before anything installs or unpacks.
-    const nsz = probe.can_unpack && probe.unpack_kind === "nsz";
-    if (early && (packaged || nsz)) {
+    // A package, or a file whose unpacked form is known (an .nsz, a zipped
+    // Xbox 360 package), is looked up by its name now, so the row has its
+    // cover before anything installs or unpacks.
+    const into = unpacksTo(probe);
+    if (early && (packaged || into)) {
       const system = packaged
         ? { ps3: "Sony - PlayStation 3", ps4: "Sony - PlayStation 4",
           vita: "Sony - PlayStation Vita" }[packaged[0]]
-        : "Nintendo - Switch";
+        : into!.system;
       const preview = await lookUp({ ...row, probe }, "", system, probe.provisional_title);
       // What will run it once unpacked, so its requirements are said now.
-      const runner = nsz ? (probe.all_cores ?? []).find((core) => core.extensions.includes("nsp")) : undefined;
+      const runner = into
+        ? (probe.all_cores ?? []).find((core) => core.extensions.includes(into.extension))
+        : undefined;
       const needs = runner ? await needsFor(runner.id) : NO_NEEDS;
-      // Judged as the .nsp it unpacks to, which is what the emulator gets.
-      const verdict = early.blocked ? early : waitingFor(needs, early, "game.nsp");
+      // Judged as what it unpacks to, which is what the emulator gets.
+      const verdict = early.blocked || !into ? early : waitingFor(needs, early, `game.${into.extension}`);
       return {
         probe, title: preview.title ?? probe.provisional_title, resolved: preview.resolved ?? null,
         systemId: system, verdict, include: verdict.include, needs,

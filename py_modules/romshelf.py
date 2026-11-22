@@ -48,6 +48,22 @@ _CUE_FILE = re.compile(r'^\s*FILE\s+(?:"([^"]+)"|(\S+))', re.IGNORECASE | re.MUL
 MAX_PLAYLIST_BYTES = 256 * 1024
 
 
+def missing_from_sheet(path):
+    """The files a .cue, .gdi or .m3u names that are not beside it.
+
+    Empty when all are there, or when the sheet cannot be read: only what is
+    known to be missing is said. Matched without case, as a sheet written on
+    Windows often names its tracks in another case than the files have.
+    """
+    names = _referenced(path) or []
+    folder = os.path.dirname(path)
+    try:
+        here = {name.lower() for name in os.listdir(folder)}
+    except OSError:
+        return []
+    return [name for name in names if os.path.basename(name).lower() not in here]
+
+
 def _referenced(path):
     """Filenames a playlist points at, or None if it could not be read.
 

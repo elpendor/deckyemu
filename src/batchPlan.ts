@@ -81,12 +81,13 @@ export function classifyProbe(
 
   // Nothing can open it as it is, but it comes apart: an Xbox 360 zip, an .nsz.
   const mustUnpack = probe.can_unpack &&
-    (probe.archived_content || probe.unpack_kind === "nsz" || !probe.suggested_core_id);
-  // An .nsz unpacks to an .nsp, and with nothing installed to run one the
+    (probe.archived_content || probe.unpack_kind === "nsz" || probe.zipped_disc || !probe.suggested_core_id);
+  // What it unpacks to is known, and with nothing installed to run that the
   // unpack would only end in a file nobody can play.
-  if (mustUnpack && probe.unpack_kind === "nsz"
-    && !(probe.all_cores ?? []).some((core) => core.extensions.includes("nsp"))) {
-    return blocked("Needs a Switch emulator: add one from the Emulators tab", "unpack");
+  const into = unpacksTo(probe);
+  if (mustUnpack && into
+    && !(probe.all_cores ?? []).some((core) => core.extensions.includes(into.extension))) {
+    return blocked(`Needs ${into.emulator}: add one from the Emulators tab`, "unpack");
   }
   if (mustUnpack) return check("Unpacks first", true, "unpack");
 
@@ -98,6 +99,22 @@ export function classifyProbe(
         : blocked("Needs RetroArch", "retroarch");
     }
     return cant(probe.what ? `Nothing runs ${probe.what} files` : "Nothing runs it");
+  }
+  return null;
+}
+
+/**
+ * What a file that must unpack first becomes, when that is known before
+ * unpacking: an .nsz is an .nsp, and a zip holding an Xbox 360 package is that
+ * package. The system and emulator are for the row and its block.
+ */
+export function unpacksTo(probe: RomProbe): { extension: string; system: string; emulator: string } | null {
+  if (!probe.can_unpack) return null;
+  if (probe.unpack_kind === "nsz") {
+    return { extension: "nsp", system: "Nintendo - Switch", emulator: "a Switch emulator" };
+  }
+  if (probe.archived_content === "stfs" || probe.archived_content === "xex") {
+    return { extension: probe.archived_content, system: "Microsoft - Xbox 360", emulator: "an Xbox 360 emulator" };
   }
   return null;
 }

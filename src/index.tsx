@@ -8,6 +8,8 @@ import {
   quickAccessMenuClasses,
 } from "./steamui";
 import { addEventListener, removeEventListener, toaster, useQuickAccessVisible } from "./host";
+import { exposeBatchForTests } from "./devTestHook";
+import { IS_DEV_BUILD } from "./version";
 import type { ReactElement, ReactNode } from "react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { FaCog, FaGamepad } from "react-icons/fa";
@@ -671,7 +673,11 @@ export function start(): Started {
    */
   void callWithRetry(getStatus)
     .then((status) => {
-      if (!status.blocked) startWithState();
+      if (status.blocked) return;
+      startWithState();
+      // Dead code in a release: IS_DEV_BUILD is replaced before rollup parses.
+      // Only from the build in use, whose backend answers.
+      if (IS_DEV_BUILD) exposeBatchForTests();
     })
     .catch((error) => console.error("[deckyemu] could not read the status", error));
 

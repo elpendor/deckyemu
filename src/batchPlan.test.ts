@@ -94,8 +94,14 @@ describe("classifyProbe", () => {
   });
 
   it("unpacks what nothing can open as it is", () => {
-    expect(classifyProbe(probe({ can_unpack: true, archived_content: "stfs", suggested_core_id: "" })))
-      .toMatchObject({ step: "unpack", include: true });
+    const xenia = { id: "emu:xenia", extensions: ["stfs"] } as unknown as RomProbe["all_cores"][number];
+    expect(classifyProbe(probe({ can_unpack: true, archived_content: "stfs", suggested_core_id: "",
+      all_cores: [xenia] }))).toMatchObject({ step: "unpack", include: true });
+  });
+
+  it("blocks a zipped Xbox 360 package when nothing installed runs one", () => {
+    expect(classifyProbe(probe({ can_unpack: true, archived_content: "stfs", suggested_core_id: "",
+      all_cores: [] }))).toMatchObject({ blocked: true, reason: expect.stringContaining("Xbox 360") });
   });
 
   it("blocks an .nsz when nothing installed runs what it unpacks to", () => {

@@ -249,6 +249,9 @@ class Probe(plugin_base.PluginContext):
         # does for a cartridge, and the game that comes out is missing its audio
         # track at best. See `romshelf.track_without_a_sheet`.
         lone_track = await self._run(romshelf.track_without_a_sheet, rom_path)
+        # A sheet whose tracks are not all here: sent without them, or still
+        # on their way. Added as it is, it is a game that cannot start.
+        missing_tracks = await self._run(romshelf.missing_from_sheet, rom_path)
 
         # And the layout a Redump download arrives in: one folder per disc. The
         # plugin cannot make a playlist out of that -- see
@@ -287,7 +290,10 @@ class Probe(plugin_base.PluginContext):
                 "it saying where the tracks are. Send the .cue as well and pick "
                 "that instead — without it the audio track is invisible and the "
                 "game may not start."
-                if lone_track else ""
+                if lone_track else
+                "Missing %s, which this disc needs. Send %s to the same folder."
+                % (", ".join(missing_tracks), "them" if len(missing_tracks) > 1 else "it")
+                if missing_tracks else ""
             ),
             # What the playlist would be called. Shown before it is written, so
             # the panel can name the file it is about to create rather than
@@ -338,6 +344,8 @@ class Probe(plugin_base.PluginContext):
             # What unpacking does, so the panel can say: a zip comes apart, an
             # `.nsz` becomes an `.nsp`.
             "unpack_kind": "nsz" if extension == "nsz" else "zip",
+            # A disc in a zip: its sheet's tracks only exist once unpacked.
+            "zipped_disc": extension == "zip" and await self._run(ra_cores.zipped_disc, rom_path),
             # What to call this file in the panel. Normally its extension, which
             # is what every one of those sentences was written around -- but a
             # file matched on its header has no extension to show, and ".stfs"

@@ -247,6 +247,11 @@ every disc filed into one folder. The pencil has a **Discs** choice for adding
 
 The transfer list shows a set as one row too, with every file a press away.
 
+A disc whose tracks aren't all there comes in unticked, naming what's
+missing, so a `.cue` sent without its `.bin` doesn't become a game that can't
+start. A disc sent as a zip is unpacked on **Add** first: RetroArch only takes
+the one file it opens out of an archive.
+
 **A disc that turns up later joins the game you already added.** Send it and its
 row in the transfer dialog reads *disc 2 of ‹game›*, offering **Add to game**
 rather than **Add**, in the transfer dialog and under **Other files** in **Add

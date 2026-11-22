@@ -249,6 +249,11 @@ ENTRY = {
     # it would buy 17KB in exchange for four facts that rot when Dolphin
     # reorganises. Verified against a real Mario Kart Wii save, 2026-08-28.
     "databases": ["Nintendo - GameCube", "Nintendo - Wii"],
+    # **Not a Game Boy.** The derived list takes `gb`, `gba` and `gbc` from
+    # dolphin_libretro, which reads them for the GBA link cable; this Dolphin
+    # cannot start one as a game. With RetroArch missing, a GBA game was
+    # handed to Dolphin instead of being blocked.
+    "cannot_open": ("gb", "gba", "gbc"),
     # -b exits when the game stops rather than dropping back to the game
     # list; -e picks the file. Fullscreen is a config setting, not a flag,
     # which is what `setup` is for.

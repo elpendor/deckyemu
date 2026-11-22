@@ -263,6 +263,20 @@ def _zip_members(rom_path):
         return None
 
 
+#: What makes a zip a disc rather than one ROM: a sheet naming other files.
+_SHEETS = ("cue", "gdi", "ccd", "m3u", "toc")
+
+
+def zipped_disc(rom_path):
+    """Whether a zip holds a disc's sheet with its tracks.
+
+    RetroArch takes only the file it opens out of an archive, so the tracks a
+    sheet names are never there for the core: the disc has to be unpacked.
+    """
+    members = _zip_members(rom_path) if _is_zip(rom_path) else None
+    return bool(members) and any(ext in _SHEETS for ext in members)
+
+
 def is_romset(rom_path):
     """Whether a `.zip` is an arcade ROM set rather than one game in a wrapper.
 

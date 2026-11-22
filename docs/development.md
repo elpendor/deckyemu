@@ -166,6 +166,54 @@ no arguments for every command.
 A page already open keeps the code it was opened with: after a deploy, leave
 it and open it again before checking a change.
 
+### Add games, end to end on the Deck
+
+`scripts/deck/batch_e2e.py` drives the review and Add through the same
+functions the dialog calls, with no dialog open. A development build (what
+`scripts/deploy.sh` ships) puts them on `window.__deckyemu.batchTest`; a
+release build has none of it, which `scripts/check_release_build.py` asserts.
+
+```sh
+scp scripts/deck/batch_e2e.py deck@steamdeck.local:/tmp/
+ssh deck@steamdeck.local python3 /tmp/batch_e2e.py
+```
+
+It makes its own files, with made-up names, in the transfer folder: a game
+already added, one nothing recognises, a disc with a missing track, a zipped
+disc, a zipped Xbox 360 package, a patch, a BIOS, a definition, a save
+backup, a Switch game with its update and DLC, one that needs a core. It checks
+each row, unpacks, adds three games (one deleted first, so the result has to
+say why), takes them back out, and deletes everything it made, even when a
+check fails. It also moves PCSX2's BIOS folder aside for one check, and puts
+it back however the check ends.
+
+Two more are opt-in, because each disturbs the Deck for a few minutes.
+`--offline` cuts DeckyEmu's own network, and nothing else's, by pointing its
+service's proxy at a closed port. `--no-retroarch` uninstalls RetroArch, keeping
+its data, and installs the same build again afterwards. Both put everything
+back.
+
+### The upload page, in a real browser
+
+`scripts/upload_page_e2e.py` runs on a computer, drives a Chromium against the
+Deck's upload page, and checks the Deck over SSH. It uses Playwright with a
+browser you name; nothing is downloaded and no installed browser or profile is
+touched. A portable Chrome for Testing build does the job:
+
+```sh
+pip install playwright        # PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1: no browsers
+python scripts/upload_page_e2e.py --chrome path/to/chrome-win64/chrome.exe
+```
+
+It opens the transfer dialog on the Deck and reads the code off it (the page
+locks out after wrong codes, so it never guesses), then checks the code page
+and the bookmark, both pages at phone width, five files at once, the Received
+fold, drag and drop, the platform picked, a licence RPCS3 already has, a
+connection cut mid-file and resumed, Cancel on the Deck, and a definition
+fetched from a link. A small relay on the computer slows uploads and cuts them
+on demand, which Chrome's own network emulation does not do for uploads. What
+it sends is deleted from the Deck afterwards.
+
 ### Backend logic tests
 
 The riskiest logic — name cleanup and artwork matching — needs no Deck:

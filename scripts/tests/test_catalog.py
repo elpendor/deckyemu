@@ -758,9 +758,9 @@ check("a manual extension does not survive cannot_open",
 
 # Fails the day another entry uses it, as a prompt to check that the reason is
 # written down beside it rather than inferred later.
-check("only PCSX2 and Ryujinx have to correct the derivation",
+check("only Dolphin, PCSX2 and Ryujinx have to correct the derivation",
       sorted(entry["id"] for entry in emulator_catalog.CATALOG if entry.get("cannot_open")),
-      ["pcsx2", "ryujinx"])
+      ["dolphin", "pcsx2", "ryujinx"])
 
 # Ryujinx cannot read a compressed package. Offered one, it made a Steam entry
 # that crashed on launch; an .nsz is unpacked into the .nsp it can read instead.

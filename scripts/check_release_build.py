@@ -31,6 +31,7 @@ import sys
 FORBIDDEN = (
     "Forget everything the plugin knows",
     "dev_reset",
+    "deckyemu batch test hook",
 )
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
