@@ -19,20 +19,40 @@ interface Wire {
   reconnected?(): void;
 }
 
-const pending = new Map<number, { resolve(value: unknown): void; reject(error: Error): void }>();
+interface Waiting {
+  resolve(value: unknown): void;
+  reject(error: Error): void;
+}
+
+/*
+ * Kept on the page, not in this module: an update evaluates a new bundle over
+ * this one and its `connect` takes over `reply`. A screen still open from the
+ * old bundle would otherwise wait forever for replies the new one drops.
+ */
+interface Shared {
+  pending: Map<number, Waiting>;
+  next: number;
+}
+
 const listeners = new Map<string, Set<Listener>>();
-let next = 0;
 
 function wire(): Wire & Record<string, unknown> {
   const w = window as unknown as { __deckyemu?: Wire & Record<string, unknown> };
   return (w.__deckyemu ??= {} as Wire & Record<string, unknown>);
 }
 
+function shared(): Shared {
+  const w = wire();
+  return (w.channel ??= { pending: new Map(), next: 0 }) as Shared;
+}
+
 /** Call `method` on the service with `args`; resolves with what it returned. */
 export function call<Return = unknown>(method: string, ...args: unknown[]): Promise<Return> {
   const send = (window as unknown as { __deckyemuHost?: (payload: string) => void }).__deckyemuHost;
   if (!send) return Promise.reject(new Error("DeckyEmu is not connected."));
-  const id = ++next;
+  const state = shared();
+  const { pending } = state;
+  const id = ++state.next;
   return new Promise<Return>((resolve, reject) => {
     pending.set(id, { resolve: resolve as (value: unknown) => void, reject });
     try {
@@ -69,6 +89,7 @@ export function removeEventListener<Args extends unknown[] = []>(
 /** Wire the service's side of the channel to this bundle. */
 export function connect(): void {
   const w = wire();
+  const { pending } = shared();
   w.reply = (id, ok, value) => {
     const waiting = pending.get(id);
     if (!waiting) return;

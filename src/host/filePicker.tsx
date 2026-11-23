@@ -9,7 +9,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { DialogButton, DialogFooter, DialogHeader, Focusable, ModalRoot, Spinner } from "../steamui";
-import { showModal } from "../steamui/navigation";
+import { openModal } from "../modalStack";
 import { call } from "./channel";
 
 export enum FileSelectionType {
@@ -140,7 +140,7 @@ export function openFilePicker(
       else reject(new Error("User canceled"));
     };
     try {
-      showModal(
+      openModal(
         <FilePicker
           select={select}
           startPath={startPath}

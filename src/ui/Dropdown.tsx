@@ -1,6 +1,7 @@
 import { type ReactNode } from "react";
 
-import { DialogButton, Focusable, playNavSound, showModal } from "../steamui/base";
+import { DialogButton, Focusable, playNavSound } from "../steamui/base";
+import { openModal } from "../modalStack";
 import { Field } from "./Field";
 import { DialogHeader, ModalRoot } from "./Modal";
 import { styled } from "./styles";
@@ -77,7 +78,7 @@ function OptionList({ options, selected, title, onPick, closeModal }: {
 export function Dropdown({ rgOptions, selectedOption, onChange, disabled, menuLabel, strDefaultLabel }: DropdownProps) {
   const chosen = flat(rgOptions).find((option) => option.data === selectedOption);
   const open = () => {
-    showModal(
+    openModal(
       <OptionList options={rgOptions} selected={selectedOption} title={menuLabel}
         onPick={(option) => onChange?.(option)} />,
     );

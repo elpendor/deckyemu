@@ -38,13 +38,14 @@ import { repairGameIcons } from "./repairIcons";
 import { repairGameLayouts } from "./repairLayouts";
 import { AddedGamesPanel } from "./AddedGamesPanel";
 import { ErrorBoundary } from "./ErrorBoundary";
-import { closeModalsOnPress } from "./modalStack";
+import { closeModalsOnPress, closeOpenModals } from "./modalStack";
 import { HEADER_BUTTON, SwitchButton, TakeOverRows, onSwitched } from "./SwitchPanel";
 import { OrphanModal } from "./OrphanModal";
 import { shortcutNudge, type ShortcutCounts } from "./shortcutNudge";
 import { CloudStatusPanel } from "./CloudStatusPanel";
 import { TransferStatusPanel } from "./TransferStatusPanel";
 import { ManagePage, openManagePage } from "./ManagePage";
+import { notePageMounted } from "./pageMounts";
 import { patchGameContextMenu } from "./steam/contextMenu";
 import { watchLaunches } from "./launchGate";
 import { watchPlaying } from "./playWatch";
@@ -464,11 +465,14 @@ function Content() {
  * different component type each time -- React would unmount and remount the
  * whole page rather than update it.
  */
-const GuardedManagePage = () => (
-  <ErrorBoundary where="The DeckyEmu settings page">
-    <ManagePage />
-  </ErrorBoundary>
-);
+const GuardedManagePage = () => {
+  useEffect(notePageMounted, []);
+  return (
+    <ErrorBoundary where="The DeckyEmu settings page">
+      <ManagePage />
+    </ErrorBoundary>
+  );
+};
 
 /**
  * The panel, inside an element that closes our modals when anything in it is
@@ -718,6 +722,8 @@ export function start(): Started {
       // otherwise leave the old copy toasting alongside the new one.
       stopWatchingLaunches();
       stopWatchingPlaying();
+      // A dialog left open would keep running the replaced code.
+      closeOpenModals();
     },
   };
 }
