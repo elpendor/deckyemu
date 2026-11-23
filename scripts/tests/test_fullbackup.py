@@ -80,10 +80,19 @@ try:
     _drop(os.path.join(_sys, "sda", "size"), "262146048")
     _drop(os.path.join(_sys, "nvme0n1", "removable"), "0")
     _drop(os.path.join(_sys, "nvme0n1", "size"), "100")
+    # Our own mounts list: a runner whose system disk is /dev/sda1 would
+    # otherwise count the fake sda as mounted.
+    _mounts = os.path.join(TMP, "mounts")
+    _drop(_mounts, "/dev/nvme0n1p8 /home ext4 rw 0 0\n")
     _real_sys, fullbackup.SYS_BLOCK = fullbackup.SYS_BLOCK, _sys
+    _real_mounts, fullbackup.PROC_MOUNTS = fullbackup.PROC_MOUNTS, _mounts
     check("an attached drive nothing could mount is named, not hidden",
           fullbackup.unreadable(), [{"name": "sda", "size": 262146048 * 512}])
+    _drop(_mounts, "/dev/sda1 /run/media/deck/card ext4 rw 0 0\n")
+    check("and one with a partition mounted is not",
+          fullbackup.unreadable(), [])
     fullbackup.SYS_BLOCK = _real_sys
+    fullbackup.PROC_MOUNTS = _real_mounts
 
     section("everything, as the checklist starts")
     _result = fullbackup.backup(_drive, fullbackup.PARTS)

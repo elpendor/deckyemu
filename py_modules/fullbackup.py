@@ -34,6 +34,8 @@ PARTS = ("roms", "saves", "emulators", "firmware", "settings", "signins")
 #: Where SteamOS mounts a card or USB drive: `/run/media/<user>/<label>`, or
 #: directly under it on older builds.
 MEDIA = "/run/media"
+#: What is mounted where; a constant so tests can give their own.
+PROC_MOUNTS = "/proc/mounts"
 
 #: Left free on the drive, on top of what the backup writes.
 _MARGIN = 64 * 1024 * 1024
@@ -102,7 +104,7 @@ def _mount_table():
     """{mount point: (device, format)} from /proc/mounts."""
     table = {}
     try:
-        with open("/proc/mounts", encoding="utf-8") as handle:
+        with open(PROC_MOUNTS, encoding="utf-8") as handle:
             for line in handle:
                 parts = line.split()
                 if len(parts) >= 3:
@@ -271,7 +273,7 @@ def unreadable():
     nothing to mount. Named so the panel can say that instead of "no drive".
     """
     try:
-        with open("/proc/mounts", encoding="utf-8") as handle:
+        with open(PROC_MOUNTS, encoding="utf-8") as handle:
             mounted = handle.read()
     except OSError:
         mounted = ""
