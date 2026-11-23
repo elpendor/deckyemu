@@ -22,7 +22,8 @@ import { openModal } from "./modalStack";
 import { OVER_THE_NETWORK, callWithRetry } from "./timeout";
 import { FRONTEND_VERSION } from "./version";
 import { useBackendVersion } from "./useBackendVersion";
-import { noteCheck, setUpdateDotEnabled } from "./updateSignal";
+import { noteCheck, noteRestarting, setUpdateDotEnabled } from "./updateSignal";
+import { useRestartingInto } from "./useRestartingInto";
 import { logError } from "./logError";
 import { showFailure } from "./showFailure";
 
@@ -282,7 +283,9 @@ export function UpdatePanel({
         );
         return;
       }
-      toaster.toast(await updates.finish(staged, release.version));
+      const finished = await updates.finish(staged, release.version);
+      toaster.toast(finished);
+      if (finished.restarting) noteRestarting(finished.restarting);
       // Shown in a dialog, this closes it: the dialog belongs to the version
       // being replaced, and would otherwise stay over the screen after it.
       onHandedOff?.();
@@ -342,6 +345,7 @@ export function UpdatePanel({
   };
 
   const running = update?.current || backend?.version;
+  const restartingTo = useRestartingInto();
 
   return (
     <>
@@ -357,14 +361,16 @@ export function UpdatePanel({
             <ButtonItem
               layout="below"
               onClick={() => void install()}
-              disabled={installing || !updates.available()}
+              disabled={installing || Boolean(restartingTo) || !updates.available()}
               description={
                 !updates.available()
                   ? updates.unavailable
                   : `${running ? `You are running ${running}. ` : ""}${updates.how}`
               }
             >
-              {installing ? "Preparing..." : `Update to ${update.latest.version}`}
+              {restartingTo
+                ? `Restarting into ${restartingTo}...`
+                : installing ? "Preparing..." : `Update to ${update.latest.version}`}
             </ButtonItem>
           </PanelSectionRow>
 

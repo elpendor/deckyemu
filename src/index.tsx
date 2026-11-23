@@ -46,6 +46,7 @@ import { CloudStatusPanel } from "./CloudStatusPanel";
 import { TransferStatusPanel } from "./TransferStatusPanel";
 import { ManagePage, openManagePage } from "./ManagePage";
 import { notePageMounted } from "./pageMounts";
+import { useRestartingInto } from "./useRestartingInto";
 import { patchGameContextMenu } from "./steam/contextMenu";
 import { watchLaunches } from "./launchGate";
 import { watchPlaying } from "./playWatch";
@@ -219,6 +220,7 @@ function Content() {
 
   const nudge = shortcutNudge(health);
   const badge = updateBadge(update);
+  const restartingTo = useRestartingInto();
 
   /*
    * Written once because it renders in two places, and the second one is not
@@ -227,7 +229,14 @@ function Content() {
    * block screen with no way to reach a newer build would make that escape
    * hatch theoretical.
    */
-  const updateRow = badge && (
+  const updateRow = restartingTo ? (
+    <PanelSectionRow>
+      <Field
+        label={`Restarting into ${restartingTo}`}
+        description="DeckyEmu is back in a few seconds."
+      />
+    </PanelSectionRow>
+  ) : badge && (
     <PanelSectionRow>
       {/* One row, not a Field and a button in two. Steam rules between rows, so
           the version and the button that acts on it were separated by a line

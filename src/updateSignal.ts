@@ -107,6 +107,30 @@ export function noteCheck(check: UpdateCheck | null | undefined): void {
   noteUpdate(Boolean(check.available), check.latest?.version ?? "");
 }
 
+/*
+ * The version the service is restarting into. Between the install and the new
+ * bundle taking over, the panel and the Updates tab would otherwise go on
+ * offering the update just installed, as if nothing had happened. The new
+ * bundle starts with this empty; the timer only matters if it never arrives.
+ */
+let restarting = "";
+const RESTART_GRACE_MS = 120_000;
+
+export function noteRestarting(version: string): void {
+  restarting = version;
+  notify();
+  setTimeout(() => {
+    if (restarting !== version) return;
+    restarting = "";
+    notify();
+  }, RESTART_GRACE_MS);
+}
+
+/** The version being restarted into, or empty. */
+export function restartingInto(): string {
+  return restarting;
+}
+
 /** Subscribe. The returned function unsubscribes, and must be called. */
 export function watchUpdates(listener: () => void): () => void {
   listeners.add(listener);

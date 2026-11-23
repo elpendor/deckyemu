@@ -164,3 +164,17 @@ describe("the update signal behind the icon dot", () => {
     expect(other).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("restarting into an update", () => {
+  it("says so until the new version replaces it, and gives up after two minutes", async () => {
+    vi.useFakeTimers();
+    const { noteRestarting, restartingInto } = await import("./updateSignal");
+    noteRestarting("2.0.0");
+    expect(restartingInto()).toBe("2.0.0");
+    vi.advanceTimersByTime(119_000);
+    expect(restartingInto()).toBe("2.0.0");
+    vi.advanceTimersByTime(2_000);
+    expect(restartingInto()).toBe("");
+    vi.useRealTimers();
+  });
+});

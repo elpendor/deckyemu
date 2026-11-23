@@ -10,6 +10,13 @@ export interface Staged {
   sha256?: string;
 }
 
+export interface Finished {
+  title: string;
+  body: string;
+  /** Set when the service is restarting into this version right now. */
+  restarting?: string;
+}
+
 export const updates = {
   /** Whether this window can install at all. */
   available: (): boolean => true,
@@ -22,7 +29,11 @@ export const updates = {
   /** When the backend could not be reached. */
   noAnswer: "The service did not answer.",
   /** Finish, and say what happened. */
-  async finish(staged: Staged, version: string): Promise<{ title: string; body: string }> {
-    return { title: `Installed ${staged.version ?? version}`, body: "DeckyEmu is restarting into it." };
+  async finish(staged: Staged, version: string): Promise<Finished> {
+    return {
+      title: `Installed ${staged.version ?? version}`,
+      body: "DeckyEmu is restarting into it.",
+      restarting: staged.version ?? version,
+    };
   },
 };
