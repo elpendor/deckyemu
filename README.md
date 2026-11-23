@@ -25,7 +25,9 @@ handles.](docs/images/installing-an-emulator.jpg)
 
 **Get your games onto the Deck** from a phone or a laptop over your own network.
 ROMs, disc sets, zipped archives and PlayStation 3, PS4 and Vita packages all
-arrive, unpack and are filed under their system.
+arrive, unpack and are filed under their system. Send fifty at once and **Add
+all** checks every one, lists the few worth a second look, and adds the rest
+together.
 
 ![The transfer dialog in Game Mode: a QR code beside a short address and a
 six-digit code, with a received Game Boy ROM listed underneath and an Add button
@@ -98,12 +100,6 @@ running: send a ROM, pick what runs it, add it to Steam.
 | [Emulator definitions](docs/emulator-definitions.md) | The JSON format for setting up an emulator DeckyEmu does not ship |
 | [Development](docs/development.md) | Building it, running it against a real Deck, and the layout of the tree |
 | [Contributing](CONTRIBUTING.md) | What is worth sending, and what to know before opening a pull request |
-
-## Not implemented yet
-
-- **Batch importing a folder of ROMs.** Needs an answer to what the
-  one-at-a-time flow asks per game: no matching core, several possible cores,
-  wrong artwork. Getting those wrong in bulk is what makes it tedious to undo.
 
 ## Credits
 
